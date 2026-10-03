@@ -55,6 +55,31 @@
             "net.rs64.tex-trans-core": "^0.2.0"
           },
           "zipSHA256": "cc892372be65e76b3c22580b2b95d24825d76136e00b01dfbc2558f6d9afc600"
+        },
+        "0.1.12+validation.fix-texture-st-atlas.a71d3fe": {
+          "name": "net.gridatch.tex-trans-tool",
+          "displayName": "TexTransTool (WDT)",
+          "version": "0.1.12+validation.fix-texture-st-atlas.a71d3fe",
+          "unity": "2022.3",
+          "description": "Validation build from fix/texture-st-atlas at a71d3fe. Based on upstream TexTransTool 1.0.2.",
+          "author": {
+            "name": "ReinaSakiria",
+            "url": "https://rs64.net/"
+          },
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/validation/net.gridatch.tex-trans-tool-0.1.12+validation.fix-texture-st-atlas.a71d3fe.zip",
+          "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
+          "legacyFolders": {
+            "Packages\\rs64.tex-trans-tool": ""
+          },
+          "dependencies": {
+            "net.rs64.tex-trans-core": "0.2.0",
+            "com.unity.burst": "1.8.0",
+            "com.unity.mathematics": "1.3.2"
+          },
+          "vpmDependencies": {
+            "net.rs64.tex-trans-core": "^0.2.0"
+          },
+          "zipSHA256": "0d8559c0fb04b23e3de5aa9419d199dfb65a10786e6ca06f5941c2dc481a4ac3"
         }
       }
     }
