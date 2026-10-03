@@ -1,0 +1,98 @@
+/*
+BEGIN__TT_COMPUTE_SHADER_HEADER
+
+Language HLSL
+LanguageVersion 2018
+
+TTComputeType General
+
+END__TT_COMPUTE_SHADER_HEADER
+*/
+
+cbuffer gv
+{
+    uint2 TextureSize;
+    float2 TextureScale;
+    float2 TextureOffset;
+    uint WrapModeU;
+    uint WrapModeV;
+}
+
+RWTexture2D<float4> SourceTex;
+RWTexture2D<float4> TargetTex;
+
+float WrapCoordinate(float value, uint mode)
+{
+    // 0: Repeat, 1: Clamp, 2: Mirror, 3: MirrorOnce
+    if (mode == 0)
+    {
+        return value - floor(value);
+    }
+    if (mode == 1)
+    {
+        return saturate(value);
+    }
+    if (mode == 2)
+    {
+        float mirrored = value - floor(value * 0.5) * 2.0;
+        return mirrored <= 1.0 ? mirrored : 2.0 - mirrored;
+    }
+    if (mode == 3)
+    {
+        return saturate(abs(value));
+    }
+    return saturate(value);
+}
+
+int WrapTexelIndex(int value, int size, uint mode)
+{
+    if (mode == 0)
+    {
+        int wrapped = value % size;
+        return wrapped < 0 ? wrapped + size : wrapped;
+    }
+    return clamp(value, 0, size - 1);
+}
+
+float4 BilinearSample(float2 uv)
+{
+    float2 wrappedUV = float2(
+        WrapCoordinate(uv.x, WrapModeU),
+        WrapCoordinate(uv.y, WrapModeV)
+    );
+
+    float2 texelPosition = wrappedUV * float2(TextureSize) - float2(0.5, 0.5);
+    int2 floorPosition = int2(floor(texelPosition));
+    int2 ceilPosition = floorPosition + int2(1, 1);
+    float2 blend = frac(texelPosition);
+
+    int floorX = WrapTexelIndex(floorPosition.x, int(TextureSize.x), WrapModeU);
+    int ceilX = WrapTexelIndex(ceilPosition.x, int(TextureSize.x), WrapModeU);
+    int floorY = WrapTexelIndex(floorPosition.y, int(TextureSize.y), WrapModeV);
+    int ceilY = WrapTexelIndex(ceilPosition.y, int(TextureSize.y), WrapModeV);
+
+    float4 down = lerp(
+        SourceTex[int2(floorX, floorY)],
+        SourceTex[int2(ceilX, floorY)],
+        blend.x
+    );
+    float4 up = lerp(
+        SourceTex[int2(floorX, ceilY)],
+        SourceTex[int2(ceilX, ceilY)],
+        blend.x
+    );
+    return lerp(down, up, blend.y);
+}
+
+[numthreads(16, 16, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= TextureSize.x || id.y >= TextureSize.y)
+    {
+        return;
+    }
+
+    float2 uv = (float2(id.xy) + float2(0.5, 0.5)) / float2(TextureSize);
+    float2 sourceUV = uv * TextureScale + TextureOffset;
+    TargetTex[id.xy] = BilinearSample(sourceUV);
+}
