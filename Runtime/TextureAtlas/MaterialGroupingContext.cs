@@ -21,6 +21,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 .Select(kv => (
                     kv.m,
                     kv.Item2.Where(u => (((int)u.Value) - 1) == (int)atlasingTargetUVChannel)
+                        .Where(u => kv.m.HasProperty(u.Key))
                         .Select(u => (u.Key, kv.m.GetTexture(u.Key)))
                         .Where(u => u.Item2 != null)
                         .ToDictionary(
