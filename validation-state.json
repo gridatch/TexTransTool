@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.5",
-  "lastDebugSerial": 22,
-  "currentDebugVersion": "0.1.5+debug.22.independent-texture-uv.b4fbe6d",
+  "lastDebugSerial": 23,
+  "currentDebugVersion": "0.1.5+debug.23.independent-texture-uv.4ce7d00",
   "currentDebugChange": "independent-texture-uv",
   "currentDebugBranch": "fix/independent-texture-uv",
-  "currentDebugCommit": "b4fbe6db16b7a482b398890ce0e67deffc15a1c6",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.5+debug.22.independent-texture-uv.b4fbe6d.zip"
+  "currentDebugCommit": "4ce7d00157c86d783d3b52752b635f08a039f08c",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.5+debug.23.independent-texture-uv.4ce7d00.zip"
 }
