@@ -404,7 +404,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 case < (1 / 2f): return atlasTextureSize / 2;
             }
         }
-        private static readonly int[] AutoAtlasTextureSizeCandidates = { 1024, 2048, 4096 };
+        private static readonly int[] AutoAtlasTextureSizeCandidates = { 256, 512, 1024, 2048, 4096 };
 
         static Vector2Int GetAtlasTextureSize(AtlasSetting atlasSetting)
         {
