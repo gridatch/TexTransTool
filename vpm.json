@@ -56,17 +56,17 @@
           },
           "zipSHA256": "cc892372be65e76b3c22580b2b95d24825d76136e00b01dfbc2558f6d9afc600"
         },
-        "0.1.5+debug.15.shader-texture-property-filter.76d217d": {
+        "0.1.5+debug.16.shader-texture-property-filter.53ab1d2": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.5+debug.15.shader-texture-property-filter.76d217d",
+          "version": "0.1.5+debug.16.shader-texture-property-filter.53ab1d2",
           "unity": "2022.3",
-          "description": "Debug build 15 for shader-texture-property-filter from fix/shader-texture-property-filter at 76d217d. Based on WDT 0.1.5 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 16 for shader-texture-property-filter from fix/shader-texture-property-filter at 53ab1d2. Based on WDT 0.1.5 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.5+debug.15.shader-texture-property-filter.76d217d.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.5+debug.16.shader-texture-property-filter.53ab1d2.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -79,7 +79,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "4f84ac7ab281849ada9c6dd89267c059c5b596ebd56cc7cf4eff5970853b53c7"
+          "zipSHA256": "4d23941e96738075ca9803e34c68e477f7072f70b14e41afaa17dae9e5ab51e5"
         }
       }
     }
