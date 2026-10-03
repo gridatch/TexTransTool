@@ -250,13 +250,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          if git diff --quiet -- vpm.json validation-state.json debug validation; then
+          if git diff --quiet; then
             echo "VPM repository already contains $VERSION."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A vpm.json validation-state.json debug validation
+          git add -A
           git commit -m "chore: publish VPM package $VERSION"
           git push origin HEAD:vpm
