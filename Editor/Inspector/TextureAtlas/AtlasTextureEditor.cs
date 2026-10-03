@@ -128,6 +128,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             using (new PFScope("DrawAtlasSettings"))
                 DrawAtlasSettings();
 
+            if (PreviewUtility.IsPreviewContains is false)
+            {
+                EditorGUILayout.Space();
+                if (GUILayout.Button("AtlasTexture:button:ExportPersistentAssets".GlcV()))
+                    AtlasTextureAssetExporter.Export(thisTarget);
+            }
+
         }
 
         private void DrawIslandSizePriorityTunerWithAdvanced(SerializedProperty sIslandSizePriorityTuner, IEnumerable<Material> targetMaterials)
