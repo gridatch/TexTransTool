@@ -1,10 +1,5 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
-  "baseVersion": "0.1.6",
-  "lastDebugSerial": 32,
-  "currentDebugVersion": "0.1.6+debug.32.auto-lossless-atlas-size.a951cf5",
-  "currentDebugChange": "auto-lossless-atlas-size",
-  "currentDebugBranch": "feat/auto-lossless-atlas-size",
-  "currentDebugCommit": "a951cf50b27dfa6358e55aca55388053e08e5a0b",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.6+debug.32.auto-lossless-atlas-size.a951cf5.zip"
+  "baseVersion": "0.1.7",
+  "lastDebugSerial": 32
 }
