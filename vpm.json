@@ -1,0 +1,7 @@
+{
+  "name": "TexTransTool WDT Builds",
+  "id": "net.gridatch.tex-trans-tool-wdt",
+  "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
+  "author": "gridatch",
+  "packages": {}
+}
