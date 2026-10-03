@@ -16,26 +16,42 @@ namespace net.rs64.TexTransTool.TextureAtlas
         public readonly string? PrimaryTexturePropertyOrMaximum;
         public MaterialGroupingContext(HashSet<Material> targetMaterials, UVChannel atlasingTargetUVChannel, string? primaryTexturePropertyOrMaximum)
         {
-            ContainsTextureDictionaries = targetMaterials
+            var containsTextureProperties = targetMaterials
                 .Select(m => (m, TTShaderTextureUsageInformationUtil.GetContainsUVUsage(m)))
                 .Select(kv => (
                     kv.m,
                     kv.Item2.Where(u => (((int)u.Value) - 1) == (int)atlasingTargetUVChannel)
                         .Where(u => kv.m.HasProperty(u.Key))
-                        .Select(u => (u.Key, kv.m.GetTexture(u.Key)))
-                        .Where(u => u.Item2 != null)
+                        .Select(u => (
+                            u.Key,
+                            Texture: kv.m.GetTexture(u.Key),
+                            Scale: kv.m.GetTextureScale(u.Key),
+                            Offset: kv.m.GetTextureOffset(u.Key)
+                        ))
+                        .Where(u => u.Texture != null)
                         .ToDictionary(
                             u => u.Key,
-                            u => u.Item2
+                            u => new TexturePropertyValue(u.Texture!, u.Scale, u.Offset)
                         )
                     )
-                ).ToDictionary(kv => kv.m, kv => kv.Item2 as IReadOnlyDictionary<string, Texture>);
+                ).ToDictionary(
+                    kv => kv.m,
+                    kv => kv.Item2 as IReadOnlyDictionary<string, TexturePropertyValue>
+                );
+
+            ContainsTextureDictionaries = containsTextureProperties.ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value.ToDictionary(
+                    p => p.Key,
+                    p => p.Value.Texture
+                ) as IReadOnlyDictionary<string, Texture>
+            );
 
             var groupMaterials = new List<GroupMaterial>();
-            foreach (var (keyMat, containsTextures) in ContainsTextureDictionaries)
+            foreach (var (keyMat, containsTextures) in containsTextureProperties)
             {
                 AddGroups(keyMat, containsTextures);
-                void AddGroups(Material keyMat, IReadOnlyDictionary<string, Texture> containsTextures)
+                void AddGroups(Material keyMat, IReadOnlyDictionary<string, TexturePropertyValue> containsTextures)
                 {
                     foreach (var group in groupMaterials)
                     {
@@ -66,15 +82,30 @@ namespace net.rs64.TexTransTool.TextureAtlas
             return GroupMaterials.SelectMany(i => i.GroupedTexture.Keys).ToHashSet();
         }
 
+        public readonly struct TexturePropertyValue
+        {
+            public readonly Texture Texture;
+            public readonly Vector2 Scale;
+            public readonly Vector2 Offset;
+
+            public TexturePropertyValue(Texture texture, Vector2 scale, Vector2 offset)
+            {
+                Texture = texture;
+                Scale = scale;
+                Offset = offset;
+            }
+        }
+
 
         public class GroupMaterial : IEnumerable<Material>
         {
-            Dictionary<Material, IReadOnlyDictionary<string, Texture>> _containsTextures = new();
+            Dictionary<Material, IReadOnlyDictionary<string, TexturePropertyValue>> _containsTextures = new();
             Dictionary<string, Texture> _groupedTexture = new();
+            Dictionary<string, TexturePropertyValue> _groupedTextureProperties = new();
 
             public int Count => _containsTextures.Count;
 
-            public AddResult Add(Material mat, IReadOnlyDictionary<string, Texture> textures)
+            public AddResult Add(Material mat, IReadOnlyDictionary<string, TexturePropertyValue> textures)
             {
                 if (_containsTextures.ContainsKey(mat)) { return AddResult.Already; } // already
                 if (IsGroupCompatible(textures) is false) { return AddResult.NotCompatible; }
@@ -82,20 +113,22 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 _containsTextures[mat] = textures;
                 foreach (var texKV in textures)
                 {
-                    if (texKV.Value == null) { continue; }
-                    _groupedTexture[texKV.Key] = texKV.Value;
+                    if (texKV.Value.Texture == null) { continue; }
+                    _groupedTexture[texKV.Key] = texKV.Value.Texture;
+                    _groupedTextureProperties[texKV.Key] = texKV.Value;
                 }
                 return AddResult.Success;
             }
-            bool IsGroupCompatible(IReadOnlyDictionary<string, Texture> textures)
+            bool IsGroupCompatible(IReadOnlyDictionary<string, TexturePropertyValue> textures)
             {
-                foreach (var propName in _groupedTexture.Keys)
+                foreach (var propName in _groupedTextureProperties.Keys)
                 {
-                    var groupTex = _groupedTexture[propName];
-                    var addMaterialTex = textures.GetValueOrDefault(propName);
+                    var groupTex = _groupedTextureProperties[propName];
+                    if (textures.TryGetValue(propName, out var addMaterialTex) is false) { continue; }
 
-                    if (addMaterialTex == null) { continue; }
-                    if (groupTex != addMaterialTex) { return false; }
+                    if (groupTex.Texture != addMaterialTex.Texture) { return false; }
+                    if (groupTex.Scale != addMaterialTex.Scale) { return false; }
+                    if (groupTex.Offset != addMaterialTex.Offset) { return false; }
                 }
                 return true;
             }
@@ -149,6 +182,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
 
             public IReadOnlyDictionary<string, Texture> GroupedTexture => _groupedTexture;
+            public IReadOnlyDictionary<string, TexturePropertyValue> GroupedTextureProperties => _groupedTextureProperties;
         }
 
     }
