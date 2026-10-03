@@ -43,7 +43,7 @@ jobs:
           set -euo pipefail
 
           base_version="$(jq -r '.version' package.json)"
-          package_id="$(jq -r '.name' package.json)"
+          package_id="net.gridatch.tex-trans-tool"
           if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Base package version '$base_version' is not a stable X.Y.Z version. Update the WDT versioning rule deliberately before publishing."
             exit 1
@@ -94,8 +94,8 @@ jobs:
           )"
 
           version="${version_prefix}${sequence}"
-          tag="vpm-${version}"
-          zip="net.rs64.tex-trans-tool-${version}.zip"
+          tag="wdt-vpm-${version}"
+          zip="net.gridatch.tex-trans-tool-${version}.zip"
           repo_url="https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json"
           download_url="https://github.com/gridatch/TexTransTool/releases/download/${tag}/${zip}"
 
@@ -132,10 +132,12 @@ jobs:
           cp .vpm-build/image-assets/Image/* "$package_dir/Image/"
 
           jq \
+            --arg name "net.gridatch.tex-trans-tool" \
+            --arg displayName "TexTransTool (WDT)" \
             --arg version "$VERSION" \
             --arg url "$DOWNLOAD_URL" \
             --arg repo "$REPO_URL" \
-            '.version = $version | .url = $url | .repo = $repo' \
+            '.name = $name | .displayName = $displayName | .version = $version | .url = $url | .repo = $repo' \
             "$package_dir/package.json" > "$package_dir/package.json.tmp"
           mv "$package_dir/package.json.tmp" "$package_dir/package.json"
 
