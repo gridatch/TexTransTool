@@ -146,6 +146,13 @@ msgstr "LimitCandidateMaterials"
 msgid "AtlasTexture:prop:LimitCandidateMaterials:tooltip"
 msgstr "Limit candidate materials to GameObject subordinates."
 
+
+msgid "AtlasTexture:button:ExportPersistentAssets"
+msgstr "Export Atlas Assets"
+
+msgid "AtlasTexture:button:ExportPersistentAssets:tooltip"
+msgstr "Save the current AtlasTexture result as independent PNG textures, Material assets, and Mesh assets without modifying the avatar."
+
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "RefreshMaterials"
 
