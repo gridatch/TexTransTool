@@ -1,10 +1,5 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
-  "baseVersion": "0.1.5",
-  "lastDebugSerial": 26,
-  "currentDebugVersion": "0.1.5+debug.26.toon-standard-support.e8c4772",
-  "currentDebugChange": "toon-standard-support",
-  "currentDebugBranch": "fix/toon-standard-support",
-  "currentDebugCommit": "e8c47721022156a78f2f099441d88bef478d66d2",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.5+debug.26.toon-standard-support.e8c4772.zip"
+  "baseVersion": "0.1.6",
+  "lastDebugSerial": 26
 }
