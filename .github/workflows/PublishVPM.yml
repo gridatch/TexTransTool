@@ -1,12 +1,12 @@
 name: Publish VPM Package
 
 on:
-  push:
-    branches:
-      - wdt
-      - 'fix/**'
-      - 'feat/**'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'WDT package version (X.Y.Z)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -21,6 +21,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Validate release source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF_NAME" != "wdt" ]]; then
+            echo "::error::VPM releases may only be published from the wdt branch. Selected ref: $GITHUB_REF_NAME"
+            exit 1
+          fi
+
       - name: Checkout source
         uses: actions/checkout@v4
 
@@ -39,57 +49,36 @@ jobs:
       - name: Determine package version
         id: meta
         shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
 
           base_version="$(jq -r '.version' package.json)"
           package_id="net.gridatch.tex-trans-tool"
+          version="$REQUESTED_VERSION"
+
           if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Base package version '$base_version' is not a stable X.Y.Z version. Update the WDT versioning rule deliberately before publishing."
+            echo "::error::Upstream package version '$base_version' is not a stable X.Y.Z version."
             exit 1
           fi
 
-          branch="${GITHUB_REF_NAME}"
-          branch_id="$(printf '%s' "$branch" \
-            | tr '[:upper:]' '[:lower:]' \
-            | sed -E 's/[^0-9a-z-]+/-/g; s/^-+//; s/-+$//')"
-          if [[ -z "$branch_id" ]]; then
-            echo "::error::Could not derive a SemVer-safe identifier from branch '$branch'."
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::WDT package version '$version' must be a stable X.Y.Z version."
             exit 1
           fi
 
-          sequence="$(python3 - \
-            ".vpm-build/vpm-repo/vpm.json" \
-            "$package_id" <<'PY'
-          import json
-          import re
-          import sys
+          if jq -e \
+            --arg package_id "$package_id" \
+            --arg version "$version" \
+            '.packages[$package_id].versions[$version] != null' \
+            .vpm-build/vpm-repo/vpm.json >/dev/null; then
+            echo "::error::VPM version '$version' already exists and is immutable."
+            exit 1
+          fi
 
-          vpm_json, package_id = sys.argv[1:3]
-
-          with open(vpm_json, "r", encoding="utf-8") as f:
-              repo = json.load(f)
-
-          versions = (
-              repo.get("packages", {})
-                  .get(package_id, {})
-                  .get("versions", {})
-          )
-
-          pattern = re.compile(r"^0\.1\.(\d+)(?:\+.*)?$")
-          numbers = []
-          for version in versions:
-              match = pattern.fullmatch(version)
-              if match:
-                  numbers.append(int(match.group(1)))
-
-          print(max(numbers, default=0) + 1)
-          PY
-          )"
-
-          version="0.1.${sequence}+ttt.${base_version}.${branch_id}"
-          tag="wdt-vpm-build-${sequence}"
-          zip="net.gridatch.tex-trans-tool-build-${sequence}.zip"
+          tag="wdt-v${version}"
+          zip="net.gridatch.tex-trans-tool-${version}.zip"
           repo_url="https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json"
           download_url="https://github.com/gridatch/TexTransTool/releases/download/${tag}/${zip}"
 
