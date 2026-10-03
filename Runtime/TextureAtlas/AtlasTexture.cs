@@ -313,6 +313,33 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , int? preservedOriginalUVChannel
             )
         {
+            var (materialMap, domainsMaterial2ReplaceMaterial) = GenerateAtlasedMaterialMaps(
+                domain,
+                targetMaterials,
+                atlasSetting,
+                atlasMergeSettings,
+                tunedAtlasUnityTextures,
+                preserveBump2ndMaterials,
+                preservedOriginalUVChannel
+            );
+
+            domain.ReplaceMaterials(materialMap);
+            domain.RegisterReplaces(domainsMaterial2ReplaceMaterial);
+        }
+
+        internal static (
+            Dictionary<Material, Material> materialMap,
+            Dictionary<Material, Material> domainsMaterial2ReplaceMaterial
+        ) GenerateAtlasedMaterialMaps<Tex>(
+            IDomain domain
+            , HashSet<Material> targetMaterials
+            , AtlasSetting atlasSetting
+            , (List<MaterialMergeGroup> mergeMaterialGroups, Material? allMaterialMergeReference, AtlasTextureExperimentalFeature? experimentalOptions) atlasMergeSettings
+            , Dictionary<string, Tex> tunedAtlasTextures
+            , HashSet<Material> preserveBump2ndMaterials
+            , int? preservedOriginalUVChannel
+            ) where Tex : Texture
+        {
             var atlasMatOption = new AtlasMatGenerateOption()
             {
                 ForceSetTexture = atlasSetting.ForceSetTexture,
@@ -324,11 +351,14 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 var containsAllTexture = targetMaterials.SelectMany(mat => mat.EnumerateReferencedTextures());
                 atlasMatOption.UnsetTextures = atlasMergeSettings.experimentalOptions.UnsetTextures.Select(i => i.SelectTexture).SelectMany(ot => containsAllTexture.Where(ct => domain.OriginEqual(ot, ct))).ToHashSet();
             }
-            var mergeReferenceMaterial = GenerateMergeReference(domain.OriginEqual, targetMaterials, atlasMergeSettings.mergeMaterialGroups, atlasMergeSettings.allMaterialMergeReference);
-            var (materialMap, domainsMaterial2ReplaceMaterial) = GenerateAtlasedMaterials(targetMaterials, tunedAtlasUnityTextures, atlasMatOption, mergeReferenceMaterial);
 
-            domain.ReplaceMaterials(materialMap);
-            domain.RegisterReplaces(domainsMaterial2ReplaceMaterial);
+            var mergeReferenceMaterial = GenerateMergeReference(
+                domain.OriginEqual,
+                targetMaterials,
+                atlasMergeSettings.mergeMaterialGroups,
+                atlasMergeSettings.allMaterialMergeReference
+            );
+            return GenerateAtlasedMaterials(targetMaterials, tunedAtlasTextures, atlasMatOption, mergeReferenceMaterial);
         }
 
         private static (Dictionary<Material, Material> materialMap, Dictionary<Material, Material> domainsMaterial2ReplaceMaterial)
