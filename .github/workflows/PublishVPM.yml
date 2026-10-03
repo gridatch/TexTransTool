@@ -6,7 +6,6 @@ on:
       - wdt
       - 'fix/**'
       - 'feat/**'
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -35,6 +34,68 @@ jobs:
         with:
           ref: vpm
           path: .vpm-build/vpm-repo
+
+      - name: Refresh official rs64 VPM mirror
+        shell: bash
+        env:
+          VPM_JSON: ${{ github.workspace }}/.vpm-build/vpm-repo/vpm.json
+        run: |
+          set -euo pipefail
+
+          official_json="${RUNNER_TEMP}/rs64-vpm.json"
+          curl --fail --location --silent --show-error \
+            https://vpm.rs64.net/vpm.json \
+            --output "$official_json"
+
+          OFFICIAL_JSON="$official_json" python3 - <<'PY'
+          import json
+          import os
+          import re
+
+          vpm_json = os.environ["VPM_JSON"]
+          official_json = os.environ["OFFICIAL_JSON"]
+          package_id = "net.rs64.tex-trans-tool"
+
+          with open(vpm_json, "r", encoding="utf-8") as f:
+              previous = json.load(f)
+
+          with open(official_json, "r", encoding="utf-8") as f:
+              repo = json.load(f)
+
+          previous_versions = (
+              previous.get("packages", {})
+                  .get(package_id, {})
+                  .get("versions", {})
+          )
+
+          wdt_pattern = re.compile(
+              r"^[0-9]+\.[0-9]+\.[0-9]+-wdt(?:\.[0-9A-Za-z-]+)+$"
+          )
+          wdt_versions = {
+              version: manifest
+              for version, manifest in previous_versions.items()
+              if wdt_pattern.fullmatch(version)
+          }
+
+          versions = (
+              repo.setdefault("packages", {})
+                  .setdefault(package_id, {})
+                  .setdefault("versions", {})
+          )
+          versions.update(wdt_versions)
+
+          repo["name"] = "ReinaS VPM + WDT TexTransTool"
+          repo["id"] = "net.gridatch.rs64-vpm-wdt"
+          repo["url"] = (
+              "https://raw.githubusercontent.com/"
+              "gridatch/TexTransTool/vpm/vpm.json"
+          )
+          repo["author"] = "gridatch (mirror of ReinaSakiria VPM)"
+
+          with open(vpm_json, "w", encoding="utf-8", newline="\n") as f:
+              json.dump(repo, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+          PY
 
       - name: Determine package version
         id: meta
@@ -165,7 +226,7 @@ jobs:
             gh release create "$TAG" "$ZIP_NAME" \
               --target "$GITHUB_SHA" \
               --title "$VERSION" \
-              --notes "Automated VPM build from branch \`$GITHUB_REF_NAME\` at commit \`$GITHUB_SHA\`."
+              --notes "Automated VPM build from branch `$GITHUB_REF_NAME` at commit `$GITHUB_SHA`."
             sha256="$(sha256sum "$ZIP_NAME" | awk '{print $1}')"
           fi
 
