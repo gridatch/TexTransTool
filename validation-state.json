@@ -5,5 +5,7 @@
   "currentValidationVersion": "0.1.14+validation.fix-texture-st-atlas.d9a5fa9",
   "currentValidationBranch": "fix-texture-st-atlas",
   "currentValidationCommit": "d9a5fa9b99ba9b5f3f75f5a5c750c63636e110c7",
-  "currentValidationZip": "net.gridatch.tex-trans-tool-0.1.14+validation.fix-texture-st-atlas.d9a5fa9.zip"
+  "currentValidationZip": "net.gridatch.tex-trans-tool-0.1.14+validation.fix-texture-st-atlas.d9a5fa9.zip",
+  "baseVersion": "0.1.5",
+  "lastDebugSerial": 14
 }
