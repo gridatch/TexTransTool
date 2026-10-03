@@ -30,6 +30,12 @@ jobs:
           repository: ReinaS-64892/TTT-ImageAssets
           path: .vpm-build/image-assets
 
+      - name: Checkout VPM repository branch
+        uses: actions/checkout@v4
+        with:
+          ref: vpm
+          path: .vpm-build/vpm-repo
+
       - name: Determine package version
         id: meta
         shell: bash
@@ -37,6 +43,7 @@ jobs:
           set -euo pipefail
 
           base_version="$(jq -r '.version' package.json)"
+          package_id="$(jq -r '.name' package.json)"
           if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Base package version '$base_version' is not a stable X.Y.Z version. Update the WDT versioning rule deliberately before publishing."
             exit 1
@@ -44,7 +51,7 @@ jobs:
 
           branch="${GITHUB_REF_NAME}"
           if [[ "$branch" == "wdt" ]]; then
-            prerelease="wdt.${GITHUB_RUN_NUMBER}"
+            version_prefix="${base_version}-wdt."
           else
             branch_id="$(printf '%s' "$branch" \
               | tr '[:upper:]' '[:lower:]' \
@@ -53,10 +60,40 @@ jobs:
               echo "::error::Could not derive a SemVer-safe identifier from branch '$branch'."
               exit 1
             fi
-            prerelease="wdt.${branch_id}.${GITHUB_RUN_NUMBER}"
+            version_prefix="${base_version}-wdt.${branch_id}."
           fi
 
-          version="${base_version}-${prerelease}"
+          sequence="$(python3 - \
+            ".vpm-build/vpm-repo/vpm.json" \
+            "$package_id" \
+            "$version_prefix" <<'PY'
+          import json
+          import re
+          import sys
+
+          vpm_json, package_id, prefix = sys.argv[1:4]
+
+          with open(vpm_json, "r", encoding="utf-8") as f:
+              repo = json.load(f)
+
+          versions = (
+              repo.get("packages", {})
+                  .get(package_id, {})
+                  .get("versions", {})
+          )
+
+          pattern = re.compile(r"^" + re.escape(prefix) + r"(\d+)$")
+          numbers = []
+          for version in versions:
+              match = pattern.fullmatch(version)
+              if match:
+                  numbers.append(int(match.group(1)))
+
+          print(max(numbers, default=0) + 1)
+          PY
+          )"
+
+          version="${version_prefix}${sequence}"
           tag="vpm-${version}"
           zip="net.rs64.tex-trans-tool-${version}.zip"
           repo_url="https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json"
@@ -133,12 +170,6 @@ jobs:
           fi
 
           echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout VPM repository branch
-        uses: actions/checkout@v4
-        with:
-          ref: vpm
-          path: .vpm-build/vpm-repo
 
       - name: Add version to VPM repository
         shell: bash
