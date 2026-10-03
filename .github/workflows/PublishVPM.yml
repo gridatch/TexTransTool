@@ -129,33 +129,30 @@ jobs:
             zip -r "$GITHUB_WORKSPACE/$ZIP_NAME" ./*
           )
 
-      - name: Create immutable GitHub Release
+      - name: Create GitHub Release
         id: release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.meta.outputs.tag }}
           VERSION: ${{ steps.meta.outputs.version }}
+          UPSTREAM_VERSION: ${{ steps.meta.outputs.base_version }}
           ZIP_NAME: ${{ steps.meta.outputs.zip }}
         run: |
           set -euo pipefail
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            mkdir -p "${RUNNER_TEMP}/existing-release"
-            gh release download "$TAG" \
-              --pattern "$ZIP_NAME" \
-              --dir "${RUNNER_TEMP}/existing-release"
-            sha256="$(sha256sum "${RUNNER_TEMP}/existing-release/$ZIP_NAME" | awk '{print $1}')"
-          else
-            gh release create "$TAG" "$ZIP_NAME" \
-              --target "$GITHUB_SHA" \
-              --title "$VERSION" \
-              --notes "Automated VPM build from branch \`$GITHUB_REF_NAME\` at commit \`$GITHUB_SHA\`."
-            sha256="$(sha256sum "$ZIP_NAME" | awk '{print $1}')"
+            echo "::error::GitHub Release tag '$TAG' already exists."
+            exit 1
           fi
 
-          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          gh release create "$TAG" "$ZIP_NAME" \
+            --target "$GITHUB_SHA" \
+            --title "TexTransTool (WDT) $VERSION" \
+            --notes "WDT release $VERSION. Based on upstream TexTransTool $UPSTREAM_VERSION. Source commit: \`$GITHUB_SHA\`."
 
+          sha256="$(sha256sum "$ZIP_NAME" | awk '{print $1}')"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
       - name: Add version to VPM repository
         shell: bash
         env:
