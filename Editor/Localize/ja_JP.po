@@ -147,6 +147,13 @@ msgstr "マテリアル選択候補の制限"
 msgid "AtlasTexture:prop:LimitCandidateMaterials:tooltip"
 msgstr "下に表示されるマテリアルを、割り当てた GameObject 配下のレンダラーの物だけにします。"
 
+
+msgid "AtlasTexture:button:ExportPersistentAssets"
+msgstr "アトラス結果をアセットとして保存"
+
+msgid "AtlasTexture:button:ExportPersistentAssets:tooltip"
+msgstr "現在のAtlasTexture結果を、アバターを変更せずに独立したPNGテクスチャー、Material、Meshとして保存します。"
+
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "リフレッシュマテリアル"
 
