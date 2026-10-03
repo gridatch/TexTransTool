@@ -22,6 +22,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
             StandardShaderInformation.Register();
             VRCSDKStandardLiteShaderInformation.Register();
+            VRCSDKToonStandardShaderInformation.Register();
         }
     }
 }
