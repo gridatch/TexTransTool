@@ -183,7 +183,7 @@ msgid "AtlasTexture:prop:AutoAtlasTextureSize"
 msgstr "Auto Minimum Lossless Size"
 
 msgid "AtlasTexture:prop:AutoAtlasTextureSize:tooltip"
-msgstr "Try 1024, 2048, then 4096 and use the smallest square atlas that packs without island downscaling. If 4096 still requires downscaling, 4096 is used with a warning."
+msgstr "Try 256, 512, 1024, 2048, then 4096 and use the smallest square atlas that packs without island downscaling. If 4096 still requires downscaling, 4096 is used with a warning."
 
 msgid "AtlasTexture:prop:AtlasTextureSize"
 msgstr "AtlasTextureSize"
