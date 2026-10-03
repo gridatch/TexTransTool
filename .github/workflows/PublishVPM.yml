@@ -7,6 +7,9 @@ on:
         description: 'WDT package version (X.Y.Z)'
         required: true
         type: string
+  push:
+    branches:
+      - 'release/**'
 
 permissions:
   contents: write
@@ -26,13 +29,38 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "$GITHUB_REF_NAME" != "wdt" ]]; then
-            echo "::error::VPM releases may only be published from the wdt branch. Selected ref: $GITHUB_REF_NAME"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$GITHUB_REF_NAME" != "wdt" ]]; then
+              echo "::error::Manual VPM releases may only be published from the wdt branch. Selected ref: $GITHUB_REF_NAME"
+              exit 1
+            fi
+          elif [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^release/[0-9]+.[0-9]+.[0-9]+$ ]]; then
+              echo "::error::Release branch must be named release/X.Y.Z. Selected ref: $GITHUB_REF_NAME"
+              exit 1
+            fi
+          else
+            echo "::error::Unsupported release event: $GITHUB_EVENT_NAME"
             exit 1
           fi
 
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release commit
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin wdt
+          wdt_sha="$(git rev-parse origin/wdt)"
+          if [[ "$GITHUB_SHA" != "$wdt_sha" ]]; then
+            echo "::error::Release branch must point exactly at current wdt HEAD. release=$GITHUB_SHA wdt=$wdt_sha"
+            exit 1
+          fi
 
       - name: Checkout package image assets
         uses: actions/checkout@v4
@@ -56,7 +84,12 @@ jobs:
 
           base_version="$(jq -r '.version' package.json)"
           package_id="net.gridatch.tex-trans-tool"
-          version="$REQUESTED_VERSION"
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            version="${GITHUB_REF_NAME#release/}"
+          else
+            version="$REQUESTED_VERSION"
+          fi
 
           if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Upstream package version '$base_version' is not a stable X.Y.Z version."
