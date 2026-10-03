@@ -307,8 +307,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     foreach (var group in groupedTextures.GroupedTextures)
                     {
                         if (!group.Value.TryGetValue(propName, out var sourceTexture)) { continue; }
-                        ppf.Split(sourceTexture.Name);
-                        var sourceRenderTexture = sourceTexture switch
+                        ppf.Split(sourceTexture.Texture.Name);
+                        var loadedSourceRenderTexture = sourceTexture.Texture switch
                         {
                             ITTRenderTexture rt => rt,
                             ITTDiskTexture dt => loadedDiskTextures.ContainsKey(dt) ? loadedDiskTextures[dt] : LoadFullScale(dt),
@@ -320,6 +320,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             loadedDiskTextures[diskTexture] = loaded;
                             return loaded;
                         }
+
+                        var textureProperty = sourceTexture.Property;
+                        var needApplyST = textureProperty.Scale != Vector2.one || textureProperty.Offset != Vector2.zero;
+                        using var stAppliedTexture = needApplyST
+                            ? ApplyTextureST(engine, loadedSourceRenderTexture, textureProperty)
+                            : null;
+                        var sourceRenderTexture = stAppliedTexture ?? loadedSourceRenderTexture;
 
                         var findMaterialID = group.Key;
                         if (IsRectangleMove)
@@ -382,29 +389,94 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
             return compiledAtlasTextures;
         }
+        private static ITTRenderTexture ApplyTextureST(
+            ITexTransToolForUnity engine,
+            ITTRenderTexture source,
+            MaterialGroupingContext.TexturePropertyValue property)
+        {
+            var target = engine.CreateRenderTexture(source.Width, source.Hight);
+            try
+            {
+                using var computeHandler = engine.GetComputeHandler(
+                    engine.GetExKeyQuery<IQuayGeneraleComputeKey>().GenealCompute["ApplyTextureST"]
+                );
+
+                var gvID = computeHandler.NameToID("gv");
+                var sourceTexID = computeHandler.NameToID("SourceTex");
+                var targetTexID = computeHandler.NameToID("TargetTex");
+
+                Span<byte> gv = stackalloc byte[32];
+                BitConverter.TryWriteBytes(gv.Slice(0, 4), (uint)source.Width);
+                BitConverter.TryWriteBytes(gv.Slice(4, 4), (uint)source.Hight);
+                BitConverter.TryWriteBytes(gv.Slice(8, 4), property.Scale.x);
+                BitConverter.TryWriteBytes(gv.Slice(12, 4), property.Scale.y);
+                BitConverter.TryWriteBytes(gv.Slice(16, 4), property.Offset.x);
+                BitConverter.TryWriteBytes(gv.Slice(20, 4), property.Offset.y);
+                BitConverter.TryWriteBytes(gv.Slice(24, 4), TextureWrapModeToSTMode(property.Texture.wrapModeU));
+                BitConverter.TryWriteBytes(gv.Slice(28, 4), TextureWrapModeToSTMode(property.Texture.wrapModeV));
+
+                computeHandler.UploadConstantsBuffer<byte>(gvID, gv);
+                computeHandler.SetTexture(sourceTexID, source);
+                computeHandler.SetTexture(targetTexID, target);
+                computeHandler.DispatchWithTextureSize(target);
+                return target;
+            }
+            catch
+            {
+                target.Dispose();
+                throw;
+            }
+
+            static uint TextureWrapModeToSTMode(TextureWrapMode wrapMode)
+            {
+                return wrapMode switch
+                {
+                    TextureWrapMode.Repeat => 0,
+                    TextureWrapMode.Clamp => 1,
+                    TextureWrapMode.Mirror => 2,
+                    TextureWrapMode.MirrorOnce => 3,
+                    _ => 1,
+                };
+            }
+        }
+
         internal GroupedDiskOrRenderTextures GetGroupedDiskOrRenderTextures(ITexTransToolForUnity texTransToolForUnity)
         {
-            var groupedTextures = new Dictionary<int, Dictionary<string, ITTTexture>>();
+            var groupedTextures = new Dictionary<int, Dictionary<string, GroupedTextureSource>>();
             var materialGroup = MaterialGroupingCtx.GroupMaterials;
 
             for (var i = 0; materialGroup.Length > i; i += 1)
             {
-                groupedTextures[i] = materialGroup[i].GroupedTexture
-                    .Where(i => i.Value != null)
-                    .Cast<KeyValuePair<string, Texture>>()
+                groupedTextures[i] = materialGroup[i].GroupedTextureProperties
+                    .Where(i => i.Value.Texture != null)
                     .ToDictionary(
                         kv => kv.Key,
-                        kv => texTransToolForUnity.WrappingOrUpload(kv.Value)
+                        kv => new GroupedTextureSource(
+                            texTransToolForUnity.WrappingOrUpload(kv.Value.Texture),
+                            kv.Value
+                        )
                     );
             }
             return new(groupedTextures);
         }
 
+        internal readonly struct GroupedTextureSource
+        {
+            public readonly ITTTexture Texture;
+            public readonly MaterialGroupingContext.TexturePropertyValue Property;
+
+            public GroupedTextureSource(ITTTexture texture, MaterialGroupingContext.TexturePropertyValue property)
+            {
+                Texture = texture;
+                Property = property;
+            }
+        }
+
         internal class GroupedDiskOrRenderTextures : IDisposable
         {
-            public Dictionary<int, Dictionary<string, ITTTexture>> GroupedTextures;
+            public Dictionary<int, Dictionary<string, GroupedTextureSource>> GroupedTextures;
 
-            public GroupedDiskOrRenderTextures(Dictionary<int, Dictionary<string, ITTTexture>> groupedTextures)
+            public GroupedDiskOrRenderTextures(Dictionary<int, Dictionary<string, GroupedTextureSource>> groupedTextures)
             {
                 GroupedTextures = groupedTextures;
             }
@@ -413,7 +485,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             {
                 foreach (var g in GroupedTextures)
                     foreach (var texKV in g.Value)
-                        texKV.Value.Dispose();
+                        texKV.Value.Texture.Dispose();
 
                 GroupedTextures.Clear();
             }
