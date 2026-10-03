@@ -132,6 +132,12 @@ msgstr "元のUVを書き込む対象のUVチャンネルに、すでに何ら�
 msgid "AtlasTexture:warn:OriginalUVWriteTargetForAlreadyUV:description"
 msgstr "意図して行っている場合や問題がない場合は無視してください。"
 
+msgid "AtlasTexture:info:AutoAtlasTextureSizeSelected"
+msgstr "自動アトラスサイズ: {0}"
+
+msgid "AtlasTexture:warn:AutoAtlasTextureSizeLosslessNotFound"
+msgstr "{0}まで試しましたが無劣化で収まるアトラスサイズが見つかりませんでした。{0}を使用します。優先度に応じた縮小: {1}倍、全体的な縮小: {2}倍"
+
 msgid "AtlasTexture:info:RelocateResult"
 msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応じた縮小: {1}倍 \n全体的な縮小: {2}倍 \n累計再配置計算回数: {3}回 \n再配置実行時間: {4}ms"
 
@@ -173,6 +179,12 @@ msgstr "プレハブオーバーライド設定などの特殊な操作をする
 
 msgid "AtlasTexture:label:AtlasSettings"
 msgstr "アトラス化設定"
+
+msgid "AtlasTexture:prop:AutoAtlasTextureSize"
+msgstr "無劣化の最小サイズを自動選択"
+
+msgid "AtlasTexture:prop:AutoAtlasTextureSize:tooltip"
+msgstr "1024、2048、4096の順に実際のアイランド配置を試し、アイランドの縮小なしで収まる最小の正方形アトラスを使用します。4096でも縮小が必要な場合は警告を出して4096を使用します。"
 
 msgid "AtlasTexture:prop:AtlasTextureSize"
 msgstr "アトラステクスチャーサイズ"

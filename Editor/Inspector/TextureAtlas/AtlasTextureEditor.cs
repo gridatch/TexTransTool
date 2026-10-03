@@ -24,7 +24,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private SerializedProperty sMergeMaterialGroups, sAllMaterialMergeReference;
         private SerializedProperty sAtlasSetting;
 
-        private SerializedProperty sAtlasTextureSize, sCustomAspect, sAtlasTextureHeightSize;
+        private SerializedProperty sAtlasTextureSize, sAutoAtlasTextureSize, sCustomAspect, sAtlasTextureHeightSize;
         private SerializedProperty sAtlasTargetUVChannel;
         private SerializedProperty sUsePrimaryMaximumTexture, sPrimaryTextureProperty;
         private SerializedProperty sPadding;
@@ -54,6 +54,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
 
             sAtlasTextureSize = sAtlasSetting.FindPropertyRelative("AtlasTextureSize");
+            sAutoAtlasTextureSize = sAtlasSetting.FindPropertyRelative("AutoAtlasTextureSize");
             sCustomAspect = sAtlasSetting.FindPropertyRelative("CustomAspect");
             sAtlasTextureHeightSize = sAtlasSetting.FindPropertyRelative("AtlasTextureHeightSize");
 
@@ -159,9 +160,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             EditorGUILayout.LabelField("AtlasTexture:label:AtlasSettings".Glc(), EditorStyles.boldLabel);
             using var t = new EditorGUI.IndentLevelScope(1);
 
-            EditorGUILayout.PropertyField(sAtlasTextureSize, "AtlasTexture:prop:AtlasTextureSize".GlcV());
-            if (sCustomAspect.boolValue) EditorGUILayout.PropertyField(sAtlasTextureHeightSize, "AtlasTexture:prop:AtlasTextureHeightSize".GlcV());
-            EditorGUILayout.PropertyField(sCustomAspect, "AtlasTexture:prop:CustomAspect".GlcV());
+            EditorGUILayout.PropertyField(sAutoAtlasTextureSize, "AtlasTexture:prop:AutoAtlasTextureSize".GlcV());
+            using (new EditorGUI.DisabledScope(sAutoAtlasTextureSize.boolValue))
+            {
+                EditorGUILayout.PropertyField(sAtlasTextureSize, "AtlasTexture:prop:AtlasTextureSize".GlcV());
+                if (sCustomAspect.boolValue) EditorGUILayout.PropertyField(sAtlasTextureHeightSize, "AtlasTexture:prop:AtlasTextureHeightSize".GlcV());
+                EditorGUILayout.PropertyField(sCustomAspect, "AtlasTexture:prop:CustomAspect".GlcV());
+            }
 
             using (var cc = new EditorGUI.ChangeCheckScope())
             {

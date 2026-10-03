@@ -147,7 +147,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 return new(false, null, null, null, preserveBump2ndMaterials, null);
             }
 
-            var atlasTargeSize = GetAtlasTextureSize(atlasSetting);
             pf.Split("AtlasContext ctr");
             var atlasContext = new AtlasContext(
                                targeting
@@ -168,9 +167,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
             if (atlasSetting.PixelNormalize)
                 atlasContext.SourceVirtualIslandNormalize();
 
+            if (atlasSetting.PixelNormalize && TTMath.Approximately(atlasSetting.IslandPadding, 0))
+                TTLog.Warning("AtlasTexture:warn:IslandPaddingIsZeroAndPixelNormalizeUsed");
 
             pf.Split("IslandProcessing");
-            var (movedVirtualIslandArray, relocateResult) = IslandProcessing(domain, atlasSetting, atlasContext, islandSizePriorityTuner, out var relocationTime);
+            var (atlasTargeSize, movedVirtualIslandArray, relocateResult, relocationTime) =
+                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner);
             if (relocateResult.IslandRelocationResult is null || relocateResult.IslandRelocationResult.IsSuccess is false)
             {
                 // Abort!!!
@@ -402,21 +404,104 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 case < (1 / 2f): return atlasTextureSize / 2;
             }
         }
+        private static readonly int[] AutoAtlasTextureSizeCandidates = { 1024, 2048, 4096 };
+
         static Vector2Int GetAtlasTextureSize(AtlasSetting atlasSetting)
         {
             var atlasTargeSize = new Vector2Int(atlasSetting.AtlasTextureSize, atlasSetting.AtlasTextureSize);
             if (atlasSetting.CustomAspect) { atlasTargeSize.y = atlasSetting.AtlasTextureHeightSize; }
             return atlasTargeSize;
         }
+
+        private static (
+            Vector2Int atlasTargetSize,
+            IslandTransform[] virtualIslandArray,
+            IslandRelocationManager.RelocateResult relocateResult,
+            long relocationTime
+        ) SelectAtlasSizeAndRelocate(
+            IRendererTargeting domain,
+            AtlasSetting atlasSetting,
+            AtlasContext atlasContext,
+            List<IIslandSizePriorityTuner?> islandSizePriorityTuner)
+        {
+            if (atlasSetting.AutoAtlasTextureSize is false)
+            {
+                var manualSize = GetAtlasTextureSize(atlasSetting);
+                var (manualIslands, manualResult) = IslandProcessing(
+                    domain,
+                    atlasSetting,
+                    atlasContext,
+                    islandSizePriorityTuner,
+                    manualSize,
+                    out var manualTime
+                );
+                return (manualSize, manualIslands, manualResult, manualTime);
+            }
+
+            IslandTransform[]? selectedIslands = null;
+            IslandRelocationManager.RelocateResult? selectedResult = null;
+            var selectedSize = new Vector2Int(
+                AutoAtlasTextureSizeCandidates[^1],
+                AutoAtlasTextureSizeCandidates[^1]
+            );
+            long totalRelocationTime = 0;
+
+            foreach (var size in AutoAtlasTextureSizeCandidates)
+            {
+                var candidateSize = new Vector2Int(size, size);
+                var (candidateIslands, candidateResult) = IslandProcessing(
+                    domain,
+                    atlasSetting,
+                    atlasContext,
+                    islandSizePriorityTuner,
+                    candidateSize,
+                    out var candidateTime
+                );
+
+                totalRelocationTime += candidateTime;
+                selectedSize = candidateSize;
+                selectedIslands = candidateIslands;
+                selectedResult = candidateResult;
+
+                if (IsLosslessRelocation(candidateResult))
+                {
+                    TTLog.Info("AtlasTexture:info:AutoAtlasTextureSizeSelected", size);
+                    break;
+                }
+            }
+
+            Debug.Assert(selectedIslands is not null);
+            Debug.Assert(selectedResult is not null);
+
+            if (IsLosslessRelocation(selectedResult!) is false)
+            {
+                TTLog.Warning(
+                    "AtlasTexture:warn:AutoAtlasTextureSizeLosslessNotFound",
+                    selectedSize.x,
+                    selectedResult!.PriorityDownScale,
+                    selectedResult.OverallDownScale
+                );
+            }
+
+            return (selectedSize, selectedIslands!, selectedResult!, totalRelocationTime);
+        }
+
+        private static bool IsLosslessRelocation(IslandRelocationManager.RelocateResult relocateResult)
+        {
+            return relocateResult.IslandRelocationResult?.IsSuccess is true
+                && TTMath.Approximately(relocateResult.PriorityDownScale, 1f)
+                && TTMath.Approximately(relocateResult.OverallDownScale, 1f);
+        }
+
         private static (IslandTransform[] virtualIslandArray, IslandRelocationManager.RelocateResult relocateResult) IslandProcessing(
             IRendererTargeting domain
             , AtlasSetting atlasSetting
             , AtlasContext atlasContext
             , List<IIslandSizePriorityTuner?> islandSizePriorityTuner
+            , Vector2Int atlasTargeSize
             , out long relocationTime
         )
         {
-            var atlasTargeSize = GetAtlasTextureSize(atlasSetting);
             var virtualIslandArray = new IslandTransform[atlasContext.SourceVirtualIslands.Length];
 
             for (var i = 0; virtualIslandArray.Length > i; i += 1)
@@ -452,17 +537,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             timer.Stop();
             relocationTime = timer.ElapsedMilliseconds;
 
-            if (relocateResult.IslandRelocationResult is null || relocateResult.IslandRelocationResult.IsSuccess is false)
-                TTLog.Error("AtlasTexture:error:RelocationFailed");
-
-
             var rectTangleMove = relocateResult.IslandRelocationResult?.IsRectangleMove ?? true;
             Debug.Assert(rectTangleMove is true);
-
-
-            if (atlasSetting.PixelNormalize)
-                if (TTMath.Approximately(atlasSetting.IslandPadding, 0))
-                    TTLog.Warning("AtlasTexture:warn:IslandPaddingIsZeroAndPixelNormalizeUsed");
 
             PostVirtualIslandProcessing(virtualIslandArray, atlasTargeSize, atlasSetting.PixelNormalize);
 
