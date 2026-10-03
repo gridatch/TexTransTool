@@ -1,9 +1,9 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "versionSeries": "0.1",
-  "lastUsedPatch": 12,
-  "currentValidationVersion": "0.1.12+validation.fix-texture-st-atlas.a71d3fe",
+  "lastUsedPatch": 13,
+  "currentValidationVersion": "0.1.13+validation.fix-texture-st-atlas.46e7e3b",
   "currentValidationBranch": "fix-texture-st-atlas",
-  "currentValidationCommit": "a71d3fed7b9876cb7c88855ca9cb3d31e58899f2",
-  "currentValidationZip": "net.gridatch.tex-trans-tool-0.1.12+validation.fix-texture-st-atlas.a71d3fe.zip"
+  "currentValidationCommit": "46e7e3bd6132f96985011f3e8bea1dd85efc947b",
+  "currentValidationZip": "net.gridatch.tex-trans-tool-0.1.13+validation.fix-texture-st-atlas.46e7e3b.zip"
 }
