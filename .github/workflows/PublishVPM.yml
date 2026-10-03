@@ -1,0 +1,238 @@
+name: Publish VPM Package
+
+on:
+  push:
+    branches:
+      - wdt
+      - 'fix/**'
+      - 'feat/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vpm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'gridatch/TexTransTool'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Checkout package image assets
+        uses: actions/checkout@v4
+        with:
+          repository: ReinaS-64892/TTT-ImageAssets
+          path: .vpm-build/image-assets
+
+      - name: Checkout VPM repository branch
+        uses: actions/checkout@v4
+        with:
+          ref: vpm
+          path: .vpm-build/vpm-repo
+
+      - name: Determine package version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          base_version="$(jq -r '.version' package.json)"
+          package_id="$(jq -r '.name' package.json)"
+          if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Base package version '$base_version' is not a stable X.Y.Z version. Update the WDT versioning rule deliberately before publishing."
+            exit 1
+          fi
+
+          branch="${GITHUB_REF_NAME}"
+          if [[ "$branch" == "wdt" ]]; then
+            version_prefix="${base_version}-wdt."
+          else
+            branch_id="$(printf '%s' "$branch" \
+              | tr '[:upper:]' '[:lower:]' \
+              | sed -E 's/[^0-9a-z-]+/-/g; s/^-+//; s/-+$//')"
+            if [[ -z "$branch_id" ]]; then
+              echo "::error::Could not derive a SemVer-safe identifier from branch '$branch'."
+              exit 1
+            fi
+            version_prefix="${base_version}-wdt.${branch_id}."
+          fi
+
+          sequence="$(python3 - \
+            ".vpm-build/vpm-repo/vpm.json" \
+            "$package_id" \
+            "$version_prefix" <<'PY'
+          import json
+          import re
+          import sys
+
+          vpm_json, package_id, prefix = sys.argv[1:4]
+
+          with open(vpm_json, "r", encoding="utf-8") as f:
+              repo = json.load(f)
+
+          versions = (
+              repo.get("packages", {})
+                  .get(package_id, {})
+                  .get("versions", {})
+          )
+
+          pattern = re.compile(r"^" + re.escape(prefix) + r"(\d+)$")
+          numbers = []
+          for version in versions:
+              match = pattern.fullmatch(version)
+              if match:
+                  numbers.append(int(match.group(1)))
+
+          print(max(numbers, default=0) + 1)
+          PY
+          )"
+
+          version="${version_prefix}${sequence}"
+          tag="vpm-${version}"
+          zip="net.rs64.tex-trans-tool-${version}.zip"
+          repo_url="https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json"
+          download_url="https://github.com/gridatch/TexTransTool/releases/download/${tag}/${zip}"
+
+          {
+            echo "base_version=$base_version"
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "zip=$zip"
+            echo "repo_url=$repo_url"
+            echo "download_url=$download_url"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build VPM package
+        shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          ZIP_NAME: ${{ steps.meta.outputs.zip }}
+          REPO_URL: ${{ steps.meta.outputs.repo_url }}
+          DOWNLOAD_URL: ${{ steps.meta.outputs.download_url }}
+        run: |
+          set -euo pipefail
+
+          package_dir="${RUNNER_TEMP}/tex-trans-tool-package"
+          rm -rf "$package_dir"
+          mkdir -p "$package_dir"
+
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='DependentUpdater~' \
+            --exclude='.vpm-build' \
+            ./ "$package_dir/"
+
+          cp .vpm-build/image-assets/Image/* "$package_dir/Image/"
+
+          jq \
+            --arg version "$VERSION" \
+            --arg url "$DOWNLOAD_URL" \
+            --arg repo "$REPO_URL" \
+            '.version = $version | .url = $url | .repo = $repo' \
+            "$package_dir/package.json" > "$package_dir/package.json.tmp"
+          mv "$package_dir/package.json.tmp" "$package_dir/package.json"
+
+          (
+            cd "$package_dir"
+            zip -r "$GITHUB_WORKSPACE/$ZIP_NAME" ./*
+          )
+
+      - name: Create immutable GitHub Release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          ZIP_NAME: ${{ steps.meta.outputs.zip }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            mkdir -p "${RUNNER_TEMP}/existing-release"
+            gh release download "$TAG" \
+              --pattern "$ZIP_NAME" \
+              --dir "${RUNNER_TEMP}/existing-release"
+            sha256="$(sha256sum "${RUNNER_TEMP}/existing-release/$ZIP_NAME" | awk '{print $1}')"
+          else
+            gh release create "$TAG" "$ZIP_NAME" \
+              --target "$GITHUB_SHA" \
+              --title "$VERSION" \
+              --notes "Automated VPM build from branch \`$GITHUB_REF_NAME\` at commit \`$GITHUB_SHA\`."
+            sha256="$(sha256sum "$ZIP_NAME" | awk '{print $1}')"
+          fi
+
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Add version to VPM repository
+        shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          SHA256: ${{ steps.release.outputs.sha256 }}
+          PACKAGE_JSON: ${{ runner.temp }}/tex-trans-tool-package/package.json
+          VPM_JSON: ${{ github.workspace }}/.vpm-build/vpm-repo/vpm.json
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          import os
+
+          package_json = os.environ["PACKAGE_JSON"]
+          vpm_json = os.environ["VPM_JSON"]
+          version = os.environ["VERSION"]
+          sha256 = os.environ["SHA256"]
+
+          with open(package_json, "r", encoding="utf-8") as f:
+              manifest = json.load(f)
+
+          manifest["zipSHA256"] = sha256
+          package_id = manifest["name"]
+
+          with open(vpm_json, "r", encoding="utf-8") as f:
+              repo = json.load(f)
+
+          versions = (
+              repo.setdefault("packages", {})
+                  .setdefault(package_id, {})
+                  .setdefault("versions", {})
+          )
+
+          if version in versions:
+              if versions[version] != manifest:
+                  raise SystemExit(
+                      f"Refusing to overwrite existing immutable VPM version {version}"
+                  )
+          else:
+              versions[version] = manifest
+
+          with open(vpm_json, "w", encoding="utf-8", newline="\n") as f:
+              json.dump(repo, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+          PY
+
+      - name: Publish VPM repository update
+        shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        working-directory: .vpm-build/vpm-repo
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- vpm.json; then
+            echo "VPM repository already contains $VERSION."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vpm.json
+          git commit -m "chore: publish VPM package $VERSION"
+          git push origin HEAD:vpm
