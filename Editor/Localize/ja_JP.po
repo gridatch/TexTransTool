@@ -184,7 +184,7 @@ msgid "AtlasTexture:prop:AutoAtlasTextureSize"
 msgstr "無劣化の最小サイズを自動選択"
 
 msgid "AtlasTexture:prop:AutoAtlasTextureSize:tooltip"
-msgstr "1024、2048、4096の順に実際のアイランド配置を試し、アイランドの縮小なしで収まる最小の正方形アトラスを使用します。4096でも縮小が必要な場合は警告を出して4096を使用します。"
+msgstr "256、512、1024、2048、4096の順に実際のアイランド配置を試し、アイランドの縮小なしで収まる最小の正方形アトラスを使用します。4096でも縮小が必要な場合は警告を出して4096を使用します。"
 
 msgid "AtlasTexture:prop:AtlasTextureSize"
 msgstr "アトラステクスチャーサイズ"
