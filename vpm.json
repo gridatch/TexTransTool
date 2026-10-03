@@ -6,56 +6,6 @@
   "packages": {
     "net.rs64.tex-trans-tool": {
       "versions": {
-        "1.0.2-wdt.feat-vpm-branch-packaging.1": {
-          "name": "net.rs64.tex-trans-tool",
-          "displayName": "TexTransTool",
-          "version": "1.0.2-wdt.feat-vpm-branch-packaging.1",
-          "unity": "2022.3",
-          "description": "Non-destructive modification to Texture!",
-          "author": {
-            "name": "ReinaSakiria",
-            "url": "https://rs64.net/"
-          },
-          "url": "https://github.com/gridatch/TexTransTool/releases/download/vpm-1.0.2-wdt.feat-vpm-branch-packaging.1/net.rs64.tex-trans-tool-1.0.2-wdt.feat-vpm-branch-packaging.1.zip",
-          "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
-          "legacyFolders": {
-            "Packages\\rs64.tex-trans-tool": ""
-          },
-          "dependencies": {
-            "net.rs64.tex-trans-core": "0.2.0",
-            "com.unity.burst": "1.8.0",
-            "com.unity.mathematics": "1.3.2"
-          },
-          "vpmDependencies": {
-            "net.rs64.tex-trans-core": "^0.2.0"
-          },
-          "zipSHA256": "6cf445b1a7c4053afcdfc9d441fa78fcfc7156ddb6498d5c8745fe74055542f1"
-        },
-        "1.0.2-wdt.feat-vpm-branch-packaging.2": {
-          "name": "net.rs64.tex-trans-tool",
-          "displayName": "TexTransTool",
-          "version": "1.0.2-wdt.feat-vpm-branch-packaging.2",
-          "unity": "2022.3",
-          "description": "Non-destructive modification to Texture!",
-          "author": {
-            "name": "ReinaSakiria",
-            "url": "https://rs64.net/"
-          },
-          "url": "https://github.com/gridatch/TexTransTool/releases/download/vpm-1.0.2-wdt.feat-vpm-branch-packaging.2/net.rs64.tex-trans-tool-1.0.2-wdt.feat-vpm-branch-packaging.2.zip",
-          "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
-          "legacyFolders": {
-            "Packages\\rs64.tex-trans-tool": ""
-          },
-          "dependencies": {
-            "net.rs64.tex-trans-core": "0.2.0",
-            "com.unity.burst": "1.8.0",
-            "com.unity.mathematics": "1.3.2"
-          },
-          "vpmDependencies": {
-            "net.rs64.tex-trans-core": "^0.2.0"
-          },
-          "zipSHA256": "aea0ac66824b6f60d47d846ef293035ca1dbdfba2eca3908279994d53236a9b3"
-        },
         "1.0.2-wdt.1": {
           "name": "net.rs64.tex-trans-tool",
           "displayName": "TexTransTool",
@@ -80,31 +30,6 @@
             "net.rs64.tex-trans-core": "^0.2.0"
           },
           "zipSHA256": "6f4108ae6b785ded9ae24e2d73d6763db65470c5501453189a4acb584008de8c"
-        },
-        "1.0.2-wdt.fix-vpm-repository-collision.1": {
-          "name": "net.rs64.tex-trans-tool",
-          "displayName": "TexTransTool",
-          "version": "1.0.2-wdt.fix-vpm-repository-collision.1",
-          "unity": "2022.3",
-          "description": "Non-destructive modification to Texture!",
-          "author": {
-            "name": "ReinaSakiria",
-            "url": "https://rs64.net/"
-          },
-          "url": "https://github.com/gridatch/TexTransTool/releases/download/vpm-1.0.2-wdt.fix-vpm-repository-collision.1/net.rs64.tex-trans-tool-1.0.2-wdt.fix-vpm-repository-collision.1.zip",
-          "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
-          "legacyFolders": {
-            "Packages\\rs64.tex-trans-tool": ""
-          },
-          "dependencies": {
-            "net.rs64.tex-trans-core": "0.2.0",
-            "com.unity.burst": "1.8.0",
-            "com.unity.mathematics": "1.3.2"
-          },
-          "vpmDependencies": {
-            "net.rs64.tex-trans-core": "^0.2.0"
-          },
-          "zipSHA256": "0045756700358901b733e42a69b0c96fb3690fc846ea7c8006faa046bc81a47a"
         }
       }
     }
