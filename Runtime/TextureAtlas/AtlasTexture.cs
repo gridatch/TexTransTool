@@ -440,10 +440,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             IslandTransform[]? selectedIslands = null;
             IslandRelocationManager.RelocateResult? selectedResult = null;
-            var selectedSize = new Vector2Int(
-                AutoAtlasTextureSizeCandidates[^1],
-                AutoAtlasTextureSizeCandidates[^1]
-            );
+            var maxCandidateSize = AutoAtlasTextureSizeCandidates[AutoAtlasTextureSizeCandidates.Length - 1];
+            var selectedSize = new Vector2Int(maxCandidateSize, maxCandidateSize);
             long totalRelocationTime = 0;
 
             foreach (var size in AutoAtlasTextureSizeCandidates)
