@@ -56,17 +56,17 @@
           },
           "zipSHA256": "cc892372be65e76b3c22580b2b95d24825d76136e00b01dfbc2558f6d9afc600"
         },
-        "0.1.5+debug.18.independent-texture-uv.d77de85": {
+        "0.1.5+debug.19.independent-texture-uv.aa2b409": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.5+debug.18.independent-texture-uv.d77de85",
+          "version": "0.1.5+debug.19.independent-texture-uv.aa2b409",
           "unity": "2022.3",
-          "description": "Debug build 18 for independent-texture-uv from fix/independent-texture-uv at d77de85. Based on WDT 0.1.5 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 19 for independent-texture-uv from fix/independent-texture-uv at aa2b409. Based on WDT 0.1.5 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.5+debug.18.independent-texture-uv.d77de85.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.5+debug.19.independent-texture-uv.aa2b409.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -79,7 +79,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "9821b26c0b6b218f728e6bc00a5a0edaae28cb2a18b3c0ba0429662fbec1d507"
+          "zipSHA256": "0ecaa16a33be1db24ed74611864786b4591400f9686a14bd3a3caa4a2b6c1184"
         }
       }
     }
