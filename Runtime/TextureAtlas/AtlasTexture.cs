@@ -62,6 +62,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             if (targetMaterials.Any() is false || targetRenderers.Any() is false) { TTLog.Info("AtlasTexture:info:TargetNotFound"); return; }
 
+            var preserveBump2ndMaterials = GetBump2ndOriginalUVPreserveMaterials(targetMaterials, targetRenderers, targeting, atlasSetting.AtlasTargetUVChannel);
+            var preservedOriginalUVChannel = preserveBump2ndMaterials.Any()
+                ? FindUnusedUVChannel(targetRenderers, targeting, atlasSetting.AtlasTargetUVChannel)
+                : null;
+
+            if (preserveBump2ndMaterials.Any() && preservedOriginalUVChannel is null)
+            {
+                TTLog.Error("AtlasTexture:error:NoFreeUVChannelForIndependentTexture");
+                return;
+            }
+
             pf.Split("looking");
 
             foreach (var mmg in MergeMaterialGroups) { if (mmg.Reference != null) { domain.LookAt(mmg.Reference); } }
@@ -76,7 +87,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("Atlasing!");
             // Do Atlasing!
-            var atlasResult = DoAtlasTexture(domain, engine, targetMaterials, targetRenderers, IslandSizePriorityTuner, atlasSetting);
+            var atlasResult = DoAtlasTexture(domain, engine, targetMaterials, targetRenderers, IslandSizePriorityTuner, atlasSetting, preserveBump2ndMaterials, preservedOriginalUVChannel);
             if (atlasResult.IsSuccess is false) { return; }
             using var atlasContext = atlasResult.AtlasContext!;
             var atlasedMeshes = atlasResult.AtlasedMeshes!;
@@ -95,7 +106,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("gen and replace material");
             //MaterialGenerate And Change
-            ReplaceAtlasedMaterials(domain, targetMaterials, atlasSetting, (MergeMaterialGroups, AllMaterialMergeReference, experimentalOptions), tunedAtlasUnityTextures);
+            ReplaceAtlasedMaterials(domain, targetMaterials, atlasSetting, (MergeMaterialGroups, AllMaterialMergeReference, experimentalOptions), tunedAtlasUnityTextures, preserveBump2ndMaterials, preservedOriginalUVChannel);
 
             pf.Split("register textures");
             // Register AtlasedTextures
@@ -129,6 +140,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , List<IIslandSizePriorityTuner?> islandSizePriorityTuner
 
             , AtlasSetting atlasSetting
+            , HashSet<Material> preserveBump2ndMaterials
+            , int? preservedOriginalUVChannel
         )
         {
             using var pf = new PFScope("init");
@@ -185,7 +198,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("GenerateAtlasedMesh");
             // SubSetIndex と対応する
-            var atlasedMeshes = atlasContext.GenerateAtlasedMesh(atlasSetting, source2MovedVirtualIsland, atlasedTextureSize);
+            var atlasedMeshes = atlasContext.GenerateAtlasedMesh(atlasSetting, source2MovedVirtualIsland, atlasedTextureSize, preserveBump2ndMaterials, preservedOriginalUVChannel);
             pf.Split("GenerateAtlasedTextures");
             var compiledAtlasTextures = atlasContext.GenerateAtlasedTextures(
                   engine
@@ -284,9 +297,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , AtlasSetting atlasSetting
             , (List<MaterialMergeGroup> mergeMaterialGroups, Material? allMaterialMergeReference, AtlasTextureExperimentalFeature? experimentalOptions) atlasMergeSettings
             , Dictionary<string, RenderTexture> tunedAtlasUnityTextures
+            , HashSet<Material> preserveBump2ndMaterials
+            , int? preservedOriginalUVChannel
             )
         {
-            var atlasMatOption = new AtlasMatGenerateOption() { ForceSetTexture = atlasSetting.ForceSetTexture };
+            var atlasMatOption = new AtlasMatGenerateOption()
+            {
+                ForceSetTexture = atlasSetting.ForceSetTexture,
+                PreserveBump2ndMaterials = preserveBump2ndMaterials,
+                PreservedOriginalUVChannel = preservedOriginalUVChannel,
+            };
             if (atlasMergeSettings.experimentalOptions?.UnsetTextures.Any() ?? false)
             {
                 var containsAllTexture = targetMaterials.SelectMany(mat => mat.EnumerateReferencedTextures());
@@ -308,10 +328,15 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var mergeRef2MergedMaterial = new Dictionary<Material, Material>();
             foreach (var distMat in targetMaterials)
             {
-                var referenceMaterial = mergeReferenceMaterial.FirstOrDefault(g => g.GroupMaterial.Contains(distMat))?.MergeReference;
+                var mergeGroup = mergeReferenceMaterial.FirstOrDefault(g => g.GroupMaterial.Contains(distMat));
+                var referenceMaterial = mergeGroup?.MergeReference;
+                var remapBump2ndUV = referenceMaterial == null
+                    ? atlasMatOption.PreserveBump2ndMaterials.Contains(distMat)
+                    : mergeGroup!.GroupMaterial.Any(atlasMatOption.PreserveBump2ndMaterials.Contains);
+
                 if (referenceMaterial == null)
                 {
-                    domainsMaterial2ReplaceMaterial[distMat] = GenerateAtlasMat(distMat, tex, atlasMatOption);
+                    domainsMaterial2ReplaceMaterial[distMat] = GenerateAtlasMat(distMat, tex, atlasMatOption, remapBump2ndUV);
                     materialMap.Add(distMat, domainsMaterial2ReplaceMaterial[distMat]);
                 }
                 else
@@ -320,7 +345,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     {
                         domainsMaterial2ReplaceMaterial[referenceMaterial]
                             = mergeRef2MergedMaterial[referenceMaterial]
-                            = GenerateAtlasMat(referenceMaterial, tex, atlasMatOption);
+                            = GenerateAtlasMat(referenceMaterial, tex, atlasMatOption, remapBump2ndUV);
                     }
                     materialMap.Add(distMat, mergeRef2MergedMaterial[referenceMaterial]);
                 }
@@ -613,7 +638,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 if (individualTuning.OverrideMargeTexture) { tuningTarget.Get<MergeTextureData>().MargeParent = individualTuning.MargeRootProperty; }
             }
         }
-        private static Material GenerateAtlasMat<Tex>(Material targetMat, Dictionary<string, Tex> atlasTex, AtlasMatGenerateOption option)
+        private static Material GenerateAtlasMat<Tex>(Material targetMat, Dictionary<string, Tex> atlasTex, AtlasMatGenerateOption option, bool remapBump2ndUV)
         where Tex : Texture
         {
             var editableTMat = UnityEngine.Object.Instantiate(targetMat);
@@ -632,16 +657,75 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                 editableTMat.SetTexture(texKV.Key, texKV.Value);
             }
+
+            if (remapBump2ndUV && option.PreservedOriginalUVChannel is int preservedUVChannel)
+            {
+                const string bump2ndUVMode = "_Bump2ndMap_UVMode";
+                if (editableTMat.HasInt(bump2ndUVMode))
+                    editableTMat.SetInt(bump2ndUVMode, preservedUVChannel);
+                else if (editableTMat.HasFloat(bump2ndUVMode))
+                    editableTMat.SetFloat(bump2ndUVMode, preservedUVChannel);
+            }
+
             return editableTMat;
         }
         class AtlasMatGenerateOption
         {
             public bool ForceSetTexture = false;
             public HashSet<Texture>? UnsetTextures = null;
+            public HashSet<Material> PreserveBump2ndMaterials = new();
+            public int? PreservedOriginalUVChannel = null;
         }
 
 
 
+
+        private static HashSet<Material> GetBump2ndOriginalUVPreserveMaterials(
+            HashSet<Material> targetMaterials,
+            Renderer[] targetRenderers,
+            IRendererTargeting targeting,
+            UVChannel atlasTargetUVChannel)
+        {
+            var renderedMaterials = targetRenderers
+                .SelectMany(targeting.GetMaterials)
+                .UOfType<Material>()
+                .Where(targetMaterials.Contains)
+                .ToHashSet();
+
+            var preserveMaterials = new HashSet<Material>();
+            foreach (var material in renderedMaterials)
+            {
+                var usages = TTShaderTextureUsageInformationUtil.GetContainsUVTransformUsage(material);
+                if (usages.TryGetValue("_Bump2ndMap", out var usage) is false) { continue; }
+                if (TTShaderTextureUsageInformationUtil.RequiresBump2ndOriginalUVPreservation("_Bump2ndMap", usage, atlasTargetUVChannel) is false) { continue; }
+
+                var textureProperties = material.GetTexturePropertyNames().ToHashSet();
+                if (textureProperties.Contains("_Bump2ndMap") is false) { continue; }
+                if (material.GetTexture("_Bump2ndMap") == null) { continue; }
+
+                preserveMaterials.Add(material);
+            }
+
+            return preserveMaterials;
+        }
+
+        private static int? FindUnusedUVChannel(Renderer[] targetRenderers, IRendererTargeting targeting, UVChannel atlasTargetUVChannel)
+        {
+            for (var uvChannel = 3; uvChannel >= 0; uvChannel -= 1)
+            {
+                if (uvChannel == (int)atlasTargetUVChannel) { continue; }
+
+                var isUsed = targetRenderers.Any(renderer =>
+                {
+                    var mesh = targeting.GetMesh(renderer);
+                    return mesh != null && mesh.HasUV(uvChannel);
+                });
+
+                if (isUsed is false) { return uvChannel; }
+            }
+
+            return null;
+        }
 
         internal List<Material> GetTargetMaterials(IDomain domain, List<Renderer> nowRenderers)
         {
