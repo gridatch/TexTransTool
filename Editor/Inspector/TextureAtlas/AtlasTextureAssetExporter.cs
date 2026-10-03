@@ -266,18 +266,43 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             );
 
             var (textureFormat, compressionQuality) = descriptor.TextureFormat.Get(downloaded);
-            var platformSettings = importer.GetDefaultPlatformTextureSettings();
-            platformSettings.overridden = true;
-            platformSettings.maxTextureSize = importer.maxTextureSize;
-            platformSettings.compressionQuality = compressionQuality;
+            importer.compressionQuality = compressionQuality;
 
-            if (Enum.TryParse(textureFormat.ToString(), out TextureImporterFormat importerFormat))
+            if (descriptor.TextureFormat is TextureCompressionData compressionData)
             {
-                platformSettings.format = importerFormat;
-                importer.SetPlatformTextureSettings(platformSettings);
+                importer.textureCompression = compressionData.FormatQualityValue switch
+                {
+                    FormatQuality.None => TextureImporterCompression.Uncompressed,
+                    FormatQuality.Low => TextureImporterCompression.CompressedLQ,
+                    FormatQuality.Normal => TextureImporterCompression.Compressed,
+                    FormatQuality.High => TextureImporterCompression.CompressedHQ,
+                    _ => TextureImporterCompression.Compressed,
+                };
+
+                if (compressionData.UseOverride)
+                    ApplyExplicitTextureFormat(importer, textureFormat, compressionQuality);
+            }
+            else
+            {
+                ApplyExplicitTextureFormat(importer, textureFormat, compressionQuality);
             }
 
             importer.SaveAndReimport();
+
+            static void ApplyExplicitTextureFormat(
+                TextureImporter importer,
+                TextureFormat textureFormat,
+                int compressionQuality)
+            {
+                if (Enum.TryParse(textureFormat.ToString(), out TextureImporterFormat importerFormat) is false)
+                    return;
+
+                var platformSettings = importer.GetDefaultPlatformTextureSettings();
+                platformSettings.maxTextureSize = importer.maxTextureSize;
+                platformSettings.compressionQuality = compressionQuality;
+                platformSettings.format = importerFormat;
+                importer.SetPlatformTextureSettings(platformSettings);
+            }
         }
 
         private static void SaveMaterials(IEnumerable<Material> materials, string materialAssetPath)
