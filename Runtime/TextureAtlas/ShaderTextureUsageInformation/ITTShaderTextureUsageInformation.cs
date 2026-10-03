@@ -23,6 +23,23 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         void WriteTextureUVUsage(string propertyName, UsageUVChannel uVChannel);
     }
+    internal readonly struct TextureUVUsage
+    {
+        public readonly UsageUVChannel UVChannel;
+        public readonly Matrix2x3? UVMatrix;
+
+        public TextureUVUsage(UsageUVChannel uvChannel, Matrix2x3? uvMatrix)
+        {
+            UVChannel = uvChannel;
+            UVMatrix = uvMatrix;
+        }
+    }
+
+    internal interface ITTTextureUVTransformUsageWriter
+    {
+        void WriteTextureUVUsage(string propertyName, UsageUVChannel uvChannel, Matrix2x3? uvMatrix);
+    }
+
     public enum UsageUVChannel
     {
         Unknown = 0,
@@ -36,11 +53,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
         UV6 = 7,
         UV7 = 8,
     }
-    class MaterialUVUsageProvider : ITTTextureUVUsageWriter
+    class MaterialUVUsageProvider : ITTTextureUVUsageWriter, ITTTextureUVTransformUsageWriter
     {
         Material _material;
-        Dictionary<string, UsageUVChannel> _uvUsage = new();
-        public IReadOnlyDictionary<string, UsageUVChannel> UVUSage => _uvUsage;
+        Dictionary<string, TextureUVUsage> _uvUsage = new();
+        public IReadOnlyDictionary<string, TextureUVUsage> UVUsageWithTransform => _uvUsage;
         public MaterialUVUsageProvider(Material material)
         {
             _material = material;
@@ -72,8 +89,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         public void WriteTextureUVUsage(string propertyName, UsageUVChannel uVChannel)
         {
+            WriteTextureUVUsage(propertyName, uVChannel, Matrix2x3.Identity);
+        }
+
+        public void WriteTextureUVUsage(string propertyName, UsageUVChannel uVChannel, Matrix2x3? uvMatrix)
+        {
             if (_material.HasTexture(propertyName) is false) { return; }
-            _uvUsage[propertyName] = uVChannel;
+            _uvUsage[propertyName] = new TextureUVUsage(uVChannel, uvMatrix);
         }
     }
 }
