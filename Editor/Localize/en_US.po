@@ -131,6 +131,12 @@ msgstr "The original UV write target channel is there already has UV."
 msgid "AtlasTexture:warn:OriginalUVWriteTargetForAlreadyUV:description"
 msgstr "If this is intentionally or not a problem, ignore this warning."
 
+msgid "AtlasTexture:info:AutoAtlasTextureSizeSelected"
+msgstr "Auto atlas size selected: {0}"
+
+msgid "AtlasTexture:warn:AutoAtlasTextureSizeLosslessNotFound"
+msgstr "No lossless auto atlas size was found up to {0}. Using {0} with Priority shrink {1}x and Overall shrink {2}x."
+
 msgid "AtlasTexture:info:RelocateResult"
 msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x \nOverall shrink: {2}x \nTotal relocate count: {3} \nTime taken relocate: {4}ms"
 
@@ -172,6 +178,12 @@ msgstr "view for special operations such as prefab override settings"
 
 msgid "AtlasTexture:label:AtlasSettings"
 msgstr "AtlasSettings"
+
+msgid "AtlasTexture:prop:AutoAtlasTextureSize"
+msgstr "Auto Minimum Lossless Size"
+
+msgid "AtlasTexture:prop:AutoAtlasTextureSize:tooltip"
+msgstr "Try 256, 512, 1024, 2048, then 4096 and use the smallest square atlas that packs without island downscaling. If 4096 still requires downscaling, 4096 is used with a warning."
 
 msgid "AtlasTexture:prop:AtlasTextureSize"
 msgstr "AtlasTextureSize"
