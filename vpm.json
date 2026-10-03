@@ -55,6 +55,31 @@
             "net.rs64.tex-trans-core": "^0.2.0"
           },
           "zipSHA256": "77200184c029e2e03c0825cee500a7d2cfd4a5f76843235a96b9fd5d5e9fe71c"
+        },
+        "1.0.2-wdt.fix-stable-wdt-versioning.1": {
+          "name": "net.gridatch.tex-trans-tool",
+          "displayName": "TexTransTool (WDT)",
+          "version": "1.0.2-wdt.fix-stable-wdt-versioning.1",
+          "unity": "2022.3",
+          "description": "Non-destructive modification to Texture!",
+          "author": {
+            "name": "ReinaSakiria",
+            "url": "https://rs64.net/"
+          },
+          "url": "https://github.com/gridatch/TexTransTool/releases/download/wdt-vpm-1.0.2-wdt.fix-stable-wdt-versioning.1/net.gridatch.tex-trans-tool-1.0.2-wdt.fix-stable-wdt-versioning.1.zip",
+          "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
+          "legacyFolders": {
+            "Packages\\rs64.tex-trans-tool": ""
+          },
+          "dependencies": {
+            "net.rs64.tex-trans-core": "0.2.0",
+            "com.unity.burst": "1.8.0",
+            "com.unity.mathematics": "1.3.2"
+          },
+          "vpmDependencies": {
+            "net.rs64.tex-trans-core": "^0.2.0"
+          },
+          "zipSHA256": "96f0a1f5dd0100f2c529e987894c1b04d2ffd5cbf1ebbe2beb9dcd883e34a12b"
         }
       }
     }
