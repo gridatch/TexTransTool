@@ -81,17 +81,17 @@
           },
           "zipSHA256": "fb877df561d4aa442f8ed88e982bb0cf5810bda37874933c069915ed38f49876"
         },
-        "0.1.6+debug.28.auto-lossless-atlas-size.c23f9b1": {
+        "0.1.6+debug.29.auto-lossless-atlas-size.c5f8258": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.6+debug.28.auto-lossless-atlas-size.c23f9b1",
+          "version": "0.1.6+debug.29.auto-lossless-atlas-size.c5f8258",
           "unity": "2022.3",
-          "description": "Debug build 28 for auto-lossless-atlas-size from feat/auto-lossless-atlas-size at c23f9b1. Based on WDT 0.1.6 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 29 for auto-lossless-atlas-size from feat/auto-lossless-atlas-size at c5f8258. Based on WDT 0.1.6 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.6+debug.28.auto-lossless-atlas-size.c23f9b1.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.6+debug.29.auto-lossless-atlas-size.c5f8258.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -104,7 +104,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "c41decfe32ca5456af5c894b1445da6c44199f746433f907e53e69a9963311a3"
+          "zipSHA256": "d5c4c6ae715305da36f9e24f7b5ce8db70001145b30ac0d52d639df9975a6328"
         }
       }
     }
