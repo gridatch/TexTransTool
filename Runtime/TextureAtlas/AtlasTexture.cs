@@ -115,7 +115,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     .Any(targetMaterials.Contains)
                 ).ToArray();
         }
-        private Renderer[] FilterExistUVChannel(IRendererTargeting targeting,Renderer[] targetRenderers, UVChannel atlasTargetUVChannel)
+        internal static Renderer[] FilterExistUVChannel(IRendererTargeting targeting, Renderer[] targetRenderers, UVChannel atlasTargetUVChannel)
         {
             return targetRenderers.Where(r => targeting.GetMesh(r).HasUV((int)atlasTargetUVChannel)).ToArray();
         }
