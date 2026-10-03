@@ -160,15 +160,20 @@ jobs:
           SHA256: ${{ steps.release.outputs.sha256 }}
           PACKAGE_JSON: ${{ runner.temp }}/tex-trans-tool-package/package.json
           VPM_JSON: ${{ github.workspace }}/.vpm-build/vpm-repo/vpm.json
+          STATE_JSON: ${{ github.workspace }}/.vpm-build/vpm-repo/validation-state.json
+          VPM_DIR: ${{ github.workspace }}/.vpm-build/vpm-repo
         run: |
           set -euo pipefail
 
           python3 - <<'PY'
           import json
           import os
+          import pathlib
 
           package_json = os.environ["PACKAGE_JSON"]
           vpm_json = os.environ["VPM_JSON"]
+          state_json = os.environ["STATE_JSON"]
+          vpm_dir = pathlib.Path(os.environ["VPM_DIR"])
           version = os.environ["VERSION"]
           sha256 = os.environ["SHA256"]
 
@@ -180,12 +185,28 @@ jobs:
 
           with open(vpm_json, "r", encoding="utf-8") as f:
               repo = json.load(f)
+          with open(state_json, "r", encoding="utf-8") as f:
+              state = json.load(f)
 
           versions = (
               repo.setdefault("packages", {})
                   .setdefault(package_id, {})
                   .setdefault("versions", {})
           )
+
+          previous_debug_version = state.get("currentDebugVersion") or state.get("currentValidationVersion")
+          if previous_debug_version:
+              versions.pop(previous_debug_version, None)
+
+          for directory, key in (
+              ("debug", "currentDebugZip"),
+              ("validation", "currentValidationZip"),
+          ):
+              zip_name = state.get(key)
+              if zip_name:
+                  zip_path = vpm_dir / directory / zip_name
+                  if zip_path.exists():
+                      zip_path.unlink()
 
           if version in versions:
               if versions[version] != manifest:
@@ -195,8 +216,29 @@ jobs:
           else:
               versions[version] = manifest
 
+          state["baseVersion"] = version
+          state["lastDebugSerial"] = int(state.get("lastDebugSerial", state.get("lastUsedPatch", 0)))
+          for obsolete_key in (
+              "versionSeries",
+              "lastUsedPatch",
+              "currentDebugVersion",
+              "currentDebugChange",
+              "currentDebugBranch",
+              "currentDebugCommit",
+              "currentDebugZip",
+              "currentValidationVersion",
+              "currentValidationBranch",
+              "currentValidationCommit",
+              "currentValidationZip",
+          ):
+              state.pop(obsolete_key, None)
+
           with open(vpm_json, "w", encoding="utf-8", newline="\n") as f:
               json.dump(repo, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+
+          with open(state_json, "w", encoding="utf-8", newline="\n") as f:
+              json.dump(state, f, ensure_ascii=False, indent=2)
               f.write("\n")
           PY
 
@@ -208,13 +250,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          if git diff --quiet -- vpm.json; then
+          if git diff --quiet; then
             echo "VPM repository already contains $VERSION."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add vpm.json
+          git add -A
           git commit -m "chore: publish VPM package $VERSION"
           git push origin HEAD:vpm

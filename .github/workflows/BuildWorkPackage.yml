@@ -1,4 +1,4 @@
-name: Publish Validation Package
+name: Publish Debug Package
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: validation-vpm-publish
+  group: debug-vpm-publish
   cancel-in-progress: false
 
 jobs:
@@ -25,37 +25,44 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ReinaS-64892/TTT-ImageAssets
-          path: .validation-build/image-assets
+          path: .debug-build/image-assets
 
       - name: Checkout VPM repository branch
         uses: actions/checkout@v4
         with:
           ref: vpm
-          path: .validation-build/vpm-repo
+          path: .debug-build/vpm-repo
 
-      - name: Build validation package
+      - name: Build debug package
         id: meta
         shell: bash
         run: |
           set -euo pipefail
 
-          base_version="$(jq -r '.version' package.json)"
-          branch_id="$(printf '%s' "$GITHUB_REF_NAME" \
+          upstream_version="$(jq -r '.version' package.json)"
+          change_id="$(printf '%s' "$GITHUB_REF_NAME" \
+            | sed -E 's#^(fix|feat|chore)/##' \
             | tr '[:upper:]' '[:lower:]' \
             | sed -E 's/[^0-9a-z-]+/-/g; s/^-+//; s/-+$//')"
           short_sha="${GITHUB_SHA:0:7}"
 
-          state_file=".validation-build/vpm-repo/validation-state.json"
-          major_minor="$(jq -r '.versionSeries' "$state_file")"
-          last_patch="$(jq -r '.lastUsedPatch' "$state_file")"
-          next_patch="$((last_patch + 1))"
+          state_file=".debug-build/vpm-repo/validation-state.json"
+          base_version="$(jq -r '.baseVersion // empty' "$state_file")"
+          last_serial="$(jq -r '.lastDebugSerial // 0' "$state_file")"
 
-          version="${major_minor}.${next_patch}+validation.${branch_id}.${short_sha}"
+          if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Debug package baseVersion '$base_version' is not a stable X.Y.Z version."
+            exit 1
+          fi
+
+          next_serial="$((last_serial + 1))"
+
+          version="${base_version}+debug.${next_serial}.${change_id}.${short_sha}"
           zip_name="net.gridatch.tex-trans-tool-${version}.zip"
           package_dir="${RUNNER_TEMP}/net.gridatch.tex-trans-tool"
           zip_path="$GITHUB_WORKSPACE/$zip_name"
           repo_url="https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json"
-          download_url="https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/validation/${zip_name}"
+          download_url="https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/${zip_name}"
 
           rm -rf "$package_dir"
           mkdir -p "$package_dir"
@@ -64,10 +71,10 @@ jobs:
             --exclude='.git' \
             --exclude='.github' \
             --exclude='DependentUpdater~' \
-            --exclude='.validation-build' \
+            --exclude='.debug-build' \
             ./ "$package_dir/"
 
-          cp .validation-build/image-assets/Image/* "$package_dir/Image/"
+          cp .debug-build/image-assets/Image/* "$package_dir/Image/"
 
           jq \
             --arg name "net.gridatch.tex-trans-tool" \
@@ -75,7 +82,7 @@ jobs:
             --arg version "$version" \
             --arg url "$download_url" \
             --arg repo "$repo_url" \
-            --arg description "Validation build from $GITHUB_REF_NAME at $short_sha. Based on upstream TexTransTool $base_version." \
+            --arg description "Debug build $next_serial for $change_id from $GITHUB_REF_NAME at $short_sha. Based on WDT $base_version / upstream TexTransTool $upstream_version." \
             '.name = $name | .displayName = $displayName | .version = $version | .url = $url | .repo = $repo | .description = $description' \
             "$package_dir/package.json" > "$package_dir/package.json.tmp"
           mv "$package_dir/package.json.tmp" "$package_dir/package.json"
@@ -93,12 +100,12 @@ jobs:
             echo "zip_path=$zip_path"
             echo "sha256=$sha256"
             echo "package_json=$package_dir/package.json"
-            echo "next_patch=$next_patch"
-            echo "branch_id=$branch_id"
+            echo "next_serial=$next_serial"
+            echo "change_id=$change_id"
             echo "short_sha=$short_sha"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Replace current validation version
+      - name: Replace current debug version
         shell: bash
         env:
           VERSION: ${{ steps.meta.outputs.version }}
@@ -106,14 +113,14 @@ jobs:
           ZIP_PATH: ${{ steps.meta.outputs.zip_path }}
           SHA256: ${{ steps.meta.outputs.sha256 }}
           PACKAGE_JSON: ${{ steps.meta.outputs.package_json }}
-          NEXT_PATCH: ${{ steps.meta.outputs.next_patch }}
-          BRANCH_ID: ${{ steps.meta.outputs.branch_id }}
+          NEXT_SERIAL: ${{ steps.meta.outputs.next_serial }}
+          CHANGE_ID: ${{ steps.meta.outputs.change_id }}
           SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
-          VPM_DIR: ${{ github.workspace }}/.validation-build/vpm-repo
+          VPM_DIR: ${{ github.workspace }}/.debug-build/vpm-repo
         run: |
           set -euo pipefail
 
-          mkdir -p "$VPM_DIR/validation"
+          mkdir -p "$VPM_DIR/debug"
 
           python3 - <<'PY'
           import json
@@ -140,13 +147,19 @@ jobs:
                   .setdefault("versions", {})
           )
 
-          previous_version = state.get("currentValidationVersion")
+          previous_version = state.get("currentDebugVersion") or state.get("currentValidationVersion")
           if previous_version:
               versions.pop(previous_version, None)
 
-          previous_zip = state.get("currentValidationZip")
-          if previous_zip:
-              previous_zip_path = vpm_dir / "validation" / previous_zip
+          previous_debug_zip = state.get("currentDebugZip")
+          if previous_debug_zip:
+              previous_zip_path = vpm_dir / "debug" / previous_debug_zip
+              if previous_zip_path.exists():
+                  previous_zip_path.unlink()
+
+          previous_validation_zip = state.get("currentValidationZip")
+          if previous_validation_zip:
+              previous_zip_path = vpm_dir / "validation" / previous_validation_zip
               if previous_zip_path.exists():
                   previous_zip_path.unlink()
 
@@ -155,13 +168,24 @@ jobs:
           versions[version] = manifest
 
           zip_name = os.environ["ZIP_NAME"]
-          shutil.copy2(os.environ["ZIP_PATH"], vpm_dir / "validation" / zip_name)
+          shutil.copy2(os.environ["ZIP_PATH"], vpm_dir / "debug" / zip_name)
 
-          state["lastUsedPatch"] = int(os.environ["NEXT_PATCH"])
-          state["currentValidationVersion"] = version
-          state["currentValidationBranch"] = os.environ["BRANCH_ID"]
-          state["currentValidationCommit"] = os.environ["GITHUB_SHA"]
-          state["currentValidationZip"] = zip_name
+          state["lastDebugSerial"] = int(os.environ["NEXT_SERIAL"])
+          state["currentDebugVersion"] = version
+          state["currentDebugChange"] = os.environ["CHANGE_ID"]
+          state["currentDebugBranch"] = os.environ["GITHUB_REF_NAME"]
+          state["currentDebugCommit"] = os.environ["GITHUB_SHA"]
+          state["currentDebugZip"] = zip_name
+
+          for obsolete_key in (
+              "versionSeries",
+              "lastUsedPatch",
+              "currentValidationVersion",
+              "currentValidationBranch",
+              "currentValidationCommit",
+              "currentValidationZip",
+          ):
+              state.pop(obsolete_key, None)
 
           with vpm_path.open("w", encoding="utf-8", newline="\n") as f:
               json.dump(repo, f, ensure_ascii=False, indent=2)
@@ -172,16 +196,16 @@ jobs:
               f.write("\n")
           PY
 
-      - name: Publish validation VPM update
+      - name: Publish debug VPM update
         shell: bash
         env:
           VERSION: ${{ steps.meta.outputs.version }}
-        working-directory: .validation-build/vpm-repo
+        working-directory: .debug-build/vpm-repo
         run: |
           set -euo pipefail
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A vpm.json validation-state.json validation
-          git commit -m "chore: publish validation package $VERSION"
+          git add -A
+          git commit -m "chore: publish debug package $VERSION"
           git push origin HEAD:vpm
