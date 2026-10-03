@@ -55,6 +55,31 @@
             "net.rs64.tex-trans-core": "^0.2.0"
           },
           "zipSHA256": "cc892372be65e76b3c22580b2b95d24825d76136e00b01dfbc2558f6d9afc600"
+        },
+        "0.1.6+ttt.1.0.2.fix-texture-st-atlas": {
+          "name": "net.gridatch.tex-trans-tool",
+          "displayName": "TexTransTool (WDT)",
+          "version": "0.1.6+ttt.1.0.2.fix-texture-st-atlas",
+          "unity": "2022.3",
+          "description": "Non-destructive modification to Texture!",
+          "author": {
+            "name": "ReinaSakiria",
+            "url": "https://rs64.net/"
+          },
+          "url": "https://github.com/gridatch/TexTransTool/releases/download/wdt-vpm-build-6/net.gridatch.tex-trans-tool-build-6.zip",
+          "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
+          "legacyFolders": {
+            "Packages\\rs64.tex-trans-tool": ""
+          },
+          "dependencies": {
+            "net.rs64.tex-trans-core": "0.2.0",
+            "com.unity.burst": "1.8.0",
+            "com.unity.mathematics": "1.3.2"
+          },
+          "vpmDependencies": {
+            "net.rs64.tex-trans-core": "^0.2.0"
+          },
+          "zipSHA256": "a7cc484b24693ca6b07a2ca54c533ed6564b255156e62366a3d826e27fa77644"
         }
       }
     }
