@@ -62,17 +62,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             if (targetMaterials.Any() is false || targetRenderers.Any() is false) { TTLog.Info("AtlasTexture:info:TargetNotFound"); return; }
 
-            var preserveBump2ndMaterials = GetBump2ndOriginalUVPreserveMaterials(targetMaterials, targetRenderers, targeting, atlasSetting.AtlasTargetUVChannel);
-            var preservedOriginalUVChannel = preserveBump2ndMaterials.Any()
-                ? FindUnusedUVChannel(targetRenderers, targeting, atlasSetting.AtlasTargetUVChannel)
-                : null;
-
-            if (preserveBump2ndMaterials.Any() && preservedOriginalUVChannel is null)
-            {
-                TTLog.Error("AtlasTexture:error:NoFreeUVChannelForIndependentTexture");
-                return;
-            }
-
             pf.Split("looking");
 
             foreach (var mmg in MergeMaterialGroups) { if (mmg.Reference != null) { domain.LookAt(mmg.Reference); } }
@@ -87,11 +76,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("Atlasing!");
             // Do Atlasing!
-            var atlasResult = DoAtlasTexture(domain, engine, targetMaterials, targetRenderers, IslandSizePriorityTuner, atlasSetting, preserveBump2ndMaterials, preservedOriginalUVChannel);
+            var atlasResult = DoAtlasTexture(domain, engine, targetMaterials, targetRenderers, IslandSizePriorityTuner, atlasSetting);
             if (atlasResult.IsSuccess is false) { return; }
             using var atlasContext = atlasResult.AtlasContext!;
             var atlasedMeshes = atlasResult.AtlasedMeshes!;
             var compiledAtlasTextures = atlasResult.CompiledAtlasTextures!;
+            var preserveBump2ndMaterials = atlasResult.PreserveBump2ndMaterials;
+            var preservedOriginalUVChannel = atlasResult.PreservedOriginalUVChannel;
 
             pf.Split("tex fine tuning");
             //Texture Fine Tuning
@@ -140,12 +131,21 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , List<IIslandSizePriorityTuner?> islandSizePriorityTuner
 
             , AtlasSetting atlasSetting
-            , HashSet<Material> preserveBump2ndMaterials
-            , int? preservedOriginalUVChannel
         )
         {
             using var pf = new PFScope("init");
             var targeting = domain as IRendererTargeting;
+
+            var preserveBump2ndMaterials = GetBump2ndOriginalUVPreserveMaterials(targetMaterials, targetRenderers, targeting, atlasSetting.AtlasTargetUVChannel);
+            var preservedOriginalUVChannel = preserveBump2ndMaterials.Any()
+                ? FindUnusedUVChannel(targetRenderers, targeting, atlasSetting.AtlasTargetUVChannel)
+                : null;
+
+            if (preserveBump2ndMaterials.Any() && preservedOriginalUVChannel is null)
+            {
+                TTLog.Error("AtlasTexture:error:NoFreeUVChannelForIndependentTexture");
+                return new(false, null, null, null, preserveBump2ndMaterials, null);
+            }
 
             var atlasTargeSize = GetAtlasTextureSize(atlasSetting);
             pf.Split("AtlasContext ctr");
@@ -176,7 +176,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 // Abort!!!
                 TTLog.Error("AtlasTexture:error:RelocationFailed");
                 atlasContext.Dispose();
-                return new(false, null, null, null);
+                return new(false, null, null, null, preserveBump2ndMaterials, preservedOriginalUVChannel);
             }
             var source2MovedVirtualIsland = new Dictionary<IslandTransform, IslandTransform>();
             for (var i = 0; movedVirtualIslandArray.Length > i; i += 1)
@@ -208,7 +208,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                   , source2MovedVirtualIsland
               );
             pf.Split("exit");
-            return new(true, atlasContext, atlasedMeshes, compiledAtlasTextures);
+            return new(true, atlasContext, atlasedMeshes, compiledAtlasTextures, preserveBump2ndMaterials, preservedOriginalUVChannel);
         }
         internal record AtlasResult
         {
@@ -218,13 +218,23 @@ namespace net.rs64.TexTransTool.TextureAtlas
             public readonly AtlasContext? AtlasContext;
             public readonly Mesh[]? AtlasedMeshes;
             public readonly Dictionary<string, ITTRenderTexture>? CompiledAtlasTextures;
+            public readonly HashSet<Material> PreserveBump2ndMaterials;
+            public readonly int? PreservedOriginalUVChannel;
 
-            public AtlasResult(bool isSuccess, AtlasContext? atlasContext, Mesh[]? atlasedMesh, Dictionary<string, ITTRenderTexture>? compiledAtlasTextures)
+            public AtlasResult(
+                bool isSuccess,
+                AtlasContext? atlasContext,
+                Mesh[]? atlasedMesh,
+                Dictionary<string, ITTRenderTexture>? compiledAtlasTextures,
+                HashSet<Material> preserveBump2ndMaterials,
+                int? preservedOriginalUVChannel)
             {
                 IsSuccess = isSuccess;
                 AtlasContext = atlasContext;
                 AtlasedMeshes = atlasedMesh;
                 CompiledAtlasTextures = compiledAtlasTextures;
+                PreserveBump2ndMaterials = preserveBump2ndMaterials;
+                PreservedOriginalUVChannel = preservedOriginalUVChannel;
             }
         }
         internal static TexFineTuningResult DoTextureFinTuning(ITexTransToolForUnity engine, AtlasContext atlasContext, AtlasSetting atlasSetting, Dictionary<string, ITTRenderTexture> compiledAtlasTextures, AtlasTextureExperimentalFeature? experimentalOptions)
