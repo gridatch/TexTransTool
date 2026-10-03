@@ -17,11 +17,15 @@ namespace net.rs64.TexTransTool.TextureAtlas
         public MaterialGroupingContext(HashSet<Material> targetMaterials, UVChannel atlasingTargetUVChannel, string? primaryTexturePropertyOrMaximum)
         {
             var containsTextureProperties = targetMaterials
-                .Select(m => (m, TTShaderTextureUsageInformationUtil.GetContainsUVUsage(m)))
+                .Select(m => (
+                    m,
+                    Usage: TTShaderTextureUsageInformationUtil.GetContainsUVUsage(m),
+                    TextureProperties: m.GetTexturePropertyNames().ToHashSet()
+                ))
                 .Select(kv => (
                     kv.m,
-                    kv.Item2.Where(u => (((int)u.Value) - 1) == (int)atlasingTargetUVChannel)
-                        .Where(u => kv.m.HasTexture(u.Key))
+                    kv.Usage.Where(u => (((int)u.Value) - 1) == (int)atlasingTargetUVChannel)
+                        .Where(u => kv.TextureProperties.Contains(u.Key))
                         .Select(u => (
                             u.Key,
                             Texture: kv.m.GetTexture(u.Key),
