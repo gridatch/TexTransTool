@@ -19,12 +19,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
             ContainsTextureDictionaries = targetMaterials
                 .Select(m => (
                     m,
-                    Usage: TTShaderTextureUsageInformationUtil.GetContainsUVUsage(m),
+                    Usage: TTShaderTextureUsageInformationUtil.GetContainsUVTransformUsage(m),
                     TextureProperties: m.GetTexturePropertyNames().ToHashSet()
                 ))
                 .Select(kv => (
                     kv.m,
-                    kv.Usage.Where(u => (((int)u.Value) - 1) == (int)atlasingTargetUVChannel)
+                    kv.Usage.Where(u => (((int)u.Value.UVChannel) - 1) == (int)atlasingTargetUVChannel)
+                        .Where(u => TTShaderTextureUsageInformationUtil.RequiresBump2ndOriginalUVPreservation(u.Key, u.Value, atlasingTargetUVChannel) is false)
                         .Where(u => kv.TextureProperties.Contains(u.Key))
                         .Select(u => (u.Key, kv.m.GetTexture(u.Key)))
                         .Where(u => u.Item2 != null)

@@ -53,7 +53,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 128 => UsageUVChannel.UV7,
                 _ => UsageUVChannel.Unknown,
             };
-            _uvUsageWriter.WriteTextureUVUsage(textureMaterialPropertyName, ttUVChannel);
+            if (_uvUsageWriter is ITTTextureUVTransformUsageWriter transformUsageWriter)
+                transformUsageWriter.WriteTextureUVUsage(textureMaterialPropertyName, ttUVChannel, uvMatrix);
+            else
+                _uvUsageWriter.WriteTextureUVUsage(textureMaterialPropertyName, ttUVChannel);
         }
 
         public void RegisterVertexIndexUsage()

@@ -197,6 +197,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             AtlasSetting atlasSetting
             , Dictionary<IslandTransform, IslandTransform> source2MovedVirtualIsland
             , Vector2Int atlasedTextureSize
+            , HashSet<Material> preserveBump2ndMaterials
+            , int? preservedOriginalUVChannel
             )
         {
             // var normMeshes = atlasContext.Meshes.Select(m => atlasContext.NormalizeMeshes[m]).ToArray();
@@ -227,6 +229,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 var moveTargetIndexes = atlasedTextureSize.x != atlasedTextureSize.y ? new HashSet<int>() : null;
 
                 var originalUV = meshData.VertexUV;
+                var preserveOriginalUV = preservedOriginalUVChannel.HasValue
+                    && subSet.Where(i => i.HasValue)
+                        .Cast<AtlasSubMeshIndexID>()
+                        .Select(i => MaterialGroupingCtx.GroupMaterials[i.MaterialGroupID])
+                        .Any(group => group.Any(preserveBump2ndMaterials.Contains));
+
                 using var movedUVNativeArray = new NativeArray<Vector2>(originalUV, Allocator.TempJob);
                 var movedUV = movedUVNativeArray.AsSpan();
 
@@ -271,6 +279,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     }
                 }
                 newMesh.SetUVs(writeDefaultUVChannel, movedUVNativeArray);
+                if (preserveOriginalUV && preservedOriginalUVChannel is int originalUVWriteChannel)
+                    newMesh.SetUVs(originalUVWriteChannel, originalUV);
 
                 compiledMeshes[subSetIndex] = newMesh;
                 newMesh.UploadMeshData(false);
