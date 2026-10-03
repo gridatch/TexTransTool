@@ -56,11 +56,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
     class MaterialUVUsageProvider : ITTTextureUVUsageWriter, ITTTextureUVTransformUsageWriter
     {
         Material _material;
+        readonly HashSet<string> _texturePropertyNames;
         Dictionary<string, TextureUVUsage> _uvUsage = new();
         public IReadOnlyDictionary<string, TextureUVUsage> UVUsageWithTransform => _uvUsage;
         public MaterialUVUsageProvider(Material material)
         {
             _material = material;
+            _texturePropertyNames = material.GetTexturePropertyNames().ToHashSet();
         }
         public float GetFloat(string propertyName)
         {
@@ -79,6 +81,18 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         public Vector4 GetVector(string propertyName)
         {
+            const string textureSTSuffix = "_ST";
+            if (propertyName.EndsWith(textureSTSuffix, StringComparison.Ordinal))
+            {
+                var texturePropertyName = propertyName.Substring(0, propertyName.Length - textureSTSuffix.Length);
+                if (_texturePropertyNames.Contains(texturePropertyName))
+                {
+                    var scale = _material.GetTextureScale(texturePropertyName);
+                    var offset = _material.GetTextureOffset(texturePropertyName);
+                    return new Vector4(scale.x, scale.y, offset.x, offset.y);
+                }
+            }
+
             return _material.HasVector(propertyName) ? _material.GetVector(propertyName) : Vector4.zero;
         }
 
