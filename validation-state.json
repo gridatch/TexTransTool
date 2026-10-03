@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.5",
-  "lastDebugSerial": 16,
-  "currentDebugVersion": "0.1.5+debug.16.shader-texture-property-filter.53ab1d2",
-  "currentDebugChange": "shader-texture-property-filter",
-  "currentDebugBranch": "fix/shader-texture-property-filter",
-  "currentDebugCommit": "53ab1d245405360fb24ee3381826e00cfeebbdad",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.5+debug.16.shader-texture-property-filter.53ab1d2.zip"
+  "lastDebugSerial": 17,
+  "currentDebugVersion": "0.1.5+debug.17.independent-texture-uv.da12c3b",
+  "currentDebugChange": "independent-texture-uv",
+  "currentDebugBranch": "fix/independent-texture-uv",
+  "currentDebugCommit": "da12c3b930a3cf6a148294168418bbd4cd04b538",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.5+debug.17.independent-texture-uv.da12c3b.zip"
 }
