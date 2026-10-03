@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.5",
-  "lastDebugSerial": 24,
-  "currentDebugVersion": "0.1.5+debug.24.toon-standard-support.81afe13",
+  "lastDebugSerial": 25,
+  "currentDebugVersion": "0.1.5+debug.25.toon-standard-support.36b5ae9",
   "currentDebugChange": "toon-standard-support",
   "currentDebugBranch": "fix/toon-standard-support",
-  "currentDebugCommit": "81afe13dff435ac8e5bf27e70ae9c867f1856f3b",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.5+debug.24.toon-standard-support.81afe13.zip"
+  "currentDebugCommit": "36b5ae9c0cd3ed8a908b17554bbe83b23ebd361d",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.5+debug.25.toon-standard-support.36b5ae9.zip"
 }
