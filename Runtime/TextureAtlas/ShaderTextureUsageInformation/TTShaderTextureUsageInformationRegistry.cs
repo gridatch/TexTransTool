@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using net.rs64.TexTransTool.Utils;
+using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas
@@ -52,6 +53,25 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var provider = new MaterialUVUsageProvider(material);
             info.GetMaterialTextureUVUsage(provider);
             return provider.UVUsageWithTransform;
+        }
+
+        public static bool RequiresBump2ndOriginalUVPreservation(string propertyName, TextureUVUsage usage, UVChannel atlasTargetUVChannel)
+        {
+            if (propertyName != "_Bump2ndMap") { return false; }
+            if ((((int)usage.UVChannel) - 1) != (int)atlasTargetUVChannel) { return false; }
+            return IsIdentityUVMatrix(usage.UVMatrix) is false;
+        }
+
+        public static bool IsIdentityUVMatrix(Matrix2x3? uvMatrix)
+        {
+            if (uvMatrix is not { } matrix) { return false; }
+
+            return Mathf.Approximately(matrix.M00, 1f)
+                && Mathf.Approximately(matrix.M01, 0f)
+                && Mathf.Approximately(matrix.M02, 0f)
+                && Mathf.Approximately(matrix.M10, 0f)
+                && Mathf.Approximately(matrix.M11, 1f)
+                && Mathf.Approximately(matrix.M12, 0f);
         }
 
 
