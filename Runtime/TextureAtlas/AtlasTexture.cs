@@ -631,6 +631,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 if (tex != null && option.UnsetTextures is not null && option.UnsetTextures.Contains(tex)) { continue; }
 
                 editableTMat.SetTexture(texKV.Key, texKV.Value);
+                editableTMat.SetTextureScale(texKV.Key, Vector2.one);
+                editableTMat.SetTextureOffset(texKV.Key, Vector2.zero);
             }
             return editableTMat;
         }
