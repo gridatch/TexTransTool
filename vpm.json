@@ -80,6 +80,31 @@
             "net.rs64.tex-trans-core": "^0.2.0"
           },
           "zipSHA256": "cf1bb489924ff491819f9215fced809820e092b7c0397d5220353174076de83b"
+        },
+        "0.1.4+ttt.1.0.2.fix-shader-property-guard": {
+          "name": "net.gridatch.tex-trans-tool",
+          "displayName": "TexTransTool (WDT)",
+          "version": "0.1.4+ttt.1.0.2.fix-shader-property-guard",
+          "unity": "2022.3",
+          "description": "Non-destructive modification to Texture!",
+          "author": {
+            "name": "ReinaSakiria",
+            "url": "https://rs64.net/"
+          },
+          "url": "https://github.com/gridatch/TexTransTool/releases/download/wdt-vpm-build-4/net.gridatch.tex-trans-tool-build-4.zip",
+          "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
+          "legacyFolders": {
+            "Packages\\rs64.tex-trans-tool": ""
+          },
+          "dependencies": {
+            "net.rs64.tex-trans-core": "0.2.0",
+            "com.unity.burst": "1.8.0",
+            "com.unity.mathematics": "1.3.2"
+          },
+          "vpmDependencies": {
+            "net.rs64.tex-trans-core": "^0.2.0"
+          },
+          "zipSHA256": "dbead0e26daf4314e9a5ee571b3fd59241dba6ca1256e23ff286105756211cf0"
         }
       }
     }
