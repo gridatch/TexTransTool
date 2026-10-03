@@ -1,0 +1,69 @@
+name: Build Work Package
+
+on:
+  push:
+    branches:
+      - 'fix/**'
+      - 'feat/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Checkout package image assets
+        uses: actions/checkout@v4
+        with:
+          repository: ReinaS-64892/TTT-ImageAssets
+          path: .work-build/image-assets
+
+      - name: Build package
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          base_version="$(jq -r '.version' package.json)"
+          branch_id="$(printf '%s' "$GITHUB_REF_NAME" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^0-9a-z-]+/-/g; s/^-+//; s/-+$//')"
+          short_sha="${GITHUB_SHA:0:7}"
+          work_version="0.0.0-work.${GITHUB_RUN_NUMBER}+ttt.${base_version}.${branch_id}.${short_sha}"
+          package_dir="${RUNNER_TEMP}/net.gridatch.tex-trans-tool"
+
+          rm -rf "$package_dir"
+          mkdir -p "$package_dir"
+
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='DependentUpdater~' \
+            --exclude='.work-build' \
+            ./ "$package_dir/"
+
+          cp .work-build/image-assets/Image/* "$package_dir/Image/"
+
+          jq \
+            --arg name "net.gridatch.tex-trans-tool" \
+            --arg displayName "TexTransTool (WDT Work)" \
+            --arg version "$work_version" \
+            '.name = $name | .displayName = $displayName | .version = $version | del(.url) | del(.repo)' \
+            "$package_dir/package.json" > "$package_dir/package.json.tmp"
+          mv "$package_dir/package.json.tmp" "$package_dir/package.json"
+
+          echo "artifact_name=TexTransTool-WDT-${branch_id}-${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "package_dir=$package_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Upload work package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact_name }}
+          path: ${{ steps.meta.outputs.package_dir }}
+          if-no-files-found: error
+          retention-days: 14
