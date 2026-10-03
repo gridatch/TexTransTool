@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.5",
-  "lastDebugSerial": 23,
-  "currentDebugVersion": "0.1.5+debug.23.independent-texture-uv.4ce7d00",
-  "currentDebugChange": "independent-texture-uv",
-  "currentDebugBranch": "fix/independent-texture-uv",
-  "currentDebugCommit": "4ce7d00157c86d783d3b52752b635f08a039f08c",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.5+debug.23.independent-texture-uv.4ce7d00.zip"
+  "lastDebugSerial": 24,
+  "currentDebugVersion": "0.1.5+debug.24.toon-standard-support.81afe13",
+  "currentDebugChange": "toon-standard-support",
+  "currentDebugBranch": "fix/toon-standard-support",
+  "currentDebugCommit": "81afe13dff435ac8e5bf27e70ae9c867f1856f3b",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.5+debug.24.toon-standard-support.81afe13.zip"
 }

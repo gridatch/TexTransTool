@@ -56,17 +56,17 @@
           },
           "zipSHA256": "cc892372be65e76b3c22580b2b95d24825d76136e00b01dfbc2558f6d9afc600"
         },
-        "0.1.5+debug.23.independent-texture-uv.4ce7d00": {
+        "0.1.5+debug.24.toon-standard-support.81afe13": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.5+debug.23.independent-texture-uv.4ce7d00",
+          "version": "0.1.5+debug.24.toon-standard-support.81afe13",
           "unity": "2022.3",
-          "description": "Debug build 23 for independent-texture-uv from fix/independent-texture-uv at 4ce7d00. Based on WDT 0.1.5 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 24 for toon-standard-support from fix/toon-standard-support at 81afe13. Based on WDT 0.1.5 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.5+debug.23.independent-texture-uv.4ce7d00.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.5+debug.24.toon-standard-support.81afe13.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -79,7 +79,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "cc4d6153eeba9ae52aa9d0ebaa7d0ddda852214cb9d0e8f0286c98b8a9ec881b"
+          "zipSHA256": "fd9f7497c47cc26d483e9cdf693f0d8dcf6d4b2207ebe0265b2826a19424d5eb"
         }
       }
     }
