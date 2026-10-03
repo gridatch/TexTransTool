@@ -1,11 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
-  "versionSeries": "0.1",
-  "lastUsedPatch": 14,
-  "currentValidationVersion": "0.1.14+validation.fix-texture-st-atlas.d9a5fa9",
-  "currentValidationBranch": "fix-texture-st-atlas",
-  "currentValidationCommit": "d9a5fa9b99ba9b5f3f75f5a5c750c63636e110c7",
-  "currentValidationZip": "net.gridatch.tex-trans-tool-0.1.14+validation.fix-texture-st-atlas.d9a5fa9.zip",
   "baseVersion": "0.1.5",
-  "lastDebugSerial": 14
+  "lastDebugSerial": 15,
+  "currentDebugVersion": "0.1.5+debug.15.shader-texture-property-filter.76d217d",
+  "currentDebugChange": "shader-texture-property-filter",
+  "currentDebugBranch": "fix/shader-texture-property-filter",
+  "currentDebugCommit": "76d217dab016842968fa265ada435f8a82b1c542",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.5+debug.15.shader-texture-property-filter.76d217d.zip"
 }
