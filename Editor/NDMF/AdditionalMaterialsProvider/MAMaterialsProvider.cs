@@ -11,35 +11,50 @@ namespace net.rs64.TexTransTool.NDMF.AdditionalMaterials
 {
     internal class MAMaterialsProvider : IAdditionalMaterialsProvider
     {
-        private readonly MaterialSwitchObject?[] _materialSwitchObjects;
+        private readonly ModularAvatarMaterialSetter[] _setters;
 
         public MAMaterialsProvider(BuildContext context)
         {
-            var setters = context.AvatarRootObject
+            _setters = context.AvatarRootObject
                 .GetComponentsInChildren<ModularAvatarMaterialSetter>(true);
-            _materialSwitchObjects = setters
-                .SelectMany(setter => setter.Objects)
-                .OfType<MaterialSwitchObject>()
-                .ToArray();
         }
 
         public HashSet<Material> GetReferencedMaterials()
         {
-            return _materialSwitchObjects
+            return _setters
+                .SelectMany(setter => setter.Objects)
                 .Select(obj => obj?.Material)
                 .UOfType<Material>()
                 .ToHashSet();
         }
 
-        public void ReplaceReferencedMaterials(Dictionary<Material, Material> mapping)
+        public void ReplaceReferencedMaterials(
+            Dictionary<Material, Material> mapping,
+            IReadOnlyCollection<Renderer>? targetRenderers = null)
         {
-            foreach (var obj in _materialSwitchObjects!)
-            {
-                if (obj == null || obj.Material == null) continue;
+            var targetGameObjects = targetRenderers?
+                .Select(renderer => renderer.gameObject)
+                .ToHashSet();
 
-                if (mapping.TryGetValue(obj.Material, out var newMaterial))
+            foreach (var setter in _setters)
+            {
+                foreach (var obj in setter.Objects)
                 {
-                    obj.Material = newMaterial;
+                    if (obj == null || obj.Material == null) { continue; }
+
+                    if (targetGameObjects != null)
+                    {
+                        var targetObject = obj.Object?.Get(setter);
+                        if (targetObject == null || targetGameObjects.Contains(targetObject) is false)
+                        {
+                            continue;
+                        }
+                    }
+
+                    if (mapping.TryGetValue(obj.Material, out var newMaterial))
+                    {
+                        obj.Material = newMaterial;
+                    }
                 }
             }
         }
