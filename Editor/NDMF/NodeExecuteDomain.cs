@@ -110,12 +110,7 @@ namespace net.rs64.TexTransTool.NDMF
         }
         public void ReplaceMaterials(Dictionary<Material, Material> mapping)
         {
-            ReplaceMaterials(mapping, _proxyDomainRenderers);
-        }
-
-        public void ReplaceMaterials(Dictionary<Material, Material> mapping, IEnumerable<Renderer> targetRenderers)
-        {
-            foreach (var dr in targetRenderers)
+            foreach (var dr in _proxyDomainRenderers)
             {
                 RegisterRecall(dr, i => RendererUtility.SwapMaterials(i, mapping));
                 RendererUtility.SwapMaterials(dr, mapping);
