@@ -1,10 +1,8 @@
 #nullable enable
 
-using System;
 using System.Linq;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEditor;
 using nadena.dev.ndmf;
 using nadena.dev.ndmf.animator;
 using net.rs64.TexTransTool.Utils;
@@ -28,64 +26,14 @@ namespace net.rs64.TexTransTool.NDMF.AdditionalMaterials
                 .ToHashSet();
         }
 
-        public void ReplaceReferencedMaterials(
-            Dictionary<Material, Material> mapping,
-            IReadOnlyCollection<Renderer>? targetRenderers = null)
+        public void ReplaceReferencedMaterials(Dictionary<Material, Material> mapping)
         {
-            if (targetRenderers == null)
-            {
-                _animatorServicesContext.AnimationIndex.RewriteObjectCurves(obj => {
-                    if (obj is Material oldMat && mapping.TryGetValue(oldMat, out var newMat)) {
-                        return newMat;
-                    }
-                    return obj;
-                });
-                return;
-            }
-
-#if NDMF_1_8_0_OR_NEWER
-            var targetRendererSet = targetRenderers.ToHashSet();
-
-            _animatorServicesContext.AnimationIndex.RewriteObjectCurves((binding, obj) => {
-                if (obj is not Material oldMat || mapping.TryGetValue(oldMat, out var newMat) is false)
-                {
-                    return obj;
+            _animatorServicesContext.AnimationIndex.RewriteObjectCurves(obj => {
+                if (obj is Material oldMat && mapping.TryGetValue(oldMat, out var newMat)) {
+                    return newMat;
                 }
-
-                return BindingTargetsRenderer(binding, targetRendererSet) ? newMat : obj;
+                return obj;
             });
-#else
-            var hasAmbiguousMaterialCurve = _animatorServicesContext.AnimationIndex
-                .GetPPtrReferencedObjects
-                .OfType<Material>()
-                .Any(mapping.ContainsKey);
-
-            if (hasAmbiguousMaterialCurve)
-            {
-                throw new InvalidOperationException(
-                    "TexTransTool: Renderer-scoped AtlasTexture targeting requires NDMF 1.8.0 or newer when target materials are referenced by animation object curves."
-                );
-            }
-#endif
         }
-
-#if NDMF_1_8_0_OR_NEWER
-        private bool BindingTargetsRenderer(
-            EditorCurveBinding binding,
-            HashSet<Renderer> targetRenderers)
-        {
-            if (typeof(Renderer).IsAssignableFrom(binding.type) is false) { return false; }
-
-            var targetObject = _animatorServicesContext.ObjectPathRemapper
-                .GetObjectForPath(binding.path);
-
-            if (targetObject == null) { return false; }
-
-            return targetObject
-                .GetComponents(binding.type)
-                .OfType<Renderer>()
-                .Any(targetRenderers.Contains);
-        }
-#endif
     }
 }
