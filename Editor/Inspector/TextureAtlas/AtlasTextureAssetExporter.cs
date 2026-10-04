@@ -87,7 +87,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (replaceExistingParts)
                 {
                     var targetMeshes = targetRenderers
-                        .Select(renderer => domain.GetMesh(renderer))
+                        .Select(renderer => ((IRendererTargeting)domain).GetMesh(renderer))
                         .Where(mesh => mesh != null)
                         .Cast<Mesh>()
                         .ToHashSet();
