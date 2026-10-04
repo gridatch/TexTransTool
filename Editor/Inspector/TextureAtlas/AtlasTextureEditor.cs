@@ -149,12 +149,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var domainRenderers = domainRoot.GetComponentsInChildren<Renderer>(true);
             using var domain = new NotWorkDomain(domainRenderers, null);
 
-            var selectedMaterials = new List<Material?>();
+            var selectedMaterials = new List<Material>();
             for (var i = 0; i < sAtlasTargetMaterials.arraySize; i += 1)
             {
-                selectedMaterials.Add(
-                    sAtlasTargetMaterials.GetArrayElementAtIndex(i).objectReferenceValue as Material
-                );
+                var material = sAtlasTargetMaterials.GetArrayElementAtIndex(i).objectReferenceValue as Material;
+                if (material != null) { selectedMaterials.Add(material); }
             }
 
             var candidateRenderers = AtlasTexture.GetAtlasCandidateRenderers(
