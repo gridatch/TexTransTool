@@ -106,17 +106,17 @@
           },
           "zipSHA256": "a4c4d7ed2a3a1124c4ed9407e1384e9f63d892c7a5abf8dc03b6cd0328c65064"
         },
-        "0.1.7+debug.78.persistent-atlas-bake.1d1d233": {
+        "0.1.7+debug.79.persistent-atlas-bake.2309bfc": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.7+debug.78.persistent-atlas-bake.1d1d233",
+          "version": "0.1.7+debug.79.persistent-atlas-bake.2309bfc",
           "unity": "2022.3",
-          "description": "Debug build 78 for persistent-atlas-bake from feat/persistent-atlas-bake at 1d1d233. Based on WDT 0.1.7 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 79 for persistent-atlas-bake from feat/persistent-atlas-bake at 2309bfc. Based on WDT 0.1.7 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.7+debug.78.persistent-atlas-bake.1d1d233.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.7+debug.79.persistent-atlas-bake.2309bfc.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -129,7 +129,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "3ed21c3124d7293955b767f96c46dec16ce55f8f507ee3e824bd72038a3e4574"
+          "zipSHA256": "5e542ed508dfac50ca7c6f6610e45ca5b4e4c578dcea82f3a5dcc41581e9d99a"
         }
       }
     }
