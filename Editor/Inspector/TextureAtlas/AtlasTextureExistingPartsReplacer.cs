@@ -11,9 +11,9 @@ using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
-    internal static class AtlasTextureExistingPartsReplacer
+    internal static class AtlasTextureBaker
     {
-        internal static void ReplaceExistingParts(AtlasTexture atlasTexture)
+        internal static void Bake(AtlasTexture atlasTexture)
         {
             PreviewUtility.ExitPreviews();
 
@@ -24,7 +24,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
-            var outputAssetPath = GetExistingPartsOutputAssetPath(domainRoot, atlasTexture);
+            var outputAssetPath = GetBakeOutputAssetPath(domainRoot, atlasTexture);
 
             var textureAssetPath = outputAssetPath + "/Textures";
             var materialAssetPath = outputAssetPath + "/Materials";
@@ -138,7 +138,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     AssetDatabase.SaveAssets();
                     AssetDatabase.Refresh();
 
-                    ApplyExistingPartsReplacement(
+                    ApplyBakedAtlas(
                         domainRoot,
                         targetRenderers,
                         rendererMeshMap,
@@ -153,7 +153,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     }
 
                     Debug.Log(
-                        $"TexTransTool: Existing parts replaced with persistent atlas assets at {outputAssetPath} " +
+                        $"TexTransTool: Atlas baked to persistent assets and applied at {outputAssetPath} " +
                         $"({persistentTextures.Values.Distinct().Count()} textures, " +
                         $"{generatedMaterials.Distinct().Count()} materials, " +
                         $"{atlasedMeshes.Length} meshes)."
@@ -241,7 +241,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (rendererMeshMap.Count != expectedRendererCount)
             {
                 Debug.LogError(
-                    $"TexTransTool: Existing-parts replacement aborted because only {rendererMeshMap.Count} of {expectedRendererCount} target renderers received an atlas mesh."
+                    $"TexTransTool: Atlas bake aborted because only {rendererMeshMap.Count} of {expectedRendererCount} target renderers received an atlas mesh."
                 );
                 return false;
             }
@@ -256,7 +256,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (sourceMesh.blendShapeCount != atlasMesh.blendShapeCount)
                 {
                     Debug.LogError(
-                        $"TexTransTool: Existing-parts replacement aborted because blend shape count changed on {renderer.name}."
+                        $"TexTransTool: Atlas bake aborted because blend shape count changed on {renderer.name}."
                     );
                     return false;
                 }
@@ -266,7 +266,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     if (sourceMesh.GetBlendShapeName(shapeIndex) != atlasMesh.GetBlendShapeName(shapeIndex))
                     {
                         Debug.LogError(
-                            $"TexTransTool: Existing-parts replacement aborted because blend shape order/name changed on {renderer.name}."
+                            $"TexTransTool: Atlas bake aborted because blend shape order/name changed on {renderer.name}."
                         );
                         return false;
                     }
@@ -276,7 +276,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     if (sourceFrameCount != atlasFrameCount)
                     {
                         Debug.LogError(
-                            $"TexTransTool: Existing-parts replacement aborted because blend shape frame count changed on {renderer.name}."
+                            $"TexTransTool: Atlas bake aborted because blend shape frame count changed on {renderer.name}."
                         );
                         return false;
                     }
@@ -289,7 +289,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                             ) is false)
                         {
                             Debug.LogError(
-                                $"TexTransTool: Existing-parts replacement aborted because blend shape frame weights changed on {renderer.name}."
+                                $"TexTransTool: Atlas bake aborted because blend shape frame weights changed on {renderer.name}."
                             );
                             return false;
                         }
@@ -300,7 +300,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     && sourceMesh.bindposes.Length != atlasMesh.bindposes.Length)
                 {
                     Debug.LogError(
-                        $"TexTransTool: Existing-parts replacement aborted because bindpose count changed on {renderer.name}."
+                        $"TexTransTool: Atlas bake aborted because bindpose count changed on {renderer.name}."
                     );
                     return false;
                 }
@@ -345,15 +345,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (hits.Count > 20) detail += $"\n... and {hits.Count - 20} more";
 
             Debug.LogError(
-                "TexTransTool: Existing-parts replacement was aborted because AnimationClip object-reference curves " +
+                "TexTransTool: Atlas bake was aborted because AnimationClip object-reference curves " +
                 "directly restore one or more source Mesh/Material assets.\n" + detail
             );
 
             EditorUtility.DisplayDialog(
                 "TexTransTool",
-                "既存パーツ差し替えを中断しました。\n\n" +
-                "差し替え元の Mesh / Material を直接参照する AnimationClip が見つかりました。\n" +
-                "このまま差し替えると、アニメーション再生時に旧アセットへ戻る可能性があります。\n\n" +
+                "アトラス化のベイクを中断しました。\n\n" +
+                "ベイク前の Mesh / Material を直接参照する AnimationClip が見つかりました。\n" +
+                "このままベイクすると、アニメーション再生時に旧アセットへ戻る可能性があります。\n\n" +
                 "Console に該当 Clip / binding を出力しています。",
                 "OK"
             );
@@ -361,7 +361,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return false;
         }
 
-        private static void ApplyExistingPartsReplacement(
+        private static void ApplyBakedAtlas(
             GameObject domainRoot,
             Renderer[] targetRenderers,
             IReadOnlyDictionary<Renderer, Mesh> rendererMeshMap,
@@ -386,7 +386,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 Undo.RecordObjects(
                     undoObjects.ToArray(),
-                    "TexTransTool: 既存パーツ差し替え"
+                    "TexTransTool: アトラス化をベイク"
                 );
             }
 
@@ -573,7 +573,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
         }
 
-        private static string GetExistingPartsOutputAssetPath(
+        private static string GetBakeOutputAssetPath(
             GameObject domainRoot,
             AtlasTexture atlasTexture)
         {
