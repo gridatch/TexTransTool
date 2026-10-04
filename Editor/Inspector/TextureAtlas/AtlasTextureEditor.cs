@@ -144,10 +144,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 "AtlasTexture:label:BakeSection".Glc(),
                 EditorStyles.boldLabel
             );
-            EditorGUILayout.LabelField(
-                "AtlasTexture:info:BakeSectionDescription".GetLocalize(),
-                EditorStyles.wordWrappedLabel
-            );
 
             EditorGUILayout.Space(2f);
             DrawBakeTargetRenderers();
