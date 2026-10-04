@@ -27,22 +27,30 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
-            var selectedFolder = EditorUtility.OpenFolderPanel(
-                replaceExistingParts ? "Replace Existing Parts" : "Export Atlas Assets",
-                Application.dataPath,
-                atlasTexture.gameObject.name + "_Atlas"
-            );
-            if (string.IsNullOrEmpty(selectedFolder)) { return; }
-
-            var outputAssetPath = ToAssetPath(selectedFolder);
-            if (outputAssetPath == null)
+            string? outputAssetPath;
+            if (replaceExistingParts)
             {
-                EditorUtility.DisplayDialog(
-                    "TexTransTool",
-                    "The export destination must be inside this project's Assets folder.",
-                    "OK"
+                outputAssetPath = GetExistingPartsOutputAssetPath(domainRoot, atlasTexture);
+            }
+            else
+            {
+                var selectedFolder = EditorUtility.OpenFolderPanel(
+                    "Export Atlas Assets",
+                    Application.dataPath,
+                    atlasTexture.gameObject.name + "_Atlas"
                 );
-                return;
+                if (string.IsNullOrEmpty(selectedFolder)) { return; }
+
+                outputAssetPath = ToAssetPath(selectedFolder);
+                if (outputAssetPath == null)
+                {
+                    EditorUtility.DisplayDialog(
+                        "TexTransTool",
+                        "The export destination must be inside this project's Assets folder.",
+                        "OK"
+                    );
+                    return;
+                }
             }
 
             var textureAssetPath = outputAssetPath + "/Textures";
@@ -613,6 +621,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var assetPath = AssetDatabase.GenerateUniqueAssetPath(meshAssetPath + "/" + fileName);
                 AssetDatabase.CreateAsset(mesh, assetPath);
             }
+        }
+
+        private static string GetExistingPartsOutputAssetPath(
+            GameObject domainRoot,
+            AtlasTexture atlasTexture)
+        {
+            return "Assets/TexTransToolGenerated/AtlasTexture/"
+                + SanitizeFileName(domainRoot.name)
+                + "/"
+                + SanitizeFileName(atlasTexture.gameObject.name);
         }
 
         private static string? ToAssetPath(string fullPath)
