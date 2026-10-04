@@ -13,7 +13,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
     internal static class AtlasTextureAssetExporter
     {
-        internal static void Export(AtlasTexture atlasTexture)
+        internal static void Export(AtlasTexture atlasTexture) => Process(atlasTexture, false);
+        internal static void ReplaceExistingParts(AtlasTexture atlasTexture) => Process(atlasTexture, true);
+
+        private static void Process(AtlasTexture atlasTexture, bool replaceExistingParts)
         {
             PreviewUtility.ExitPreviews();
 
@@ -25,7 +28,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             var selectedFolder = EditorUtility.OpenFolderPanel(
-                "Export Atlas Assets",
+                replaceExistingParts ? "Replace Existing Parts" : "Export Atlas Assets",
                 Application.dataPath,
                 atlasTexture.gameObject.name + "_Atlas"
             );
@@ -81,6 +84,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     return;
                 }
 
+                if (replaceExistingParts
+                    && ValidateAnimationMaterialReferences(domainRoot, targetMaterials) is false)
+                {
+                    return;
+                }
+
                 var atlasResult = AtlasTexture.DoAtlasTexture(
                     domain,
                     engine,
@@ -95,6 +104,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 using var atlasContext = atlasResult.AtlasContext!;
                 var atlasedMeshes = atlasResult.AtlasedMeshes!;
                 var compiledAtlasTextures = atlasResult.CompiledAtlasTextures!;
+
+                Dictionary<Renderer, Mesh>? rendererMeshMap = null;
+                if (replaceExistingParts)
+                {
+                    rendererMeshMap = BuildRendererMeshMap(domain, targetRenderers, atlasContext, atlasedMeshes);
+                    if (ValidateMeshCompatibility(domain, rendererMeshMap) is false)
+                    {
+                        return;
+                    }
+                }
 
                 var experimentalOptions = atlasTexture.GetComponent<AtlasTextureExperimentalFeature>();
                 if (experimentalOptions == null) { experimentalOptions = null; }
@@ -146,6 +165,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     AssetDatabase.SaveAssets();
                     AssetDatabase.Refresh();
 
+                    if (replaceExistingParts)
+                    {
+                        ApplyExistingPartsReplacement(
+                            domainRoot,
+                            targetRenderers,
+                            rendererMeshMap!,
+                            materialMap
+                        );
+                    }
+
                     var folderAsset = AssetDatabase.LoadAssetAtPath<DefaultAsset>(outputAssetPath);
                     if (folderAsset != null)
                     {
@@ -153,8 +182,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         EditorGUIUtility.PingObject(folderAsset);
                     }
 
+                    var action = replaceExistingParts
+                        ? "Existing parts replaced with persistent atlas assets"
+                        : "Atlas assets exported";
+
                     Debug.Log(
-                        $"TexTransTool: Atlas assets exported to {outputAssetPath} " +
+                        $"TexTransTool: {action} at {outputAssetPath} " +
                         $"({persistentTextures.Values.Distinct().Count()} textures, " +
                         $"{generatedMaterials.Distinct().Count()} materials, " +
                         $"{atlasedMeshes.Length} meshes)."
@@ -188,6 +221,238 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             finally
             {
                 if (engine is IDisposable disposableEngine) disposableEngine.Dispose();
+            }
+        }
+
+        private static Dictionary<Renderer, Mesh> BuildRendererMeshMap(
+            IDomain domain,
+            Renderer[] targetRenderers,
+            AtlasContext atlasContext,
+            Mesh[] atlasedMeshes)
+        {
+            var rendererMeshMap = new Dictionary<Renderer, Mesh>();
+
+            foreach (var renderer in targetRenderers)
+            {
+                var mesh = domain.GetMesh(renderer);
+                if (mesh == null) { continue; }
+                if (atlasContext.NormalizedMeshCtx.Origin2NormalizedMesh.ContainsKey(mesh) is false) { continue; }
+
+                var normalizedMesh = atlasContext.NormalizedMeshCtx.Origin2NormalizedMesh[mesh];
+                var meshID = atlasContext.NormalizedMeshCtx.Normalized2MeshID[normalizedMesh];
+                var matIDs = domain.GetMaterials(renderer)
+                    .Select(m => m != null ? atlasContext.MaterialGroupingCtx.GetMaterialGroupID(m) : -1)
+                    .ToArray();
+
+                var subSet = new AtlasSubMeshIndexID?[matIDs.Length];
+                for (var i = 0; i < subSet.Length; i += 1)
+                {
+                    var matID = matIDs[i];
+                    if (matID is -1) { subSet[i] = null; }
+                    else { subSet[i] = new AtlasSubMeshIndexID(meshID, i, matID); }
+                }
+
+                var identicalSubSetID = atlasContext.AtlasSubMeshIndexSetCtx.AtlasSubSets.FindIndex(candidate =>
+                {
+                    if (candidate.Length == subSet.Length && candidate.SequenceEqual(subSet)) { return true; }
+                    if (AtlasSubMeshIndexIDSetContext.SubPartEqual(candidate, subSet) is false) { return false; }
+                    return candidate.Length >= subSet.Length;
+                });
+
+                if (identicalSubSetID is -1) { continue; }
+
+                rendererMeshMap[renderer] = atlasedMeshes[identicalSubSetID];
+            }
+
+            return rendererMeshMap;
+        }
+
+        private static bool ValidateMeshCompatibility(
+            IDomain domain,
+            IReadOnlyDictionary<Renderer, Mesh> rendererMeshMap)
+        {
+            foreach (var pair in rendererMeshMap)
+            {
+                var renderer = pair.Key;
+                var atlasMesh = pair.Value;
+                var sourceMesh = domain.GetMesh(renderer);
+                if (sourceMesh == null) { continue; }
+
+                if (sourceMesh.blendShapeCount != atlasMesh.blendShapeCount)
+                {
+                    Debug.LogError(
+                        $"TexTransTool: Existing-parts replacement aborted because blend shape count changed on {renderer.name}."
+                    );
+                    return false;
+                }
+
+                for (var shapeIndex = 0; shapeIndex < sourceMesh.blendShapeCount; shapeIndex += 1)
+                {
+                    if (sourceMesh.GetBlendShapeName(shapeIndex) != atlasMesh.GetBlendShapeName(shapeIndex))
+                    {
+                        Debug.LogError(
+                            $"TexTransTool: Existing-parts replacement aborted because blend shape order/name changed on {renderer.name}."
+                        );
+                        return false;
+                    }
+
+                    var sourceFrameCount = sourceMesh.GetBlendShapeFrameCount(shapeIndex);
+                    var atlasFrameCount = atlasMesh.GetBlendShapeFrameCount(shapeIndex);
+                    if (sourceFrameCount != atlasFrameCount)
+                    {
+                        Debug.LogError(
+                            $"TexTransTool: Existing-parts replacement aborted because blend shape frame count changed on {renderer.name}."
+                        );
+                        return false;
+                    }
+
+                    for (var frameIndex = 0; frameIndex < sourceFrameCount; frameIndex += 1)
+                    {
+                        if (Mathf.Approximately(
+                                sourceMesh.GetBlendShapeFrameWeight(shapeIndex, frameIndex),
+                                atlasMesh.GetBlendShapeFrameWeight(shapeIndex, frameIndex)
+                            ) is false)
+                        {
+                            Debug.LogError(
+                                $"TexTransTool: Existing-parts replacement aborted because blend shape frame weights changed on {renderer.name}."
+                            );
+                            return false;
+                        }
+                    }
+                }
+
+                if (renderer is SkinnedMeshRenderer
+                    && sourceMesh.bindposes.Length != atlasMesh.bindposes.Length)
+                {
+                    Debug.LogError(
+                        $"TexTransTool: Existing-parts replacement aborted because bindpose count changed on {renderer.name}."
+                    );
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool ValidateAnimationMaterialReferences(
+            GameObject domainRoot,
+            HashSet<Material> targetMaterials)
+        {
+            var hits = new List<string>();
+            var dependencies = EditorUtility.CollectDependencies(new UnityEngine.Object[] { domainRoot });
+
+            foreach (var clip in dependencies.OfType<AnimationClip>().Distinct())
+            {
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    if (binding.propertyName.StartsWith("m_Materials.Array.data[", StringComparison.Ordinal) is false)
+                        continue;
+
+                    var keyframes = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+                    if (keyframes.Any(frame => frame.value is Material material && targetMaterials.Contains(material)))
+                    {
+                        hits.Add($"{clip.name}: {binding.path} / {binding.propertyName}");
+                    }
+                }
+            }
+
+            if (hits.Count == 0) { return true; }
+
+            var detail = string.Join("\n", hits.Take(20));
+            if (hits.Count > 20) detail += $"\n... and {hits.Count - 20} more";
+
+            Debug.LogError(
+                "TexTransTool: Existing-parts replacement was aborted because AnimationClip object-reference curves " +
+                "directly restore one or more source materials.\n" + detail
+            );
+
+            EditorUtility.DisplayDialog(
+                "TexTransTool",
+                "既存パーツ差し替えを中断しました。\n\n" +
+                "対象マテリアルを直接差し替える AnimationClip が見つかりました。\n" +
+                "このまま差し替えると、アニメーション再生時に旧マテリアルへ戻る可能性があります。\n\n" +
+                "Console に該当 Clip / binding を出力しています。",
+                "OK"
+            );
+
+            return false;
+        }
+
+        private static void ApplyExistingPartsReplacement(
+            GameObject domainRoot,
+            Renderer[] targetRenderers,
+            IReadOnlyDictionary<Renderer, Mesh> rendererMeshMap,
+            IReadOnlyDictionary<Material, Material> materialMap)
+        {
+            var undoObjects = new HashSet<UnityEngine.Object>();
+
+            foreach (var renderer in targetRenderers)
+            {
+                if (renderer == null) { continue; }
+
+                undoObjects.Add(renderer);
+
+                if (renderer is MeshRenderer)
+                {
+                    var meshFilter = renderer.GetComponent<MeshFilter>();
+                    if (meshFilter != null) undoObjects.Add(meshFilter);
+                }
+            }
+
+            if (undoObjects.Count != 0)
+            {
+                Undo.RecordObjects(
+                    undoObjects.ToArray(),
+                    "TexTransTool: 既存パーツ差し替え"
+                );
+            }
+
+            foreach (var renderer in targetRenderers)
+            {
+                if (renderer == null) { continue; }
+
+                if (rendererMeshMap.TryGetValue(renderer, out var atlasMesh))
+                {
+                    switch (renderer)
+                    {
+                        case SkinnedMeshRenderer skinnedMeshRenderer:
+                            skinnedMeshRenderer.sharedMesh = atlasMesh;
+                            EditorUtility.SetDirty(skinnedMeshRenderer);
+                            RecordPrefabOverride(skinnedMeshRenderer);
+                            break;
+
+                        case MeshRenderer:
+                            var meshFilter = renderer.GetComponent<MeshFilter>();
+                            if (meshFilter != null)
+                            {
+                                meshFilter.sharedMesh = atlasMesh;
+                                EditorUtility.SetDirty(meshFilter);
+                                RecordPrefabOverride(meshFilter);
+                            }
+                            break;
+                    }
+                }
+
+                var currentMaterials = renderer.sharedMaterials;
+                renderer.sharedMaterials = currentMaterials
+                    .Select(material =>
+                        material != null && materialMap.TryGetValue(material, out var replacement)
+                            ? replacement
+                            : material
+                    )
+                    .ToArray();
+
+                EditorUtility.SetDirty(renderer);
+                RecordPrefabOverride(renderer);
+            }
+
+            if (domainRoot.scene.IsValid())
+                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(domainRoot.scene);
+
+            static void RecordPrefabOverride(UnityEngine.Object obj)
+            {
+                if (PrefabUtility.IsPartOfPrefabInstance(obj))
+                    PrefabUtility.RecordPrefabInstancePropertyModifications(obj);
             }
         }
 
