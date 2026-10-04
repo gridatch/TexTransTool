@@ -17,6 +17,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             PreviewUtility.ExitPreviews();
 
+            var bakeName = atlasTexture.BakeName?.Trim() ?? "";
+            if (TryValidateBakeName(bakeName, out var bakeNameError) is false)
+            {
+                EditorUtility.DisplayDialog("TexTransTool", bakeNameError, "OK");
+                return;
+            }
+
             var domainRoot = DomainMarkerFinder.FindMarker(atlasTexture.gameObject);
             if (domainRoot == null)
             {
@@ -24,7 +31,53 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
-            var outputAssetPath = GetBakeOutputAssetPath(domainRoot, atlasTexture);
+            var outputAssetPath = GetBakeOutputAssetPath(bakeName);
+            var manifestAssetPath = outputAssetPath + "/BakeManifest.asset";
+            var outputExists = Directory.Exists(AssetPathToFullPath(outputAssetPath));
+
+            AtlasTextureBakeManifest? manifest = null;
+            AtlasTextureBakeManifest.Entry[] previousEntries = Array.Empty<AtlasTextureBakeManifest.Entry>();
+
+            if (outputExists)
+            {
+                if (EditorUtility.DisplayDialog(
+                        "TexTransTool",
+                        $"ベイク名「{bakeName}」は既に存在します。上書きしますか？",
+                        "上書き",
+                        "キャンセル"
+                    ) is false)
+                {
+                    return;
+                }
+
+                manifest = AssetDatabase.LoadAssetAtPath<AtlasTextureBakeManifest>(manifestAssetPath);
+                if (manifest == null)
+                {
+                    EditorUtility.DisplayDialog(
+                        "TexTransTool",
+                        $"ベイク名「{bakeName}」の管理情報が見つからないため、安全に上書きできません。",
+                        "OK"
+                    );
+                    return;
+                }
+
+                previousEntries = manifest.Entries
+                    .Where(entry =>
+                        entry != null
+                        && string.IsNullOrEmpty(entry.Role) is false
+                        && string.IsNullOrEmpty(entry.AssetPath) is false
+                    )
+                    .Select(entry => new AtlasTextureBakeManifest.Entry
+                    {
+                        Role = entry.Role,
+                        AssetPath = entry.AssetPath,
+                    })
+                    .ToArray();
+            }
+
+            var previousRoleAssets = previousEntries
+                .GroupBy(entry => entry.Role)
+                .ToDictionary(group => group.Key, group => group.Last().AssetPath);
 
             var textureAssetPath = outputAssetPath + "/Textures";
             var materialAssetPath = outputAssetPath + "/Materials";
@@ -105,13 +158,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 var temporaryDownloadedTextures = new List<Texture2D>();
                 var generatedMaterials = new List<Material>();
+                var currentEntries = new List<AtlasTextureBakeManifest.Entry>();
 
                 try
                 {
                     var persistentTextures = SaveTextures(
                         engine,
                         tunedAtlasTextures,
+                        bakeName,
+                        outputAssetPath,
                         textureAssetPath,
+                        previousRoleAssets,
+                        currentEntries,
                         temporaryDownloadedTextures
                     );
 
@@ -130,8 +188,33 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
 
                     generatedMaterials.AddRange(materialMap.Values.Distinct());
-                    SaveMaterials(generatedMaterials, materialAssetPath);
-                    SaveMeshes(atlasedMeshes, meshAssetPath);
+
+                    var persistentMaterialMap = SaveMaterials(
+                        materialMap,
+                        bakeName,
+                        outputAssetPath,
+                        materialAssetPath,
+                        previousRoleAssets,
+                        currentEntries
+                    );
+
+                    var persistentRendererMeshMap = SaveMeshes(
+                        domainRoot,
+                        rendererMeshMap,
+                        bakeName,
+                        outputAssetPath,
+                        meshAssetPath,
+                        previousRoleAssets,
+                        currentEntries
+                    );
+
+                    DeleteStaleManagedAssets(previousEntries, currentEntries);
+                    manifest = SaveManifest(
+                        manifest,
+                        manifestAssetPath,
+                        bakeName,
+                        currentEntries
+                    );
 
                     AssetDatabase.SaveAssets();
                     AssetDatabase.Refresh();
@@ -139,8 +222,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     ApplyBakedAtlas(
                         domainRoot,
                         targetRenderers,
-                        rendererMeshMap,
-                        materialMap
+                        persistentRendererMeshMap,
+                        persistentMaterialMap
                     );
 
                     var folderAsset = AssetDatabase.LoadAssetAtPath<DefaultAsset>(outputAssetPath);
@@ -153,8 +236,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     Debug.Log(
                         $"TexTransTool: Atlas baked to persistent assets and applied at {outputAssetPath} " +
                         $"({persistentTextures.Values.Distinct().Count()} textures, " +
-                        $"{generatedMaterials.Distinct().Count()} materials, " +
-                        $"{atlasedMeshes.Length} meshes)."
+                        $"{persistentMaterialMap.Values.Distinct().Count()} materials, " +
+                        $"{persistentRendererMeshMap.Values.Distinct().Count()} meshes)."
                     );
                 }
                 finally
@@ -475,7 +558,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private static Dictionary<string, Texture2D> SaveTextures(
             ITexTransToolForUnity engine,
             FineTuning.TexFineTuningResult tunedAtlasTextures,
+            string bakeName,
+            string outputAssetPath,
             string textureAssetPath,
+            IReadOnlyDictionary<string, string> previousRoleAssets,
+            List<AtlasTextureBakeManifest.Entry> currentEntries,
             List<Texture2D> temporaryDownloadedTextures)
         {
             var renderTextureToPersistentTexture = new Dictionary<ITTRenderTexture, Texture2D>();
@@ -496,11 +583,33 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 descriptor.WriteFillWarp(downloaded);
                 downloaded.Apply(descriptor.UseMipMap, false);
 
-                var propertyName = tunedAtlasTextures.RenderTextures
-                    .First(kv => ReferenceEquals(kv.Value, renderTexture))
-                    .Key;
-                var fileName = SanitizeFileName("AtlasTex" + propertyName) + ".png";
-                var assetPath = AssetDatabase.GenerateUniqueAssetPath(textureAssetPath + "/" + fileName);
+                var propertyNames = tunedAtlasTextures.RenderTextures
+                    .Where(kv => ReferenceEquals(kv.Value, renderTexture))
+                    .Select(kv => kv.Key)
+                    .OrderBy(name => name, StringComparer.Ordinal)
+                    .ToArray();
+
+                var role = "Texture:" + string.Join("|", propertyNames);
+                var displayProperty = string.Join(
+                    "_",
+                    propertyNames
+                        .Select(NormalizeTexturePropertyName)
+                        .Where(name => string.IsNullOrEmpty(name) is false)
+                );
+                if (string.IsNullOrEmpty(displayProperty)) displayProperty = "Texture";
+
+                var desiredAssetPath =
+                    textureAssetPath + "/" +
+                    SanitizeFileName(bakeName + "_" + displayProperty) +
+                    ".png";
+
+                var assetPath = ResolveManagedAssetPath(
+                    role,
+                    desiredAssetPath,
+                    ".png",
+                    outputAssetPath,
+                    previousRoleAssets
+                );
 
                 var pngBytes = ImageConversion.EncodeToPNG(downloaded);
                 File.WriteAllBytes(AssetPathToFullPath(assetPath), pngBytes);
@@ -513,6 +622,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     throw new InvalidOperationException("Failed to import exported atlas texture: " + assetPath);
 
                 renderTextureToPersistentTexture[renderTexture] = persistentTexture;
+                currentEntries.Add(new AtlasTextureBakeManifest.Entry
+                {
+                    Role = role,
+                    AssetPath = assetPath,
+                });
             }
 
             return tunedAtlasTextures.RenderTextures.ToDictionary(
@@ -586,34 +700,316 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
         }
 
-        private static void SaveMaterials(IEnumerable<Material> materials, string materialAssetPath)
+        private static Dictionary<Material, Material> SaveMaterials(
+            IReadOnlyDictionary<Material, Material> materialMap,
+            string bakeName,
+            string outputAssetPath,
+            string materialAssetPath,
+            IReadOnlyDictionary<string, string> previousRoleAssets,
+            List<AtlasTextureBakeManifest.Entry> currentEntries)
         {
-            foreach (var material in materials.Distinct())
+            var generatedToPersistent = new Dictionary<Material, Material>();
+
+            foreach (var group in materialMap.GroupBy(pair => pair.Value))
             {
-                var fileName = SanitizeFileName(material.name) + ".mat";
-                var assetPath = AssetDatabase.GenerateUniqueAssetPath(materialAssetPath + "/" + fileName);
-                AssetDatabase.CreateAsset(material, assetPath);
+                var generatedMaterial = group.Key;
+                var sourceKeys = group
+                    .Select(pair => GetStableMaterialKey(pair.Key))
+                    .OrderBy(key => key, StringComparer.Ordinal)
+                    .ToArray();
+
+                var role = "Material:" + string.Join("|", sourceKeys);
+                var desiredAssetPath =
+                    materialAssetPath + "/" +
+                    SanitizeFileName(bakeName + "_" + generatedMaterial.name) +
+                    ".mat";
+
+                var assetPath = ResolveManagedAssetPath(
+                    role,
+                    desiredAssetPath,
+                    ".mat",
+                    outputAssetPath,
+                    previousRoleAssets
+                );
+
+                var existingMaterial = AssetDatabase.LoadAssetAtPath<Material>(assetPath);
+                Material persistentMaterial;
+
+                if (existingMaterial != null)
+                {
+                    EditorUtility.CopySerialized(generatedMaterial, existingMaterial);
+                    existingMaterial.name = generatedMaterial.name;
+                    EditorUtility.SetDirty(existingMaterial);
+                    persistentMaterial = existingMaterial;
+                }
+                else
+                {
+                    var existingAsset = AssetDatabase.LoadMainAssetAtPath(assetPath);
+                    if (existingAsset != null)
+                    {
+                        throw new InvalidOperationException(
+                            $"Cannot update Atlas bake material because another asset exists at {assetPath}."
+                        );
+                    }
+
+                    AssetDatabase.CreateAsset(generatedMaterial, assetPath);
+                    persistentMaterial = generatedMaterial;
+                }
+
+                generatedToPersistent[generatedMaterial] = persistentMaterial;
+                currentEntries.Add(new AtlasTextureBakeManifest.Entry
+                {
+                    Role = role,
+                    AssetPath = assetPath,
+                });
             }
+
+            return materialMap.ToDictionary(
+                pair => pair.Key,
+                pair => generatedToPersistent[pair.Value]
+            );
         }
 
-        private static void SaveMeshes(IEnumerable<Mesh> meshes, string meshAssetPath)
-        {
-            foreach (var mesh in meshes.Distinct())
-            {
-                var fileName = SanitizeFileName(mesh.name) + ".asset";
-                var assetPath = AssetDatabase.GenerateUniqueAssetPath(meshAssetPath + "/" + fileName);
-                AssetDatabase.CreateAsset(mesh, assetPath);
-            }
-        }
-
-        private static string GetBakeOutputAssetPath(
+        private static Dictionary<Renderer, Mesh> SaveMeshes(
             GameObject domainRoot,
-            AtlasTexture atlasTexture)
+            IReadOnlyDictionary<Renderer, Mesh> rendererMeshMap,
+            string bakeName,
+            string outputAssetPath,
+            string meshAssetPath,
+            IReadOnlyDictionary<string, string> previousRoleAssets,
+            List<AtlasTextureBakeManifest.Entry> currentEntries)
+        {
+            var generatedToPersistent = new Dictionary<Mesh, Mesh>();
+
+            foreach (var group in rendererMeshMap.GroupBy(pair => pair.Value))
+            {
+                var generatedMesh = group.Key;
+                var renderers = group.Select(pair => pair.Key).ToArray();
+                var rendererKeys = renderers
+                    .Select(renderer => GetStableRendererKey(domainRoot, renderer))
+                    .OrderBy(key => key, StringComparer.Ordinal)
+                    .ToArray();
+
+                var role = "Mesh:" + string.Join("|", rendererKeys);
+                var displayName = renderers.Length == 1
+                    ? renderers[0].gameObject.name
+                    : generatedMesh.name;
+
+                if (string.IsNullOrWhiteSpace(displayName))
+                    displayName = "Mesh";
+
+                var desiredAssetPath =
+                    meshAssetPath + "/" +
+                    SanitizeFileName(bakeName + "_" + displayName) +
+                    ".asset";
+
+                var assetPath = ResolveManagedAssetPath(
+                    role,
+                    desiredAssetPath,
+                    ".asset",
+                    outputAssetPath,
+                    previousRoleAssets
+                );
+
+                var existingMesh = AssetDatabase.LoadAssetAtPath<Mesh>(assetPath);
+                Mesh persistentMesh;
+
+                if (existingMesh != null)
+                {
+                    EditorUtility.CopySerialized(generatedMesh, existingMesh);
+                    existingMesh.name = generatedMesh.name;
+                    EditorUtility.SetDirty(existingMesh);
+                    persistentMesh = existingMesh;
+                }
+                else
+                {
+                    var existingAsset = AssetDatabase.LoadMainAssetAtPath(assetPath);
+                    if (existingAsset != null)
+                    {
+                        throw new InvalidOperationException(
+                            $"Cannot update Atlas bake mesh because another asset exists at {assetPath}."
+                        );
+                    }
+
+                    AssetDatabase.CreateAsset(generatedMesh, assetPath);
+                    persistentMesh = generatedMesh;
+                }
+
+                generatedToPersistent[generatedMesh] = persistentMesh;
+                currentEntries.Add(new AtlasTextureBakeManifest.Entry
+                {
+                    Role = role,
+                    AssetPath = assetPath,
+                });
+            }
+
+            return rendererMeshMap.ToDictionary(
+                pair => pair.Key,
+                pair => generatedToPersistent[pair.Value]
+            );
+        }
+
+        private static AtlasTextureBakeManifest SaveManifest(
+            AtlasTextureBakeManifest? manifest,
+            string manifestAssetPath,
+            string bakeName,
+            IEnumerable<AtlasTextureBakeManifest.Entry> entries)
+        {
+            var isNew = manifest == null;
+            manifest ??= ScriptableObject.CreateInstance<AtlasTextureBakeManifest>();
+
+            manifest.Version = AtlasTextureBakeManifest.CurrentVersion;
+            manifest.BakeName = bakeName;
+            manifest.Entries = entries
+                .OrderBy(entry => entry.Role, StringComparer.Ordinal)
+                .Select(entry => new AtlasTextureBakeManifest.Entry
+                {
+                    Role = entry.Role,
+                    AssetPath = entry.AssetPath,
+                })
+                .ToList();
+
+            if (isNew)
+                AssetDatabase.CreateAsset(manifest, manifestAssetPath);
+            else
+                EditorUtility.SetDirty(manifest);
+
+            return manifest;
+        }
+
+        private static void DeleteStaleManagedAssets(
+            IEnumerable<AtlasTextureBakeManifest.Entry> previousEntries,
+            IEnumerable<AtlasTextureBakeManifest.Entry> currentEntries)
+        {
+            var current = currentEntries.ToArray();
+            var currentPaths = current
+                .Select(entry => entry.AssetPath)
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var previous in previousEntries)
+            {
+                var matchingRole = current.FirstOrDefault(entry => entry.Role == previous.Role);
+                if (matchingRole != null && matchingRole.AssetPath == previous.AssetPath)
+                    continue;
+
+                if (currentPaths.Contains(previous.AssetPath))
+                    continue;
+
+                if (string.IsNullOrEmpty(previous.AssetPath) is false)
+                    AssetDatabase.DeleteAsset(previous.AssetPath);
+            }
+        }
+
+        private static string ResolveManagedAssetPath(
+            string role,
+            string desiredAssetPath,
+            string expectedExtension,
+            string outputAssetPath,
+            IReadOnlyDictionary<string, string> previousRoleAssets)
+        {
+            if (previousRoleAssets.TryGetValue(role, out var previousAssetPath)
+                && IsPathInside(previousAssetPath, outputAssetPath)
+                && string.Equals(
+                    Path.GetExtension(previousAssetPath),
+                    expectedExtension,
+                    StringComparison.OrdinalIgnoreCase
+                ))
+            {
+                return previousAssetPath;
+            }
+
+            return AssetDatabase.GenerateUniqueAssetPath(desiredAssetPath);
+        }
+
+        private static bool IsPathInside(string assetPath, string folderAssetPath)
+        {
+            var normalizedFolder = folderAssetPath.TrimEnd('/') + "/";
+            return assetPath.StartsWith(normalizedFolder, StringComparison.Ordinal);
+        }
+
+        private static string GetStableMaterialKey(Material material)
+        {
+            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(
+                    material,
+                    out var guid,
+                    out long localId
+                )
+                && string.IsNullOrEmpty(guid) is false)
+            {
+                return guid + ":" + localId;
+            }
+
+            return material.name + "|" + (material.shader != null ? material.shader.name : "");
+        }
+
+        private static string GetStableRendererKey(GameObject domainRoot, Renderer renderer)
+        {
+            var path = AnimationUtility.CalculateTransformPath(
+                renderer.transform,
+                domainRoot.transform
+            );
+
+            var renderers = renderer.GetComponents<Renderer>();
+            var componentIndex = Array.IndexOf(renderers, renderer);
+
+            return path
+                + "|"
+                + renderer.GetType().FullName
+                + "|"
+                + componentIndex;
+        }
+
+        private static string NormalizeTexturePropertyName(string propertyName)
+        {
+            var normalized = propertyName.TrimStart('_');
+            return string.IsNullOrEmpty(normalized) ? propertyName : normalized;
+        }
+
+        private static bool TryValidateBakeName(string bakeName, out string error)
+        {
+            if (string.IsNullOrWhiteSpace(bakeName))
+            {
+                error = "ベイク名を入力してください。";
+                return false;
+            }
+
+            if (bakeName != bakeName.Trim())
+            {
+                error = "ベイク名の先頭または末尾に空白は使用できません。";
+                return false;
+            }
+
+            if (bakeName is "." or "..")
+            {
+                error = "このベイク名は使用できません。";
+                return false;
+            }
+
+            var invalidChars = new HashSet<char>(
+                Path.GetInvalidFileNameChars()
+                    .Concat(new[] { '/', '\\', ':', '*', '?', '"', '<', '>', '|' })
+            );
+
+            if (bakeName.Any(invalidChars.Contains) || bakeName.EndsWith(".", StringComparison.Ordinal))
+            {
+                error = "ベイク名にファイル名として使用できない文字が含まれています。";
+                return false;
+            }
+
+            if (bakeName.Length > 120)
+            {
+                error = "ベイク名は120文字以内で入力してください。";
+                return false;
+            }
+
+            error = "";
+            return true;
+        }
+
+        private static string GetBakeOutputAssetPath(string bakeName)
         {
             return "Assets/TexTransToolGenerated/AtlasTexture/"
-                + SanitizeFileName(domainRoot.name)
-                + "/"
-                + SanitizeFileName(atlasTexture.gameObject.name);
+                + bakeName;
         }
 
         private static string AssetPathToFullPath(string assetPath)
