@@ -132,7 +132,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 EditorGUILayout.Space();
                 if (GUILayout.Button("AtlasTexture:button:ReplaceExistingParts".Glc()))
-                    AtlasTextureAssetExporter.ReplaceExistingParts(thisTarget);
+                    AtlasTextureExistingPartsReplacer.ReplaceExistingParts(thisTarget);
             }
 
         }
