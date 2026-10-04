@@ -161,7 +161,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 GUILayout.Height(EditorGUIUtility.singleLineHeight + 6f)
             ))
             {
-                AtlasTextureBaker.Bake(thisTarget);
+                if (AtlasTextureBaker.Bake(thisTarget))
+                {
+                    sBakeName.stringValue = "";
+                }
             }
         }
 
