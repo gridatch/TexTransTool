@@ -159,6 +159,9 @@ msgstr "AtlasTextureの処理結果をMesh / Material / Texture Assetとして�
 msgid "AtlasTexture:label:BakeSection"
 msgstr "アトラス化をベイク"
 
+msgid "AtlasTexture:prop:BakeName"
+msgstr "ベイク名"
+
 
 msgid "AtlasTexture:label:BakeTargetRenderers"
 msgstr "ベイク対象Renderer ({0}/{1})"
