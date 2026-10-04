@@ -45,23 +45,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     engine
                 );
 
-                var nowRenderers = AtlasTexture.GetAtlasAllowedRenderers(
+                var (targetMaterials, targetRenderers) = atlasTexture.ResolveAtlasTargets(
                     domain,
-                    domain.EnumerateRenderer(),
-                    atlasTexture.AtlasSetting.IncludeDisabledRenderer
-                );
-
-                var targetMaterials = atlasTexture.GetTargetMaterials(domain, nowRenderers).ToHashSet();
-                var targetRenderers = AtlasTexture.FilterTargetRenderers(domain, nowRenderers, targetMaterials);
-                targetRenderers = AtlasTexture.FilterExistUVChannel(
-                    domain,
-                    targetRenderers,
-                    atlasTexture.AtlasSetting.AtlasTargetUVChannel
+                    domain.EnumerateRenderer()
                 );
 
                 if (targetMaterials.Count == 0 || targetRenderers.Length == 0)
                 {
-                    Debug.LogWarning("TexTransTool: No AtlasTexture export target was found.");
+                    Debug.LogWarning("TexTransTool: No AtlasTexture bake target was found.");
                     return;
                 }
 
