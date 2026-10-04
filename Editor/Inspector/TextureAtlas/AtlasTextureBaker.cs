@@ -13,7 +13,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
     internal static class AtlasTextureBaker
     {
-        internal static void Bake(AtlasTexture atlasTexture)
+        internal static bool Bake(AtlasTexture atlasTexture)
         {
             PreviewUtility.ExitPreviews();
 
@@ -21,14 +21,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (TryValidateBakeName(bakeName, out var bakeNameError) is false)
             {
                 EditorUtility.DisplayDialog("TexTransTool", bakeNameError, "OK");
-                return;
+                return false;
             }
 
             var domainRoot = DomainMarkerFinder.FindMarker(atlasTexture.gameObject);
             if (domainRoot == null)
             {
                 Debug.LogError("TexTransTool: AtlasTexture domain root was not found.");
-                return;
+                return false;
             }
 
             var outputAssetPath = GetBakeOutputAssetPath(bakeName);
@@ -47,7 +47,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         "キャンセル"
                     ) is false)
                 {
-                    return;
+                    return false;
                 }
 
                 manifest = AssetDatabase.LoadAssetAtPath<AtlasTextureBakeManifest>(manifestAssetPath);
@@ -58,7 +58,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         $"ベイク名「{bakeName}」の管理情報が見つからないため、安全に上書きできません。",
                         "OK"
                     );
-                    return;
+                    return false;
                 }
 
                 previousEntries = manifest.Entries
@@ -99,7 +99,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (targetMaterials.Count == 0 || targetRenderers.Length == 0)
                 {
                     Debug.LogWarning("TexTransTool: No AtlasTexture bake target was found.");
-                    return;
+                    return false;
                 }
 
                 var targetMeshes = targetRenderers
@@ -110,7 +110,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 if (ValidateAnimationObjectReferences(domainRoot, targetRenderers, targetMaterials, targetMeshes) is false)
                 {
-                    return;
+                    return false;
                 }
 
                 var atlasResult = AtlasTexture.DoAtlasTexture(
@@ -122,7 +122,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     atlasTexture.AtlasSetting
                 );
 
-                if (atlasResult.IsSuccess is false) { return; }
+                if (atlasResult.IsSuccess is false) { return false; }
 
                 using var atlasContext = atlasResult.AtlasContext!;
                 var atlasedMeshes = atlasResult.AtlasedMeshes!;
@@ -131,7 +131,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var rendererMeshMap = BuildRendererMeshMap(domain, targetRenderers, atlasContext, atlasedMeshes);
                 if (ValidateMeshCompatibility(domain, rendererMeshMap, targetRenderers.Length) is false)
                 {
-                    return;
+                    return false;
                 }
 
                 var experimentalOptions = atlasTexture.GetComponent<AtlasTextureExperimentalFeature>();
@@ -269,6 +269,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 if (engine is IDisposable disposableEngine) disposableEngine.Dispose();
             }
+
+            return true;
         }
 
         private static Dictionary<Renderer, Mesh> BuildRendererMeshMap(
@@ -732,13 +734,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     previousRoleAssets
                 );
 
+                var assetObjectName = Path.GetFileNameWithoutExtension(assetPath);
                 var existingMaterial = AssetDatabase.LoadAssetAtPath<Material>(assetPath);
                 Material persistentMaterial;
 
                 if (existingMaterial != null)
                 {
                     EditorUtility.CopySerialized(generatedMaterial, existingMaterial);
-                    existingMaterial.name = generatedMaterial.name;
+                    existingMaterial.name = assetObjectName;
                     EditorUtility.SetDirty(existingMaterial);
                     persistentMaterial = existingMaterial;
                 }
@@ -752,6 +755,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         );
                     }
 
+                    generatedMaterial.name = assetObjectName;
                     AssetDatabase.CreateAsset(generatedMaterial, assetPath);
                     persistentMaterial = generatedMaterial;
                 }
@@ -811,13 +815,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     previousRoleAssets
                 );
 
+                var assetObjectName = Path.GetFileNameWithoutExtension(assetPath);
                 var existingMesh = AssetDatabase.LoadAssetAtPath<Mesh>(assetPath);
                 Mesh persistentMesh;
 
                 if (existingMesh != null)
                 {
                     EditorUtility.CopySerialized(generatedMesh, existingMesh);
-                    existingMesh.name = generatedMesh.name;
+                    existingMesh.name = assetObjectName;
                     EditorUtility.SetDirty(existingMesh);
                     persistentMesh = existingMesh;
                 }
@@ -831,6 +836,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         );
                     }
 
+                    generatedMesh.name = assetObjectName;
                     AssetDatabase.CreateAsset(generatedMesh, assetPath);
                     persistentMesh = generatedMesh;
                 }
@@ -858,6 +864,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var isNew = manifest == null;
             manifest ??= ScriptableObject.CreateInstance<AtlasTextureBakeManifest>();
 
+            manifest.name = Path.GetFileNameWithoutExtension(manifestAssetPath);
             manifest.Version = AtlasTextureBakeManifest.CurrentVersion;
             manifest.BakeName = bakeName;
             manifest.Entries = entries
