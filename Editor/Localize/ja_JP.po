@@ -156,6 +156,18 @@ msgstr "アトラス化をベイク"
 msgid "AtlasTexture:button:BakeAtlas:tooltip"
 msgstr "AtlasTextureの処理結果をMesh / Material / Texture Assetとして生成し、現在の対象Rendererへ反映します。GameObjectやその他のComponentは維持されます。"
 
+msgid "AtlasTexture:label:BakeSection"
+msgstr "アトラス化をベイク"
+
+msgid "AtlasTexture:info:BakeSectionDescription"
+msgstr "以下のRenderer選択は「アトラス化をベイク」でのみ使用されます。通常のNDMFによるAtlasTexture処理には影響しません。"
+
+msgid "AtlasTexture:label:BakeTargetRenderers"
+msgstr "ベイク対象Renderer ({0}/{1})"
+
+msgid "AtlasTexture:info:NoBakeTargetRenderers"
+msgstr "現在選択されているマテリアルとAtlas設定に一致するベイク対象Rendererはありません。"
+
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "リフレッシュマテリアル"
 
@@ -186,11 +198,7 @@ msgstr "選択済みマテリアル"
 msgid "AtlasTexture:prop:SelectedMaterialView:tooltip"
 msgstr "プレハブオーバーライド設定などの特殊な操作をするための物"
 
-msgid "AtlasTexture:label:TargetRenderers"
-msgstr "対象Renderer ({0})"
 
-msgid "AtlasTexture:info:NoTargetRenderers"
-msgstr "選択中のマテリアルと現在の設定に一致するRendererはありません。"
 
 msgid "AtlasTexture:label:AtlasSettings"
 msgstr "アトラス化設定"
