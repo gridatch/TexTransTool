@@ -146,6 +146,28 @@ msgstr "LimitCandidateMaterials"
 msgid "AtlasTexture:prop:LimitCandidateMaterials:tooltip"
 msgstr "Limit candidate materials to GameObject subordinates."
 
+
+
+
+msgid "AtlasTexture:button:BakeAtlas"
+msgstr "Bake Atlasing"
+
+msgid "AtlasTexture:button:BakeAtlas:tooltip"
+msgstr "Generate the AtlasTexture result as Mesh, Material, and Texture assets and apply them to the current target renderers while preserving their GameObjects and other Components."
+
+msgid "AtlasTexture:label:BakeSection"
+msgstr "Bake Atlasing"
+
+msgid "AtlasTexture:prop:BakeName"
+msgstr "Bake Name"
+
+
+msgid "AtlasTexture:label:BakeTargetRenderers"
+msgstr "Bake Target Renderers ({0}/{1})"
+
+msgid "AtlasTexture:info:NoBakeTargetRenderers"
+msgstr "No bake target renderers match the currently selected materials and Atlas settings."
+
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "RefreshMaterials"
 
@@ -175,6 +197,8 @@ msgstr "SelectedMaterial"
 
 msgid "AtlasTexture:prop:SelectedMaterialView:tooltip"
 msgstr "view for special operations such as prefab override settings"
+
+
 
 msgid "AtlasTexture:label:AtlasSettings"
 msgstr "AtlasSettings"
