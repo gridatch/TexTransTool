@@ -10,7 +10,7 @@ namespace net.rs64.TexTransTool.NDMF.AdditionalMaterials
     internal interface IAdditionalMaterialsProvider
     {
         HashSet<Material> GetReferencedMaterials();
-        void ReplaceReferencedMaterials(Dictionary<Material, Material> mapping);
+        void ReplaceReferencedMaterials(Dictionary<Material, Material> mapping, IReadOnlyCollection<Renderer>? targetRenderers = null);
     }
 
     internal class AdditionalMaterialsProvider
@@ -38,11 +38,13 @@ namespace net.rs64.TexTransTool.NDMF.AdditionalMaterials
             return matHash;
         }
 
-        public void ReplaceReferencedMaterials(Dictionary<Material, Material> mapping)
+        public void ReplaceReferencedMaterials(
+            Dictionary<Material, Material> mapping,
+            IReadOnlyCollection<Renderer>? targetRenderers = null)
         {
             foreach (var provider in _providers)
             {
-                provider.ReplaceReferencedMaterials(mapping);
+                provider.ReplaceReferencedMaterials(mapping, targetRenderers);
             }
         }
     }
