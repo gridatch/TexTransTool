@@ -109,7 +109,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (replaceExistingParts)
                 {
                     rendererMeshMap = BuildRendererMeshMap(domain, targetRenderers, atlasContext, atlasedMeshes);
-                    if (ValidateMeshCompatibility(domain, rendererMeshMap) is false)
+                    if (ValidateMeshCompatibility(domain, rendererMeshMap, targetRenderers.Length) is false)
                     {
                         return;
                     }
@@ -269,8 +269,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private static bool ValidateMeshCompatibility(
             IDomain domain,
-            IReadOnlyDictionary<Renderer, Mesh> rendererMeshMap)
+            IReadOnlyDictionary<Renderer, Mesh> rendererMeshMap,
+            int expectedRendererCount)
         {
+            if (rendererMeshMap.Count != expectedRendererCount)
+            {
+                Debug.LogError(
+                    $"TexTransTool: Existing-parts replacement aborted because only {rendererMeshMap.Count} of {expectedRendererCount} target renderers received an atlas mesh."
+                );
+                return false;
+            }
+
             foreach (var pair in rendererMeshMap)
             {
                 var renderer = pair.Key;
@@ -421,7 +430,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                             RecordPrefabOverride(skinnedMeshRenderer);
                             break;
 
-                        case MeshRenderer:
+                        case MeshRenderer _:
                             var meshFilter = renderer.GetComponent<MeshFilter>();
                             if (meshFilter != null)
                             {
