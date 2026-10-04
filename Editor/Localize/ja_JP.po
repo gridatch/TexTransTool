@@ -159,8 +159,6 @@ msgstr "AtlasTextureの処理結果をMesh / Material / Texture Assetとして�
 msgid "AtlasTexture:label:BakeSection"
 msgstr "アトラス化をベイク"
 
-msgid "AtlasTexture:info:BakeSectionDescription"
-msgstr "以下のRenderer選択は「アトラス化をベイク」でのみ使用されます。通常のNDMFによるAtlasTexture処理には影響しません。"
 
 msgid "AtlasTexture:label:BakeTargetRenderers"
 msgstr "ベイク対象Renderer ({0}/{1})"
