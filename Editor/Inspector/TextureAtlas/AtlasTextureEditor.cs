@@ -19,6 +19,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     {
         private AtlasTexture thisTarget;
         private SerializedProperty sAtlasTargetMaterials;
+        private SerializedProperty sBakeName;
         private SerializedProperty sBakeExcludedRenderers;
 
         private SerializedProperty sIslandSizePriorityTuner;
@@ -44,6 +45,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             // sLimitCandidateMaterials = thisSObject.FindProperty("LimitCandidateMaterials");
             sAtlasTargetMaterials = thisSObject.FindProperty(nameof(AtlasTexture.AtlasTargetMaterials));
+            sBakeName = thisSObject.FindProperty(nameof(AtlasTexture.BakeName));
             sBakeExcludedRenderers = thisSObject.FindProperty(nameof(AtlasTexture.BakeExcludedRenderers));
             sAtlasTargetUVChannel = sAtlasSetting.FindPropertyRelative("AtlasTargetUVChannel");
 
@@ -143,6 +145,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             EditorGUILayout.LabelField(
                 "AtlasTexture:label:BakeSection".Glc(),
                 EditorStyles.boldLabel
+            );
+
+            EditorGUILayout.PropertyField(
+                sBakeName,
+                "AtlasTexture:prop:BakeName".GlcV()
             );
 
             EditorGUILayout.Space(2f);
