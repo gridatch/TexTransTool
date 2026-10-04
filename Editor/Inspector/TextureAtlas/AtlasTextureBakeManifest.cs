@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
-    internal sealed class AtlasTextureBakeManifest : ScriptableObject
+    public sealed class AtlasTextureBakeManifest : ScriptableObject
     {
         internal const int CurrentVersion = 1;
 
