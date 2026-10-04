@@ -17,7 +17,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             PreviewUtility.ExitPreviews();
 
-            var bakeName = atlasTexture.BakeName?.Trim() ?? "";
+            var bakeName = atlasTexture.BakeName ?? "";
             if (TryValidateBakeName(bakeName, out var bakeNameError) is false)
             {
                 EditorUtility.DisplayDialog("TexTransTool", bakeNameError, "OK");
@@ -82,11 +82,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var textureAssetPath = outputAssetPath + "/Textures";
             var materialAssetPath = outputAssetPath + "/Materials";
             var meshAssetPath = outputAssetPath + "/Meshes";
-
-            Directory.CreateDirectory(AssetPathToFullPath(textureAssetPath));
-            Directory.CreateDirectory(AssetPathToFullPath(materialAssetPath));
-            Directory.CreateDirectory(AssetPathToFullPath(meshAssetPath));
-            AssetDatabase.Refresh();
 
             using var diskUtil = new UnityDiskUtil(false);
             var engine = new TTCEUnityWithTTT4Unity(diskUtil);
@@ -159,6 +154,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var temporaryDownloadedTextures = new List<Texture2D>();
                 var generatedMaterials = new List<Material>();
                 var currentEntries = new List<AtlasTextureBakeManifest.Entry>();
+
+                Directory.CreateDirectory(AssetPathToFullPath(textureAssetPath));
+                Directory.CreateDirectory(AssetPathToFullPath(materialAssetPath));
+                Directory.CreateDirectory(AssetPathToFullPath(meshAssetPath));
+                AssetDatabase.Refresh();
 
                 try
                 {
@@ -882,9 +882,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             IEnumerable<AtlasTextureBakeManifest.Entry> currentEntries)
         {
             var current = currentEntries.ToArray();
-            var currentPaths = current
-                .Select(entry => entry.AssetPath)
-                .ToHashSet(StringComparer.Ordinal);
+            var currentPaths = new HashSet<string>(
+                current.Select(entry => entry.AssetPath),
+                StringComparer.Ordinal
+            );
 
             foreach (var previous in previousEntries)
             {
