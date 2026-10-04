@@ -45,10 +45,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     engine
                 );
 
-                var (targetMaterials, targetRenderers) = atlasTexture.ResolveAtlasTargets(
-                    domain,
-                    domain.EnumerateRenderer()
-                );
+                var (targetMaterials, targetRenderers) =
+                    AtlasTextureBakeTargetResolver.ResolveBakeTargets(atlasTexture, domain);
 
                 if (targetMaterials.Count == 0 || targetRenderers.Length == 0)
                 {
