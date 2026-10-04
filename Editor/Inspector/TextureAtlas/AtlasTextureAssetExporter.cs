@@ -11,12 +11,9 @@ using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
-    internal static class AtlasTextureAssetExporter
+    internal static class AtlasTextureExistingPartsReplacer
     {
-        internal static void Export(AtlasTexture atlasTexture) => Process(atlasTexture, false);
-        internal static void ReplaceExistingParts(AtlasTexture atlasTexture) => Process(atlasTexture, true);
-
-        private static void Process(AtlasTexture atlasTexture, bool replaceExistingParts)
+        internal static void ReplaceExistingParts(AtlasTexture atlasTexture)
         {
             PreviewUtility.ExitPreviews();
 
@@ -27,31 +24,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
-            string? outputAssetPath;
-            if (replaceExistingParts)
-            {
-                outputAssetPath = GetExistingPartsOutputAssetPath(domainRoot, atlasTexture);
-            }
-            else
-            {
-                var selectedFolder = EditorUtility.OpenFolderPanel(
-                    "Export Atlas Assets",
-                    Application.dataPath,
-                    atlasTexture.gameObject.name + "_Atlas"
-                );
-                if (string.IsNullOrEmpty(selectedFolder)) { return; }
-
-                outputAssetPath = ToAssetPath(selectedFolder);
-                if (outputAssetPath == null)
-                {
-                    EditorUtility.DisplayDialog(
-                        "TexTransTool",
-                        "The export destination must be inside this project's Assets folder.",
-                        "OK"
-                    );
-                    return;
-                }
-            }
+            var outputAssetPath = GetExistingPartsOutputAssetPath(domainRoot, atlasTexture);
 
             var textureAssetPath = outputAssetPath + "/Textures";
             var materialAssetPath = outputAssetPath + "/Materials";
@@ -92,18 +65,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     return;
                 }
 
-                if (replaceExistingParts)
-                {
-                    var targetMeshes = targetRenderers
-                        .Select(renderer => ((IRendererTargeting)domain).GetMesh(renderer))
-                        .Where(mesh => mesh != null)
-                        .Cast<Mesh>()
-                        .ToHashSet();
+                var targetMeshes = targetRenderers
+                    .Select(renderer => ((IRendererTargeting)domain).GetMesh(renderer))
+                    .Where(mesh => mesh != null)
+                    .Cast<Mesh>()
+                    .ToHashSet();
 
-                    if (ValidateAnimationObjectReferences(domainRoot, targetMaterials, targetMeshes) is false)
-                    {
-                        return;
-                    }
+                if (ValidateAnimationObjectReferences(domainRoot, targetMaterials, targetMeshes) is false)
+                {
+                    return;
                 }
 
                 var atlasResult = AtlasTexture.DoAtlasTexture(
@@ -121,14 +91,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var atlasedMeshes = atlasResult.AtlasedMeshes!;
                 var compiledAtlasTextures = atlasResult.CompiledAtlasTextures!;
 
-                Dictionary<Renderer, Mesh>? rendererMeshMap = null;
-                if (replaceExistingParts)
+                var rendererMeshMap = BuildRendererMeshMap(domain, targetRenderers, atlasContext, atlasedMeshes);
+                if (ValidateMeshCompatibility(domain, rendererMeshMap, targetRenderers.Length) is false)
                 {
-                    rendererMeshMap = BuildRendererMeshMap(domain, targetRenderers, atlasContext, atlasedMeshes);
-                    if (ValidateMeshCompatibility(domain, rendererMeshMap, targetRenderers.Length) is false)
-                    {
-                        return;
-                    }
+                    return;
                 }
 
                 var experimentalOptions = atlasTexture.GetComponent<AtlasTextureExperimentalFeature>();
@@ -181,15 +147,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     AssetDatabase.SaveAssets();
                     AssetDatabase.Refresh();
 
-                    if (replaceExistingParts)
-                    {
-                        ApplyExistingPartsReplacement(
-                            domainRoot,
-                            targetRenderers,
-                            rendererMeshMap!,
-                            materialMap
-                        );
-                    }
+                    ApplyExistingPartsReplacement(
+                        domainRoot,
+                        targetRenderers,
+                        rendererMeshMap,
+                        materialMap
+                    );
 
                     var folderAsset = AssetDatabase.LoadAssetAtPath<DefaultAsset>(outputAssetPath);
                     if (folderAsset != null)
@@ -198,12 +161,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         EditorGUIUtility.PingObject(folderAsset);
                     }
 
-                    var action = replaceExistingParts
-                        ? "Existing parts replaced with persistent atlas assets"
-                        : "Atlas assets exported";
-
                     Debug.Log(
-                        $"TexTransTool: {action} at {outputAssetPath} " +
+                        $"TexTransTool: Existing parts replaced with persistent atlas assets at {outputAssetPath} " +
                         $"({persistentTextures.Values.Distinct().Count()} textures, " +
                         $"{generatedMaterials.Distinct().Count()} materials, " +
                         $"{atlasedMeshes.Length} meshes)."
@@ -631,20 +590,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 + SanitizeFileName(domainRoot.name)
                 + "/"
                 + SanitizeFileName(atlasTexture.gameObject.name);
-        }
-
-        private static string? ToAssetPath(string fullPath)
-        {
-            var normalized = Path.GetFullPath(fullPath).Replace('\\', '/').TrimEnd('/');
-            var assets = Path.GetFullPath(Application.dataPath).Replace('\\', '/').TrimEnd('/');
-
-            if (normalized.Equals(assets, StringComparison.OrdinalIgnoreCase))
-                return "Assets";
-
-            if (normalized.StartsWith(assets + "/", StringComparison.OrdinalIgnoreCase) is false)
-                return null;
-
-            return "Assets" + normalized.Substring(assets.Length);
         }
 
         private static string AssetPathToFullPath(string assetPath)
