@@ -19,7 +19,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     {
         private AtlasTexture thisTarget;
         private SerializedProperty sAtlasTargetMaterials;
-        private SerializedProperty sAtlasExcludedRenderers;
+        private SerializedProperty sBakeExcludedRenderers;
 
         private SerializedProperty sIslandSizePriorityTuner;
         private SerializedProperty sMergeMaterialGroups, sAllMaterialMergeReference;
@@ -44,7 +44,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             // sLimitCandidateMaterials = thisSObject.FindProperty("LimitCandidateMaterials");
             sAtlasTargetMaterials = thisSObject.FindProperty(nameof(AtlasTexture.AtlasTargetMaterials));
-            sAtlasExcludedRenderers = thisSObject.FindProperty(nameof(AtlasTexture.AtlasExcludedRenderers));
+            sBakeExcludedRenderers = thisSObject.FindProperty(nameof(AtlasTexture.BakeExcludedRenderers));
             sAtlasTargetUVChannel = sAtlasSetting.FindPropertyRelative("AtlasTargetUVChannel");
 
             sIslandSizePriorityTuner = thisSObject.FindProperty(nameof(AtlasTexture.IslandSizePriorityTuner));
@@ -98,9 +98,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
 
-            DrawTargetRenderers();
-
-
             // ここ s_targetMatHash はめっちゃステートフルだから気をつけるようにね
             s_targetMatHash.Clear();
             for (var i = 0; sAtlasTargetMaterials.arraySize > i; i += 1)
@@ -132,42 +129,59 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             using (new PFScope("DrawAtlasSettings"))
                 DrawAtlasSettings();
 
-            if (PreviewUtility.IsPreviewContains is false)
-            {
-                EditorGUILayout.Space();
-                if (GUILayout.Button("AtlasTexture:button:BakeAtlas".Glc()))
-                    AtlasTextureBaker.Bake(thisTarget);
-            }
+            DrawBakeSection();
 
         }
 
-        private void DrawTargetRenderers()
+        private void DrawBakeSection()
+        {
+            if (PreviewUtility.IsPreviewContains) { return; }
+
+            EditorGUILayout.Space();
+            using var section = new EditorGUILayout.VerticalScope(EditorStyles.helpBox);
+
+            EditorGUILayout.LabelField(
+                "AtlasTexture:label:BakeSection".Glc(),
+                EditorStyles.boldLabel
+            );
+            EditorGUILayout.LabelField(
+                "AtlasTexture:info:BakeSectionDescription".GetLocalize(),
+                EditorStyles.wordWrappedLabel
+            );
+
+            EditorGUILayout.Space(2f);
+            DrawBakeTargetRenderers();
+
+            EditorGUILayout.Space(4f);
+            if (GUILayout.Button(
+                "AtlasTexture:button:BakeAtlas".Glc(),
+                GUILayout.Height(EditorGUIUtility.singleLineHeight + 6f)
+            ))
+            {
+                AtlasTextureBaker.Bake(thisTarget);
+            }
+        }
+
+        private void DrawBakeTargetRenderers()
         {
             var domainRoot = DomainMarkerFinder.FindMarker(thisTarget.gameObject);
             if (domainRoot == null) { return; }
 
             var domainRenderers = domainRoot.GetComponentsInChildren<Renderer>(true);
             using var domain = new NotWorkDomain(domainRenderers, null);
-
-            var selectedMaterials = new List<Material>();
-            for (var i = 0; i < sAtlasTargetMaterials.arraySize; i += 1)
-            {
-                var material = sAtlasTargetMaterials.GetArrayElementAtIndex(i).objectReferenceValue as Material;
-                if (material != null) { selectedMaterials.Add(material); }
-            }
-
-            var candidateRenderers = AtlasTexture.GetAtlasCandidateRenderers(
-                domain,
-                domainRenderers,
-                selectedMaterials,
-                sIncludeDisabledRenderer.boolValue,
-                (UVChannel)sAtlasTargetUVChannel.enumValueIndex
+            var candidateRenderers = AtlasTextureBakeTargetResolver.GetCandidateRenderers(
+                thisTarget,
+                domain
             );
 
-            EditorGUILayout.Space();
+            var includedCount = candidateRenderers.Count(renderer =>
+                FindRendererReferenceIndex(sBakeExcludedRenderers, renderer) < 0
+            );
+
             EditorGUILayout.LabelField(
                 string.Format(
-                    "AtlasTexture:label:TargetRenderers".GetLocalize(),
+                    "AtlasTexture:label:BakeTargetRenderers".GetLocalize(),
+                    includedCount,
                     candidateRenderers.Length
                 ),
                 EditorStyles.boldLabel
@@ -176,7 +190,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (candidateRenderers.Length == 0)
             {
                 EditorGUILayout.HelpBox(
-                    "AtlasTexture:info:NoTargetRenderers".GetLocalize(),
+                    "AtlasTexture:info:NoBakeTargetRenderers".GetLocalize(),
                     MessageType.Info
                 );
                 return;
@@ -185,30 +199,28 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             using var indent = new EditorGUI.IndentLevelScope(1);
             foreach (var renderer in candidateRenderers)
             {
-                var excludedIndex = FindRendererReferenceIndex(sAtlasExcludedRenderers, renderer);
+                var excludedIndex = FindRendererReferenceIndex(sBakeExcludedRenderers, renderer);
                 var isIncluded = excludedIndex < 0;
 
-                using var row = new EditorGUILayout.HorizontalScope();
-                var nextIncluded = EditorGUILayout.Toggle(isIncluded, GUILayout.Width(18f));
-
-                var path = AnimationUtility.CalculateTransformPath(
+                var rendererPath = AnimationUtility.CalculateTransformPath(
                     renderer.transform,
                     domainRoot.transform
                 );
-                if (string.IsNullOrEmpty(path)) { path = renderer.gameObject.name; }
-
-                if (GUILayout.Button(
-                    $"{path} [{renderer.GetType().Name}]",
-                    EditorStyles.label
-                ))
+                if (string.IsNullOrEmpty(rendererPath))
                 {
-                    EditorGUIUtility.PingObject(renderer.gameObject);
+                    rendererPath = renderer.gameObject.name;
                 }
 
+                var label = new GUIContent(
+                    rendererPath,
+                    renderer.GetType().Name + "\n" + rendererPath
+                );
+
+                var nextIncluded = EditorGUILayout.ToggleLeft(label, isIncluded);
                 if (nextIncluded != isIncluded)
                 {
                     SetRendererIncluded(
-                        sAtlasExcludedRenderers,
+                        sBakeExcludedRenderers,
                         renderer,
                         nextIncluded
                     );
@@ -220,6 +232,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             SerializedProperty rendererArray,
             Renderer renderer)
         {
+            if (rendererArray == null) { return -1; }
+
             for (var i = 0; i < rendererArray.arraySize; i += 1)
             {
                 if (rendererArray.GetArrayElementAtIndex(i).objectReferenceValue == renderer)
@@ -236,6 +250,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             Renderer renderer,
             bool included)
         {
+            if (excludedRenderers == null) { return; }
+
             var existingIndex = FindRendererReferenceIndex(excludedRenderers, renderer);
 
             if (included)
