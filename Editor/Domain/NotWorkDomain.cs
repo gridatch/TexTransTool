@@ -26,6 +26,7 @@ namespace net.rs64.TexTransTool
         public bool OriginEqual(UnityEngine.Object? l, UnityEngine.Object? r) { return l == r; }
         public void RegisterReplace(UnityEngine.Object oldObject, UnityEngine.Object nowObject) { }
         public void ReplaceMaterials(Dictionary<Material, Material> mapping) { }
+        public void ReplaceMaterials(Dictionary<Material, Material> mapping, IEnumerable<Renderer> targetRenderers) { }
         public void SetMesh(Renderer renderer, Mesh mesh) { }
         public void TransferAsset(UnityEngine.Object asset) { _transferredObject.Add(asset); }
         public void Dispose()
