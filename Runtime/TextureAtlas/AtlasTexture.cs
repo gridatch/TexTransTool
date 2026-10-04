@@ -24,7 +24,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         // targeting
         public List<Material?> AtlasTargetMaterials = new List<Material?>();
-        public List<Renderer?> AtlasExcludedRenderers = new List<Renderer?>();
+
+        // Bake-only targeting. This does not affect normal NDMF AtlasTexture processing.
+        [FormerlySerializedAs("AtlasExcludedRenderers")]
+        public List<Renderer?> BakeExcludedRenderers = new List<Renderer?>();
 
         // IslandSizePriorityTuner
         [SerializeReference, SubclassSelector] internal List<IIslandSizePriorityTuner?> IslandSizePriorityTuner = new();
@@ -56,7 +59,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("targeting");
 
-            var (targetMaterials, targetRenderers) = ResolveAtlasTargets(targeting, domain.EnumerateRenderer());
+            var domainsAllowsRenderers = GetAtlasAllowedRenderers(domain, domain.EnumerateRenderer(), atlasSetting.IncludeDisabledRenderer);
+            var targetMaterials = GetTargetMaterials(domain, domainsAllowsRenderers).ToHashSet();
+            var targetRenderers = FilterTargetRenderers(targeting, domainsAllowsRenderers, targetMaterials);
+            targetRenderers = FilterExistUVChannel(targeting,targetRenderers, atlasSetting.AtlasTargetUVChannel);
 
             if (targetMaterials.Any() is false || targetRenderers.Any() is false) { TTLog.Info("AtlasTexture:info:TargetNotFound"); return; }
 
@@ -95,18 +101,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("gen and replace material");
             //MaterialGenerate And Change
-            var rendererScopedMaterialReplacement = AtlasExcludedRenderers.UOfType<Renderer>().Any();
-            ReplaceAtlasedMaterials(
-                domain,
-                targetMaterials,
-                targetRenderers,
-                rendererScopedMaterialReplacement,
-                atlasSetting,
-                (MergeMaterialGroups, AllMaterialMergeReference, experimentalOptions),
-                tunedAtlasUnityTextures,
-                preserveBump2ndMaterials,
-                preservedOriginalUVChannel
-            );
+            ReplaceAtlasedMaterials(domain, targetMaterials, atlasSetting, (MergeMaterialGroups, AllMaterialMergeReference, experimentalOptions), tunedAtlasUnityTextures, preserveBump2ndMaterials, preservedOriginalUVChannel);
 
             pf.Split("register textures");
             // Register AtlasedTextures
@@ -315,8 +310,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal static void ReplaceAtlasedMaterials(
             IDomain domain
             , HashSet<Material> targetMaterials
-            , Renderer[] targetRenderers
-            , bool rendererScopedMaterialReplacement
             , AtlasSetting atlasSetting
             , (List<MaterialMergeGroup> mergeMaterialGroups, Material? allMaterialMergeReference, AtlasTextureExperimentalFeature? experimentalOptions) atlasMergeSettings
             , Dictionary<string, RenderTexture> tunedAtlasUnityTextures
@@ -334,19 +327,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 preservedOriginalUVChannel
             );
 
-            if (rendererScopedMaterialReplacement)
-            {
-                domain.ReplaceMaterials(materialMap, targetRenderers);
-
-                // A partial renderer replacement cannot be represented by the domain's global
-                // old-object -> new-object registry. Registering it would incorrectly make
-                // excluded renderers and unrelated references appear replaced as well.
-            }
-            else
-            {
-                domain.ReplaceMaterials(materialMap);
-                domain.RegisterReplaces(domainsMaterial2ReplaceMaterial);
-            }
+            domain.ReplaceMaterials(materialMap);
+            domain.RegisterReplaces(domainsMaterial2ReplaceMaterial);
         }
 
         internal static (
@@ -864,67 +846,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
             return null;
         }
 
-        internal List<Material> GetTargetMaterials(IRendererTargeting targeting, IEnumerable<Renderer> renderers)
+        internal List<Material> GetTargetMaterials(IDomain domain, List<Renderer> nowRenderers)
         {
-            return ResolveTargetMaterials(targeting, renderers, AtlasTargetMaterials).ToList();
-        }
-
-        internal (HashSet<Material> targetMaterials, Renderer[] targetRenderers) ResolveAtlasTargets(
-            IRendererTargeting targeting,
-            IEnumerable<Renderer> domainRenderers)
-        {
-            var candidateRenderers = GetAtlasCandidateRenderers(
-                targeting,
-                domainRenderers,
-                AtlasTargetMaterials,
-                AtlasSetting.IncludeDisabledRenderer,
-                AtlasSetting.AtlasTargetUVChannel
-            );
-
-            var targetRenderers = FilterExcludedRenderers(targeting, candidateRenderers, AtlasExcludedRenderers);
-            var targetMaterials = ResolveTargetMaterials(targeting, targetRenderers, AtlasTargetMaterials);
-            return (targetMaterials, targetRenderers);
-        }
-
-        internal static Renderer[] GetAtlasCandidateRenderers(
-            IRendererTargeting targeting,
-            IEnumerable<Renderer> domainRenderers,
-            IEnumerable<Material?> selectedMaterials,
-            bool includeDisabledRenderer,
-            UVChannel atlasTargetUVChannel)
-        {
-            var allowedRenderers = GetAtlasAllowedRenderers(targeting, domainRenderers, includeDisabledRenderer);
-            var targetMaterials = ResolveTargetMaterials(targeting, allowedRenderers, selectedMaterials);
-            var candidateRenderers = FilterTargetRenderers(targeting, allowedRenderers, targetMaterials);
-            return FilterExistUVChannel(targeting, candidateRenderers, atlasTargetUVChannel);
-        }
-
-        internal static HashSet<Material> ResolveTargetMaterials(
-            IRendererTargeting targeting,
-            IEnumerable<Renderer> renderers,
-            IEnumerable<Material?> selectedMaterials)
-        {
-            var selectedMaterialArray = selectedMaterials.ToArray();
-            var nowContainsMatSet = new HashSet<Material>(
-                renderers.SelectMany(targeting.GetMaterials).UOfType<Material>()
-            );
-
-            return nowContainsMatSet
-                .Where(mat => selectedMaterialArray.Any(selected => targeting.OriginEqual(selected, mat)))
-                .ToHashSet();
-        }
-
-        internal static Renderer[] FilterExcludedRenderers(
-            IRendererTargeting targeting,
-            IEnumerable<Renderer> renderers,
-            IEnumerable<Renderer?> excludedRenderers)
-        {
-            var excludedRendererArray = excludedRenderers.UOfType<Renderer>().ToArray();
-            if (excludedRendererArray.Length == 0) { return renderers.ToArray(); }
-
-            return renderers
-                .Where(renderer => excludedRendererArray.Any(excluded => targeting.OriginEqual(renderer, excluded)) is false)
-                .ToArray();
+            var nowContainsMatSet = new HashSet<Material>(nowRenderers.SelectMany(domain.GetMaterials).UOfType<Material>());
+            var targetMaterials = nowContainsMatSet.Where(mat => AtlasTargetMaterials.Any(sMat => domain.OriginEqual(sMat, mat))).ToList();
+            return targetMaterials;
         }
         internal static bool CheckRendererActive(IRendererTargeting targeting, Renderer r, bool includeDisabledRenderer)
         {
@@ -953,28 +879,19 @@ namespace net.rs64.TexTransTool.TextureAtlas
         }
         internal override IEnumerable<Renderer> ModificationTargetRenderers(IRendererTargeting rendererTargeting)
         {
-            var includeDisabledRenderer = rendererTargeting.LookAtGet(this, a => a.AtlasSetting.IncludeDisabledRenderer);
-            var atlasTargetUVChannel = rendererTargeting.LookAtGet(this, a => a.AtlasSetting.AtlasTargetUVChannel);
-            var selectedMaterials = rendererTargeting.LookAtGet(
-                this,
-                at => at.AtlasTargetMaterials.ToArray(),
-                (l, r) => l.SequenceEqual(r)
-            );
-            var excludedRenderers = rendererTargeting.LookAtGet(
-                this,
-                at => at.AtlasExcludedRenderers.ToArray(),
-                (l, r) => l.SequenceEqual(r)
-            );
+            var isIncludeDisable = rendererTargeting.LookAtGet(this, a => a.AtlasSetting.IncludeDisabledRenderer);
+            var selectedMaterials = rendererTargeting.LookAtGet(this, at => at.AtlasTargetMaterials.ToArray(), (l, r) => l.SequenceEqual(r));
+            var nowRenderers = GetAtlasAllowedRenderers(rendererTargeting, rendererTargeting.EnumerateRenderer(), isIncludeDisable);
 
-            var candidateRenderers = GetAtlasCandidateRenderers(
-                rendererTargeting,
-                rendererTargeting.EnumerateRenderer(),
-                selectedMaterials,
-                includeDisabledRenderer,
-                atlasTargetUVChannel
-            );
+            var nowContainsMatSet = new HashSet<Material>(
+                    nowRenderers
+                        .SelectMany(r => rendererTargeting.GetMaterials(r))
+                        .UOfType<Material>()
+                );
+            var targetMaterials = nowContainsMatSet.Where(mat => selectedMaterials.Any(sMat => rendererTargeting.OriginEqual(sMat, mat))).ToHashSet();
 
-            return FilterExcludedRenderers(rendererTargeting, candidateRenderers, excludedRenderers);
+            return FilterTargetRenderers(rendererTargeting, nowRenderers, targetMaterials);
+
         }
 
 
