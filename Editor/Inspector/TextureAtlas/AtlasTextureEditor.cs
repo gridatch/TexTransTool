@@ -136,7 +136,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 EditorGUILayout.Space();
                 if (GUILayout.Button("AtlasTexture:button:BakeAtlas".Glc()))
-                    AtlasTextureExistingPartsReplacer.ReplaceExistingParts(thisTarget);
+                    AtlasTextureBaker.Bake(thisTarget);
             }
 
         }
