@@ -58,8 +58,6 @@ namespace net.rs64.TexTransTool
 
         public virtual void ReplaceMaterials(Dictionary<Material, Material> mapping)
         { RendererUtility.SwapMaterials(_renderers, mapping); }
-        public virtual void ReplaceMaterials(Dictionary<Material, Material> mapping, IEnumerable<Renderer> targetRenderers)
-        { RendererUtility.SwapMaterials(targetRenderers, mapping); }
         public virtual void SetMesh(Renderer renderer, Mesh mesh) { renderer.SetMesh(mesh); }
 
         public bool IsTemporaryAsset(Object Asset) => _saver?.IsTemporaryAsset(Asset) ?? false;
