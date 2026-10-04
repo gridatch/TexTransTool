@@ -84,10 +84,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     return;
                 }
 
-                if (replaceExistingParts
-                    && ValidateAnimationMaterialReferences(domainRoot, targetMaterials) is false)
+                if (replaceExistingParts)
                 {
-                    return;
+                    var targetMeshes = targetRenderers
+                        .Select(renderer => domain.GetMesh(renderer))
+                        .Where(mesh => mesh != null)
+                        .Cast<Mesh>()
+                        .ToHashSet();
+
+                    if (ValidateAnimationObjectReferences(domainRoot, targetMaterials, targetMeshes) is false)
+                    {
+                        return;
+                    }
                 }
 
                 var atlasResult = AtlasTexture.DoAtlasTexture(
@@ -343,9 +351,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return true;
         }
 
-        private static bool ValidateAnimationMaterialReferences(
+        private static bool ValidateAnimationObjectReferences(
             GameObject domainRoot,
-            HashSet<Material> targetMaterials)
+            HashSet<Material> targetMaterials,
+            HashSet<Mesh> targetMeshes)
         {
             var hits = new List<string>();
             var dependencies = EditorUtility.CollectDependencies(new UnityEngine.Object[] { domainRoot });
@@ -354,13 +363,20 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
-                    if (binding.propertyName.StartsWith("m_Materials.Array.data[", StringComparison.Ordinal) is false)
-                        continue;
-
                     var keyframes = AnimationUtility.GetObjectReferenceCurve(clip, binding);
-                    if (keyframes.Any(frame => frame.value is Material material && targetMaterials.Contains(material)))
+                    var referencedSourceAsset = keyframes
+                        .Select(frame => frame.value)
+                        .FirstOrDefault(value =>
+                            value is Material material && targetMaterials.Contains(material)
+                            || value is Mesh mesh && targetMeshes.Contains(mesh)
+                        );
+
+                    if (referencedSourceAsset != null)
                     {
-                        hits.Add($"{clip.name}: {binding.path} / {binding.propertyName}");
+                        hits.Add(
+                            $"{clip.name}: {binding.path} / {binding.propertyName} -> " +
+                            $"{referencedSourceAsset.GetType().Name} {referencedSourceAsset.name}"
+                        );
                     }
                 }
             }
@@ -372,14 +388,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             Debug.LogError(
                 "TexTransTool: Existing-parts replacement was aborted because AnimationClip object-reference curves " +
-                "directly restore one or more source materials.\n" + detail
+                "directly restore one or more source Mesh/Material assets.\n" + detail
             );
 
             EditorUtility.DisplayDialog(
                 "TexTransTool",
                 "既存パーツ差し替えを中断しました。\n\n" +
-                "対象マテリアルを直接差し替える AnimationClip が見つかりました。\n" +
-                "このまま差し替えると、アニメーション再生時に旧マテリアルへ戻る可能性があります。\n\n" +
+                "差し替え元の Mesh / Material を直接参照する AnimationClip が見つかりました。\n" +
+                "このまま差し替えると、アニメーション再生時に旧アセットへ戻る可能性があります。\n\n" +
                 "Console に該当 Clip / binding を出力しています。",
                 "OK"
             );
