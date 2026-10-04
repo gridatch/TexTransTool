@@ -62,7 +62,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     .Cast<Mesh>()
                     .ToHashSet();
 
-                if (ValidateAnimationObjectReferences(domainRoot, targetMaterials, targetMeshes) is false)
+                if (ValidateAnimationObjectReferences(domainRoot, targetRenderers, targetMaterials, targetMeshes) is false)
                 {
                     return;
                 }
@@ -311,6 +311,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private static bool ValidateAnimationObjectReferences(
             GameObject domainRoot,
+            Renderer[] targetRenderers,
             HashSet<Material> targetMaterials,
             HashSet<Mesh> targetMeshes)
         {
@@ -321,6 +322,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
+                    if (BindingTargetsRenderer(domainRoot, binding, targetRenderers) is false)
+                    {
+                        continue;
+                    }
+
                     var keyframes = AnimationUtility.GetObjectReferenceCurve(clip, binding);
                     var referencedSourceAsset = keyframes
                         .Select(frame => frame.value)
@@ -359,6 +365,35 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             );
 
             return false;
+        }
+
+        private static bool BindingTargetsRenderer(
+            GameObject domainRoot,
+            EditorCurveBinding binding,
+            Renderer[] targetRenderers)
+        {
+            var targetTransform = string.IsNullOrEmpty(binding.path)
+                ? domainRoot.transform
+                : domainRoot.transform.Find(binding.path);
+
+            if (targetTransform == null) { return false; }
+
+            if (binding.type == typeof(MeshFilter))
+            {
+                return targetRenderers
+                    .OfType<MeshRenderer>()
+                    .Any(renderer => renderer.transform == targetTransform);
+            }
+
+            if (typeof(Renderer).IsAssignableFrom(binding.type) is false)
+            {
+                return false;
+            }
+
+            return targetRenderers.Any(renderer =>
+                renderer.transform == targetTransform
+                && binding.type.IsAssignableFrom(renderer.GetType())
+            );
         }
 
         private static void ApplyBakedAtlas(
