@@ -157,7 +157,7 @@ msgid "AtlasTexture:button:ReplaceExistingParts"
 msgstr "Replace Existing Parts"
 
 msgid "AtlasTexture:button:ReplaceExistingParts:tooltip"
-msgstr "Save the current AtlasTexture result as persistent assets and replace only the target renderers' Mesh and Materials while preserving their GameObjects and Components."
+msgstr "Replace only the target renderers' Mesh and Materials while preserving their GameObjects and Components. Generated assets are saved automatically under Assets/TexTransToolGenerated/AtlasTexture."
 
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "RefreshMaterials"
