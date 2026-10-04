@@ -25,7 +25,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
         // targeting
         public List<Material?> AtlasTargetMaterials = new List<Material?>();
 
-        // Bake-only targeting. This does not affect normal NDMF AtlasTexture processing.
+        // Bake-only settings. These do not affect normal NDMF AtlasTexture processing.
+        public string BakeName = "";
+
         [FormerlySerializedAs("AtlasExcludedRenderers")]
         public List<Renderer?> BakeExcludedRenderers = new List<Renderer?>();
 
