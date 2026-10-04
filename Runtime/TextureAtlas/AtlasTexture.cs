@@ -95,7 +95,18 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("gen and replace material");
             //MaterialGenerate And Change
-            ReplaceAtlasedMaterials(domain, targetMaterials, atlasSetting, (MergeMaterialGroups, AllMaterialMergeReference, experimentalOptions), tunedAtlasUnityTextures, preserveBump2ndMaterials, preservedOriginalUVChannel);
+            var rendererScopedMaterialReplacement = AtlasExcludedRenderers.UOfType<Renderer>().Any();
+            ReplaceAtlasedMaterials(
+                domain,
+                targetMaterials,
+                targetRenderers,
+                rendererScopedMaterialReplacement,
+                atlasSetting,
+                (MergeMaterialGroups, AllMaterialMergeReference, experimentalOptions),
+                tunedAtlasUnityTextures,
+                preserveBump2ndMaterials,
+                preservedOriginalUVChannel
+            );
 
             pf.Split("register textures");
             // Register AtlasedTextures
@@ -304,6 +315,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal static void ReplaceAtlasedMaterials(
             IDomain domain
             , HashSet<Material> targetMaterials
+            , Renderer[] targetRenderers
+            , bool rendererScopedMaterialReplacement
             , AtlasSetting atlasSetting
             , (List<MaterialMergeGroup> mergeMaterialGroups, Material? allMaterialMergeReference, AtlasTextureExperimentalFeature? experimentalOptions) atlasMergeSettings
             , Dictionary<string, RenderTexture> tunedAtlasUnityTextures
@@ -321,8 +334,19 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 preservedOriginalUVChannel
             );
 
-            domain.ReplaceMaterials(materialMap);
-            domain.RegisterReplaces(domainsMaterial2ReplaceMaterial);
+            if (rendererScopedMaterialReplacement)
+            {
+                domain.ReplaceMaterials(materialMap, targetRenderers);
+
+                // A partial renderer replacement cannot be represented by the domain's global
+                // old-object -> new-object registry. Registering it would incorrectly make
+                // excluded renderers and unrelated references appear replaced as well.
+            }
+            else
+            {
+                domain.ReplaceMaterials(materialMap);
+                domain.RegisterReplaces(domainsMaterial2ReplaceMaterial);
+            }
         }
 
         internal static (
