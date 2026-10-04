@@ -150,11 +150,11 @@ msgstr "下に表示されるマテリアルを、割り当てた GameObject 配
 
 
 
-msgid "AtlasTexture:button:ReplaceExistingParts"
-msgstr "既存パーツ差し替え"
+msgid "AtlasTexture:button:BakeAtlas"
+msgstr "アトラス化をベイク"
 
-msgid "AtlasTexture:button:ReplaceExistingParts:tooltip"
-msgstr "対象RendererのGameObject/Componentを維持したままMeshとMaterialだけをAtlas結果へ差し替えます。生成アセットはAssets/TexTransToolGenerated/AtlasTexture配下へ自動保存されます。"
+msgid "AtlasTexture:button:BakeAtlas:tooltip"
+msgstr "AtlasTextureの処理結果をMesh / Material / Texture Assetとして生成し、現在の対象Rendererへ反映します。GameObjectやその他のComponentは維持されます。"
 
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "リフレッシュマテリアル"
@@ -185,6 +185,12 @@ msgstr "選択済みマテリアル"
 
 msgid "AtlasTexture:prop:SelectedMaterialView:tooltip"
 msgstr "プレハブオーバーライド設定などの特殊な操作をするための物"
+
+msgid "AtlasTexture:label:TargetRenderers"
+msgstr "対象Renderer ({0})"
+
+msgid "AtlasTexture:info:NoTargetRenderers"
+msgstr "選択中のマテリアルと現在の設定に一致するRendererはありません。"
 
 msgid "AtlasTexture:label:AtlasSettings"
 msgstr "アトラス化設定"
