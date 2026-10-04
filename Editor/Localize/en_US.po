@@ -149,11 +149,11 @@ msgstr "Limit candidate materials to GameObject subordinates."
 
 
 
-msgid "AtlasTexture:button:ReplaceExistingParts"
-msgstr "Replace Existing Parts"
+msgid "AtlasTexture:button:BakeAtlas"
+msgstr "Bake Atlasing"
 
-msgid "AtlasTexture:button:ReplaceExistingParts:tooltip"
-msgstr "Replace only the target renderers' Mesh and Materials while preserving their GameObjects and Components. Generated assets are saved automatically under Assets/TexTransToolGenerated/AtlasTexture."
+msgid "AtlasTexture:button:BakeAtlas:tooltip"
+msgstr "Generate the AtlasTexture result as Mesh, Material, and Texture assets and apply them to the current target renderers while preserving their GameObjects and other Components."
 
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "RefreshMaterials"
@@ -184,6 +184,12 @@ msgstr "SelectedMaterial"
 
 msgid "AtlasTexture:prop:SelectedMaterialView:tooltip"
 msgstr "view for special operations such as prefab override settings"
+
+msgid "AtlasTexture:label:TargetRenderers"
+msgstr "Target Renderers ({0})"
+
+msgid "AtlasTexture:info:NoTargetRenderers"
+msgstr "No renderers match the selected materials and current settings."
 
 msgid "AtlasTexture:label:AtlasSettings"
 msgstr "AtlasSettings"
