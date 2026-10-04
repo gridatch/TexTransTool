@@ -158,7 +158,7 @@ msgid "AtlasTexture:button:ReplaceExistingParts"
 msgstr "既存パーツ差し替え"
 
 msgid "AtlasTexture:button:ReplaceExistingParts:tooltip"
-msgstr "現在のAtlasTexture結果を永続アセットとして保存し、対象RendererのGameObject/Componentを維持したままMeshとMaterialだけを生成アセットへ差し替えます。"
+msgstr "対象RendererのGameObject/Componentを維持したままMeshとMaterialだけをAtlas結果へ差し替えます。生成アセットはAssets/TexTransToolGenerated/AtlasTexture配下へ自動保存されます。"
 
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "リフレッシュマテリアル"
