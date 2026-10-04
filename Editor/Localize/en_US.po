@@ -158,8 +158,6 @@ msgstr "Generate the AtlasTexture result as Mesh, Material, and Texture assets a
 msgid "AtlasTexture:label:BakeSection"
 msgstr "Bake Atlasing"
 
-msgid "AtlasTexture:info:BakeSectionDescription"
-msgstr "The Renderer selection below is used only by Bake Atlasing. It does not affect normal NDMF AtlasTexture processing."
 
 msgid "AtlasTexture:label:BakeTargetRenderers"
 msgstr "Bake Target Renderers ({0}/{1})"
