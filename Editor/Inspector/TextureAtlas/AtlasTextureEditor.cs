@@ -131,8 +131,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (PreviewUtility.IsPreviewContains is false)
             {
                 EditorGUILayout.Space();
-                if (GUILayout.Button("AtlasTexture:button:ExportPersistentAssets".Glc()))
-                    AtlasTextureAssetExporter.Export(thisTarget);
+                if (GUILayout.Button("AtlasTexture:button:ReplaceExistingParts".Glc()))
+                    AtlasTextureAssetExporter.ReplaceExistingParts(thisTarget);
             }
 
         }
