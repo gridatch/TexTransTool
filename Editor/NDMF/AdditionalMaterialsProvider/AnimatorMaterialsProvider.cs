@@ -14,12 +14,10 @@ namespace net.rs64.TexTransTool.NDMF.AdditionalMaterials
     internal class AnimatorMaterialsProvider : IAdditionalMaterialsProvider
     {
         private readonly AnimatorServicesContext _animatorServicesContext;
-        private readonly GameObject _avatarRoot;
 
         public AnimatorMaterialsProvider(BuildContext context)
         {
             _animatorServicesContext = context.Extension<AnimatorServicesContext>();
-            _avatarRoot = context.AvatarRootObject;
         }
 
         public HashSet<Material> GetReferencedMaterials()
@@ -78,13 +76,12 @@ namespace net.rs64.TexTransTool.NDMF.AdditionalMaterials
         {
             if (typeof(Renderer).IsAssignableFrom(binding.type) is false) { return false; }
 
-            var targetTransform = string.IsNullOrEmpty(binding.path)
-                ? _avatarRoot.transform
-                : _avatarRoot.transform.Find(binding.path);
+            var targetObject = _animatorServicesContext.ObjectPathRemapper
+                .GetObjectForPath(binding.path);
 
-            if (targetTransform == null) { return false; }
+            if (targetObject == null) { return false; }
 
-            return targetTransform
+            return targetObject
                 .GetComponents(binding.type)
                 .OfType<Renderer>()
                 .Any(targetRenderers.Contains);
