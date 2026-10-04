@@ -154,6 +154,12 @@ msgstr "アトラス結果をアセットとして保存"
 msgid "AtlasTexture:button:ExportPersistentAssets:tooltip"
 msgstr "現在のAtlasTexture結果を、アバターを変更せずに独立したPNGテクスチャー、Material、Meshとして保存します。"
 
+msgid "AtlasTexture:button:ReplaceExistingParts"
+msgstr "既存パーツ差し替え"
+
+msgid "AtlasTexture:button:ReplaceExistingParts:tooltip"
+msgstr "現在のAtlasTexture結果を永続アセットとして保存し、対象RendererのGameObject/Componentを維持したままMeshとMaterialだけを生成アセットへ差し替えます。"
+
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "リフレッシュマテリアル"
 
