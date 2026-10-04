@@ -56,15 +56,6 @@ namespace net.rs64.TexTransTool.NDMF
             base.ReplaceMaterials(mapping);
             _additionalMaterialsProvider.ReplaceReferencedMaterials(mapping);
         }
-
-        public override void ReplaceMaterials(
-            Dictionary<Material, Material> mapping,
-            IEnumerable<Renderer> targetRenderers)
-        {
-            var targetRendererArray = targetRenderers.ToArray();
-            base.ReplaceMaterials(mapping, targetRendererArray);
-            _additionalMaterialsProvider.ReplaceReferencedMaterials(mapping, targetRendererArray);
-        }
         public override void RegisterReplace(Object oldObject, Object nowObject)
         {
             if (_genericReplaceRegistry.ReplaceMap.TryGetValue(nowObject, out var dictOld)) { if (dictOld == oldObject) { return; } }
