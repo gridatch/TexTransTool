@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.7",
-  "lastDebugSerial": 69,
-  "currentDebugVersion": "0.1.7+debug.69.persistent-atlas-bake.af8b2cb",
+  "lastDebugSerial": 70,
+  "currentDebugVersion": "0.1.7+debug.70.persistent-atlas-bake.f173c60",
   "currentDebugChange": "persistent-atlas-bake",
   "currentDebugBranch": "feat/persistent-atlas-bake",
-  "currentDebugCommit": "af8b2cbb768a72e61b0f619de87007713bc12493",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.7+debug.69.persistent-atlas-bake.af8b2cb.zip"
+  "currentDebugCommit": "f173c6066bb0c3ba2e3acf5e1c61c7201552c0ef",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.7+debug.70.persistent-atlas-bake.f173c60.zip"
 }
