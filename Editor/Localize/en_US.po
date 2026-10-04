@@ -158,6 +158,9 @@ msgstr "Generate the AtlasTexture result as Mesh, Material, and Texture assets a
 msgid "AtlasTexture:label:BakeSection"
 msgstr "Bake Atlasing"
 
+msgid "AtlasTexture:prop:BakeName"
+msgstr "Bake Name"
+
 
 msgid "AtlasTexture:label:BakeTargetRenderers"
 msgstr "Bake Target Renderers ({0}/{1})"
