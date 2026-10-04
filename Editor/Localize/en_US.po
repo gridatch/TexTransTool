@@ -153,6 +153,12 @@ msgstr "Export Atlas Assets"
 msgid "AtlasTexture:button:ExportPersistentAssets:tooltip"
 msgstr "Save the current AtlasTexture result as independent PNG textures, Material assets, and Mesh assets without modifying the avatar."
 
+msgid "AtlasTexture:button:ReplaceExistingParts"
+msgstr "Replace Existing Parts"
+
+msgid "AtlasTexture:button:ReplaceExistingParts:tooltip"
+msgstr "Save the current AtlasTexture result as persistent assets and replace only the target renderers' Mesh and Materials while preserving their GameObjects and Components."
+
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "RefreshMaterials"
 
