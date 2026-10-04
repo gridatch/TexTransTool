@@ -17,6 +17,10 @@ namespace net.rs64.TexTransTool
         ITexTransToolForUnity GetTexTransCoreEngineForUnity();
         // 原則 RegisterReplace や TransferAssets は勝手に行わないこと
         void ReplaceMaterials(Dictionary<Material, Material> mapping);
+        void ReplaceMaterials(Dictionary<Material, Material> mapping, IEnumerable<Renderer> targetRenderers)
+        {
+            RendererUtility.SwapMaterials(targetRenderers, mapping);
+        }
 
         // Mesh の Transfer Assets や RegisterReplace は行われない
         void SetMesh(Renderer renderer, Mesh mesh);
