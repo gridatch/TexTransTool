@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.8",
-  "lastDebugSerial": 95,
-  "currentDebugVersion": "0.1.8+debug.95.matsukawa-integration-probe.d2c35e4",
+  "lastDebugSerial": 96,
+  "currentDebugVersion": "0.1.8+debug.96.matsukawa-integration-probe.dd11e5e",
   "currentDebugChange": "matsukawa-integration-probe",
   "currentDebugBranch": "feat/matsukawa-integration-probe",
-  "currentDebugCommit": "d2c35e4aaf8e6c6a9e9f31518549b7710d835f68",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.8+debug.95.matsukawa-integration-probe.d2c35e4.zip"
+  "currentDebugCommit": "dd11e5e567035f530c9cd9f8e315146bfc315000",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.8+debug.96.matsukawa-integration-probe.dd11e5e.zip"
 }
