@@ -709,7 +709,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 overwrite = EditorUtility.DisplayDialog(
                     "TTT Prefab化",
-                    outputFolder + " は既に存在します。\n既存の抽出結果を削除して作り直しますか？",
+                    outputFolder + " は既に存在します。\n既存Assetを可能な限り同じGUIDのまま更新して上書きしますか？",
                     "上書き",
                     "キャンセル"
                 );
