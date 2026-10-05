@@ -74,6 +74,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (string.IsNullOrWhiteSpace(requestedOutputName))
                 return Fail(result, "出力名を入力してください。");
 
+            if (AtlasTextureBaker.TryValidateBakeName(
+                    requestedOutputName,
+                    out var outputNameError
+                ) is false)
+            {
+                return Fail(result, outputNameError);
+            }
+
             string outputName = "";
             string outputFolder = "";
 
