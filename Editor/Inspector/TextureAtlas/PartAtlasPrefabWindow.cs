@@ -257,19 +257,45 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             if (_options.BoneMode == MatsukawaBoneMode.WeightedOnly)
             {
-                var unreadable = _entries.Count(entry =>
-                    entry.Keep
-                    && entry.IsSkinned
-                    && entry.MeshReadable is false
-                );
-                if (unreadable > 0)
+                var unreadableEntries = _entries
+                    .Where(entry =>
+                        entry.Keep
+                        && entry.IsSkinned
+                        && entry.MeshReadable is false
+                    )
+                    .ToArray();
+
+                if (unreadableEntries.Length > 0)
                 {
                     EditorGUILayout.HelpBox(
                         "残すSkinnedMeshRendererのうち "
-                        + unreadable
+                        + unreadableEntries.Length
                         + " 件でMeshのRead/Writeが無効です。松川ツールはそのRendererについてBone Weightを読めないため、ボーン配列の全ボーンを残します。",
                         MessageType.Warning
                     );
+
+                    if (GUILayout.Button("これらのMeshのRead/Writeを有効にして再インポート"))
+                    {
+                        var source = _sourcePrefab;
+                        var meshes = unreadableEntries
+                            .Select(entry => (entry.Renderer as SkinnedMeshRenderer)?.sharedMesh)
+                            .Where(mesh => mesh != null)
+                            .Cast<Mesh>()
+                            .Distinct()
+                            .ToArray();
+
+                        var changed = _matsukawa!.EnableReadWrite(meshes);
+                        EditorUtility.DisplayDialog(
+                            "TTT Prefab化",
+                            changed + " 個のModel ImporterでRead/Writeを有効にしました。",
+                            "OK"
+                        );
+
+                        if (source != null)
+                            SetSourcePrefab(source);
+
+                        GUIUtility.ExitGUI();
+                    }
                 }
             }
 
