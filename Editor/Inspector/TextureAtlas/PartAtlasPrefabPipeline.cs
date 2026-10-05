@@ -70,6 +70,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             GameObject? extractionRoot = null;
             MatsukawaExecutionResult? extraction = null;
             var originalParentPath = "";
+            var ownsOutputFolder = false;
             var committed = false;
 
             try
@@ -120,8 +121,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var outputExists = AssetDatabase.IsValidFolder(outputFolder);
                 if (outputExists && request.OverwriteExistingOutput is false)
                     return Fail(result, "同名の抽出結果が既に存在します: " + outputFolder);
-                if (outputExists && matsukawa.DeleteOutputFolder(outputName) is false)
-                    return Fail(result, "既存の抽出結果を削除できませんでした: " + outputFolder);
+                if (outputExists)
+                {
+                    if (matsukawa.DeleteOutputFolder(outputName) is false)
+                        return Fail(result, "既存の抽出結果を削除できませんでした: " + outputFolder);
+                    ownsOutputFolder = true;
+                }
+                else
+                {
+                    // Any output created from this point belongs to this transaction and can be
+                    // removed safely if the pipeline aborts.
+                    ownsOutputFolder = true;
+                }
 
                 var atlasSettingsError = ValidateAtlasSettingsReferences(request.AtlasSettings, extractionRoot);
                 if (!string.IsNullOrEmpty(atlasSettingsError))
@@ -240,6 +251,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 }
 
                 if (!committed
+                    && ownsOutputFolder
                     && string.IsNullOrEmpty(outputFolder) is false
                     && AssetDatabase.IsValidFolder(outputFolder))
                 {
