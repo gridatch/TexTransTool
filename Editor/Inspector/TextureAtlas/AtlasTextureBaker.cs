@@ -31,7 +31,73 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return false;
             }
 
-            var outputAssetPath = GetBakeOutputAssetPath(bakeName);
+            using var resolveDomain = new NotWorkDomain(
+                domainRoot.GetComponentsInChildren<Renderer>(true),
+                null
+            );
+            var (targetMaterials, targetRenderers) =
+                AtlasTextureBakeTargetResolver.ResolveBakeTargets(atlasTexture, resolveDomain);
+
+            return BakeResolved(
+                atlasTexture,
+                domainRoot,
+                targetMaterials,
+                targetRenderers,
+                bakeName,
+                GetBakeOutputAssetPath(bakeName),
+                promptOverwrite: true,
+                pingOutputFolder: true
+            );
+        }
+
+        /// <summary>
+        /// Runs the persistent Atlas bake against an explicitly supplied domain and target set.
+        /// This is the reusable boundary used by workflows that operate on temporary/extracted
+        /// hierarchies rather than the AtlasTexture component's normal avatar domain.
+        /// </summary>
+        internal static bool BakeResolved(
+            AtlasTexture atlasTexture,
+            GameObject domainRoot,
+            HashSet<Material> targetMaterials,
+            Renderer[] targetRenderers,
+            string bakeName,
+            string outputAssetPath,
+            bool promptOverwrite,
+            bool pingOutputFolder)
+        {
+            PreviewUtility.ExitPreviews();
+
+            if (atlasTexture == null)
+            {
+                Debug.LogError("TexTransTool: AtlasTexture settings source is null.");
+                return false;
+            }
+
+            if (domainRoot == null)
+            {
+                Debug.LogError("TexTransTool: AtlasTexture bake domain root is null.");
+                return false;
+            }
+
+            if (targetMaterials == null || targetRenderers == null)
+            {
+                Debug.LogError("TexTransTool: AtlasTexture bake target set is null.");
+                return false;
+            }
+
+            if (TryValidateBakeName(bakeName, out var bakeNameError) is false)
+            {
+                EditorUtility.DisplayDialog("TexTransTool", bakeNameError, "OK");
+                return false;
+            }
+
+            if (TryValidateOutputAssetPath(outputAssetPath, out var outputPathError) is false)
+            {
+                Debug.LogError("TexTransTool: " + outputPathError);
+                EditorUtility.DisplayDialog("TexTransTool", outputPathError, "OK");
+                return false;
+            }
+
             var manifestAssetPath = outputAssetPath + "/BakeManifest.asset";
             var outputExists = Directory.Exists(AssetPathToFullPath(outputAssetPath));
 
@@ -40,7 +106,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             if (outputExists)
             {
-                if (EditorUtility.DisplayDialog(
+                if (promptOverwrite
+                    && EditorUtility.DisplayDialog(
                         "TexTransTool",
                         $"ベイク名「{bakeName}」は既に存在します。上書きしますか？",
                         "上書き",
@@ -55,7 +122,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 {
                     EditorUtility.DisplayDialog(
                         "TexTransTool",
-                        $"ベイク名「{bakeName}」の管理情報が見つからないため、安全に上書きできません。",
+                        $"出力先「{outputAssetPath}」の管理情報が見つからないため、安全に上書きできません。",
                         "OK"
                     );
                     return false;
@@ -93,12 +160,19 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     engine
                 );
 
-                var (targetMaterials, targetRenderers) =
-                    AtlasTextureBakeTargetResolver.ResolveBakeTargets(atlasTexture, domain);
-
                 if (targetMaterials.Count == 0 || targetRenderers.Length == 0)
                 {
                     Debug.LogWarning("TexTransTool: No AtlasTexture bake target was found.");
+                    return false;
+                }
+
+                var domainRendererSet = domainRoot
+                    .GetComponentsInChildren<Renderer>(true)
+                    .ToHashSet();
+
+                if (targetRenderers.Any(renderer => renderer == null || domainRendererSet.Contains(renderer) is false))
+                {
+                    Debug.LogError("TexTransTool: AtlasTexture bake targets include a renderer outside the supplied domain.");
                     return false;
                 }
 
@@ -226,11 +300,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         persistentMaterialMap
                     );
 
-                    var folderAsset = AssetDatabase.LoadAssetAtPath<DefaultAsset>(outputAssetPath);
-                    if (folderAsset != null)
+                    if (pingOutputFolder)
                     {
-                        Selection.activeObject = folderAsset;
-                        EditorGUIUtility.PingObject(folderAsset);
+                        var folderAsset = AssetDatabase.LoadAssetAtPath<DefaultAsset>(outputAssetPath);
+                        if (folderAsset != null)
+                        {
+                            Selection.activeObject = folderAsset;
+                            EditorGUIUtility.PingObject(folderAsset);
+                        }
                     }
 
                     Debug.Log(
@@ -1018,6 +1095,26 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             return "Assets/TexTransToolGenerated/AtlasTexture/"
                 + bakeName;
+        }
+
+        private static bool TryValidateOutputAssetPath(string outputAssetPath, out string error)
+        {
+            if (string.IsNullOrWhiteSpace(outputAssetPath)
+                || outputAssetPath == "Assets"
+                || outputAssetPath.StartsWith("Assets/", StringComparison.Ordinal) is false)
+            {
+                error = "Atlas bake output path must be a folder below Assets/.";
+                return false;
+            }
+
+            if (outputAssetPath.IndexOfAny(new[] { '\\', ':', '*', '?', '"', '<', '>', '|' }) >= 0)
+            {
+                error = "Atlas bake output path contains an invalid character.";
+                return false;
+            }
+
+            error = "";
+            return true;
         }
 
         private static string AssetPathToFullPath(string assetPath)
