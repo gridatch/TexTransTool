@@ -186,6 +186,22 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return _api.ExportUnityPackage.Invoke(null, new object[] { result.RawReport, destination }) as string;
         }
 
+        internal string GetOutputFolder(string name)
+        {
+            return _api.FolderFor.Invoke(null, new object[] { name }) as string
+                ?? throw new InvalidOperationException("HairCostumeExtractor.HceMeshTrimmer.FolderFor returned null.");
+        }
+
+        internal bool DeleteOutputFolder(string name)
+        {
+            return (bool)(_api.DeleteOutputFolder.Invoke(null, new object[] { name }) ?? false);
+        }
+
+        internal string SanitizeName(string name)
+        {
+            return _api.Sanitize.Invoke(null, new object[] { name }) as string ?? "";
+        }
+
         internal string BuildReportText(MatsukawaExecutionResult result)
         {
             return _api.BuildReportText.Invoke(null, new[] { result.RawReport }) as string ?? "";
@@ -203,6 +219,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             _api.ReportReportText.SetValue(result.RawReport, reportText);
             result.ReportText = reportText;
+        }
+
+        internal void RemoveGeneratedMesh(MatsukawaExecutionResult result, string assetPath)
+        {
+            var generated = _api.ReportGeneratedMeshes.GetValue(result.RawReport) as IList
+                ?? throw new InvalidOperationException("HceReport.generatedMeshes is not IList.");
+            generated.Remove(assetPath);
+            result.GeneratedMeshes = ReadStringList(generated);
         }
 
         private object BuildTypedEntryList(IReadOnlyList<MatsukawaRendererEntry> entries)
@@ -337,6 +361,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             internal Type BoneMode = null!;
             internal Type Highlighter = null!;
             internal Type Executor = null!;
+            internal Type MeshTrimmer = null!;
             internal Type Report = null!;
 
             internal MethodInfo CollectRenderers = null!;
@@ -347,6 +372,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             internal MethodInfo SavePrefab = null!;
             internal MethodInfo ExportUnityPackage = null!;
             internal MethodInfo BuildReportText = null!;
+            internal MethodInfo FolderFor = null!;
+            internal MethodInfo DeleteOutputFolder = null!;
+            internal MethodInfo Sanitize = null!;
 
             internal PropertyInfo HighlighterEnabled = null!;
 
@@ -400,6 +428,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     BoneMode = TypeOf("HairCostumeExtractor.HceBoneMode"),
                     Highlighter = TypeOf("HairCostumeExtractor.HceHighlighter"),
                     Executor = TypeOf("HairCostumeExtractor.HceExecutor"),
+                    MeshTrimmer = TypeOf("HairCostumeExtractor.HceMeshTrimmer"),
                     Report = TypeOf("HairCostumeExtractor.HceReport"),
                 };
 
@@ -439,6 +468,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 api.BuildReportText = Method(api.Executor, "BuildReportText", api.Report);
                 RequireReturn(api.BuildReportText, type => type == typeof(string), "string");
+
+                api.FolderFor = Method(api.MeshTrimmer, "FolderFor", typeof(string));
+                RequireReturn(api.FolderFor, type => type == typeof(string), "string");
+                api.DeleteOutputFolder = Method(api.MeshTrimmer, "DeleteOutputFolder", typeof(string));
+                RequireReturn(api.DeleteOutputFolder, type => type == typeof(bool), "bool");
+                api.Sanitize = Method(api.MeshTrimmer, "Sanitize", typeof(string));
+                RequireReturn(api.Sanitize, type => type == typeof(string), "string");
 
                 api.EntryRenderer = Field(api.Entry, "renderer", typeof(Renderer));
                 api.EntryPath = Field(api.Entry, "path", typeof(string));
