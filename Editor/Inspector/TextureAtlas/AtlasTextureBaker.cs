@@ -469,11 +469,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return true;
         }
 
-        private static bool ValidateAnimationObjectReferences(
+        internal static bool ValidateAnimationObjectReferences(
             GameObject domainRoot,
             Renderer[] targetRenderers,
             HashSet<Material> targetMaterials,
-            HashSet<Mesh> targetMeshes)
+            HashSet<Mesh> targetMeshes,
+            bool displayDialog = true)
         {
             var hits = new List<string>();
             var dependencies = EditorUtility.CollectDependencies(new UnityEngine.Object[] { domainRoot });
@@ -515,14 +516,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 "directly restore one or more source Mesh/Material assets.\n" + detail
             );
 
-            EditorUtility.DisplayDialog(
-                "TexTransTool",
-                "アトラス化のベイクを中断しました。\n\n" +
-                "ベイク前の Mesh / Material を直接参照する AnimationClip が見つかりました。\n" +
-                "このままベイクすると、アニメーション再生時に旧アセットへ戻る可能性があります。\n\n" +
-                "Console に該当 Clip / binding を出力しています。",
-                "OK"
-            );
+            if (displayDialog)
+            {
+                EditorUtility.DisplayDialog(
+                    "TexTransTool",
+                    "アトラス化のベイクを中断しました。\n\n" +
+                    "ベイク前の Mesh / Material を直接参照する AnimationClip が見つかりました。\n" +
+                    "このままベイクすると、アニメーション再生時に旧アセットへ戻る可能性があります。\n\n" +
+                    "Console に該当 Clip / binding を出力しています。",
+                    "OK"
+                );
+            }
 
             return false;
         }
