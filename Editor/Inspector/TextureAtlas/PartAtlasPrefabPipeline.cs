@@ -46,6 +46,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal static PartAtlasPrefabResult Execute(PartAtlasPrefabRequest request)
         {
             var result = new PartAtlasPrefabResult();
+            var previousSelection = Selection.activeObject;
 
             if (request == null)
                 return Fail(result, "Part Atlas Prefab request is null.");
@@ -399,6 +400,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                     AssetDatabase.Refresh();
                 }
+
+                if (!committed && previousSelection != null)
+                    Selection.activeObject = previousSelection;
             }
         }
 
