@@ -236,6 +236,32 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
                 }
 
+                var trimRenderers = analysis.TrimTargets
+                    .Where(renderer => renderer != null)
+                    .Distinct()
+                    .ToArray();
+                var trimSourceMeshes = trimRenderers
+                    .Select(renderer => renderer.sharedMesh)
+                    .Where(mesh => mesh != null)
+                    .Cast<Mesh>()
+                    .ToHashSet();
+
+                if (trimRenderers.Length > 0
+                    && AtlasTextureBaker.ValidateAnimationObjectReferences(
+                        extractionRoot,
+                        trimRenderers,
+                        new HashSet<Material>(),
+                        trimSourceMeshes,
+                        displayDialog: false
+                    ) is false)
+                {
+                    return Fail(
+                        result,
+                        "松川ツールのボーン配列切り詰め対象Meshを直接参照するAnimationClipがあるため中断しました。"
+                        + "該当Clip / bindingはConsoleに出力しています。"
+                    );
+                }
+
                 DisambiguateTrimMeshNames(
                     matsukawa,
                     analysis.TrimTargets,
