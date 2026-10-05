@@ -94,6 +94,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             ParentAttachmentInfo? parentAttachment = null;
             var isAvatarRootExtraction = false;
             var defaultAvatarArmaturePath = "";
+            ModularAvatarAdapter? modularAvatarAdapter = null;
             var ownsOutputFolder = false;
             string? backupDirectory = null;
             var committed = false;
@@ -186,6 +187,26 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     defaultAvatarArmaturePath = FindAvatarArmaturePath(
                         extractionRoot,
                         entries.Where(entry => entry.Keep)
+                    );
+                }
+
+                var requiresModularAvatar =
+                    parentAttachment != null
+                    || (isAvatarRootExtraction
+                        && string.IsNullOrEmpty(defaultAvatarArmaturePath) is false);
+
+                if (requiresModularAvatar
+                    && ModularAvatarAdapter.TryCreate(
+                        out modularAvatarAdapter,
+                        out var maCapabilityError
+                    ) is false)
+                {
+                    return Fail(
+                        result,
+                        "この抽出結果の装着情報を保持するにはModular Avatarの対応APIが必要です。"
+                        + (string.IsNullOrEmpty(maCapabilityError)
+                            ? ""
+                            : "\n" + maCapabilityError)
                     );
                 }
 
@@ -362,43 +383,34 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 if (parentAttachment != null)
                 {
-                    if (ModularAvatarAdapter.TryCreate(out var modularAvatar, out var maError)
-                        && modularAvatar != null)
-                    {
-                        if (modularAvatar.ConfigureBoneProxy(
-                                extractionRoot,
-                                parentAttachment.BoneReference,
-                                parentAttachment.SubPath,
-                                out var addedBoneProxy,
-                                out var boneProxyError
-                            ) is false)
-                        {
-                            return Fail(
-                                result,
-                                "元の親ボーンへのMA Bone Proxy設定に失敗しました。\n"
-                                + boneProxyError
-                            );
-                        }
+                    if (modularAvatarAdapter == null)
+                        return Fail(result, "MA Bone Proxy設定用のAdapterが利用できません。");
 
-                        matsukawa.AddReportNote(
-                            extraction,
-                            addedBoneProxy
-                                ? "元の親ボーン「"
-                                  + parentAttachment.ParentPath
-                                  + "」へ接続するMA Bone Proxyを追加しました。"
-                                : "既存のMA Bone Proxy設定を保持しました。抽出元の親ボーンは「"
-                                  + parentAttachment.ParentPath
-                                  + "」です。"
-                        );
-                    }
-                    else
+                    if (modularAvatarAdapter.ConfigureBoneProxy(
+                            extractionRoot,
+                            parentAttachment.BoneReference,
+                            parentAttachment.SubPath,
+                            out var addedBoneProxy,
+                            out var boneProxyError
+                        ) is false)
                     {
                         return Fail(
                             result,
-                            "元の親ボーン接続をStandalone Prefabへ保持するにはModular Avatarが必要です。"
-                            + (string.IsNullOrEmpty(maError) ? "" : "\n" + maError)
+                            "元の親ボーンへのMA Bone Proxy設定に失敗しました。\n"
+                            + boneProxyError
                         );
                     }
+
+                    matsukawa.AddReportNote(
+                        extraction,
+                        addedBoneProxy
+                            ? "元の親ボーン「"
+                              + parentAttachment.ParentPath
+                              + "」へ接続するMA Bone Proxyを追加しました。"
+                            : "既存のMA Bone Proxy設定を保持しました。抽出元の親ボーンは「"
+                              + parentAttachment.ParentPath
+                              + "」です。"
+                    );
                 }
 
                 if (isAvatarRootExtraction)
@@ -410,37 +422,28 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                     if (string.IsNullOrEmpty(defaultAvatarArmaturePath) is false)
                     {
-                        if (ModularAvatarAdapter.TryCreate(out var modularAvatar, out var maError)
-                            && modularAvatar != null)
-                        {
-                            if (modularAvatar.ConfigureArmature(
-                                    extractionRoot,
-                                    defaultAvatarArmaturePath,
-                                    out var configureError
-                                ) is false)
-                            {
-                                return Fail(
-                                    result,
-                                    "デフォルト衣装用のMA Merge Armature設定に失敗しました。\n"
-                                    + configureError
-                                );
-                            }
+                        if (modularAvatarAdapter == null)
+                            return Fail(result, "MA Merge Armature設定用のAdapterが利用できません。");
 
-                            matsukawa.AddReportNote(
-                                extraction,
-                                "デフォルト衣装のArmature「"
-                                + defaultAvatarArmaturePath
-                                + "」にMA Merge Armature / MA Outfit Rootを設定しました。"
-                            );
-                        }
-                        else
+                        if (modularAvatarAdapter.ConfigureArmature(
+                                extractionRoot,
+                                defaultAvatarArmaturePath,
+                                out var configureError
+                            ) is false)
                         {
                             return Fail(
                                 result,
-                                "Avatar本体Armatureを使用するデフォルトパーツをStandalone Prefab化するにはModular Avatarが必要です。"
-                                + (string.IsNullOrEmpty(maError) ? "" : "\n" + maError)
+                                "デフォルト衣装用のMA Merge Armature設定に失敗しました。\n"
+                                + configureError
                             );
                         }
+
+                        matsukawa.AddReportNote(
+                            extraction,
+                            "デフォルト衣装のArmature「"
+                            + defaultAvatarArmaturePath
+                            + "」にMA Merge Armature / MA Outfit Rootを設定しました。"
+                        );
                     }
                 }
 
