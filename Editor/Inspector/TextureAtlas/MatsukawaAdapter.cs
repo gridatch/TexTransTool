@@ -229,6 +229,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _api.ReportWorkedOnCopy.SetValue(result.RawReport, workedOnCopy);
         }
 
+        internal void SetSourceName(MatsukawaExecutionResult result, string sourceName)
+        {
+            _api.ReportSourceName.SetValue(result.RawReport, sourceName);
+            result.SourceName = sourceName;
+        }
+
         internal void RemoveGeneratedMesh(MatsukawaExecutionResult result, string assetPath)
         {
             var generated = _api.ReportGeneratedMeshes.GetValue(result.RawReport) as IList
