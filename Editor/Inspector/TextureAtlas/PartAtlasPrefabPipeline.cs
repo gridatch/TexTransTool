@@ -196,11 +196,32 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 // Verify the Atlas renderer/material mapping before touching an existing output folder.
                 // HCE only deletes objects and compacts meshes; it does not reparent kept renderers,
                 // so these stable renderer keys must still resolve after extraction.
-                ResolveAtlasTargets(
+                var (preflightMaterials, preflightRenderers) = ResolveAtlasTargets(
                     request.AtlasSettings,
                     extractionRoot,
                     request.AtlasRendererKeys
                 );
+
+                var preflightMeshes = preflightRenderers
+                    .Select(GetRendererMesh)
+                    .Where(mesh => mesh != null)
+                    .Cast<Mesh>()
+                    .ToHashSet();
+
+                if (AtlasTextureBaker.ValidateAnimationObjectReferences(
+                        extractionRoot,
+                        preflightRenderers,
+                        preflightMaterials,
+                        preflightMeshes,
+                        displayDialog: false
+                    ) is false)
+                {
+                    return Fail(
+                        result,
+                        "抽出前のMesh / Materialを直接参照するAnimationClipがあるため中断しました。"
+                        + "該当Clip / bindingはConsoleに出力しています。"
+                    );
+                }
 
                 DisambiguateTrimMeshNames(
                     analysis.TrimTargets,
@@ -635,6 +656,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 targetRenderers,
                 atlasSettings.AtlasSetting.AtlasTargetUVChannel
             );
+        }
+
+        private static Mesh? GetRendererMesh(Renderer renderer)
+        {
+            return renderer switch
+            {
+                SkinnedMeshRenderer skinned => skinned.sharedMesh,
+                MeshRenderer meshRenderer => meshRenderer.GetComponent<MeshFilter>()?.sharedMesh,
+                _ => null,
+            };
         }
 
         internal static string GetRendererPath(GameObject root, Renderer renderer)
