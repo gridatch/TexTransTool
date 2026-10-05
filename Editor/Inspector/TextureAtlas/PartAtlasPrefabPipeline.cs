@@ -726,7 +726,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             foreach (var component in extractionRoot.GetComponentsInChildren<Component>(true))
             {
-                if (component == null) continue;
+                if (component == null || component is Transform) continue;
 
                 SerializedObject serialized;
                 try { serialized = new SerializedObject(component); }
