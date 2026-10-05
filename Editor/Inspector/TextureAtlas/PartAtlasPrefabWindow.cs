@@ -171,6 +171,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     ? "-"
                     : _matsukawa.GetOutputFolder(sanitized);
                 EditorGUILayout.LabelField("出力", outputFolder, EditorStyles.wordWrappedMiniLabel);
+
+                if (string.IsNullOrWhiteSpace(sanitized) is false
+                    && AtlasTextureBaker.TryValidateBakeName(
+                        sanitized,
+                        out var outputNameError
+                    ) is false)
+                {
+                    EditorGUILayout.HelpBox(outputNameError, MessageType.Warning);
+                }
             }
 
             EditorGUILayout.Space(4f);
