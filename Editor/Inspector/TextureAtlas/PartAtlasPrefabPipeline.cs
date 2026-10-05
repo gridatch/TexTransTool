@@ -74,7 +74,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (string.IsNullOrWhiteSpace(requestedOutputName))
                 return Fail(result, "出力名を入力してください。");
 
-            if (AtlasTextureBaker.TryValidateBakeName(
+            if (TryValidateOutputName(
                     requestedOutputName,
                     out var outputNameError
                 ) is false)
@@ -560,6 +560,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (!committed && previousSelection != null)
                     Selection.activeObject = previousSelection;
             }
+        }
+
+        internal static bool TryValidateOutputName(
+            string outputName,
+            out string error)
+        {
+            if (AtlasTextureBaker.TryValidateBakeName(outputName, out error))
+                return true;
+
+            error = error.Replace("ベイク名", "出力名");
+            return false;
         }
 
         private sealed class ParentAttachmentInfo
