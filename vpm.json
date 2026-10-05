@@ -131,17 +131,17 @@
           },
           "zipSHA256": "211378c209b09af7530c46604dbadcde6748045ecfe8bc5d2ae159489dd49c4c"
         },
-        "0.1.8+debug.93.matsukawa-integration-probe.c559092": {
+        "0.1.8+debug.94.matsukawa-integration-probe.7892508": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.8+debug.93.matsukawa-integration-probe.c559092",
+          "version": "0.1.8+debug.94.matsukawa-integration-probe.7892508",
           "unity": "2022.3",
-          "description": "Debug build 93 for matsukawa-integration-probe from feat/matsukawa-integration-probe at c559092. Based on WDT 0.1.8 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 94 for matsukawa-integration-probe from feat/matsukawa-integration-probe at 7892508. Based on WDT 0.1.8 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.8+debug.93.matsukawa-integration-probe.c559092.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.8+debug.94.matsukawa-integration-probe.7892508.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -154,7 +154,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "9c374902372f3b7100239319c78b43aaa60827d5f8a1fb6668c2452966491798"
+          "zipSHA256": "cec54b0de8797efeb2e9cc183d87f46e7ac8b0e37e9be092c3f43252375329fd"
         }
       }
     }
