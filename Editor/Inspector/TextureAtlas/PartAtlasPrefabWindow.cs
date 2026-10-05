@@ -22,7 +22,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private List<MatsukawaRendererEntry> _entries = new();
         private readonly List<Renderer> _atlasCandidates = new();
-        private readonly HashSet<string> _atlasIncludedPaths = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _atlasIncludedKeys = new(StringComparer.Ordinal);
         private MatsukawaOptions _options = new();
         private MatsukawaAnalysis? _analysis;
 
@@ -206,11 +206,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     entry.Keep = nextKeep;
                     _analysis = null;
 
+                    var rendererKey = PartAtlasPrefabPipeline.GetRendererKey(
+                        _extractionRoot,
+                        entry.Renderer
+                    );
                     if (entry.Keep is false)
-                        _atlasIncludedPaths.Remove(entry.Path);
+                        _atlasIncludedKeys.Remove(rendererKey);
                     else if (_atlasCandidates.Any(renderer =>
-                                 PartAtlasPrefabPipeline.GetRendererPath(_extractionRoot, renderer) == entry.Path))
-                        _atlasIncludedPaths.Add(entry.Path);
+                                 PartAtlasPrefabPipeline.GetRendererKey(_extractionRoot, renderer) == rendererKey))
+                        _atlasIncludedKeys.Add(rendererKey);
                 }
 
                 var category = string.IsNullOrEmpty(entry.Category) ? "Unknown" : entry.Category;
@@ -232,22 +236,25 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             if (_extractionRoot == null || _atlasSettings == null) return;
 
-            var keptRendererPaths = _entries
+            var keptRendererKeys = _entries
                 .Where(entry => entry.Keep)
-                .Select(entry => entry.Path)
+                .Select(entry => PartAtlasPrefabPipeline.GetRendererKey(
+                    _extractionRoot,
+                    entry.Renderer
+                ))
                 .ToHashSet(StringComparer.Ordinal);
 
             var selectable = _atlasCandidates
                 .Where(renderer =>
-                    keptRendererPaths.Contains(
-                        PartAtlasPrefabPipeline.GetRendererPath(_extractionRoot, renderer)
+                    keptRendererKeys.Contains(
+                        PartAtlasPrefabPipeline.GetRendererKey(_extractionRoot, renderer)
                     )
                 )
                 .ToArray();
 
             var includedCount = selectable.Count(renderer =>
-                _atlasIncludedPaths.Contains(
-                    PartAtlasPrefabPipeline.GetRendererPath(_extractionRoot, renderer)
+                _atlasIncludedKeys.Contains(
+                    PartAtlasPrefabPipeline.GetRendererKey(_extractionRoot, renderer)
                 )
             );
 
@@ -265,14 +272,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (GUILayout.Button("選択可能を全選択", EditorStyles.miniButton))
                 {
                     foreach (var renderer in selectable)
-                        _atlasIncludedPaths.Add(
-                            PartAtlasPrefabPipeline.GetRendererPath(_extractionRoot, renderer)
+                        _atlasIncludedKeys.Add(
+                            PartAtlasPrefabPipeline.GetRendererKey(_extractionRoot, renderer)
                         );
                 }
 
                 if (GUILayout.Button("全解除", EditorStyles.miniButton))
                 {
-                    _atlasIncludedPaths.Clear();
+                    _atlasIncludedKeys.Clear();
                 }
 
                 if (GUILayout.Button("対象更新", EditorStyles.miniButton))
@@ -302,8 +309,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 if (renderer == null) continue;
                 var path = PartAtlasPrefabPipeline.GetRendererPath(_extractionRoot, renderer);
-                var extracted = keptRendererPaths.Contains(path);
-                var included = extracted && _atlasIncludedPaths.Contains(path);
+                var key = PartAtlasPrefabPipeline.GetRendererKey(_extractionRoot, renderer);
+                var extracted = keptRendererKeys.Contains(key);
+                var included = extracted && _atlasIncludedKeys.Contains(key);
 
                 using (new EditorGUI.DisabledScope(extracted is false))
                 {
@@ -319,8 +327,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                     if (extracted && nextIncluded != included)
                     {
-                        if (nextIncluded) _atlasIncludedPaths.Add(path);
-                        else _atlasIncludedPaths.Remove(path);
+                        if (nextIncluded) _atlasIncludedKeys.Add(key);
+                        else _atlasIncludedKeys.Remove(key);
                     }
                 }
             }
@@ -342,16 +350,19 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             foreach (var entry in _entries) entry.Keep = predicate(entry);
 
-            var keptPaths = _entries
+            var keptKeys = _entries
                 .Where(entry => entry.Keep)
-                .Select(entry => entry.Path)
+                .Select(entry => PartAtlasPrefabPipeline.GetRendererKey(
+                    _extractionRoot!,
+                    entry.Renderer
+                ))
                 .ToHashSet(StringComparer.Ordinal);
 
-            _atlasIncludedPaths.RemoveWhere(path => keptPaths.Contains(path) is false);
+            _atlasIncludedKeys.RemoveWhere(key => keptKeys.Contains(key) is false);
             foreach (var renderer in _atlasCandidates)
             {
-                var path = PartAtlasPrefabPipeline.GetRendererPath(_extractionRoot!, renderer);
-                if (keptPaths.Contains(path)) _atlasIncludedPaths.Add(path);
+                var key = PartAtlasPrefabPipeline.GetRendererKey(_extractionRoot!, renderer);
+                if (keptKeys.Contains(key)) _atlasIncludedKeys.Add(key);
             }
 
             _analysis = null;
@@ -570,11 +581,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (_analysis == null || _sourcePrefab == null || _extractionRoot == null) return;
 
             EditorGUILayout.Space(8f);
-            var keptPaths = _entries
+            var keptKeys = _entries
                 .Where(entry => entry.Keep)
-                .Select(entry => entry.Path)
+                .Select(entry => PartAtlasPrefabPipeline.GetRendererKey(
+                    _extractionRoot,
+                    entry.Renderer
+                ))
                 .ToHashSet(StringComparer.Ordinal);
-            var atlasSelectionCount = _atlasIncludedPaths.Count(keptPaths.Contains);
+            var atlasSelectionCount = _atlasIncludedKeys.Count(keptKeys.Contains);
 
             using (new EditorGUI.DisabledScope(
                        _entries.All(entry => entry.Keep is false)
@@ -623,16 +637,19 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 OverwriteExistingOutput = overwrite,
             };
 
-            var keptPaths = _entries
+            var keptKeys = _entries
                 .Where(entry => entry.Keep)
-                .Select(entry => entry.Path)
+                .Select(entry => PartAtlasPrefabPipeline.GetRendererKey(
+                    _extractionRoot,
+                    entry.Renderer
+                ))
                 .ToHashSet(StringComparer.Ordinal);
 
-            foreach (var path in keptPaths)
-                request.KeepRendererPaths.Add(path);
+            foreach (var key in keptKeys)
+                request.KeepRendererKeys.Add(key);
 
-            foreach (var path in _atlasIncludedPaths.Where(keptPaths.Contains))
-                request.AtlasRendererPaths.Add(path);
+            foreach (var key in _atlasIncludedKeys.Where(keptKeys.Contains))
+                request.AtlasRendererKeys.Add(key);
 
             var pipelineResult = PartAtlasPrefabPipeline.Execute(request);
             if (!pipelineResult.Success)
@@ -732,11 +749,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private void RefreshAtlasCandidates(bool preserveSelection)
         {
             var previous = preserveSelection
-                ? _atlasIncludedPaths.ToHashSet(StringComparer.Ordinal)
+                ? _atlasIncludedKeys.ToHashSet(StringComparer.Ordinal)
                 : new HashSet<string>(StringComparer.Ordinal);
 
             _atlasCandidates.Clear();
-            _atlasIncludedPaths.Clear();
+            _atlasIncludedKeys.Clear();
 
             if (_extractionRoot == null || _atlasSettings == null) return;
 
@@ -747,17 +764,20 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 )
             );
 
-            var keptPaths = _entries
+            var keptKeys = _entries
                 .Where(entry => entry.Keep)
-                .Select(entry => entry.Path)
+                .Select(entry => PartAtlasPrefabPipeline.GetRendererKey(
+                    _extractionRoot,
+                    entry.Renderer
+                ))
                 .ToHashSet(StringComparer.Ordinal);
 
             foreach (var renderer in _atlasCandidates)
             {
-                var path = PartAtlasPrefabPipeline.GetRendererPath(_extractionRoot, renderer);
-                if (keptPaths.Contains(path) is false) continue;
-                if (preserveSelection && previous.Contains(path) is false) continue;
-                _atlasIncludedPaths.Add(path);
+                var key = PartAtlasPrefabPipeline.GetRendererKey(_extractionRoot, renderer);
+                if (keptKeys.Contains(key) is false) continue;
+                if (preserveSelection && previous.Contains(key) is false) continue;
+                _atlasIncludedKeys.Add(key);
             }
         }
 
@@ -766,7 +786,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _analysis = null;
             _entries.Clear();
             _atlasCandidates.Clear();
-            _atlasIncludedPaths.Clear();
+            _atlasIncludedKeys.Clear();
             _extractionRoot = null;
             _rootPaths = Array.Empty<string>();
             _rootLabels = Array.Empty<string>();
