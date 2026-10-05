@@ -588,51 +588,47 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             GameObject root,
             IEnumerable<MatsukawaRendererEntry> keptEntries)
         {
-            // Prefer the Humanoid definition when available; this mirrors MA Setup Outfit's
-            // Hips -> parent armature-root convention.
+            // Only auto-create MA Merge Armature when the selected skinned part actually
+            // uses the avatar's canonical Humanoid armature. A MeshRenderer-only accessory,
+            // or a separate top-level rig, must not accidentally receive an Armature merge.
             var animator = root.GetComponent<Animator>();
-            if (animator != null && animator.avatar != null && animator.isHuman)
-            {
-                var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
-                if (hips != null && hips.IsChildOf(root.transform) && hips.parent != null)
-                    return RelativePath(root.transform, hips.parent);
-            }
+            if (animator == null || animator.avatar == null || animator.isHuman is false)
+                return "";
 
-            // Generic-rig fallback: all kept skinned renderers should normally reference bones
-            // under one top-level armature object.
-            var topLevelRoots = new HashSet<Transform>();
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            if (hips == null || hips.IsChildOf(root.transform) is false || hips.parent == null)
+                return "";
+
+            var armatureRoot = hips.parent;
+            var usesAvatarArmature = false;
+
             foreach (var entry in keptEntries)
             {
                 if (entry.Renderer is not SkinnedMeshRenderer smr) continue;
 
-                if (smr.rootBone != null && smr.rootBone.IsChildOf(root.transform))
+                if (smr.rootBone != null
+                    && (smr.rootBone == armatureRoot || smr.rootBone.IsChildOf(armatureRoot)))
                 {
-                    var top = TopLevelChild(root.transform, smr.rootBone);
-                    if (top != null) topLevelRoots.Add(top);
+                    usesAvatarArmature = true;
+                    break;
                 }
 
                 foreach (var bone in smr.bones ?? Array.Empty<Transform>())
                 {
-                    if (bone == null || bone.IsChildOf(root.transform) is false) continue;
-                    var top = TopLevelChild(root.transform, bone);
-                    if (top != null) topLevelRoots.Add(top);
+                    if (bone == null) continue;
+                    if (bone == armatureRoot || bone.IsChildOf(armatureRoot))
+                    {
+                        usesAvatarArmature = true;
+                        break;
+                    }
                 }
+
+                if (usesAvatarArmature) break;
             }
 
-            return topLevelRoots.Count == 1
-                ? RelativePath(root.transform, topLevelRoots.First())
+            return usesAvatarArmature
+                ? RelativePath(root.transform, armatureRoot)
                 : "";
-        }
-
-        private static Transform? TopLevelChild(Transform root, Transform descendant)
-        {
-            if (descendant == root) return null;
-
-            var current = descendant;
-            while (current.parent != null && current.parent != root)
-                current = current.parent;
-
-            return current.parent == root ? current : null;
         }
 
         private static GameObject? ResolveExtractionRoot(GameObject prefabRoot, string path)
