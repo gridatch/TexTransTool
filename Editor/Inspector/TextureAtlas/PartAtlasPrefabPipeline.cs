@@ -841,7 +841,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var enterChildren = true;
                 var guard = 0;
 
-                while (iterator.Next(enterChildren) && guard++ < 10000)
+                while (iterator.NextVisible(enterChildren) && guard++ < 10000)
                 {
                     enterChildren = true;
                     if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
