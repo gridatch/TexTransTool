@@ -101,7 +101,11 @@ namespace net.rs64.TexTransTool.NDMF
                 Profiler.EndSample();
 
                 Profiler.BeginSample("add to all groups");
+#if NDMF_1_13_0_OR_NEWER
                 allGroups.AddRange(renderersGroup2behavior.Select(i => RenderGroup.For(i.Key).WithData(new PassingData(i.Value, domainRenderers, behaviorIndex), EqualityComparer<PassingData>.Default)));
+#else
+                allGroups.AddRange(renderersGroup2behavior.Select(i => RenderGroup.For(i.Key).WithData(new PassingData(i.Value, domainRenderers, behaviorIndex))));
+#endif
                 Profiler.EndSample();
                 Profiler.EndSample();
 
