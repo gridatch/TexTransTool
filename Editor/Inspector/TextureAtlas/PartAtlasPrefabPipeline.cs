@@ -82,6 +82,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             MatsukawaExecutionResult? extraction = null;
             var originalParentPath = "";
             var ownsOutputFolder = false;
+            string? backupOutputFolder = null;
             var committed = false;
 
             try
@@ -134,18 +135,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var outputExists = AssetDatabase.IsValidFolder(outputFolder);
                 if (outputExists && request.OverwriteExistingOutput is false)
                     return Fail(result, "同名の抽出結果が既に存在します: " + outputFolder);
-                if (outputExists)
-                {
-                    if (matsukawa.DeleteOutputFolder(outputName) is false)
-                        return Fail(result, "既存の抽出結果を削除できませんでした: " + outputFolder);
-                    ownsOutputFolder = true;
-                }
-                else
-                {
-                    // Any output created from this point belongs to this transaction and can be
-                    // removed safely if the pipeline aborts.
-                    ownsOutputFolder = true;
-                }
 
                 var atlasSettingsError = ValidateAtlasSettingsReferences(request.AtlasSettings, extractionRoot);
                 if (!string.IsNullOrEmpty(atlasSettingsError))
@@ -172,6 +161,34 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     foreach (var warning in analysis.Warnings)
                         Debug.LogWarning("Part Atlas Prefab / Matsukawa: " + warning);
                 }
+
+                // Verify the Atlas renderer/material mapping before touching an existing output folder.
+                // HCE only deletes objects and compacts meshes; it does not reparent kept renderers,
+                // so these stable renderer keys must still resolve after extraction.
+                ResolveAtlasTargets(
+                    request.AtlasSettings,
+                    extractionRoot,
+                    request.AtlasRendererKeys
+                );
+
+                if (outputExists)
+                {
+                    backupOutputFolder = AssetDatabase.GenerateUniqueAssetPath(
+                        outputFolder + "__TTTBackup"
+                    );
+                    var moveError = AssetDatabase.MoveAsset(outputFolder, backupOutputFolder);
+                    if (string.IsNullOrEmpty(moveError) is false)
+                    {
+                        backupOutputFolder = null;
+                        return Fail(
+                            result,
+                            "既存の抽出結果を退避できないため、上書きを中断しました。\n" + moveError
+                        );
+                    }
+                }
+
+                // From this point on, anything at outputFolder belongs to this transaction.
+                ownsOutputFolder = true;
 
                 extraction = matsukawa.Execute(extractionRoot, entries, executionOptions);
                 if (extraction.Succeeded is false || extraction.Result == null)
@@ -247,6 +264,20 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 result.PrefabPath = prefabPath;
                 result.ReportText = reportText;
                 result.Success = true;
+
+                if (string.IsNullOrEmpty(backupOutputFolder) is false
+                    && AssetDatabase.IsValidFolder(backupOutputFolder))
+                {
+                    if (AssetDatabase.DeleteAsset(backupOutputFolder) is false)
+                    {
+                        Debug.LogWarning(
+                            "TexTransTool Part Atlas Prefab: 旧出力の一時退避フォルダを削除できませんでした: "
+                            + backupOutputFolder
+                        );
+                    }
+                    backupOutputFolder = null;
+                }
+
                 committed = true;
                 return result;
             }
@@ -275,14 +306,35 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     UnityEngine.Object.DestroyImmediate(instantiatedRoot);
                 }
 
-                if (!committed
-                    && ownsOutputFolder
-                    && string.IsNullOrEmpty(outputFolder) is false
-                    && AssetDatabase.IsValidFolder(outputFolder))
+                if (!committed)
                 {
-                    // A failed pipeline must not leave HCE trim meshes, reports, or a partial Atlas
-                    // set behind. Existing output was only removed above when overwrite was explicit.
-                    matsukawa.DeleteOutputFolder(outputName);
+                    if (ownsOutputFolder
+                        && string.IsNullOrEmpty(outputFolder) is false
+                        && AssetDatabase.IsValidFolder(outputFolder))
+                    {
+                        // A failed transaction must not leave HCE trim meshes, reports, or
+                        // a partial Atlas set behind.
+                        AssetDatabase.DeleteAsset(outputFolder);
+                    }
+
+                    if (string.IsNullOrEmpty(backupOutputFolder) is false
+                        && AssetDatabase.IsValidFolder(backupOutputFolder))
+                    {
+                        var restoreError = AssetDatabase.MoveAsset(
+                            backupOutputFolder,
+                            outputFolder
+                        );
+                        if (string.IsNullOrEmpty(restoreError) is false)
+                        {
+                            Debug.LogError(
+                                "TexTransTool Part Atlas Prefab: 旧出力の復元に失敗しました。"
+                                + "\n退避先: " + backupOutputFolder
+                                + "\n復元先: " + outputFolder
+                                + "\n" + restoreError
+                            );
+                        }
+                    }
+
                     AssetDatabase.Refresh();
                 }
             }
