@@ -1087,9 +1087,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             CopyDirectory(sourceFullPath, contentBackup);
 
             var sourceMeta = sourceFullPath + ".meta";
-            if (File.Exists(sourceMeta))
-                File.Copy(sourceMeta, Path.Combine(backupRoot, "Folder.meta"), true);
+            if (File.Exists(sourceMeta) is false)
+                throw new FileNotFoundException(
+                    "既存出力フォルダのmetaをバックアップできません。",
+                    sourceMeta
+                );
 
+            File.Copy(sourceMeta, Path.Combine(backupRoot, "Folder.meta"), true);
             return backupRoot;
         }
 
