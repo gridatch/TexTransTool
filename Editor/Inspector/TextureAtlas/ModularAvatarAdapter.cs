@@ -133,8 +133,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private static FieldInfo Field(Type type, string name, Type expectedType)
         {
-            var field = type.GetField(name, BindingFlags.Public | BindingFlags.Instance)
-                ?? throw new MissingFieldException(type.FullName, name);
+            var field = type.GetField(
+                name,
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance
+            ) ?? throw new MissingFieldException(type.FullName, name);
 
             if (field.FieldType != expectedType)
             {
