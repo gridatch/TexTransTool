@@ -54,6 +54,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal int TrimTargetCount;
         internal int WarningCount;
         internal IReadOnlyList<string> Warnings = Array.Empty<string>();
+        internal readonly HashSet<Transform> KeepTransforms = new();
+        internal readonly HashSet<Transform> DeleteTransforms = new();
+        internal readonly HashSet<GameObject> ProtectedObjects = new();
 
         internal object Raw = null!;
     }
@@ -282,7 +285,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private MatsukawaAnalysis ReadAnalysis(object raw)
         {
-            return new MatsukawaAnalysis
+            var result = new MatsukawaAnalysis
             {
                 Raw = raw,
                 TotalTransforms = ReadInt(_api.AnalysisTotalTransforms, raw),
@@ -297,6 +300,32 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 WarningCount = Count(_api.AnalysisWarnings.GetValue(raw)),
                 Warnings = ReadStringList(_api.AnalysisWarnings.GetValue(raw)),
             };
+
+            if (_api.AnalysisKeep.GetValue(raw) is IEnumerable keep)
+            {
+                foreach (var item in keep)
+                    if (item is Transform transform)
+                        result.KeepTransforms.Add(transform);
+            }
+
+            if (_api.AnalysisDeleteRoots.GetValue(raw) is IEnumerable deleteRoots)
+            {
+                foreach (var item in deleteRoots)
+                {
+                    if (item is not Transform deleteRoot) continue;
+                    foreach (var transform in deleteRoot.GetComponentsInChildren<Transform>(true))
+                        result.DeleteTransforms.Add(transform);
+                }
+            }
+
+            if (_api.AnalysisProtected.GetValue(raw) is IEnumerable protectedObjects)
+            {
+                foreach (var item in protectedObjects)
+                    if (item is GameObject gameObject)
+                        result.ProtectedObjects.Add(gameObject);
+            }
+
+            return result;
         }
 
         private MatsukawaExecutionResult ReadExecutionResult(object rawReport)
