@@ -166,6 +166,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (outfitRoot == null)
             {
                 outfitRoot = partRoot.AddComponent(_outfitRootType);
+                if (outfitRoot == null)
+                {
+                    error = "MA Outfit Rootを追加できませんでした。";
+                    UnityEngine.Object.DestroyImmediate(merge);
+                    return false;
+                }
             }
             else
             {
