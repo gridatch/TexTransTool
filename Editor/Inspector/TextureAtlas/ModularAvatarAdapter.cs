@@ -125,8 +125,21 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return false;
             }
 
-            var merge = armature.GetComponent(_mergeArmatureType)
-                ?? armature.gameObject.AddComponent(_mergeArmatureType);
+            var existingMerge = armature.GetComponent(_mergeArmatureType);
+            if (existingMerge != null)
+            {
+                error =
+                    "抽出したArmature Rootに既存のMA Merge Armatureがあります。"
+                    + "既存設定を上書きすると意味が変わるため自動設定を中断しました。";
+                return false;
+            }
+
+            var merge = armature.gameObject.AddComponent(_mergeArmatureType);
+            if (merge == null)
+            {
+                error = "MA Merge Armatureを追加できませんでした。";
+                return false;
+            }
 
             var reference = _mergeTarget.GetValue(merge);
             if (reference == null)
@@ -149,10 +162,25 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 Enum.Parse(_armatureLockModeType, "BaseToMerge")
             );
 
-            var outfitRoot = partRoot.GetComponent(_outfitRootType)
-                ?? partRoot.AddComponent(_outfitRootType);
-            _outfitArmatureRoot.SetValue(outfitRoot, armature);
+            var outfitRoot = partRoot.GetComponent(_outfitRootType);
+            if (outfitRoot == null)
+            {
+                outfitRoot = partRoot.AddComponent(_outfitRootType);
+            }
+            else
+            {
+                var currentArmature = _outfitArmatureRoot.GetValue(outfitRoot) as Transform;
+                if (currentArmature != null && currentArmature != armature)
+                {
+                    error =
+                        "既存のMA Outfit Rootが別のArmature Rootを参照しています。"
+                        + "既存設定を上書きせず中断しました。";
+                    UnityEngine.Object.DestroyImmediate(merge);
+                    return false;
+                }
+            }
 
+            _outfitArmatureRoot.SetValue(outfitRoot, armature);
             return true;
         }
 
