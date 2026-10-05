@@ -57,6 +57,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal readonly HashSet<Transform> KeepTransforms = new();
         internal readonly HashSet<Transform> DeleteTransforms = new();
         internal readonly HashSet<GameObject> ProtectedObjects = new();
+        internal readonly List<SkinnedMeshRenderer> TrimTargets = new();
 
         internal object Raw = null!;
     }
@@ -329,6 +330,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 foreach (var item in protectedObjects)
                     if (item is GameObject gameObject)
                         result.ProtectedObjects.Add(gameObject);
+            }
+
+            if (_api.AnalysisTrimTargets.GetValue(raw) is IEnumerable trimTargets)
+            {
+                foreach (var item in trimTargets)
+                    if (item is SkinnedMeshRenderer renderer)
+                        result.TrimTargets.Add(renderer);
             }
 
             return result;
