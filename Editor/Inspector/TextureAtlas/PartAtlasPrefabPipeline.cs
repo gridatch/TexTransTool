@@ -82,6 +82,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             GameObject? extractionRoot = null;
             MatsukawaExecutionResult? extraction = null;
             var originalParentPath = "";
+            ParentAttachmentInfo? parentAttachment = null;
             var isAvatarRootExtraction = false;
             var defaultAvatarArmaturePath = "";
             var ownsOutputFolder = false;
@@ -112,7 +113,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (extractionRoot != instantiatedRoot)
                 {
                     if (extractionRoot.transform.parent != null)
-                        originalParentPath = RelativePath(instantiatedRoot.transform, extractionRoot.transform.parent);
+                    {
+                        originalParentPath = RelativePath(
+                            instantiatedRoot.transform,
+                            extractionRoot.transform.parent
+                        );
+                        parentAttachment = FindHumanoidParentAttachment(
+                            instantiatedRoot,
+                            extractionRoot.transform.parent
+                        );
+                    }
 
                     var externalReferenceError = SanitizeAndValidateExternalReferences(
                         extractionRoot,
@@ -233,11 +243,50 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     matsukawa.AddReportNote(
                         extraction,
                         "抽出元では親が「" + originalParentPath + "」でした。"
-                        + "Standalone PrefabではRoot化されるため、装着時の親ボーン接続（MA Bone Proxy等）が必要か確認してください。"
                     );
                 }
 
                 extractionRoot = extraction.Result;
+
+                if (parentAttachment != null)
+                {
+                    if (ModularAvatarAdapter.TryCreate(out var modularAvatar, out var maError)
+                        && modularAvatar != null)
+                    {
+                        if (modularAvatar.ConfigureBoneProxy(
+                                extractionRoot,
+                                parentAttachment.BoneReference,
+                                parentAttachment.SubPath,
+                                out var addedBoneProxy,
+                                out var boneProxyError
+                            ) is false)
+                        {
+                            return Fail(
+                                result,
+                                "元の親ボーンへのMA Bone Proxy設定に失敗しました。\n"
+                                + boneProxyError
+                            );
+                        }
+
+                        matsukawa.AddReportNote(
+                            extraction,
+                            (addedBoneProxy ? "MA Bone Proxyを追加し、" : "既存のMA Bone Proxyを使用し、")
+                            + "元の親ボーン「"
+                            + parentAttachment.ParentPath
+                            + "」へ接続する設定を行いました。"
+                        );
+                    }
+                    else
+                    {
+                        matsukawa.AddReportNote(
+                            extraction,
+                            "元の親はHumanoidボーン配下「"
+                            + parentAttachment.ParentPath
+                            + "」でしたが、Modular Avatarを検出できないためMA Bone Proxyは追加していません。"
+                            + (string.IsNullOrEmpty(maError) ? "" : " (" + maError + ")")
+                        );
+                    }
+                }
 
                 if (isAvatarRootExtraction)
                 {
@@ -404,6 +453,52 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (!committed && previousSelection != null)
                     Selection.activeObject = previousSelection;
             }
+        }
+
+        private sealed class ParentAttachmentInfo
+        {
+            internal HumanBodyBones BoneReference;
+            internal string SubPath = "";
+            internal string ParentPath = "";
+        }
+
+        private static ParentAttachmentInfo? FindHumanoidParentAttachment(
+            GameObject avatarRoot,
+            Transform originalParent)
+        {
+            if (originalParent == null || originalParent == avatarRoot.transform)
+                return null;
+
+            var animator = avatarRoot.GetComponent<Animator>();
+            if (animator == null || animator.avatar == null || animator.isHuman is false)
+                return null;
+
+            var humanoidBones = new Dictionary<Transform, HumanBodyBones>();
+            foreach (HumanBodyBones boneType in Enum.GetValues(typeof(HumanBodyBones)))
+            {
+                if (boneType == HumanBodyBones.LastBone) continue;
+                var bone = animator.GetBoneTransform(boneType);
+                if (bone != null && bone.IsChildOf(avatarRoot.transform))
+                    humanoidBones[bone] = boneType;
+            }
+
+            var current = originalParent;
+            while (current != null && current != avatarRoot.transform)
+            {
+                if (humanoidBones.TryGetValue(current, out var boneReference))
+                {
+                    return new ParentAttachmentInfo
+                    {
+                        BoneReference = boneReference,
+                        SubPath = RelativePath(current, originalParent),
+                        ParentPath = RelativePath(avatarRoot.transform, originalParent),
+                    };
+                }
+
+                current = current.parent;
+            }
+
+            return null;
         }
 
         private static bool HasAvatarDescriptor(GameObject root)
