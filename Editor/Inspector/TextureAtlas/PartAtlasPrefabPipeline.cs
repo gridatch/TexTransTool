@@ -81,6 +81,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             GameObject? instantiatedRoot = null;
             GameObject? extractionRoot = null;
             MatsukawaExecutionResult? extraction = null;
+            var transientInputMeshes = new List<Mesh>();
             var originalParentPath = "";
             ParentAttachmentInfo? parentAttachment = null;
             var isAvatarRootExtraction = false;
@@ -201,6 +202,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     request.AtlasRendererKeys
                 );
 
+                DisambiguateTrimMeshNames(
+                    analysis.TrimTargets,
+                    transientInputMeshes
+                );
+
                 if (outputExists)
                 {
                     backupOutputFolder = AssetDatabase.GenerateUniqueAssetPath(
@@ -229,6 +235,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 // correctly states that the source Prefab asset was left untouched.
                 matsukawa.SetWorkedOnCopy(extraction, true);
                 matsukawa.SetSourceName(extraction, request.SourcePrefabAsset.name);
+
+                if (transientInputMeshes.Count > 0)
+                {
+                    matsukawa.AddReportNote(
+                        extraction,
+                        "同名Meshの切り詰めAsset衝突を避けるため、解析用コピー上で "
+                        + transientInputMeshes.Count
+                        + " 個のMesh名を一時的に分離しました。元Assetは変更していません。"
+                    );
+                }
 
                 if (string.IsNullOrEmpty(request.ExtractionRootPath) is false)
                 {
@@ -419,6 +435,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 else if (instantiatedRoot != null)
                 {
                     UnityEngine.Object.DestroyImmediate(instantiatedRoot);
+                }
+
+                foreach (var mesh in transientInputMeshes)
+                {
+                    if (mesh != null && AssetDatabase.Contains(mesh) is false)
+                        UnityEngine.Object.DestroyImmediate(mesh);
                 }
 
                 if (!committed)
@@ -665,6 +687,47 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 .ToHashSet();
 
             return (targetMaterials, targetRenderers);
+        }
+
+        private static void DisambiguateTrimMeshNames(
+            IReadOnlyList<SkinnedMeshRenderer> trimTargets,
+            List<Mesh> transientMeshes)
+        {
+            var candidates = trimTargets
+                .Where(renderer => renderer != null && renderer.sharedMesh != null)
+                .ToArray();
+
+            if (candidates.Length < 2) return;
+
+            var usedNames = candidates
+                .Select(renderer => renderer.sharedMesh.name)
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var group in candidates
+                         .GroupBy(renderer => renderer.sharedMesh.name, StringComparer.Ordinal)
+                         .Where(group => group.Count() > 1))
+            {
+                var index = 0;
+                foreach (var renderer in group)
+                {
+                    // Keep the first renderer on the original source mesh. Only later colliding
+                    // renderers need transient clones because HceMeshTrimmer saves by mesh name.
+                    if (index++ == 0) continue;
+
+                    var source = renderer.sharedMesh;
+                    var suffix = index;
+                    string uniqueName;
+                    do
+                    {
+                        uniqueName = source.name + "__TTT_" + suffix++;
+                    } while (usedNames.Add(uniqueName) is false);
+
+                    var clone = UnityEngine.Object.Instantiate(source);
+                    clone.name = uniqueName;
+                    renderer.sharedMesh = clone;
+                    transientMeshes.Add(clone);
+                }
+            }
         }
 
         private static void RemoveSupersededTrimMeshes(
