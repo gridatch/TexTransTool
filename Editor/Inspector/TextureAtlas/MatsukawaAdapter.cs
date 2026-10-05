@@ -221,6 +221,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             result.ReportText = reportText;
         }
 
+        internal void SetWorkedOnCopy(MatsukawaExecutionResult result, bool workedOnCopy)
+        {
+            _api.ReportWorkedOnCopy.SetValue(result.RawReport, workedOnCopy);
+        }
+
         internal void RemoveGeneratedMesh(MatsukawaExecutionResult result, string assetPath)
         {
             var generated = _api.ReportGeneratedMeshes.GetValue(result.RawReport) as IList
@@ -410,6 +415,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             internal FieldInfo ReportResult = null!;
             internal FieldInfo ReportSourceName = null!;
+            internal FieldInfo ReportWorkedOnCopy = null!;
             internal FieldInfo ReportGeneratedMeshes = null!;
             internal FieldInfo ReportNotes = null!;
             internal FieldInfo ReportOutputFolder = null!;
@@ -508,6 +514,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 api.ReportResult = Field(api.Report, "result", typeof(GameObject));
                 api.ReportSourceName = Field(api.Report, "sourceName", typeof(string));
+                api.ReportWorkedOnCopy = Field(api.Report, "workedOnCopy", typeof(bool));
                 api.ReportGeneratedMeshes = Field(api.Report, "generatedMeshes", null);
                 api.ReportNotes = Field(api.Report, "notes", null);
                 api.ReportOutputFolder = Field(api.Report, "outputFolder", typeof(string));
