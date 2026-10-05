@@ -1072,7 +1072,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     if (referencedTransform.IsChildOf(fullPrefabRoot.transform) is false) continue;
                     if (referencedTransform.IsChildOf(extractionRoot.transform)) continue;
 
-                    if (CanClearAvatarObjectReferenceCache(serialized, iterator.propertyPath))
+                    if (CanClearAvatarObjectReferenceCache(
+                            component,
+                            serialized,
+                            iterator.propertyPath
+                        ))
                     {
                         safeToClear.Add(iterator.propertyPath);
                         continue;
@@ -1117,9 +1121,19 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         }
 
         private static bool CanClearAvatarObjectReferenceCache(
+            Component component,
             SerializedObject serialized,
             string propertyPath)
         {
+            var componentNamespace = component.GetType().Namespace ?? "";
+            if (componentNamespace.StartsWith(
+                    "nadena.dev.modular_avatar",
+                    StringComparison.Ordinal
+                ) is false)
+            {
+                return false;
+            }
+
             const string targetObject = "targetObject";
             if (propertyPath == targetObject)
             {
