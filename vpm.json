@@ -131,17 +131,17 @@
           },
           "zipSHA256": "211378c209b09af7530c46604dbadcde6748045ecfe8bc5d2ae159489dd49c4c"
         },
-        "0.1.8+debug.146.part-atlas-prefab.84ad550": {
+        "0.1.8+debug.147.part-atlas-prefab.6f2075d": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.8+debug.146.part-atlas-prefab.84ad550",
+          "version": "0.1.8+debug.147.part-atlas-prefab.6f2075d",
           "unity": "2022.3",
-          "description": "Debug build 146 for part-atlas-prefab from feat/part-atlas-prefab at 84ad550. Based on WDT 0.1.8 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 147 for part-atlas-prefab from feat/part-atlas-prefab at 6f2075d. Based on WDT 0.1.8 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.8+debug.146.part-atlas-prefab.84ad550.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.8+debug.147.part-atlas-prefab.6f2075d.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -154,7 +154,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "9128d7f33dde28e2ed7337f8bcba6a37e210d9eff43f48a8c9a64ad2a53dc067"
+          "zipSHA256": "a401aa692e1a5fbe42c8fe99e379c68448c5a46001f8335e2dc7fe624b2deff0"
         }
       }
     }
