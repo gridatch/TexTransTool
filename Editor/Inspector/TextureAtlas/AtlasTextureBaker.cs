@@ -1054,7 +1054,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return string.IsNullOrEmpty(normalized) ? propertyName : normalized;
         }
 
-        private static bool TryValidateBakeName(string bakeName, out string error)
+        internal static bool TryValidateBakeName(string bakeName, out string error)
         {
             if (string.IsNullOrWhiteSpace(bakeName))
             {
