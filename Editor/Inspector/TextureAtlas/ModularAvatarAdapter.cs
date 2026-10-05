@@ -16,6 +16,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private readonly Type _outfitRootType;
         private readonly Type _avatarObjectReferenceType;
         private readonly Type _armatureLockModeType;
+        private readonly Type _boneProxyType;
+        private readonly Type _boneProxyAttachmentModeType;
 
         private readonly FieldInfo _mergeTarget;
         private readonly FieldInfo _mergePrefix;
@@ -24,17 +26,25 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private readonly FieldInfo _outfitArmatureRoot;
         private readonly FieldInfo _referencePath;
         private readonly FieldInfo _targetObject;
+        private readonly FieldInfo _boneProxyBoneReference;
+        private readonly FieldInfo _boneProxySubPath;
+        private readonly FieldInfo _boneProxyAttachmentMode;
+        private readonly FieldInfo _boneProxyMatchScale;
 
         private ModularAvatarAdapter(
             Type mergeArmatureType,
             Type outfitRootType,
             Type avatarObjectReferenceType,
-            Type armatureLockModeType)
+            Type armatureLockModeType,
+            Type boneProxyType,
+            Type boneProxyAttachmentModeType)
         {
             _mergeArmatureType = mergeArmatureType;
             _outfitRootType = outfitRootType;
             _avatarObjectReferenceType = avatarObjectReferenceType;
             _armatureLockModeType = armatureLockModeType;
+            _boneProxyType = boneProxyType;
+            _boneProxyAttachmentModeType = boneProxyAttachmentModeType;
 
             _mergeTarget = Field(_mergeArmatureType, "mergeTarget", _avatarObjectReferenceType);
             _mergePrefix = Field(_mergeArmatureType, "prefix", typeof(string));
@@ -43,6 +53,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _outfitArmatureRoot = Field(_outfitRootType, "armatureRoot", typeof(Transform));
             _referencePath = Field(_avatarObjectReferenceType, "referencePath", typeof(string));
             _targetObject = Field(_avatarObjectReferenceType, "targetObject", typeof(GameObject));
+            _boneProxyBoneReference = Field(_boneProxyType, "boneReference", typeof(HumanBodyBones));
+            _boneProxySubPath = Field(_boneProxyType, "subPath", typeof(string));
+            _boneProxyAttachmentMode = Field(
+                _boneProxyType,
+                "attachmentMode",
+                _boneProxyAttachmentModeType
+            );
+            _boneProxyMatchScale = Field(_boneProxyType, "matchScale", typeof(bool));
 
             if (_armatureLockModeType.IsEnum is false
                 || Enum.GetNames(_armatureLockModeType).Contains("BaseToMerge") is false)
@@ -50,6 +68,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 throw new MissingMemberException(
                     _armatureLockModeType.FullName,
                     "BaseToMerge"
+                );
+            }
+
+            if (_boneProxyAttachmentModeType.IsEnum is false
+                || Enum.GetNames(_boneProxyAttachmentModeType).Contains("AsChildKeepWorldPose") is false)
+            {
+                throw new MissingMemberException(
+                    _boneProxyAttachmentModeType.FullName,
+                    "AsChildKeepWorldPose"
                 );
             }
         }
@@ -62,8 +89,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var outfitRoot = TypeOf("nadena.dev.modular_avatar.core.ModularAvatarOutfitRoot");
                 var objRef = TypeOf("nadena.dev.modular_avatar.core.AvatarObjectReference");
                 var lockMode = TypeOf("nadena.dev.modular_avatar.core.ArmatureLockMode");
+                var boneProxy = TypeOf("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+                var attachmentMode = TypeOf("nadena.dev.modular_avatar.core.BoneProxyAttachmentMode");
 
-                adapter = new ModularAvatarAdapter(merge, outfitRoot, objRef, lockMode);
+                adapter = new ModularAvatarAdapter(
+                    merge,
+                    outfitRoot,
+                    objRef,
+                    lockMode,
+                    boneProxy,
+                    attachmentMode
+                );
                 error = "";
                 return true;
             }
@@ -116,6 +152,35 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var outfitRoot = partRoot.GetComponent(_outfitRootType)
                 ?? partRoot.AddComponent(_outfitRootType);
             _outfitArmatureRoot.SetValue(outfitRoot, armature);
+
+            return true;
+        }
+
+        internal bool ConfigureBoneProxy(
+            GameObject partRoot,
+            HumanBodyBones boneReference,
+            string subPath,
+            out bool added,
+            out string error)
+        {
+            error = "";
+            var existing = partRoot.GetComponent(_boneProxyType);
+            added = existing == null;
+
+            var proxy = existing ?? partRoot.AddComponent(_boneProxyType);
+            if (proxy == null)
+            {
+                error = "MA Bone Proxyを追加できませんでした。";
+                return false;
+            }
+
+            _boneProxyBoneReference.SetValue(proxy, boneReference);
+            _boneProxySubPath.SetValue(proxy, subPath ?? "");
+            _boneProxyAttachmentMode.SetValue(
+                proxy,
+                Enum.Parse(_boneProxyAttachmentModeType, "AsChildKeepWorldPose")
+            );
+            _boneProxyMatchScale.SetValue(proxy, false);
 
             return true;
         }
