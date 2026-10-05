@@ -18,6 +18,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal readonly HashSet<string> KeepRendererKeys = new(StringComparer.Ordinal);
         internal MatsukawaOptions ExtractionOptions = new();
         internal AtlasTexture AtlasSettings = null!;
+        internal string OutputName = "";
         // Prefab化専用のRenderer選択。通常のBakeExcludedRenderersは設定元Hierarchyを
         // 参照しているため、別Prefabへ暗黙に流用しない。
         internal readonly HashSet<string> AtlasRendererKeys = new(StringComparer.Ordinal);
@@ -68,6 +69,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (request.AtlasRendererKeys.Count == 0)
                 return Fail(result, "アトラス化対象Rendererが選択されていません。");
 
+            var requestedOutputName = matsukawa.SanitizeName(request.OutputName?.Trim() ?? "");
+            if (string.IsNullOrWhiteSpace(requestedOutputName))
+                return Fail(result, "出力名を入力してください。");
+
             string outputName = "";
             string outputFolder = "";
 
@@ -117,8 +122,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     instantiatedRoot = extractionRoot;
                 }
 
-                // Preserve the extraction root name. Animation paths and Modular Avatar relative
-                // paths may depend on it; renaming here would make a reusable Prefab subtly unsafe.
+                // AnimationClip bindings and MA AvatarObjectReference paths are root-relative, so
+                // changing only the temporary extraction root name does not alter child paths.
+                // The source Prefab asset itself is never renamed.
+                extractionRoot.name = requestedOutputName;
                 outputName = extractionRoot.name;
                 outputFolder = matsukawa.GetOutputFolder(outputName);
                 result.OutputFolder = outputFolder;
@@ -174,6 +181,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 // already running on a disposable Prefab instance. Normalize the report so it
                 // correctly states that the source Prefab asset was left untouched.
                 matsukawa.SetWorkedOnCopy(extraction, true);
+                matsukawa.SetSourceName(extraction, request.SourcePrefabAsset.name);
+
+                if (string.IsNullOrEmpty(request.ExtractionRootPath) is false)
+                {
+                    matsukawa.AddReportNote(
+                        extraction,
+                        "入力Prefab内の抽出ルート: " + request.ExtractionRootPath
+                    );
+                }
 
                 if (string.IsNullOrEmpty(originalParentPath) is false)
                 {
@@ -450,7 +466,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var enterChildren = true;
                 var guard = 0;
 
-                while (iterator.NextVisible(enterChildren) && guard++ < 10000)
+                while (iterator.Next(enterChildren) && guard++ < 10000)
                 {
                     enterChildren = true;
                     if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
@@ -554,7 +570,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var enterChildren = true;
                 var guard = 0;
 
-                while (iterator.NextVisible(enterChildren) && guard++ < 10000)
+                while (iterator.Next(enterChildren) && guard++ < 10000)
                 {
                     enterChildren = true;
                     if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
