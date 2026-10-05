@@ -2,6 +2,7 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using UnityEditor;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas.Editor
@@ -30,6 +31,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private readonly FieldInfo _boneProxySubPath;
         private readonly FieldInfo _boneProxyAttachmentMode;
         private readonly FieldInfo _boneProxyMatchScale;
+        private readonly MethodInfo? _resetArmatureLock;
 
         private ModularAvatarAdapter(
             Type mergeArmatureType,
@@ -61,6 +63,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 _boneProxyAttachmentModeType
             );
             _boneProxyMatchScale = Field(_boneProxyType, "matchScale", typeof(bool));
+            _resetArmatureLock = _mergeArmatureType.GetMethod(
+                "ResetArmatureLock",
+                BindingFlags.NonPublic | BindingFlags.Instance
+            );
 
             if (_armatureLockModeType.IsEnum is false
                 || Enum.GetNames(_armatureLockModeType).Contains("BaseToMerge") is false)
@@ -187,6 +193,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             _outfitArmatureRoot.SetValue(outfitRoot, armature);
+
+            EditorUtility.SetDirty((UnityEngine.Object)merge);
+            EditorUtility.SetDirty((UnityEngine.Object)outfitRoot);
+            _resetArmatureLock?.Invoke(merge, null);
             return true;
         }
 
@@ -222,6 +232,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 Enum.Parse(_boneProxyAttachmentModeType, "AsChildKeepWorldPose")
             );
             _boneProxyMatchScale.SetValue(proxy, false);
+            EditorUtility.SetDirty((UnityEngine.Object)proxy);
 
             return true;
         }
