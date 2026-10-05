@@ -132,6 +132,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 DrawAtlasSettings();
 
             DrawBakeSection();
+            DrawPrefabSection();
 
         }
 
@@ -164,6 +165,31 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (AtlasTextureBaker.Bake(thisTarget))
                 {
                     sBakeName.stringValue = "";
+                }
+            }
+        }
+
+        private void DrawPrefabSection()
+        {
+            if (PreviewUtility.IsPreviewContains) { return; }
+
+            EditorGUILayout.Space();
+            using var section = new EditorGUILayout.VerticalScope(EditorStyles.helpBox);
+
+            EditorGUILayout.LabelField("Prefab化", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(
+                "Prefab Assetから必要なパーツを抽出し、上のAtlasTexture設定を適用してStandalone Prefabを生成します。",
+                EditorStyles.wordWrappedMiniLabel
+            );
+
+            using (new EditorGUI.DisabledScope(thisTarget == null))
+            {
+                if (GUILayout.Button(
+                        "Prefab化...",
+                        GUILayout.Height(EditorGUIUtility.singleLineHeight + 6f)
+                    ))
+                {
+                    PartAtlasPrefabWindow.Open(thisTarget);
                 }
             }
         }
