@@ -27,6 +27,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private MatsukawaAnalysis? _analysis;
 
         private string _filter = "";
+        private string _outputName = "";
         private Vector2 _mainScroll;
         private Vector2 _rendererScroll;
         private Vector2 _atlasRendererScroll;
@@ -157,7 +158,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             if (_extractionRoot != null)
             {
-                var outputFolder = _matsukawa!.GetOutputFolder(_extractionRoot.name);
+                _outputName = EditorGUILayout.TextField(
+                    new GUIContent(
+                        "出力名",
+                        "生成するStandalone PrefabのRoot名と、松川ツールの抽出フォルダ名に使用します。"
+                    ),
+                    _outputName
+                );
+
+                var sanitized = _matsukawa!.SanitizeName(_outputName.Trim());
+                var outputFolder = string.IsNullOrWhiteSpace(sanitized)
+                    ? "-"
+                    : _matsukawa.GetOutputFolder(sanitized);
                 EditorGUILayout.LabelField("出力", outputFolder, EditorStyles.wordWrappedMiniLabel);
             }
 
@@ -615,7 +627,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 || _extractionRoot == null)
                 return;
 
-            var outputFolder = _matsukawa.GetOutputFolder(_extractionRoot.name);
+            var sanitizedOutputName = _matsukawa.SanitizeName(_outputName.Trim());
+            if (string.IsNullOrWhiteSpace(sanitizedOutputName))
+            {
+                EditorUtility.DisplayDialog("TTT Prefab化", "出力名を入力してください。", "OK");
+                return;
+            }
+
+            var outputFolder = _matsukawa.GetOutputFolder(sanitizedOutputName);
             var overwrite = false;
             if (AssetDatabase.IsValidFolder(outputFolder))
             {
@@ -634,6 +653,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 ExtractionRootPath = _rootPaths.Length > _rootIndex ? _rootPaths[_rootIndex] : "",
                 ExtractionOptions = _options,
                 AtlasSettings = _atlasSettings,
+                OutputName = sanitizedOutputName,
                 OverwriteExistingOutput = overwrite,
             };
 
@@ -743,6 +763,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             if (_extractionRoot == null) return;
             _entries = _matsukawa.CollectRenderers(_extractionRoot).ToList();
+            _outputName = _extractionRoot.name;
             RefreshAtlasCandidates(preserveSelection: false);
         }
 
@@ -787,6 +808,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _entries.Clear();
             _atlasCandidates.Clear();
             _atlasIncludedKeys.Clear();
+            _outputName = "";
             _extractionRoot = null;
             _rootPaths = Array.Empty<string>();
             _rootLabels = Array.Empty<string>();
