@@ -182,13 +182,25 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     string.IsNullOrEmpty(request.ExtractionRootPath)
                     && HasAvatarDescriptor(extractionRoot);
 
+                var executionOptions = CloneOptions(request.ExtractionOptions);
+                // The temporary scene is already the disposable working copy. Asking HCE to make
+                // another scene copy only adds hierarchy noise and complicates output naming.
+                executionOptions.WorkOnCopy = false;
+
+                // A default outfit extracted from an Avatar Prefab must become a part Prefab,
+                // not another avatar. Always remove root Animator/Descriptor/Pipeline components.
                 if (isAvatarRootExtraction)
+                    executionOptions.StripAvatarComponents = true;
+
+                var analysis = matsukawa.Analyze(extractionRoot, entries, executionOptions);
+                if (analysis.WarningCount > 0)
                 {
-                    defaultAvatarArmaturePath = FindAvatarArmaturePath(
-                        extractionRoot,
-                        entries.Where(entry => entry.Keep)
-                    );
+                    foreach (var warning in analysis.Warnings)
+                        Debug.LogWarning("Part Atlas Prefab / Matsukawa: " + warning);
                 }
+
+                if (isAvatarRootExtraction)
+                    defaultAvatarArmaturePath = FindAvatarArmaturePath(extractionRoot, analysis);
 
                 var requiresModularAvatar =
                     parentAttachment != null
@@ -208,23 +220,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                             ? ""
                             : "\n" + maCapabilityError)
                     );
-                }
-
-                var executionOptions = CloneOptions(request.ExtractionOptions);
-                // The temporary scene is already the disposable working copy. Asking HCE to make
-                // another scene copy only adds hierarchy noise and complicates output naming.
-                executionOptions.WorkOnCopy = false;
-
-                // A default outfit extracted from an Avatar Prefab must become a part Prefab,
-                // not another avatar. Always remove root Animator/Descriptor/Pipeline components.
-                if (isAvatarRootExtraction)
-                    executionOptions.StripAvatarComponents = true;
-
-                var analysis = matsukawa.Analyze(extractionRoot, entries, executionOptions);
-                if (analysis.WarningCount > 0)
-                {
-                    foreach (var warning in analysis.Warnings)
-                        Debug.LogWarning("Part Atlas Prefab / Matsukawa: " + warning);
                 }
 
                 // Verify the Atlas renderer/material mapping before touching an existing output folder.
@@ -642,11 +637,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private static string FindAvatarArmaturePath(
             GameObject root,
-            IEnumerable<MatsukawaRendererEntry> keptEntries)
+            MatsukawaAnalysis analysis)
         {
-            // Only auto-create MA Merge Armature when the selected skinned part actually
-            // uses the avatar's canonical Humanoid armature. A MeshRenderer-only accessory,
-            // or a separate top-level rig, must not accidentally receive an Armature merge.
+            // HCE's keep-set is authoritative here: it already includes renderer ancestors,
+            // weighted bones, probe anchors, PhysBone dependencies and followed references.
+            // If the canonical Humanoid armature root survived that analysis, the extracted
+            // part depends on avatar-armature content and needs a Merge Armature attachment.
             var animator = root.GetComponent<Animator>();
             if (animator == null || animator.avatar == null || animator.isHuman is false)
                 return "";
@@ -656,43 +652,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return "";
 
             var armatureRoot = hips.parent;
-            var usesAvatarArmature = false;
-
-            foreach (var entry in keptEntries)
-            {
-                var rendererTransform = entry.Renderer.transform;
-                if (rendererTransform == armatureRoot
-                    || rendererTransform.IsChildOf(armatureRoot))
-                {
-                    // Rigid/default accessories parented under Head/Hand/etc. still depend on
-                    // the avatar armature even when they are plain MeshRenderers.
-                    usesAvatarArmature = true;
-                    break;
-                }
-
-                if (entry.Renderer is not SkinnedMeshRenderer smr) continue;
-
-                if (smr.rootBone != null
-                    && (smr.rootBone == armatureRoot || smr.rootBone.IsChildOf(armatureRoot)))
-                {
-                    usesAvatarArmature = true;
-                    break;
-                }
-
-                foreach (var bone in smr.bones ?? Array.Empty<Transform>())
-                {
-                    if (bone == null) continue;
-                    if (bone == armatureRoot || bone.IsChildOf(armatureRoot))
-                    {
-                        usesAvatarArmature = true;
-                        break;
-                    }
-                }
-
-                if (usesAvatarArmature) break;
-            }
-
-            return usesAvatarArmature
+            return analysis.KeepTransforms.Contains(armatureRoot)
                 ? RelativePath(root.transform, armatureRoot)
                 : "";
         }
