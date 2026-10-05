@@ -165,9 +165,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             error = "";
             var existing = partRoot.GetComponent(_boneProxyType);
-            added = existing == null;
+            if (existing != null)
+            {
+                // An existing Bone Proxy is part of the source prefab's authored attachment
+                // semantics. Do not overwrite it with a heuristic reconstruction.
+                added = false;
+                return true;
+            }
 
-            var proxy = existing ?? partRoot.AddComponent(_boneProxyType);
+            added = true;
+            var proxy = partRoot.AddComponent(_boneProxyType);
             if (proxy == null)
             {
                 error = "MA Bone Proxyを追加できませんでした。";
