@@ -241,6 +241,38 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 }
             }
 
+            var unknownUnchecked = _entries.Count(entry =>
+                entry.Keep is false
+                && entry.Category == "Unknown"
+            );
+            if (unknownUnchecked > 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "用途が「不明」でチェックの入っていないRendererが "
+                    + unknownUnchecked
+                    + " 件あります。用途推定は名前からの推定なので、必要なものが混じっていないか確認してください。",
+                    MessageType.Warning
+                );
+            }
+
+            if (_options.BoneMode == MatsukawaBoneMode.WeightedOnly)
+            {
+                var unreadable = _entries.Count(entry =>
+                    entry.Keep
+                    && entry.IsSkinned
+                    && entry.MeshReadable is false
+                );
+                if (unreadable > 0)
+                {
+                    EditorGUILayout.HelpBox(
+                        "残すSkinnedMeshRendererのうち "
+                        + unreadable
+                        + " 件でMeshのRead/Writeが無効です。松川ツールはそのRendererについてBone Weightを読めないため、ボーン配列の全ボーンを残します。",
+                        MessageType.Warning
+                    );
+                }
+            }
+
             EditorGUILayout.Space(4f);
         }
 
@@ -425,28 +457,24 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 "Humanoidボーンは常に残す",
                 _options.KeepHumanoidBones
             );
-            _options.StripAvatarComponents = EditorGUILayout.Toggle(
-                "アバター用コンポーネントを外す",
-                _options.StripAvatarComponents
-            );
-
-            if (_extractionRoot == _loadedPrefabRoot && _options.StripAvatarComponents is false)
+            var avatarRootExtraction = IsAvatarRootExtraction();
+            using (new EditorGUI.DisabledScope(avatarRootExtraction))
             {
-                var hasAvatarLikeRootComponent = _extractionRoot
-                    .GetComponents<Component>()
-                    .Where(component => component != null)
-                    .Any(component =>
-                        component.GetType().Name is "VRCAvatarDescriptor" or "PipelineManager" or "PipelineSaver"
-                        || component is Animator
-                    );
+                var stripValue = avatarRootExtraction ? true : _options.StripAvatarComponents;
+                var nextStrip = EditorGUILayout.Toggle(
+                    "アバター用コンポーネントを外す",
+                    stripValue
+                );
+                if (avatarRootExtraction is false)
+                    _options.StripAvatarComponents = nextStrip;
+            }
 
-                if (hasAvatarLikeRootComponent)
-                {
-                    EditorGUILayout.HelpBox(
-                        "Avatar Rootからパーツを抽出する場合、Standalone Partに不要なアバター用コンポーネントが残る可能性があります。必要に応じて「アバター用コンポーネントを外す」を有効にしてください。",
-                        MessageType.Info
-                    );
-                }
+            if (avatarRootExtraction)
+            {
+                EditorGUILayout.HelpBox(
+                    "Avatar Rootを抽出ルートにしているため、出力をAvatarではなくPart Prefabにする目的でAnimator / AvatarDescriptor / Pipeline系Componentは自動的に外します。利用可能な場合は抽出ArmatureへMA Merge Armature / MA Outfit Rootも自動設定します。",
+                    MessageType.Info
+                );
             }
 
             if (EditorGUI.EndChangeCheck()) _analysis = null;
@@ -819,6 +847,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 catch (Exception e) { Debug.LogException(e); }
                 _loadedPrefabRoot = null;
             }
+        }
+
+        private bool IsAvatarRootExtraction()
+        {
+            if (_extractionRoot == null || _loadedPrefabRoot == null) return false;
+            if (_extractionRoot != _loadedPrefabRoot) return false;
+
+            return _extractionRoot
+                .GetComponents<Component>()
+                .Where(component => component != null)
+                .Any(component => component.GetType().Name == "VRCAvatarDescriptor");
         }
 
         private static string RelativePath(Transform root, Transform target)
