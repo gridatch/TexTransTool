@@ -206,6 +206,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return _api.Sanitize.Invoke(null, new object[] { name }) as string ?? "";
         }
 
+        internal int EnableReadWrite(IEnumerable<Mesh> meshes)
+        {
+            var value = _api.EnableReadWrite.Invoke(null, new object[] { meshes });
+            return value is int count ? count : 0;
+        }
+
         internal string BuildReportText(MatsukawaExecutionResult result)
         {
             return _api.BuildReportText.Invoke(null, new[] { result.RawReport }) as string ?? "";
@@ -423,6 +429,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             internal MethodInfo FolderFor = null!;
             internal MethodInfo DeleteOutputFolder = null!;
             internal MethodInfo Sanitize = null!;
+            internal MethodInfo EnableReadWrite = null!;
 
             internal PropertyInfo HighlighterEnabled = null!;
 
@@ -524,6 +531,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 RequireReturn(api.DeleteOutputFolder, type => type == typeof(bool), "bool");
                 api.Sanitize = Method(api.MeshTrimmer, "Sanitize", typeof(string));
                 RequireReturn(api.Sanitize, type => type == typeof(string), "string");
+
+                api.EnableReadWrite = Method(
+                    api.MeshTrimmer,
+                    "EnableReadWrite",
+                    typeof(IEnumerable<Mesh>)
+                );
+                RequireReturn(api.EnableReadWrite, type => type == typeof(int), "int");
 
                 api.EntryRenderer = Field(api.Entry, "renderer", typeof(Renderer));
                 api.EntryPath = Field(api.Entry, "path", typeof(string));
