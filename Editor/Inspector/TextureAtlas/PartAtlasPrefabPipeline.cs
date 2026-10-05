@@ -263,6 +263,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (extraction.Succeeded is false || extraction.Result == null)
                     return Fail(result, "松川ツールの抽出処理が完了しませんでした。");
 
+                if (string.IsNullOrEmpty(backupDirectory) is false)
+                {
+                    PreserveExistingTrimMeshGuids(
+                        extraction.Result,
+                        extraction.GeneratedMeshes,
+                        outputFolder,
+                        backupDirectory
+                    );
+                }
+
                 if (TransientMeshStillReferenced(extraction.Result, transientInputMeshes))
                 {
                     return Fail(
@@ -738,6 +748,73 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 .ToHashSet();
 
             return (targetMaterials, targetRenderers);
+        }
+
+        private static void PreserveExistingTrimMeshGuids(
+            GameObject extractionRoot,
+            IReadOnlyList<string> generatedMeshPaths,
+            string outputFolder,
+            string backupRoot)
+        {
+            if (generatedMeshPaths.Count == 0) return;
+
+            var normalizedOutput = outputFolder.TrimEnd('/') + "/";
+            var contentBackup = Path.Combine(backupRoot, "Content");
+
+            foreach (var assetPath in generatedMeshPaths.Distinct(StringComparer.Ordinal))
+            {
+                if (string.IsNullOrEmpty(assetPath)
+                    || assetPath.StartsWith(normalizedOutput, StringComparison.Ordinal) is false)
+                {
+                    continue;
+                }
+
+                var relativeAssetPath = assetPath.Substring(normalizedOutput.Length)
+                    .Replace('/', Path.DirectorySeparatorChar);
+                var backupMeta = Path.Combine(contentBackup, relativeAssetPath + ".meta");
+                if (File.Exists(backupMeta) is false) continue;
+
+                var affectedRenderers = extractionRoot
+                    .GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                    .Where(renderer =>
+                        renderer.sharedMesh != null
+                        && string.Equals(
+                            AssetDatabase.GetAssetPath(renderer.sharedMesh),
+                            assetPath,
+                            StringComparison.Ordinal
+                        )
+                    )
+                    .ToArray();
+
+                var currentMeta = AssetPathToFullPath(assetPath) + ".meta";
+                if (File.Exists(currentMeta) is false)
+                    throw new FileNotFoundException(
+                        "生成されたTrim Meshのmetaが見つかりません。",
+                        currentMeta
+                    );
+
+                // HCE recreates trim Mesh assets with DeleteAsset/CreateAsset. Restoring the
+                // previous .meta GUID here keeps external references to that generated Mesh valid
+                // across an overwrite while retaining the newly generated Mesh contents.
+                File.Copy(backupMeta, currentMeta, true);
+                AssetDatabase.ImportAsset(
+                    assetPath,
+                    ImportAssetOptions.ForceUpdate
+                    | ImportAssetOptions.ForceSynchronousImport
+                );
+
+                var persistentMesh = AssetDatabase.LoadAssetAtPath<Mesh>(assetPath);
+                if (persistentMesh == null)
+                    throw new InvalidOperationException(
+                        "GUID復元後のTrim Meshを読み込めません: " + assetPath
+                    );
+
+                foreach (var renderer in affectedRenderers)
+                {
+                    renderer.sharedMesh = persistentMesh;
+                    EditorUtility.SetDirty(renderer);
+                }
+            }
         }
 
         private static bool TransientMeshStillReferenced(
