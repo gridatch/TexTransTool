@@ -270,10 +270,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                         matsukawa.AddReportNote(
                             extraction,
-                            (addedBoneProxy ? "MA Bone Proxyを追加し、" : "既存のMA Bone Proxyを使用し、")
-                            + "元の親ボーン「"
-                            + parentAttachment.ParentPath
-                            + "」へ接続する設定を行いました。"
+                            addedBoneProxy
+                                ? "元の親ボーン「"
+                                  + parentAttachment.ParentPath
+                                  + "」へ接続するMA Bone Proxyを追加しました。"
+                                : "既存のMA Bone Proxy設定を保持しました。抽出元の親ボーンは「"
+                                  + parentAttachment.ParentPath
+                                  + "」です。"
                         );
                     }
                     else
