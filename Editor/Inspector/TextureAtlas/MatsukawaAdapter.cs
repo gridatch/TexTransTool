@@ -58,6 +58,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal readonly HashSet<Transform> DeleteTransforms = new();
         internal readonly HashSet<GameObject> ProtectedObjects = new();
         internal readonly List<SkinnedMeshRenderer> TrimTargets = new();
+        internal readonly Dictionary<SkinnedMeshRenderer, int> ExpectedTrimBoneCounts = new();
 
         internal object Raw = null!;
     }
@@ -345,6 +346,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         result.TrimTargets.Add(renderer);
             }
 
+            if (_api.AnalysisKeepBoneIndices.GetValue(raw) is IDictionary keepBoneIndices)
+            {
+                foreach (DictionaryEntry entry in keepBoneIndices)
+                {
+                    if (entry.Key is not SkinnedMeshRenderer renderer) continue;
+                    if (entry.Value is not ICollection indices) continue;
+                    result.ExpectedTrimBoneCounts[renderer] = indices.Count;
+                }
+            }
+
             return result;
         }
 
@@ -457,6 +468,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             internal FieldInfo AnalysisProtected = null!;
             internal FieldInfo AnalysisEssential = null!;
             internal FieldInfo AnalysisTrimTargets = null!;
+            internal FieldInfo AnalysisKeepBoneIndices = null!;
             internal FieldInfo AnalysisWarnings = null!;
             internal FieldInfo AnalysisTotalTransforms = null!;
             internal FieldInfo AnalysisDeleteTransformCount = null!;
@@ -563,6 +575,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 api.AnalysisProtected = Field(api.Analysis, "protectedObjects", null);
                 api.AnalysisEssential = Field(api.Analysis, "essential", null);
                 api.AnalysisTrimTargets = Field(api.Analysis, "trimTargets", null);
+                api.AnalysisKeepBoneIndices = Field(api.Analysis, "keepBoneIndices", null);
                 api.AnalysisWarnings = Field(api.Analysis, "warnings", null);
                 api.AnalysisTotalTransforms = Field(api.Analysis, "totalTransforms", typeof(int));
                 api.AnalysisDeleteTransformCount = Field(api.Analysis, "deleteTransformCount", typeof(int));
