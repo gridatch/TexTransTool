@@ -15,12 +15,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     {
         internal GameObject SourcePrefabAsset = null!;
         internal string ExtractionRootPath = "";
-        internal readonly HashSet<string> KeepRendererPaths = new(StringComparer.Ordinal);
+        internal readonly HashSet<string> KeepRendererKeys = new(StringComparer.Ordinal);
         internal MatsukawaOptions ExtractionOptions = new();
         internal AtlasTexture AtlasSettings = null!;
         // Prefab化専用のRenderer選択。通常のBakeExcludedRenderersは設定元Hierarchyを
         // 参照しているため、別Prefabへ暗黙に流用しない。
-        internal readonly HashSet<string> AtlasRendererPaths = new(StringComparer.Ordinal);
+        internal readonly HashSet<string> AtlasRendererKeys = new(StringComparer.Ordinal);
         internal bool OverwriteExistingOutput;
     }
 
@@ -62,10 +62,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (request.AtlasSettings == null)
                 return Fail(result, "AtlasTexture設定が指定されていません。");
 
-            if (request.KeepRendererPaths.Count == 0)
+            if (request.KeepRendererKeys.Count == 0)
                 return Fail(result, "抽出対象Rendererが選択されていません。");
 
-            if (request.AtlasRendererPaths.Count == 0)
+            if (request.AtlasRendererKeys.Count == 0)
                 return Fail(result, "アトラス化対象Rendererが選択されていません。");
 
             string outputName = "";
@@ -146,7 +146,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 var entries = matsukawa.CollectRenderers(extractionRoot).ToList();
                 foreach (var entry in entries)
-                    entry.Keep = request.KeepRendererPaths.Contains(entry.Path);
+                    entry.Keep = request.KeepRendererKeys.Contains(
+                        GetRendererKey(extractionRoot, entry.Renderer)
+                    );
 
                 var selectedCount = entries.Count(entry => entry.Keep);
                 if (selectedCount == 0)
@@ -187,7 +189,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var (targetMaterials, targetRenderers) = ResolveAtlasTargets(
                     request.AtlasSettings,
                     extractionRoot,
-                    request.AtlasRendererPaths
+                    request.AtlasRendererKeys
                 );
 
                 if (targetMaterials.Count == 0 || targetRenderers.Length == 0)
@@ -322,37 +324,50 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             );
         }
 
+        internal static string GetRendererKey(GameObject root, Renderer renderer)
+        {
+            var path = GetRendererPath(root, renderer);
+            var renderers = renderer.GetComponents<Renderer>();
+            var componentIndex = Array.IndexOf(renderers, renderer);
+
+            return path
+                + "|"
+                + renderer.GetType().FullName
+                + "|"
+                + componentIndex;
+        }
+
         private static (HashSet<Material> targetMaterials, Renderer[] targetRenderers) ResolveAtlasTargets(
             AtlasTexture atlasSettings,
             GameObject root,
-            IReadOnlyCollection<string> includedRendererPaths)
+            IReadOnlyCollection<string> includedRendererKeys)
         {
             var renderers = root.GetComponentsInChildren<Renderer>(true);
             using var domain = new NotWorkDomain(renderers, null);
 
             var candidates = GetAtlasCandidateRenderers(atlasSettings, root);
-            var candidatePaths = candidates.ToDictionary(
-                renderer => GetRendererPath(root, renderer),
+            var candidateKeys = candidates.ToDictionary(
+                renderer => GetRendererKey(root, renderer),
                 renderer => renderer,
                 StringComparer.Ordinal
             );
 
-            var missingPaths = includedRendererPaths
-                .Where(path => candidatePaths.ContainsKey(path) is false)
-                .OrderBy(path => path, StringComparer.Ordinal)
+            var missingKeys = includedRendererKeys
+                .Where(key => candidateKeys.ContainsKey(key) is false)
+                .OrderBy(key => key, StringComparer.Ordinal)
                 .ToArray();
 
-            if (missingPaths.Length > 0)
+            if (missingKeys.Length > 0)
             {
                 throw new InvalidOperationException(
                     "選択されていたアトラス化対象Rendererが抽出結果に存在しないか、"
                     + "現在のAtlasTexture設定では対象外になりました。\n"
-                    + string.Join("\n", missingPaths.Take(20))
+                    + string.Join("\n", missingKeys.Take(20))
                 );
             }
 
-            var targetRenderers = includedRendererPaths
-                .Select(path => candidatePaths[path])
+            var targetRenderers = includedRendererKeys
+                .Select(key => candidateKeys[key])
                 .ToArray();
 
             var targetMaterials = atlasSettings
