@@ -210,6 +210,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     request.AtlasRendererKeys
                 );
 
+                // HCE runs in-place on this disposable hierarchy (workOnCopy=false), so kept
+                // Renderer component instances remain the same objects through Execute. Retain
+                // those references instead of re-identifying them after HCE has removed siblings.
+                var retainedAtlasRenderers = preflightRenderers.ToArray();
+
                 var preflightMeshes = preflightRenderers
                     .Select(GetRendererMesh)
                     .Where(mesh => mesh != null)
@@ -402,10 +407,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     }
                 }
 
-                var (targetMaterials, targetRenderers) = ResolveAtlasTargets(
+                var (targetMaterials, targetRenderers) = ResolveRetainedAtlasTargets(
                     request.AtlasSettings,
                     extractionRoot,
-                    request.AtlasRendererKeys
+                    retainedAtlasRenderers
                 );
 
                 if (targetMaterials.Count == 0 || targetRenderers.Length == 0)
@@ -811,6 +816,38 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     EditorUtility.SetDirty(renderer);
                 }
             }
+        }
+
+        private static (HashSet<Material> targetMaterials, Renderer[] targetRenderers)
+            ResolveRetainedAtlasTargets(
+                AtlasTexture atlasSettings,
+                GameObject root,
+                IReadOnlyCollection<Renderer> retainedRenderers)
+        {
+            var currentRenderers = root.GetComponentsInChildren<Renderer>(true).ToHashSet();
+            var missing = retainedRenderers
+                .Where(renderer => renderer == null || currentRenderers.Contains(renderer) is false)
+                .ToArray();
+
+            if (missing.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    "HCE抽出後に、選択済みのアトラス対象Rendererが失われました。"
+                    + "抽出対象とアトラス対象の組み合わせを確認してください。"
+                );
+            }
+
+            var renderers = retainedRenderers.ToArray();
+            using var domain = new NotWorkDomain(
+                root.GetComponentsInChildren<Renderer>(true),
+                null
+            );
+
+            var targetMaterials = atlasSettings
+                .GetTargetMaterials(domain, renderers.ToList())
+                .ToHashSet();
+
+            return (targetMaterials, renderers);
         }
 
         private static bool TransientMeshStillReferenced(
