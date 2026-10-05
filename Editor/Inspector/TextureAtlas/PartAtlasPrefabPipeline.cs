@@ -380,12 +380,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     }
                     else
                     {
-                        matsukawa.AddReportNote(
-                            extraction,
-                            "元の親はHumanoidボーン配下「"
-                            + parentAttachment.ParentPath
-                            + "」でしたが、Modular Avatarを検出できないためMA Bone Proxyは追加していません。"
-                            + (string.IsNullOrEmpty(maError) ? "" : " (" + maError + ")")
+                        return Fail(
+                            result,
+                            "元の親ボーン接続をStandalone Prefabへ保持するにはModular Avatarが必要です。"
+                            + (string.IsNullOrEmpty(maError) ? "" : "\n" + maError)
                         );
                     }
                 }
@@ -424,10 +422,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         }
                         else
                         {
-                            matsukawa.AddReportNote(
-                                extraction,
-                                "Modular Avatarを検出できなかったため、抽出したArmatureへの自動接続設定は行っていません。"
-                                + (string.IsNullOrEmpty(maError) ? "" : " (" + maError + ")")
+                            return Fail(
+                                result,
+                                "Avatar本体Armatureを使用するデフォルトパーツをStandalone Prefab化するにはModular Avatarが必要です。"
+                                + (string.IsNullOrEmpty(maError) ? "" : "\n" + maError)
                             );
                         }
                     }
