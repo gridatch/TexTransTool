@@ -660,6 +660,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             foreach (var entry in keptEntries)
             {
+                var rendererTransform = entry.Renderer.transform;
+                if (rendererTransform == armatureRoot
+                    || rendererTransform.IsChildOf(armatureRoot))
+                {
+                    // Rigid/default accessories parented under Head/Hand/etc. still depend on
+                    // the avatar armature even when they are plain MeshRenderers.
+                    usesAvatarArmature = true;
+                    break;
+                }
+
                 if (entry.Renderer is not SkinnedMeshRenderer smr) continue;
 
                 if (smr.rootBone != null
