@@ -140,7 +140,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     if (!string.IsNullOrEmpty(externalReferenceError))
                         return Fail(result, externalReferenceError);
 
-                    extractionRoot.transform.SetParent(null, true);
+                    // Normalize the detached part transform into the source avatar-root
+                    // coordinate space rather than keeping scene-world coordinates. This keeps a
+                    // BoneProxy/standalone part reusable even when the source avatar root itself
+                    // was moved, rotated, or scaled in the scene used to author the Prefab.
+                    extractionRoot.transform.SetParent(instantiatedRoot.transform, true);
+                    extractionRoot.transform.SetParent(null, false);
                     UnityEngine.Object.DestroyImmediate(instantiatedRoot);
                     instantiatedRoot = extractionRoot;
                 }
