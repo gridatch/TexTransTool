@@ -224,6 +224,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 }
 
                 DisambiguateTrimMeshNames(
+                    matsukawa,
                     analysis.TrimTargets,
                     transientInputMeshes
                 );
@@ -752,6 +753,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         }
 
         private static void DisambiguateTrimMeshNames(
+            MatsukawaAdapter matsukawa,
             IReadOnlyList<SkinnedMeshRenderer> trimTargets,
             List<Mesh> transientMeshes)
         {
@@ -761,12 +763,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             if (candidates.Length < 2) return;
 
-            var usedNames = candidates
-                .Select(renderer => renderer.sharedMesh.name)
-                .ToHashSet(StringComparer.Ordinal);
+            // HceMeshTrimmer uses Sanitize(mesh.name) as the .asset filename. Detect
+            // collisions on that exact key rather than on the raw Unity object name.
+            var usedFileKeys = candidates
+                .Select(renderer => matsukawa.SanitizeName(renderer.sharedMesh.name))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             foreach (var group in candidates
-                         .GroupBy(renderer => renderer.sharedMesh.name, StringComparer.Ordinal)
+                         .GroupBy(
+                             renderer => matsukawa.SanitizeName(renderer.sharedMesh.name),
+                             StringComparer.OrdinalIgnoreCase
+                         )
                          .Where(group => group.Count() > 1))
             {
                 var index = 0;
@@ -779,10 +786,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     var source = renderer.sharedMesh;
                     var suffix = index;
                     string uniqueName;
+                    string fileKey;
                     do
                     {
                         uniqueName = source.name + "__TTT_" + suffix++;
-                    } while (usedNames.Add(uniqueName) is false);
+                        fileKey = matsukawa.SanitizeName(uniqueName);
+                    } while (usedFileKeys.Add(fileKey) is false);
 
                     var clone = UnityEngine.Object.Instantiate(source);
                     clone.name = uniqueName;
