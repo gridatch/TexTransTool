@@ -23,7 +23,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private List<MatsukawaRendererEntry> _entries = new();
         private readonly List<Renderer> _atlasCandidates = new();
         private readonly HashSet<string> _atlasIncludedPaths = new(StringComparer.Ordinal);
-        private MatsukawaOptions _options = new() { StripAvatarComponents = true };
+        private MatsukawaOptions _options = new();
         private MatsukawaAnalysis? _analysis;
 
         private string _filter = "";
@@ -406,6 +406,25 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 "アバター用コンポーネントを外す",
                 _options.StripAvatarComponents
             );
+
+            if (_extractionRoot == _loadedPrefabRoot && _options.StripAvatarComponents is false)
+            {
+                var hasAvatarLikeRootComponent = _extractionRoot
+                    .GetComponents<Component>()
+                    .Where(component => component != null)
+                    .Any(component =>
+                        component.GetType().Name is "VRCAvatarDescriptor" or "PipelineManager" or "PipelineSaver"
+                        || component is Animator
+                    );
+
+                if (hasAvatarLikeRootComponent)
+                {
+                    EditorGUILayout.HelpBox(
+                        "Avatar Rootからパーツを抽出する場合、Standalone Partに不要なアバター用コンポーネントが残る可能性があります。必要に応じて「アバター用コンポーネントを外す」を有効にしてください。",
+                        MessageType.Info
+                    );
+                }
+            }
 
             if (EditorGUI.EndChangeCheck()) _analysis = null;
             EditorGUILayout.Space(4f);
