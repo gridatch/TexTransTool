@@ -299,6 +299,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (extraction.Succeeded is false || extraction.Result == null)
                     return Fail(result, "松川ツールの抽出処理が完了しませんでした。");
 
+                var trimValidationError = ValidateTrimResults(
+                    analysis,
+                    extraction,
+                    outputFolder
+                );
+                if (string.IsNullOrEmpty(trimValidationError) is false)
+                    return Fail(result, trimValidationError);
+
                 if (string.IsNullOrEmpty(backupDirectory) is false)
                 {
                     PreserveExistingTrimMeshGuids(
@@ -789,6 +797,70 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 .ToHashSet();
 
             return (targetMaterials, targetRenderers);
+        }
+
+        private static string ValidateTrimResults(
+            MatsukawaAnalysis analysis,
+            MatsukawaExecutionResult extraction,
+            string outputFolder)
+        {
+            if (analysis.ExpectedTrimBoneCounts.Count == 0) return "";
+            if (extraction.Result == null)
+                return "松川ツールの抽出結果が失われました。";
+
+            var currentRenderers = extraction.Result
+                .GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                .ToHashSet();
+            var generated = extraction.GeneratedMeshes.ToHashSet(StringComparer.Ordinal);
+            var expectedMeshFolder = outputFolder.TrimEnd('/') + "/Meshes/";
+
+            foreach (var pair in analysis.ExpectedTrimBoneCounts)
+            {
+                var renderer = pair.Key;
+                var expectedBoneCount = pair.Value;
+
+                if (renderer == null || currentRenderers.Contains(renderer) is false)
+                {
+                    return "松川ツールのボーン配列切り詰め対象Rendererが抽出結果から失われました。";
+                }
+
+                if (expectedBoneCount <= 0)
+                {
+                    return
+                        "松川ツールの解析で、残すボーン数が0本になるSkinnedMeshRendererが見つかりました: "
+                        + renderer.name;
+                }
+
+                if (renderer.bones == null || renderer.bones.Length != expectedBoneCount)
+                {
+                    return
+                        "松川ツールのボーン配列切り詰め結果が解析値と一致しません: "
+                        + renderer.name
+                        + " (expected "
+                        + expectedBoneCount
+                        + ", actual "
+                        + (renderer.bones?.Length ?? 0)
+                        + ")";
+                }
+
+                var mesh = renderer.sharedMesh;
+                if (mesh == null)
+                {
+                    return "松川ツールの切り詰め後Meshがありません: " + renderer.name;
+                }
+
+                var meshPath = AssetDatabase.GetAssetPath(mesh);
+                if (string.IsNullOrEmpty(meshPath)
+                    || meshPath.StartsWith(expectedMeshFolder, StringComparison.Ordinal) is false
+                    || generated.Contains(meshPath) is false)
+                {
+                    return
+                        "松川ツールの切り詰め後Meshが永続Assetとして確認できません: "
+                        + renderer.name;
+                }
+            }
+
+            return "";
         }
 
         private static void PreserveExistingTrimMeshGuids(
