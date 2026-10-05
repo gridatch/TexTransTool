@@ -476,29 +476,67 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 if (!committed)
                 {
+                    var outputPathAvailableForRestore = true;
+
                     if (ownsOutputFolder
                         && string.IsNullOrEmpty(outputFolder) is false
                         && AssetDatabase.IsValidFolder(outputFolder))
                     {
                         // A failed transaction must not leave HCE trim meshes, reports, or
-                        // a partial Atlas set behind.
-                        AssetDatabase.DeleteAsset(outputFolder);
+                        // a partial Atlas set at the intended output path.
+                        if (AssetDatabase.DeleteAsset(outputFolder) is false)
+                        {
+                            var failedOutput = AssetDatabase.GenerateUniqueAssetPath(
+                                outputFolder + "__TTTFailed"
+                            );
+                            var quarantineError = AssetDatabase.MoveAsset(
+                                outputFolder,
+                                failedOutput
+                            );
+
+                            if (string.IsNullOrEmpty(quarantineError))
+                            {
+                                Debug.LogWarning(
+                                    "TexTransTool Part Atlas Prefab: 失敗途中の出力を削除できなかったため退避しました: "
+                                    + failedOutput
+                                );
+                            }
+                            else
+                            {
+                                outputPathAvailableForRestore = false;
+                                Debug.LogError(
+                                    "TexTransTool Part Atlas Prefab: 失敗途中の出力を削除も退避もできませんでした。"
+                                    + "\n出力: " + outputFolder
+                                    + "\n" + quarantineError
+                                );
+                            }
+                        }
                     }
 
                     if (string.IsNullOrEmpty(backupOutputFolder) is false
                         && AssetDatabase.IsValidFolder(backupOutputFolder))
                     {
-                        var restoreError = AssetDatabase.MoveAsset(
-                            backupOutputFolder,
-                            outputFolder
-                        );
-                        if (string.IsNullOrEmpty(restoreError) is false)
+                        if (outputPathAvailableForRestore)
+                        {
+                            var restoreError = AssetDatabase.MoveAsset(
+                                backupOutputFolder,
+                                outputFolder
+                            );
+                            if (string.IsNullOrEmpty(restoreError) is false)
+                            {
+                                Debug.LogError(
+                                    "TexTransTool Part Atlas Prefab: 旧出力の復元に失敗しました。"
+                                    + "\n退避先: " + backupOutputFolder
+                                    + "\n復元先: " + outputFolder
+                                    + "\n" + restoreError
+                                );
+                            }
+                        }
+                        else
                         {
                             Debug.LogError(
-                                "TexTransTool Part Atlas Prefab: 旧出力の復元に失敗しました。"
-                                + "\n退避先: " + backupOutputFolder
-                                + "\n復元先: " + outputFolder
-                                + "\n" + restoreError
+                                "TexTransTool Part Atlas Prefab: 旧出力は安全のため退避したまま残しています: "
+                                + backupOutputFolder
                             );
                         }
                     }
