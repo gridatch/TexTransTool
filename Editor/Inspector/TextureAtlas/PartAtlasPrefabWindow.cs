@@ -173,7 +173,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 EditorGUILayout.LabelField("出力", outputFolder, EditorStyles.wordWrappedMiniLabel);
 
                 if (string.IsNullOrWhiteSpace(sanitized) is false
-                    && AtlasTextureBaker.TryValidateBakeName(
+                    && PartAtlasPrefabPipeline.TryValidateOutputName(
                         sanitized,
                         out var outputNameError
                     ) is false)
