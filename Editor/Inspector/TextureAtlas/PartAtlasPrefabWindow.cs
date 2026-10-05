@@ -276,7 +276,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                     if (GUILayout.Button("これらのMeshのRead/Writeを有効にして再インポート"))
                     {
-                        var source = _sourcePrefab;
+                        var sourcePath = _sourcePrefab != null
+                            ? AssetDatabase.GetAssetPath(_sourcePrefab)
+                            : "";
                         var meshes = unreadableEntries
                             .Select(entry => (entry.Renderer as SkinnedMeshRenderer)?.sharedMesh)
                             .Where(mesh => mesh != null)
@@ -291,8 +293,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                             "OK"
                         );
 
-                        if (source != null)
-                            SetSourcePrefab(source);
+                        if (string.IsNullOrEmpty(sourcePath) is false)
+                        {
+                            SetSourcePrefab(
+                                AssetDatabase.LoadAssetAtPath<GameObject>(sourcePath)
+                            );
+                        }
 
                         GUIUtility.ExitGUI();
                     }
