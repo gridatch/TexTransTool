@@ -230,6 +230,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (extraction.Succeeded is false || extraction.Result == null)
                     return Fail(result, "松川ツールの抽出処理が完了しませんでした。");
 
+                if (TransientMeshStillReferenced(extraction.Result, transientInputMeshes))
+                {
+                    return Fail(
+                        result,
+                        "同名Mesh衝突回避用の一時Meshが抽出結果に残りました。"
+                        + "松川ツールのボーン切り詰めが完了していないため、安全のため中断します。"
+                    );
+                }
+
                 // HCE itself was asked not to create a second copy, but the entire operation is
                 // already running on a disposable Prefab instance. Normalize the report so it
                 // correctly states that the source Prefab asset was left untouched.
@@ -687,6 +696,28 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 .ToHashSet();
 
             return (targetMaterials, targetRenderers);
+        }
+
+        private static bool TransientMeshStillReferenced(
+            GameObject root,
+            IReadOnlyCollection<Mesh> transientMeshes)
+        {
+            if (transientMeshes.Count == 0) return false;
+            var transient = transientMeshes.ToHashSet();
+
+            foreach (var renderer in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (renderer.sharedMesh != null && transient.Contains(renderer.sharedMesh))
+                    return true;
+            }
+
+            foreach (var filter in root.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (filter.sharedMesh != null && transient.Contains(filter.sharedMesh))
+                    return true;
+            }
+
+            return false;
         }
 
         private static void DisambiguateTrimMeshNames(
