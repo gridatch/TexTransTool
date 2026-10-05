@@ -18,6 +18,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal readonly HashSet<string> KeepRendererPaths = new(StringComparer.Ordinal);
         internal MatsukawaOptions ExtractionOptions = new();
         internal AtlasTexture AtlasSettings = null!;
+        // Prefab化専用のRenderer選択。通常のBakeExcludedRenderersは設定元Hierarchyを
+        // 参照しているため、別Prefabへ暗黙に流用しない。
+        internal readonly HashSet<string> AtlasRendererPaths = new(StringComparer.Ordinal);
         internal bool OverwriteExistingOutput;
     }
 
@@ -61,6 +64,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             if (request.KeepRendererPaths.Count == 0)
                 return Fail(result, "抽出対象Rendererが選択されていません。");
+
+            if (request.AtlasRendererPaths.Count == 0)
+                return Fail(result, "アトラス化対象Rendererが選択されていません。");
 
             string outputName = "";
             string outputFolder = "";
@@ -180,7 +186,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 var (targetMaterials, targetRenderers) = ResolveAtlasTargets(
                     request.AtlasSettings,
-                    extractionRoot
+                    extractionRoot,
+                    request.AtlasRendererPaths
                 );
 
                 if (targetMaterials.Count == 0 || targetRenderers.Length == 0)
@@ -286,7 +293,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return copy;
         }
 
-        private static (HashSet<Material> targetMaterials, Renderer[] targetRenderers) ResolveAtlasTargets(
+        internal static Renderer[] GetAtlasCandidateRenderers(
             AtlasTexture atlasSettings,
             GameObject root)
         {
@@ -300,11 +307,57 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             );
             var targetMaterials = atlasSettings.GetTargetMaterials(domain, allowed).ToHashSet();
             var targetRenderers = AtlasTexture.FilterTargetRenderers(domain, allowed, targetMaterials);
-            targetRenderers = AtlasTexture.FilterExistUVChannel(
+            return AtlasTexture.FilterExistUVChannel(
                 domain,
                 targetRenderers,
                 atlasSettings.AtlasSetting.AtlasTargetUVChannel
             );
+        }
+
+        internal static string GetRendererPath(GameObject root, Renderer renderer)
+        {
+            return AnimationUtility.CalculateTransformPath(
+                renderer.transform,
+                root.transform
+            );
+        }
+
+        private static (HashSet<Material> targetMaterials, Renderer[] targetRenderers) ResolveAtlasTargets(
+            AtlasTexture atlasSettings,
+            GameObject root,
+            IReadOnlySet<string> includedRendererPaths)
+        {
+            var renderers = root.GetComponentsInChildren<Renderer>(true);
+            using var domain = new NotWorkDomain(renderers, null);
+
+            var candidates = GetAtlasCandidateRenderers(atlasSettings, root);
+            var candidatePaths = candidates.ToDictionary(
+                renderer => GetRendererPath(root, renderer),
+                renderer => renderer,
+                StringComparer.Ordinal
+            );
+
+            var missingPaths = includedRendererPaths
+                .Where(path => candidatePaths.ContainsKey(path) is false)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+
+            if (missingPaths.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    "選択されていたアトラス化対象Rendererが抽出結果に存在しないか、"
+                    + "現在のAtlasTexture設定では対象外になりました。\n"
+                    + string.Join("\n", missingPaths.Take(20))
+                );
+            }
+
+            var targetRenderers = includedRendererPaths
+                .Select(path => candidatePaths[path])
+                .ToArray();
+
+            var targetMaterials = atlasSettings
+                .GetTargetMaterials(domain, targetRenderers.ToList())
+                .ToHashSet();
 
             return (targetMaterials, targetRenderers);
         }
