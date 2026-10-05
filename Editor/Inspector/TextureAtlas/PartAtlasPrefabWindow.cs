@@ -704,16 +704,49 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             var outputFolder = _matsukawa.GetOutputFolder(sanitizedOutputName);
-            var overwrite = false;
-            if (AssetDatabase.IsValidFolder(outputFolder))
+            var overwrite = AssetDatabase.IsValidFolder(outputFolder);
+
+            var unknownUnchecked = _entries.Count(entry =>
+                entry.Keep is false
+                && entry.Category == "Unknown"
+            );
+            var atlasCount = _atlasIncludedKeys.Count;
+            var deleteCount = _analysis?.DeleteTransformCount ?? 0;
+
+            var confirm =
+                "Prefab Asset「"
+                + _sourcePrefab.name
+                + "」の一時コピーから "
+                + deleteCount
+                + " 個のオブジェクトを削除し、"
+                + atlasCount
+                + " 件のRendererをアトラス化してPrefab保存します。"
+                + "\n\n出力: "
+                + outputFolder;
+
+            if (unknownUnchecked > 0)
             {
-                overwrite = EditorUtility.DisplayDialog(
+                confirm +=
+                    "\n\n⚠ 用途が「不明」でチェックの入っていないRendererが "
+                    + unknownUnchecked
+                    + " 件あります。残すべきものが混じっていないか確認してください。";
+            }
+
+            if (overwrite)
+            {
+                confirm +=
+                    "\n\n既存の抽出結果があります。既存Assetを可能な限り同じGUIDのまま更新します。"
+                    + "失敗時は事前バックアップから復元します。";
+            }
+
+            if (EditorUtility.DisplayDialog(
                     "TTT Prefab化",
-                    outputFolder + " は既に存在します。\n既存Assetを可能な限り同じGUIDのまま更新して上書きしますか？",
-                    "上書き",
+                    confirm + "\n\n実行しますか？",
+                    overwrite ? "上書きして実行" : "実行",
                     "キャンセル"
-                );
-                if (!overwrite) return;
+                ) is false)
+            {
+                return;
             }
 
             var request = new PartAtlasPrefabRequest
