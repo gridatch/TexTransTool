@@ -81,6 +81,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             GameObject? extractionRoot = null;
             MatsukawaExecutionResult? extraction = null;
             var originalParentPath = "";
+            var isAvatarRootExtraction = false;
+            var defaultAvatarArmaturePath = "";
             var ownsOutputFolder = false;
             string? backupOutputFolder = null;
             var committed = false;
@@ -150,10 +152,27 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (selectedCount == 0)
                     return Fail(result, "抽出対象RendererがPrefab内で1件も一致しませんでした。");
 
+                isAvatarRootExtraction =
+                    string.IsNullOrEmpty(request.ExtractionRootPath)
+                    && HasAvatarDescriptor(extractionRoot);
+
+                if (isAvatarRootExtraction)
+                {
+                    defaultAvatarArmaturePath = FindAvatarArmaturePath(
+                        extractionRoot,
+                        entries.Where(entry => entry.Keep)
+                    );
+                }
+
                 var executionOptions = CloneOptions(request.ExtractionOptions);
                 // The temporary scene is already the disposable working copy. Asking HCE to make
                 // another scene copy only adds hierarchy noise and complicates output naming.
                 executionOptions.WorkOnCopy = false;
+
+                // A default outfit extracted from an Avatar Prefab must become a part Prefab,
+                // not another avatar. Always remove root Animator/Descriptor/Pipeline components.
+                if (isAvatarRootExtraction)
+                    executionOptions.StripAvatarComponents = true;
 
                 var analysis = matsukawa.Analyze(extractionRoot, entries, executionOptions);
                 if (analysis.WarningCount > 0)
@@ -218,6 +237,49 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 }
 
                 extractionRoot = extraction.Result;
+
+                if (isAvatarRootExtraction)
+                {
+                    matsukawa.AddReportNote(
+                        extraction,
+                        "Avatar Rootからの抽出として、Animator / AvatarDescriptor / Pipeline系Componentを出力から外しました。"
+                    );
+
+                    if (string.IsNullOrEmpty(defaultAvatarArmaturePath) is false)
+                    {
+                        if (ModularAvatarAdapter.TryCreate(out var modularAvatar, out var maError)
+                            && modularAvatar != null)
+                        {
+                            if (modularAvatar.ConfigureArmature(
+                                    extractionRoot,
+                                    defaultAvatarArmaturePath,
+                                    out var configureError
+                                ) is false)
+                            {
+                                return Fail(
+                                    result,
+                                    "デフォルト衣装用のMA Merge Armature設定に失敗しました。\n"
+                                    + configureError
+                                );
+                            }
+
+                            matsukawa.AddReportNote(
+                                extraction,
+                                "デフォルト衣装のArmature「"
+                                + defaultAvatarArmaturePath
+                                + "」にMA Merge Armature / MA Outfit Rootを設定しました。"
+                            );
+                        }
+                        else
+                        {
+                            matsukawa.AddReportNote(
+                                extraction,
+                                "Modular Avatarを検出できなかったため、抽出したArmatureへの自動接続設定は行っていません。"
+                                + (string.IsNullOrEmpty(maError) ? "" : " (" + maError + ")")
+                            );
+                        }
+                    }
+                }
 
                 var (targetMaterials, targetRenderers) = ResolveAtlasTargets(
                     request.AtlasSettings,
@@ -338,6 +400,64 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     AssetDatabase.Refresh();
                 }
             }
+        }
+
+        private static bool HasAvatarDescriptor(GameObject root)
+        {
+            return root.GetComponents<Component>()
+                .Where(component => component != null)
+                .Any(component => component.GetType().Name == "VRCAvatarDescriptor");
+        }
+
+        private static string FindAvatarArmaturePath(
+            GameObject root,
+            IEnumerable<MatsukawaRendererEntry> keptEntries)
+        {
+            // Prefer the Humanoid definition when available; this mirrors MA Setup Outfit's
+            // Hips -> parent armature-root convention.
+            var animator = root.GetComponent<Animator>();
+            if (animator != null && animator.avatar != null && animator.isHuman)
+            {
+                var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+                if (hips != null && hips.IsChildOf(root.transform) && hips.parent != null)
+                    return RelativePath(root.transform, hips.parent);
+            }
+
+            // Generic-rig fallback: all kept skinned renderers should normally reference bones
+            // under one top-level armature object.
+            var topLevelRoots = new HashSet<Transform>();
+            foreach (var entry in keptEntries)
+            {
+                if (entry.Renderer is not SkinnedMeshRenderer smr) continue;
+
+                if (smr.rootBone != null && smr.rootBone.IsChildOf(root.transform))
+                {
+                    var top = TopLevelChild(root.transform, smr.rootBone);
+                    if (top != null) topLevelRoots.Add(top);
+                }
+
+                foreach (var bone in smr.bones ?? Array.Empty<Transform>())
+                {
+                    if (bone == null || bone.IsChildOf(root.transform) is false) continue;
+                    var top = TopLevelChild(root.transform, bone);
+                    if (top != null) topLevelRoots.Add(top);
+                }
+            }
+
+            return topLevelRoots.Count == 1
+                ? RelativePath(root.transform, topLevelRoots.First())
+                : "";
+        }
+
+        private static Transform? TopLevelChild(Transform root, Transform descendant)
+        {
+            if (descendant == root) return null;
+
+            var current = descendant;
+            while (current.parent != null && current.parent != root)
+                current = current.parent;
+
+            return current.parent == root ? current : null;
         }
 
         private static GameObject? ResolveExtractionRoot(GameObject prefabRoot, string path)
