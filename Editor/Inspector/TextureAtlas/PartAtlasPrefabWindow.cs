@@ -21,7 +21,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private int _rootIndex;
 
         private List<MatsukawaRendererEntry> _entries = new();
-        private MatsukawaOptions _options = new();
+        private MatsukawaOptions _options = new() { StripAvatarComponents = true };
         private MatsukawaAnalysis? _analysis;
 
         private string _filter = "";
