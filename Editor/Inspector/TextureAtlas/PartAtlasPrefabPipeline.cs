@@ -325,7 +325,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private static (HashSet<Material> targetMaterials, Renderer[] targetRenderers) ResolveAtlasTargets(
             AtlasTexture atlasSettings,
             GameObject root,
-            IReadOnlySet<string> includedRendererPaths)
+            IReadOnlyCollection<string> includedRendererPaths)
         {
             var renderers = root.GetComponentsInChildren<Renderer>(true);
             using var domain = new NotWorkDomain(renderers, null);
