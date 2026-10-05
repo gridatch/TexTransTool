@@ -30,7 +30,11 @@ namespace net.rs64.TexTransTool.NDMF
             if (root == null) { return ImmutableList.Create<RenderGroup>(); }
 
             var domainRenderers = ctx.GetComponentsInChildren<Renderer>(root, false).Where(r => r is SkinnedMeshRenderer or MeshRenderer);
+#if NDMF_1_13_0_OR_NEWER
             return ImmutableList.Create(RenderGroup.For(domainRenderers).WithData(islandSelector, EqualityComparer<AbstractIslandSelector>.Default));
+#else
+            return ImmutableList.Create(RenderGroup.For(domainRenderers).WithData(islandSelector));
+#endif
         }
         public Task<IRenderFilterNode> Instantiate(RenderGroup group, IEnumerable<(Renderer, Renderer)> proxyPairs, ComputeContext context)
         {
