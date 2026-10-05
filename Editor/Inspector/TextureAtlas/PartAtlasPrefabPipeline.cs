@@ -18,7 +18,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal readonly HashSet<string> KeepRendererPaths = new(StringComparer.Ordinal);
         internal MatsukawaOptions ExtractionOptions = new();
         internal AtlasTexture AtlasSettings = null!;
-        internal string OutputName = "";
         internal bool OverwriteExistingOutput;
     }
 
@@ -63,17 +62,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (request.KeepRendererPaths.Count == 0)
                 return Fail(result, "抽出対象Rendererが選択されていません。");
 
-            var outputName = matsukawa.SanitizeName(request.OutputName?.Trim() ?? "");
-            if (string.IsNullOrWhiteSpace(outputName))
-                return Fail(result, "出力名を入力してください。");
-
-            var outputFolder = matsukawa.GetOutputFolder(outputName);
-            result.OutputFolder = outputFolder;
-            result.AtlasOutputFolder = outputFolder + "/Atlas";
-
-            var outputExists = AssetDatabase.IsValidFolder(outputFolder);
-            if (outputExists && request.OverwriteExistingOutput is false)
-                return Fail(result, "同名の抽出結果が既に存在します: " + outputFolder);
+            string outputName = "";
+            string outputFolder = "";
 
             Scene temporaryScene = default;
             GameObject? instantiatedRoot = null;
@@ -83,9 +73,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             try
             {
-                if (outputExists && matsukawa.DeleteOutputFolder(outputName) is false)
-                    return Fail(result, "既存の抽出結果を削除できませんでした: " + outputFolder);
-
                 temporaryScene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
 
                 instantiatedRoot = PrefabUtility.InstantiatePrefab(request.SourcePrefabAsset, temporaryScene) as GameObject;
@@ -119,7 +106,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     instantiatedRoot = extractionRoot;
                 }
 
-                extractionRoot.name = outputName;
+                // Preserve the extraction root name. Animation paths and Modular Avatar relative
+                // paths may depend on it; renaming here would make a reusable Prefab subtly unsafe.
+                outputName = extractionRoot.name;
+                outputFolder = matsukawa.GetOutputFolder(outputName);
+                result.OutputFolder = outputFolder;
+                result.AtlasOutputFolder = outputFolder + "/Atlas";
+
+                var outputExists = AssetDatabase.IsValidFolder(outputFolder);
+                if (outputExists && request.OverwriteExistingOutput is false)
+                    return Fail(result, "同名の抽出結果が既に存在します: " + outputFolder);
+                if (outputExists && matsukawa.DeleteOutputFolder(outputName) is false)
+                    return Fail(result, "既存の抽出結果を削除できませんでした: " + outputFolder);
 
                 var atlasSettingsError = ValidateAtlasSettingsReferences(request.AtlasSettings, extractionRoot);
                 if (!string.IsNullOrEmpty(atlasSettingsError))
@@ -169,7 +167,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         extractionRoot,
                         targetMaterials,
                         targetRenderers,
-                        outputName,
+                        matsukawa.SanitizeName(outputName),
                         result.AtlasOutputFolder,
                         promptOverwrite: false,
                         pingOutputFolder: false
@@ -223,7 +221,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     UnityEngine.Object.DestroyImmediate(instantiatedRoot);
                 }
 
-                if (!committed && AssetDatabase.IsValidFolder(outputFolder))
+                if (!committed
+                    && string.IsNullOrEmpty(outputFolder) is false
+                    && AssetDatabase.IsValidFolder(outputFolder))
                 {
                     // A failed pipeline must not leave HCE trim meshes, reports, or a partial Atlas
                     // set behind. Existing output was only removed above when overwrite was explicit.
