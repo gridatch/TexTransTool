@@ -95,7 +95,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var isAvatarRootExtraction = false;
             var defaultAvatarArmaturePath = "";
             var ownsOutputFolder = false;
-            string? backupOutputFolder = null;
+            string? backupDirectory = null;
             var committed = false;
 
             try
@@ -239,21 +239,24 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 if (outputExists)
                 {
-                    backupOutputFolder = AssetDatabase.GenerateUniqueAssetPath(
-                        outputFolder + "__TTTBackup"
-                    );
-                    var moveError = AssetDatabase.MoveAsset(outputFolder, backupOutputFolder);
-                    if (string.IsNullOrEmpty(moveError) is false)
+                    try
                     {
-                        backupOutputFolder = null;
+                        // Keep the existing Assets path in place so HCE SavePrefab and the
+                        // Atlas manifest can update existing assets without changing their GUIDs.
+                        // Rollback bytes (including .meta files) live outside Assets.
+                        backupDirectory = CreateOutputFolderBackup(outputFolder);
+                    }
+                    catch (Exception backupError)
+                    {
                         return Fail(
                             result,
-                            "既存の抽出結果を退避できないため、上書きを中断しました。\n" + moveError
+                            "既存の抽出結果をバックアップできないため、上書きを中断しました。\n"
+                            + backupError.Message
                         );
                     }
                 }
 
-                // From this point on, anything at outputFolder belongs to this transaction.
+                // From this point on, outputFolder may be changed by HCE/TTT.
                 ownsOutputFolder = true;
 
                 extraction = matsukawa.Execute(extractionRoot, entries, executionOptions);
@@ -435,17 +438,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 result.ReportText = reportText;
                 result.Success = true;
 
-                if (string.IsNullOrEmpty(backupOutputFolder) is false
-                    && AssetDatabase.IsValidFolder(backupOutputFolder))
+                if (string.IsNullOrEmpty(backupDirectory) is false)
                 {
-                    if (AssetDatabase.DeleteAsset(backupOutputFolder) is false)
-                    {
-                        Debug.LogWarning(
-                            "TexTransTool Part Atlas Prefab: 旧出力の一時退避フォルダを削除できませんでした: "
-                            + backupOutputFolder
-                        );
-                    }
-                    backupOutputFolder = null;
+                    TryDeleteBackupDirectory(backupDirectory);
+                    backupDirectory = null;
                 }
 
                 committed = true;
@@ -484,72 +480,40 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 if (!committed)
                 {
-                    var outputPathAvailableForRestore = true;
-
-                    if (ownsOutputFolder
-                        && string.IsNullOrEmpty(outputFolder) is false
-                        && AssetDatabase.IsValidFolder(outputFolder))
+                    if (string.IsNullOrEmpty(backupDirectory) is false)
                     {
-                        // A failed transaction must not leave HCE trim meshes, reports, or
-                        // a partial Atlas set at the intended output path.
-                        if (AssetDatabase.DeleteAsset(outputFolder) is false)
+                        try
                         {
-                            var failedOutput = AssetDatabase.GenerateUniqueAssetPath(
-                                outputFolder + "__TTTFailed"
-                            );
-                            var quarantineError = AssetDatabase.MoveAsset(
-                                outputFolder,
-                                failedOutput
-                            );
-
-                            if (string.IsNullOrEmpty(quarantineError))
-                            {
-                                Debug.LogWarning(
-                                    "TexTransTool Part Atlas Prefab: 失敗途中の出力を削除できなかったため退避しました: "
-                                    + failedOutput
-                                );
-                            }
-                            else
-                            {
-                                outputPathAvailableForRestore = false;
-                                Debug.LogError(
-                                    "TexTransTool Part Atlas Prefab: 失敗途中の出力を削除も退避もできませんでした。"
-                                    + "\n出力: " + outputFolder
-                                    + "\n" + quarantineError
-                                );
-                            }
+                            RestoreOutputFolderBackup(outputFolder, backupDirectory);
+                            TryDeleteBackupDirectory(backupDirectory);
+                            backupDirectory = null;
                         }
-                    }
-
-                    if (string.IsNullOrEmpty(backupOutputFolder) is false
-                        && AssetDatabase.IsValidFolder(backupOutputFolder))
-                    {
-                        if (outputPathAvailableForRestore)
-                        {
-                            var restoreError = AssetDatabase.MoveAsset(
-                                backupOutputFolder,
-                                outputFolder
-                            );
-                            if (string.IsNullOrEmpty(restoreError) is false)
-                            {
-                                Debug.LogError(
-                                    "TexTransTool Part Atlas Prefab: 旧出力の復元に失敗しました。"
-                                    + "\n退避先: " + backupOutputFolder
-                                    + "\n復元先: " + outputFolder
-                                    + "\n" + restoreError
-                                );
-                            }
-                        }
-                        else
+                        catch (Exception restoreError)
                         {
                             Debug.LogError(
-                                "TexTransTool Part Atlas Prefab: 旧出力は安全のため退避したまま残しています: "
-                                + backupOutputFolder
+                                "TexTransTool Part Atlas Prefab: 旧出力の復元に失敗しました。"
+                                + "\n出力: " + outputFolder
+                                + "\nバックアップ: " + backupDirectory
+                                + "\n" + restoreError
+                            );
+                        }
+                    }
+                    else if (ownsOutputFolder
+                             && string.IsNullOrEmpty(outputFolder) is false
+                             && AssetDatabase.IsValidFolder(outputFolder))
+                    {
+                        // No previous output existed. Remove only the partial output created
+                        // by this failed transaction.
+                        if (AssetDatabase.DeleteAsset(outputFolder) is false)
+                        {
+                            Debug.LogError(
+                                "TexTransTool Part Atlas Prefab: 失敗途中の新規出力を削除できませんでした: "
+                                + outputFolder
                             );
                         }
                     }
 
-                    AssetDatabase.Refresh();
+                    AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
                 }
 
                 if (!committed && previousSelection != null)
@@ -878,6 +842,110 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             AssetDatabase.SaveAssets();
+        }
+
+        private static string CreateOutputFolderBackup(string outputAssetPath)
+        {
+            var sourceFullPath = AssetPathToFullPath(outputAssetPath);
+            if (Directory.Exists(sourceFullPath) is false)
+                throw new DirectoryNotFoundException(sourceFullPath);
+
+            var projectRoot = Directory.GetParent(Application.dataPath)?.FullName
+                ?? throw new InvalidOperationException("Unity project root was not found.");
+
+            var backupRoot = Path.Combine(
+                projectRoot,
+                "Library",
+                "TexTransTool",
+                "PartAtlasBackups",
+                Guid.NewGuid().ToString("N")
+            );
+            var contentBackup = Path.Combine(backupRoot, "Content");
+            Directory.CreateDirectory(contentBackup);
+            CopyDirectory(sourceFullPath, contentBackup);
+
+            var sourceMeta = sourceFullPath + ".meta";
+            if (File.Exists(sourceMeta))
+                File.Copy(sourceMeta, Path.Combine(backupRoot, "Folder.meta"), true);
+
+            return backupRoot;
+        }
+
+        private static void RestoreOutputFolderBackup(
+            string outputAssetPath,
+            string backupRoot)
+        {
+            var outputFullPath = AssetPathToFullPath(outputAssetPath);
+            var contentBackup = Path.Combine(backupRoot, "Content");
+            if (Directory.Exists(contentBackup) is false)
+                throw new DirectoryNotFoundException(contentBackup);
+
+            if (AssetDatabase.IsValidFolder(outputAssetPath))
+            {
+                if (AssetDatabase.DeleteAsset(outputAssetPath) is false)
+                    throw new IOException("現在の出力フォルダを削除できませんでした: " + outputAssetPath);
+            }
+
+            if (Directory.Exists(outputFullPath))
+                Directory.Delete(outputFullPath, true);
+            if (File.Exists(outputFullPath + ".meta"))
+                File.Delete(outputFullPath + ".meta");
+
+            Directory.CreateDirectory(outputFullPath);
+            CopyDirectory(contentBackup, outputFullPath);
+
+            var backupMeta = Path.Combine(backupRoot, "Folder.meta");
+            if (File.Exists(backupMeta))
+                File.Copy(backupMeta, outputFullPath + ".meta", true);
+
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+        }
+
+        private static void TryDeleteBackupDirectory(string backupRoot)
+        {
+            try
+            {
+                if (Directory.Exists(backupRoot))
+                    Directory.Delete(backupRoot, true);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning(
+                    "TexTransTool Part Atlas Prefab: 一時バックアップを削除できませんでした: "
+                    + backupRoot
+                    + "\n"
+                    + e.Message
+                );
+            }
+        }
+
+        private static void CopyDirectory(string source, string destination)
+        {
+            Directory.CreateDirectory(destination);
+
+            foreach (var file in Directory.GetFiles(source))
+            {
+                File.Copy(
+                    file,
+                    Path.Combine(destination, Path.GetFileName(file)),
+                    true
+                );
+            }
+
+            foreach (var directory in Directory.GetDirectories(source))
+            {
+                CopyDirectory(
+                    directory,
+                    Path.Combine(destination, Path.GetFileName(directory))
+                );
+            }
+        }
+
+        private static string AssetPathToFullPath(string assetPath)
+        {
+            var projectRoot = Directory.GetParent(Application.dataPath)?.FullName
+                ?? throw new InvalidOperationException("Unity project root was not found.");
+            return Path.GetFullPath(Path.Combine(projectRoot, assetPath));
         }
 
         private static void RewriteReport(string outputFolder, string reportText)
