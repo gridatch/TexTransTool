@@ -69,6 +69,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             GameObject? instantiatedRoot = null;
             GameObject? extractionRoot = null;
             MatsukawaExecutionResult? extraction = null;
+            var originalParentPath = "";
             var committed = false;
 
             try
@@ -94,6 +95,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 if (extractionRoot != instantiatedRoot)
                 {
+                    if (extractionRoot.transform.parent != null)
+                        originalParentPath = RelativePath(instantiatedRoot.transform, extractionRoot.transform.parent);
+
                     var externalReferenceError = SanitizeAndValidateExternalReferences(
                         extractionRoot,
                         instantiatedRoot
@@ -146,6 +150,20 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 extraction = matsukawa.Execute(extractionRoot, entries, executionOptions);
                 if (extraction.Succeeded is false || extraction.Result == null)
                     return Fail(result, "松川ツールの抽出処理が完了しませんでした。");
+
+                // HCE itself was asked not to create a second copy, but the entire operation is
+                // already running on a disposable Prefab instance. Normalize the report so it
+                // correctly states that the source Prefab asset was left untouched.
+                matsukawa.SetWorkedOnCopy(extraction, true);
+
+                if (string.IsNullOrEmpty(originalParentPath) is false)
+                {
+                    matsukawa.AddReportNote(
+                        extraction,
+                        "抽出元では親が「" + originalParentPath + "」でした。"
+                        + "Standalone PrefabではRoot化されるため、装着時の親ボーン接続（MA Bone Proxy等）が必要か確認してください。"
+                    );
+                }
 
                 extractionRoot = extraction.Result;
 
