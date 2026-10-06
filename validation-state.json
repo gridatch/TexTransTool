@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.8",
-  "lastDebugSerial": 171,
-  "currentDebugVersion": "0.1.8+debug.171.atlastexture-inspector-regression.581223c",
-  "currentDebugChange": "atlastexture-inspector-regression",
-  "currentDebugBranch": "fix/atlastexture-inspector-regression",
-  "currentDebugCommit": "581223ccd47a910fa73e38f1818fd5bdb2e66df0",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.8+debug.171.atlastexture-inspector-regression.581223c.zip"
+  "lastDebugSerial": 172,
+  "currentDebugVersion": "0.1.8+debug.172.part-atlas-prefab-acceptance.a313fe7",
+  "currentDebugChange": "part-atlas-prefab-acceptance",
+  "currentDebugBranch": "feat/part-atlas-prefab-acceptance",
+  "currentDebugCommit": "a313fe75750beb8748f8e3edf24dca272bebdf13",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.8+debug.172.part-atlas-prefab-acceptance.a313fe7.zip"
 }
