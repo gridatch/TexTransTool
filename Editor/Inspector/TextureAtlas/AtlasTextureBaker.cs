@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCoreEngineForUnity;
 using net.rs64.TexTransTool.Editor.OtherMenuItem;
@@ -681,13 +683,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     .ToArray();
 
                 var role = "Texture:" + string.Join("|", propertyNames);
-                var displayProperty = string.Join(
-                    "_",
-                    propertyNames
-                        .Select(NormalizeTexturePropertyName)
-                        .Where(name => string.IsNullOrEmpty(name) is false)
-                );
-                if (string.IsNullOrEmpty(displayProperty)) displayProperty = "Texture";
+                var displayProperty = BuildTextureDisplayRole(propertyNames);
 
                 var desiredAssetPath =
                     textureAssetPath + "/" +
@@ -1134,10 +1130,149 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 + componentIndex;
         }
 
-        private static string NormalizeTexturePropertyName(string propertyName)
+        private static readonly IReadOnlyDictionary<string, string> TexturePropertyDisplayRoles =
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["_MainTex"] = "Main",
+                ["_BaseMap"] = "Main",
+                ["_BaseColorMap"] = "Main",
+                ["_Main2ndTex"] = "Main2nd",
+                ["_Main3rdTex"] = "Main3rd",
+                ["_MainGradationTex"] = "MainGradation",
+                ["_MainColorAdjustMask"] = "MainColorAdjustMask",
+                ["_Main2ndBlendMask"] = "Main2ndBlendMask",
+                ["_Main3rdBlendMask"] = "Main3rdBlendMask",
+                ["_Main2ndDissolveMask"] = "Main2ndDissolveMask",
+                ["_Main2ndDissolveNoiseMask"] = "Main2ndDissolveNoiseMask",
+                ["_Main3rdDissolveMask"] = "Main3rdDissolveMask",
+                ["_Main3rdDissolveNoiseMask"] = "Main3rdDissolveNoiseMask",
+                ["_AlphaMask"] = "AlphaMask",
+                ["_BumpMap"] = "Normal",
+                ["_Bump2ndMap"] = "Normal2nd",
+                ["_Bump2ndScaleMask"] = "Normal2ndScaleMask",
+                ["_AnisotropyTangentMap"] = "AnisotropyTangent",
+                ["_AnisotropyScaleMask"] = "AnisotropyScaleMask",
+                ["_AnisotropyShiftNoiseMask"] = "AnisotropyShiftNoiseMask",
+                ["_BacklightColorTex"] = "BacklightColor",
+                ["_ShadowStrengthMask"] = "ShadowStrengthMask",
+                ["_ShadowBorderMask"] = "ShadowBorderMask",
+                ["_ShadowBlurMask"] = "ShadowBlurMask",
+                ["_ShadowColorTex"] = "ShadowColor",
+                ["_Shadow2ndColorTex"] = "Shadow2ndColor",
+                ["_Shadow3rdColorTex"] = "Shadow3rdColor",
+                ["_RimShadeMask"] = "RimShadeMask",
+                ["_SmoothnessTex"] = "Smoothness",
+                ["_MetallicGlossMap"] = "MetallicGloss",
+                ["_ReflectionColorTex"] = "ReflectionColor",
+                ["_MatCapTex"] = "MatCap",
+                ["_MatCapBlendMask"] = "MatCapBlendMask",
+                ["_MatCapBumpMap"] = "MatCapNormal",
+                ["_MatCap2ndTex"] = "MatCap2nd",
+                ["_MatCap2ndBlendMask"] = "MatCap2ndBlendMask",
+                ["_MatCap2ndBumpMap"] = "MatCap2ndNormal",
+                ["_RimColorTex"] = "RimColor",
+                ["_GlitterColorTex"] = "GlitterColor",
+                ["_GlitterShapeTex"] = "GlitterShape",
+                ["_EmissionMap"] = "Emission",
+                ["_Emission2ndMap"] = "Emission2nd",
+                ["_EmissionBlendMask"] = "EmissionBlendMask",
+                ["_Emission2ndBlendMask"] = "Emission2ndBlendMask",
+                ["_EmissionGradTex"] = "EmissionGrad",
+                ["_Emission2ndGradTex"] = "Emission2ndGrad",
+                ["_ParallaxMap"] = "Parallax",
+                ["_AudioLinkMask"] = "AudioLinkMask",
+                ["_OutlineTex"] = "Outline",
+                ["_OutlineWidthMask"] = "OutlineWidthMask",
+                ["_OutlineVectorTex"] = "OutlineVector",
+                ["_OutlineMask"] = "OutlineMask",
+                ["_FurNoiseMask"] = "FurNoiseMask",
+                ["_FurMask"] = "FurMask",
+                ["_FurLengthMask"] = "FurLengthMask",
+                ["_FurVectorTex"] = "FurVector",
+                ["_DitherTex"] = "Dither",
+                ["_DissolveMask"] = "DissolveMask",
+                ["_DissolveNoiseMask"] = "DissolveNoiseMask",
+                ["_OcclusionMap"] = "Occlusion",
+                ["_DetailMask"] = "DetailMask",
+                ["_DetailAlbedoMap"] = "DetailAlbedo",
+                ["_DetailNormalMap"] = "DetailNormal",
+                ["_MetallicMap"] = "Metallic",
+                ["_GlossMap"] = "Gloss",
+                ["_Matcap"] = "MatCap",
+                ["_MatcapMask"] = "MatCapMask",
+                ["_Ramp"] = "Ramp",
+                ["_HueShiftMask"] = "HueShiftMask",
+                ["_ColorMask"] = "ColorMask",
+            };
+
+        private static readonly IReadOnlyDictionary<string, int> TextureRoleSortOrder =
+            new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                ["Main"] = 0,
+                ["Main2nd"] = 1,
+                ["Main3rd"] = 2,
+                ["Normal"] = 10,
+                ["Normal2nd"] = 11,
+                ["Emission"] = 20,
+                ["Emission2nd"] = 21,
+                ["MatCap"] = 30,
+                ["MatCap2nd"] = 31,
+            };
+
+        private static string BuildTextureDisplayRole(IReadOnlyCollection<string> propertyNames)
         {
+            var roles = propertyNames
+                .Where(name => string.IsNullOrWhiteSpace(name) is false)
+                .Select(NormalizeTexturePropertyDisplayRole)
+                .Where(name => string.IsNullOrWhiteSpace(name) is false)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(GetTextureRoleSortOrder)
+                .ThenBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+
+            if (roles.Length == 0) return "Texture";
+
+            var joined = string.Join("_", roles);
+            if (roles.Length <= 4 && joined.Length <= 72)
+                return joined;
+
+            var source = string.Join(
+                "|",
+                propertyNames
+                    .Where(name => string.IsNullOrWhiteSpace(name) is false)
+                    .OrderBy(name => name, StringComparer.Ordinal)
+            );
+
+            return "Shared_"
+                + roles[0]
+                + "_Plus"
+                + (roles.Length - 1)
+                + "_"
+                + StableShortHash(source);
+        }
+
+        private static string NormalizeTexturePropertyDisplayRole(string propertyName)
+        {
+            if (TexturePropertyDisplayRoles.TryGetValue(propertyName, out var role))
+                return role;
+
             var normalized = propertyName.TrimStart('_');
             return string.IsNullOrEmpty(normalized) ? propertyName : normalized;
+        }
+
+        private static int GetTextureRoleSortOrder(string role)
+        {
+            return TextureRoleSortOrder.TryGetValue(role, out var order) ? order : 1000;
+        }
+
+        private static string StableShortHash(string value)
+        {
+            using var sha256 = SHA256.Create();
+            var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(value));
+            var builder = new StringBuilder(8);
+            for (var index = 0; index < 4; index++)
+                builder.Append(bytes[index].ToString("X2"));
+            return builder.ToString();
         }
 
         internal static bool TryValidateBakeName(string bakeName, out string error)
