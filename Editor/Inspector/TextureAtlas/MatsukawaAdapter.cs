@@ -262,7 +262,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             sb.AppendLine("  出力内GameObject            : "
                 + ReadInt(_api.ReportKeptBones, report) + " 個");
 
-            if (trimLog.Length > 0)
+            if (trimLog.Count > 0)
             {
                 sb.AppendLine();
                 sb.AppendLine("ボーン配列の切り詰め");
@@ -286,7 +286,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     sb.AppendLine("  ・" + item);
             }
 
-            if (generatedMeshes.Length > 0)
+            if (generatedMeshes.Count > 0)
             {
                 sb.AppendLine();
                 sb.AppendLine("生成したMesh");

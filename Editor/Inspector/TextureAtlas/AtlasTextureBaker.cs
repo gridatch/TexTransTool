@@ -783,7 +783,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                             continue;
                         }
 
-                        if (ShaderUtil.GetPropertyAttributes(shader, propertyIndex)
+                        if (shader.GetPropertyAttributes(propertyIndex)
                             .Any(attribute =>
                                 string.Equals(
                                     attribute,
