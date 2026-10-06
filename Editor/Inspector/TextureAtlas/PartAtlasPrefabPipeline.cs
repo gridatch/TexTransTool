@@ -195,7 +195,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var candidates = targets
                 .Where(target =>
                     target != null
-                    && (target == root || target.IsChildOf(root)))
+                    && target != root
+                    && target.IsChildOf(root))
                 .Distinct()
                 .OrderBy(target => DepthFrom(root, target))
                 .ThenBy(target => RelativePath(root, target), StringComparer.Ordinal)
@@ -964,14 +965,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var ordered = paths
                 .Where(path => path != null)
                 .Select(path => path.Trim('/'))
+                .Where(path => string.IsNullOrEmpty(path) is false)
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(path => path.Count(character => character == '/'))
                 .ThenBy(path => path.Length)
                 .ThenBy(path => path, StringComparer.Ordinal)
                 .ToList();
-
-            if (ordered.Contains(""))
-                return new[] { "" };
 
             var result = new List<string>();
             foreach (var path in ordered)
@@ -998,9 +997,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             foreach (var path in paths)
             {
-                var target = string.IsNullOrEmpty(path)
-                    ? prefabRoot.transform
-                    : prefabRoot.transform.Find(path);
+                if (string.IsNullOrEmpty(path))
+                {
+                    error = "Prefab Rootは抽出対象に指定できません。";
+                    return null;
+                }
+
+                var target = prefabRoot.transform.Find(path);
 
                 if (target == null)
                 {

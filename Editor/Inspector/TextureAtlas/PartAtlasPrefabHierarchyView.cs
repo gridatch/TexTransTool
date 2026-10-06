@@ -107,8 +107,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _targetCandidates.Clear();
             foreach (var transform in candidates)
             {
-                if (transform != null && _items.ContainsKey(transform.GetInstanceID()))
-                    _targetCandidates.Add(transform.GetInstanceID());
+                if (transform == null
+                    || _prefabRoot == null
+                    || transform == _prefabRoot.transform
+                    || _items.ContainsKey(transform.GetInstanceID()) is false)
+                {
+                    continue;
+                }
+
+                _targetCandidates.Add(transform.GetInstanceID());
             }
 
             _targets.RemoveWhere(id => _targetCandidates.Contains(id) is false);
@@ -409,6 +416,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void DrawExtractionTargetToggle(TransformItem item, Rect rowRect)
         {
+            if (_prefabRoot != null && item.Transform == _prefabRoot.transform)
+                return;
+
             var exact = _targets.Contains(item.id);
             var inherited = HasSelectedAncestor(item.Transform);
             var isCandidate = _targetCandidates.Contains(item.id);

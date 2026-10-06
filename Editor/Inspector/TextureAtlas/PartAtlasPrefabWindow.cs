@@ -1364,10 +1364,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     continue;
 
                 var current = renderer.transform;
-                while (current != null)
+                while (current != null && current != root)
                 {
                     validTargets.Add(current);
-                    if (current == root) break;
                     current = current.parent;
                 }
             }
@@ -1414,9 +1413,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             foreach (var path in _extractionTargetPaths
                          .OrderBy(path => path, StringComparer.Ordinal))
             {
-                var transform = string.IsNullOrEmpty(path)
-                    ? _loadedPrefabRoot.transform
-                    : _loadedPrefabRoot.transform.Find(path);
+                if (string.IsNullOrEmpty(path))
+                    continue;
+
+                var transform = _loadedPrefabRoot.transform.Find(path);
                 if (transform != null)
                     result.Add(transform);
             }
