@@ -9,8 +9,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
     internal sealed class PartAtlasPrefabWindow : EditorWindow
     {
-        private GameObject? _atlasSettingsHost;
-        private AtlasTexture? _atlasSettings;
+        private PartAtlasPrefabSettings? _atlasSettings;
         private SerializedObject? _atlasSettingsObject;
         private MatsukawaAdapter? _matsukawa;
         private string _adapterError = "";
@@ -71,32 +70,26 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void EnsureAtlasSettings()
         {
-            if (_atlasSettingsHost != null
-                && _atlasSettings != null
-                && _atlasSettingsObject != null)
+            if (_atlasSettings != null && _atlasSettingsObject != null)
             {
                 return;
             }
 
             DestroyAtlasSettings();
 
-            _atlasSettingsHost = new GameObject("__TTT_PartAtlasSettings")
-            {
-                hideFlags = HideFlags.HideAndDontSave,
-            };
-            _atlasSettings = _atlasSettingsHost.AddComponent<AtlasTexture>();
+            _atlasSettings = ScriptableObject.CreateInstance<PartAtlasPrefabSettings>();
+            _atlasSettings.hideFlags = HideFlags.HideAndDontSave;
             _atlasSettingsObject = new SerializedObject(_atlasSettings);
         }
 
         private void DestroyAtlasSettings()
         {
             _atlasSettingsObject = null;
-            _atlasSettings = null;
 
-            if (_atlasSettingsHost != null)
+            if (_atlasSettings != null)
             {
-                DestroyImmediate(_atlasSettingsHost);
-                _atlasSettingsHost = null;
+                DestroyImmediate(_atlasSettings);
+                _atlasSettings = null;
             }
         }
 
@@ -120,7 +113,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (_atlasSettings == null || _atlasSettingsObject == null)
             {
                 EditorGUILayout.HelpBox(
-                    "アトラス設定用の一時Componentを初期化できませんでした。",
+                    "アトラス設定用の一時設定オブジェクトを初期化できませんでした。",
                     MessageType.Error
                 );
                 return;
@@ -449,10 +442,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             _atlasSettingsObject.Update();
 
-            var atlasSetting = _atlasSettingsObject.FindProperty(nameof(AtlasTexture.AtlasSetting));
-            var islandSizePriority = _atlasSettingsObject.FindProperty(nameof(AtlasTexture.IslandSizePriorityTuner));
-            var mergeMaterialGroups = _atlasSettingsObject.FindProperty(nameof(AtlasTexture.MergeMaterialGroups));
-            var allMaterialMergeReference = _atlasSettingsObject.FindProperty(nameof(AtlasTexture.AllMaterialMergeReference));
+            var atlasSetting = _atlasSettingsObject.FindProperty(nameof(PartAtlasPrefabSettings.AtlasSetting));
+            var islandSizePriority = _atlasSettingsObject.FindProperty(nameof(PartAtlasPrefabSettings.IslandSizePriorityTuner));
+            var mergeMaterialGroups = _atlasSettingsObject.FindProperty(nameof(PartAtlasPrefabSettings.MergeMaterialGroups));
+            var allMaterialMergeReference = _atlasSettingsObject.FindProperty(nameof(PartAtlasPrefabSettings.AllMaterialMergeReference));
 
             using var box = new EditorGUILayout.VerticalScope(EditorStyles.helpBox);
             EditorGUILayout.LabelField(

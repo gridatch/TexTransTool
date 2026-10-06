@@ -39,7 +39,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 AtlasTextureBakeTargetResolver.ResolveBakeTargets(atlasTexture, resolveDomain);
 
             return BakeResolved(
-                atlasTexture,
+                PersistentAtlasBakeSettings.FromComponent(atlasTexture),
                 domainRoot,
                 targetMaterials,
                 targetRenderers,
@@ -56,7 +56,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         /// hierarchies rather than the AtlasTexture component's normal avatar domain.
         /// </summary>
         internal static bool BakeResolved(
-            AtlasTexture atlasTexture,
+            PersistentAtlasBakeSettings settings,
             GameObject domainRoot,
             HashSet<Material> targetMaterials,
             Renderer[] targetRenderers,
@@ -67,9 +67,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             PreviewUtility.ExitPreviews();
 
-            if (atlasTexture == null)
+            if (settings == null)
             {
-                Debug.LogError("TexTransTool: AtlasTexture settings source is null.");
+                Debug.LogError("TexTransTool: persistent Atlas bake settings are null.");
                 return false;
             }
 
@@ -192,8 +192,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     engine,
                     targetMaterials,
                     targetRenderers,
-                    atlasTexture.IslandSizePriorityTuner,
-                    atlasTexture.AtlasSetting
+                    settings.IslandSizePriorityTuner,
+                    settings.AtlasSetting
                 );
 
                 if (atlasResult.IsSuccess is false) { return false; }
@@ -208,13 +208,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     return false;
                 }
 
-                var experimentalOptions = atlasTexture.GetComponent<AtlasTextureExperimentalFeature>();
+                var experimentalOptions = settings.ExperimentalOptions;
                 if (experimentalOptions == null) { experimentalOptions = null; }
 
                 var tunedAtlasTextures = AtlasTexture.DoTextureFinTuning(
                     engine,
                     atlasContext,
-                    atlasTexture.AtlasSetting,
+                    settings.AtlasSetting,
                     compiledAtlasTextures,
                     experimentalOptions
                 );
@@ -250,10 +250,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     var (materialMap, _) = AtlasTexture.GenerateAtlasedMaterialMaps(
                         domain,
                         targetMaterials,
-                        atlasTexture.AtlasSetting,
+                        settings.AtlasSetting,
                         (
-                            atlasTexture.MergeMaterialGroups,
-                            atlasTexture.AllMaterialMergeReference,
+                            settings.MergeMaterialGroups,
+                            settings.AllMaterialMergeReference,
                             experimentalOptions
                         ),
                         persistentTextures,

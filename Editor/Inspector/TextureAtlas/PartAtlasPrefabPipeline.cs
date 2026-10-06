@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using net.rs64.TexTransCore;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -17,7 +18,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal string ExtractionRootPath = "";
         internal readonly HashSet<string> KeepRendererKeys = new(StringComparer.Ordinal);
         internal MatsukawaOptions ExtractionOptions = new();
-        internal AtlasTexture AtlasSettings = null!;
+        internal PartAtlasPrefabSettings AtlasSettings = null!;
         internal string OutputName = "";
         // Prefab化専用のRenderer選択。通常のBakeExcludedRenderersは設定元Hierarchyを
         // 参照しているため、別Prefabへ暗黙に流用しない。
@@ -457,7 +458,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 }
 
                 if (AtlasTextureBaker.BakeResolved(
-                        request.AtlasSettings,
+                        request.AtlasSettings.ToBakeSettings(),
                         extractionRoot,
                         targetMaterials,
                         targetRenderers,
@@ -681,7 +682,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         }
 
         internal static Renderer[] GetAtlasCandidateRenderers(
-            AtlasTexture atlasSettings,
+            PartAtlasPrefabSettings atlasSettings,
             GameObject root)
         {
             var renderers = root.GetComponentsInChildren<Renderer>(true);
@@ -692,13 +693,42 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 domain.EnumerateRenderer(),
                 atlasSettings.AtlasSetting.IncludeDisabledRenderer
             );
-            var targetMaterials = atlasSettings.GetTargetMaterials(domain, allowed).ToHashSet();
+            var targetMaterials = ResolveSelectedMaterials(
+                domain,
+                allowed,
+                atlasSettings.AtlasTargetMaterials
+            );
             var targetRenderers = AtlasTexture.FilterTargetRenderers(domain, allowed, targetMaterials);
             return AtlasTexture.FilterExistUVChannel(
                 domain,
                 targetRenderers,
                 atlasSettings.AtlasSetting.AtlasTargetUVChannel
             );
+        }
+
+        private static HashSet<Material> ResolveSelectedMaterials(
+            IDomain domain,
+            IEnumerable<Renderer> renderers,
+            IEnumerable<Material?> selectedMaterials)
+        {
+            var selected = selectedMaterials
+                .Where(material => material != null)
+                .Cast<Material>()
+                .ToArray();
+
+            if (selected.Length == 0) return new HashSet<Material>();
+
+            var presentMaterials = renderers
+                .SelectMany(renderer => domain.GetMaterials(renderer))
+                .Where(material => material != null)
+                .Cast<Material>()
+                .ToHashSet();
+
+            return presentMaterials
+                .Where(material => selected.Any(selectedMaterial =>
+                    domain.OriginEqual(selectedMaterial, material)
+                ))
+                .ToHashSet();
         }
 
         private static Mesh? GetRendererMesh(Renderer renderer)
@@ -733,7 +763,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         }
 
         private static (HashSet<Material> targetMaterials, Renderer[] targetRenderers) ResolveAtlasTargets(
-            AtlasTexture atlasSettings,
+            PartAtlasPrefabSettings atlasSettings,
             GameObject root,
             IReadOnlyCollection<string> includedRendererKeys)
         {
@@ -765,9 +795,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 .Select(key => candidateKeys[key])
                 .ToArray();
 
-            var targetMaterials = atlasSettings
-                .GetTargetMaterials(domain, targetRenderers.ToList())
-                .ToHashSet();
+            var targetMaterials = ResolveSelectedMaterials(
+                domain,
+                targetRenderers,
+                atlasSettings.AtlasTargetMaterials
+            );
 
             return (targetMaterials, targetRenderers);
         }
@@ -905,7 +937,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private static (HashSet<Material> targetMaterials, Renderer[] targetRenderers)
             ResolveRetainedAtlasTargets(
-                AtlasTexture atlasSettings,
+                PartAtlasPrefabSettings atlasSettings,
                 GameObject root,
                 IReadOnlyCollection<Renderer> retainedRenderers)
         {
@@ -928,9 +960,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 null
             );
 
-            var targetMaterials = atlasSettings
-                .GetTargetMaterials(domain, renderers.ToList())
-                .ToHashSet();
+            var targetMaterials = ResolveSelectedMaterials(
+                domain,
+                renderers,
+                atlasSettings.AtlasTargetMaterials
+            );
 
             return (targetMaterials, renderers);
         }
@@ -1278,14 +1312,36 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         }
 
         private static string ValidateAtlasSettingsReferences(
-            AtlasTexture atlasSettings,
+            PartAtlasPrefabSettings atlasSettings,
             GameObject extractionRoot)
         {
             var problems = new List<string>();
-            ValidateComponent(atlasSettings, problems);
+            var serialized = new SerializedObject(atlasSettings);
+            var iterator = serialized.GetIterator();
+            var enterChildren = true;
+            var guard = 0;
 
-            var experimental = atlasSettings.GetComponent<AtlasTextureExperimentalFeature>();
-            if (experimental != null) ValidateComponent(experimental, problems);
+            while (iterator.NextVisible(enterChildren) && guard++ < 10000)
+            {
+                enterChildren = true;
+                if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
+                if (iterator.propertyPath == "m_Script") continue;
+
+                var referenced = iterator.objectReferenceValue;
+                if (referenced == null) continue;
+                if (EditorUtility.IsPersistent(referenced)) continue;
+
+                var transform = ToTransform(referenced);
+                if (transform != null && transform.IsChildOf(extractionRoot.transform)) continue;
+
+                problems.Add(
+                    atlasSettings.GetType().Name
+                    + "."
+                    + iterator.propertyPath
+                    + " -> "
+                    + referenced.name
+                );
+            }
 
             if (problems.Count == 0) return "";
 
@@ -1293,35 +1349,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (problems.Count > 20) detail += "\n... and " + (problems.Count - 20) + " more";
 
             return
-                "AtlasTexture設定が抽出結果の外側にあるScene Objectを参照しています。"
+                "Atlas設定が抽出結果の外側にあるScene Objectを参照しています。"
                 + "\nPrefab化ではその参照を安全に移せないため処理を中断しました。"
                 + "\n\n"
                 + detail;
-
-            void ValidateComponent(Component component, List<string> output)
-            {
-                var serialized = new SerializedObject(component);
-                var iterator = serialized.GetIterator();
-                var enterChildren = true;
-                var guard = 0;
-
-                while (iterator.NextVisible(enterChildren) && guard++ < 10000)
-                {
-                    enterChildren = true;
-                    if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
-                    if (iterator.propertyPath == "m_Script") continue;
-                    if (iterator.propertyPath.StartsWith("BakeExcludedRenderers", StringComparison.Ordinal)) continue;
-
-                    var referenced = iterator.objectReferenceValue;
-                    if (referenced == null) continue;
-                    if (EditorUtility.IsPersistent(referenced)) continue;
-
-                    var transform = ToTransform(referenced);
-                    if (transform != null && transform.IsChildOf(extractionRoot.transform)) continue;
-
-                    output.Add(component.GetType().Name + "." + iterator.propertyPath + " -> " + referenced.name);
-                }
-            }
         }
 
         private static Transform? ToTransform(UnityEngine.Object? value)
