@@ -18,9 +18,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private GameObject? _sourcePrefab;
         private GameObject? _loadedPrefabRoot;
-        private GameObject? _extractionRoot;
-        private string? _extractionRootPath;
-        private readonly HashSet<string> _validRootPaths = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _extractionTargetPaths = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _validTargetPaths = new(StringComparer.Ordinal);
+        private int _analysisScaffoldCount;
 
         private List<MatsukawaRendererEntry> _entries = new();
         private readonly List<Material> _materialCandidates = new();
@@ -116,6 +116,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             _hierarchyView = new PartAtlasPrefabHierarchyView(_hierarchyTreeState);
             _hierarchyView.SelectionChangedTransform += OnHierarchySelectionChanged;
+            _hierarchyView.ExtractionTargetsChanged += OnExtractionTargetsChanged;
         }
 
         private void InitializeAdapter()
@@ -216,7 +217,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             DrawSource();
-            if (_extractionRoot == null) return;
+            if (_extractionTargetPaths.Count == 0) return;
 
             DrawRendererSelection();
             DrawAtlasMaterialSelection();
@@ -303,7 +304,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
-            if (_validRootPaths.Count == 0)
+            if (_validTargetPaths.Count == 0)
             {
                 EditorGUILayout.HelpBox(
                     "このPrefab内に抽出可能なMeshが見つかりません。",
@@ -312,67 +313,40 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
-            var selectedTransform = _hierarchyView?.SelectedTransform;
-            var selectedIsValidRoot = IsValidExtractionRoot(selectedTransform);
-
-            var extractionRootDisplay = _extractionRootPath == null
-                ? "[未設定]"
-                : string.IsNullOrEmpty(_extractionRootPath)
-                    ? "<Prefab Root>"
-                    : _extractionRootPath;
-
             EditorGUILayout.LabelField(
-                new GUIContent(
-                    "抽出ルート",
-                    "現在設定されている抽出ルートです。左のPrefab HierarchyでGameObjectを選択し、次の行のボタンで明示的に変更します。"
-                ),
-                new GUIContent(extractionRootDisplay)
+                $"抽出対象（{_extractionTargetPaths.Count}件）",
+                EditorStyles.boldLabel
             );
 
-            var selectedDisplay = selectedTransform == null
-                ? "[未選択]"
-                : selectedTransform == _loadedPrefabRoot!.transform
-                    ? "<Prefab Root>"
-                    : RelativePath(_loadedPrefabRoot.transform, selectedTransform);
-
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                EditorGUILayout.LabelField(
-                    new GUIContent(
-                        "選択中",
-                        "左のPrefab Hierarchyで現在選択しているGameObjectです。"
-                    ),
-                    new GUIContent(selectedDisplay)
-                );
-
-                using (new EditorGUI.DisabledScope(selectedIsValidRoot is false))
-                {
-                    if (GUILayout.Button(
-                            "このGameObjectを抽出ルートに設定する",
-                            GUILayout.Width(230f)))
-                    {
-                        SetExtractionRoot(selectedTransform!);
-                        GUIUtility.ExitGUI();
-                    }
-                }
-            }
-
-            if (selectedTransform != null && selectedIsValidRoot is false)
-            {
-                EditorGUILayout.LabelField(
-                    "選択中のGameObject配下には抽出可能なMeshがありません。",
-                    EditorStyles.wordWrappedMiniLabel
-                );
-            }
-
-            if (_extractionRoot == null)
+            if (_extractionTargetPaths.Count == 0)
             {
                 EditorGUILayout.HelpBox(
-                    "左のPrefab Hierarchyから抽出ルートを明示的に設定してください。",
+                    "左のPrefab Hierarchy右端のチェックで、抽出したいGameObjectを1件以上選択してください。複数選択できます。",
                     MessageType.Info
                 );
                 EditorGUILayout.Space(4f);
                 return;
+            }
+
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                foreach (var path in _extractionTargetPaths
+                             .OrderBy(path => path, StringComparer.Ordinal)
+                             .Take(8))
+                {
+                    EditorGUILayout.LabelField(
+                        string.IsNullOrEmpty(path) ? "<Prefab Root>" : path,
+                        EditorStyles.miniLabel
+                    );
+                }
+
+                if (_extractionTargetPaths.Count > 8)
+                {
+                    EditorGUILayout.LabelField(
+                        $"... ほか {_extractionTargetPaths.Count - 8} 件",
+                        EditorStyles.miniLabel
+                    );
+                }
             }
 
             _outputName = EditorGUILayout.TextField(
@@ -387,7 +361,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var outputFolder = string.IsNullOrWhiteSpace(sanitized)
                 ? "-"
                 : _matsukawa.GetOutputFolder(sanitized);
-            EditorGUILayout.LabelField("出力", outputFolder, EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.LabelField(
+                new GUIContent("出力"),
+                new GUIContent(outputFolder),
+                EditorStyles.wordWrappedMiniLabel
+            );
 
             if (string.IsNullOrWhiteSpace(sanitized) is false
                 && PartAtlasPrefabPipeline.TryValidateOutputName(
@@ -400,9 +378,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             EditorGUILayout.Space(4f);
         }
+
         private void DrawRendererSelection()
         {
-            if (_extractionRoot == null) return;
+            if (_extractionTargetPaths.Count == 0) return;
 
             var keptCount = _entries.Count(entry => entry.Keep);
             EditorGUILayout.LabelField(
@@ -628,7 +607,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void DrawAtlasMaterialSelection()
         {
-            if (_extractionRoot == null
+            if (_extractionTargetPaths.Count == 0
                 || _atlasSettings == null
                 || _atlasSettingsObject == null)
             {
@@ -967,7 +946,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void DrawOptions()
         {
-            if (_extractionRoot == null) return;
+            if (_extractionTargetPaths.Count == 0) return;
 
             _showOptions = EditorGUILayout.Foldout(_showOptions, "抽出設定", true);
             if (!_showOptions) return;
@@ -1017,24 +996,24 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     _options.KeepHumanoidBones
                 );
 
-                var avatarRootExtraction = IsAvatarRootExtraction();
-                using (new EditorGUI.DisabledScope(avatarRootExtraction))
+                var avatarSource = IsAvatarSource();
+                using (new EditorGUI.DisabledScope(avatarSource))
                 {
-                    var stripValue = avatarRootExtraction
+                    var stripValue = avatarSource
                         ? true
                         : _options.StripAvatarComponents;
                     var nextStrip = EditorGUILayout.Toggle(
                         "アバター用コンポーネントを外す",
                         stripValue
                     );
-                    if (avatarRootExtraction is false)
+                    if (avatarSource is false)
                         _options.StripAvatarComponents = nextStrip;
                 }
 
-                if (avatarRootExtraction)
+                if (avatarSource)
                 {
                     EditorGUILayout.HelpBox(
-                        "Avatar Rootを抽出ルートにしているため、出力をAvatarではなくPart Prefabにする目的でAnimator / AvatarDescriptor / Pipeline系Componentは自動的に外します。利用可能な場合は抽出ArmatureへMA Merge Armature / MA Outfit Rootも自動設定します。",
+                        "Avatar PrefabからStandalone Partを抽出するため、Animator / AvatarDescriptor / Pipeline系Componentは自動的に外します。Avatar Armatureが依存物として残る場合はMA Merge Armature / MA Outfit Rootも自動設定します。",
                         MessageType.Info
                     );
                 }
@@ -1052,7 +1031,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void DrawAnalysis()
         {
-            if (_extractionRoot == null) return;
+            if (_extractionTargetPaths.Count == 0) return;
 
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -1070,10 +1049,19 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
-                var after = _analysis.TotalTransforms - _analysis.DeleteTransformCount;
+                var total = Math.Max(
+                    0,
+                    _analysis.TotalTransforms - _analysisScaffoldCount
+                );
+                var after = Math.Max(
+                    0,
+                    _analysis.TotalTransforms
+                    - _analysis.DeleteTransformCount
+                    - _analysisScaffoldCount
+                );
                 EditorGUILayout.LabelField("解析結果", EditorStyles.boldLabel);
                 EditorGUILayout.LabelField(
-                    $"オブジェクト {_analysis.TotalTransforms} → {after} / 削除Renderer {_analysis.DeleteRendererCount} / Trim {_analysis.TrimTargetCount}",
+                    $"オブジェクト {total} → {after} / 削除Renderer {_analysis.DeleteRendererCount} / Trim {_analysis.TrimTargetCount}",
                     EditorStyles.wordWrappedLabel
                 );
 
@@ -1086,9 +1074,34 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void Analyze()
         {
-            if (_matsukawa == null || _extractionRoot == null) return;
+            if (_matsukawa == null
+                || _loadedPrefabRoot == null
+                || _extractionTargetPaths.Count == 0)
+            {
+                return;
+            }
 
-            _analysis = _matsukawa.Analyze(_extractionRoot, _entries, _options);
+            var targets = ResolveCurrentExtractionTargets();
+            if (targets.Count == 0)
+                return;
+
+            using var staging = PartAtlasExtractionStaging.Create(
+                _loadedPrefabRoot,
+                targets
+            );
+
+            var analysisOptions = PartAtlasPrefabPipeline.CreateStagedOptions(
+                _options,
+                staging,
+                IsAvatarSource()
+            );
+
+            _analysis = _matsukawa.Analyze(
+                _loadedPrefabRoot,
+                _entries,
+                analysisOptions
+            );
+            _analysisScaffoldCount = staging.ScaffoldCount;
             _hierarchyView?.SetAnalysis(_analysis);
             Repaint();
         }
@@ -1096,13 +1109,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private void InvalidateAnalysis()
         {
             _analysis = null;
+            _analysisScaffoldCount = 0;
             _hierarchyView?.SetAnalysis(null);
             Repaint();
         }
 
         private void DrawProtectedObjects()
         {
-            if (_analysis == null || _extractionRoot == null) return;
+            if (_analysis == null || _loadedPrefabRoot == null) return;
 
             _showProtected = EditorGUILayout.Foldout(
                 _showProtected,
@@ -1113,9 +1127,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             foreach (var gameObject in _analysis.ProtectedObjects
                          .Where(gameObject => gameObject != null)
-                         .OrderBy(gameObject => RelativePath(_extractionRoot.transform, gameObject.transform)))
+                         .OrderBy(gameObject => RelativePath(_loadedPrefabRoot.transform, gameObject.transform)))
             {
-                var path = RelativePath(_extractionRoot.transform, gameObject.transform);
+                var path = RelativePath(_loadedPrefabRoot.transform, gameObject.transform);
                 var currentlyForced = _options.ForceDeletePaths.Contains(path);
 
                 using (new EditorGUILayout.HorizontalScope())
@@ -1145,7 +1159,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void DrawExecute()
         {
-            if (_analysis == null || _sourcePrefab == null || _extractionRoot == null) return;
+            if (_analysis == null
+                || _sourcePrefab == null
+                || _loadedPrefabRoot == null
+                || _extractionTargetPaths.Count == 0)
+            {
+                return;
+            }
 
             EditorGUILayout.Space(8f);
             var automaticTargets = GetAutomaticAtlasRenderers();
@@ -1180,8 +1200,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (_matsukawa == null
                 || _atlasSettings == null
                 || _sourcePrefab == null
-                || _extractionRoot == null)
+                || _loadedPrefabRoot == null
+                || _extractionTargetPaths.Count == 0)
+            {
                 return;
+            }
 
             var sanitizedOutputName = _matsukawa.SanitizeName(_outputName.Trim());
             if (string.IsNullOrWhiteSpace(sanitizedOutputName))
@@ -1239,17 +1262,22 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var request = new PartAtlasPrefabRequest
             {
                 SourcePrefabAsset = _sourcePrefab,
-                ExtractionRootPath = _extractionRootPath ?? "",
                 ExtractionOptions = _options,
                 AtlasSettings = _atlasSettings,
                 OutputName = sanitizedOutputName,
                 OverwriteExistingOutput = overwrite,
             };
 
+            foreach (var path in _extractionTargetPaths
+                         .OrderBy(path => path, StringComparer.Ordinal))
+            {
+                request.ExtractionTargetPaths.Add(path);
+            }
+
             var keptKeys = _entries
                 .Where(entry => entry.Keep)
                 .Select(entry => PartAtlasPrefabPipeline.GetRendererKey(
-                    _extractionRoot,
+                    _loadedPrefabRoot,
                     entry.Renderer
                 ))
                 .ToHashSet(StringComparer.Ordinal);
@@ -1309,24 +1337,23 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
-            BuildValidRootPaths();
             _hierarchyView?.SetRoot(_loadedPrefabRoot);
+            BuildValidTargetPaths();
 
-            _extractionRootPath = null;
-            _extractionRoot = null;
+            _extractionTargetPaths.Clear();
             _entries.Clear();
             _outputName = "";
             RefreshMaterialCandidates(preserveSelection: false);
             InvalidateAnalysis();
         }
 
-        private void BuildValidRootPaths()
+        private void BuildValidTargetPaths()
         {
-            _validRootPaths.Clear();
+            _validTargetPaths.Clear();
             if (_loadedPrefabRoot == null) return;
 
             var root = _loadedPrefabRoot.transform;
-            var validRoots = new HashSet<Transform>();
+            var validTargets = new HashSet<Transform>();
 
             foreach (var renderer in _loadedPrefabRoot.GetComponentsInChildren<Renderer>(true))
             {
@@ -1338,7 +1365,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var current = renderer.transform;
                 while (current != null)
                 {
-                    validRoots.Add(current);
+                    validTargets.Add(current);
                     if (current == root) break;
                     current = current.parent;
                 }
@@ -1346,64 +1373,105 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             foreach (var transform in _loadedPrefabRoot.GetComponentsInChildren<Transform>(true))
             {
-                if (validRoots.Contains(transform))
-                    _validRootPaths.Add(RelativePath(root, transform));
-            }
-        }
-
-        private bool IsValidExtractionRoot(Transform? transform)
-        {
-            if (_loadedPrefabRoot == null || transform == null)
-                return false;
-
-            if (transform != _loadedPrefabRoot.transform
-                && transform.IsChildOf(_loadedPrefabRoot.transform) is false)
-            {
-                return false;
+                if (validTargets.Contains(transform))
+                    _validTargetPaths.Add(RelativePath(root, transform));
             }
 
-            var path = RelativePath(_loadedPrefabRoot.transform, transform);
-            return _validRootPaths.Contains(path);
+            _hierarchyView?.SetTargetCandidates(validTargets);
         }
 
-        private void SetExtractionRoot(Transform transform)
+        private void OnExtractionTargetsChanged(IReadOnlyList<Transform> targets)
         {
-            if (_loadedPrefabRoot == null || IsValidExtractionRoot(transform) is false)
+            if (_loadedPrefabRoot == null)
                 return;
 
-            _extractionRootPath = RelativePath(_loadedPrefabRoot.transform, transform);
-            RefreshExtractionRoot();
-            _hierarchyView?.SelectAndReveal(transform, flash: true);
+            _extractionTargetPaths.Clear();
+            foreach (var transform in targets)
+            {
+                var path = RelativePath(_loadedPrefabRoot.transform, transform);
+                if (_validTargetPaths.Contains(path))
+                    _extractionTargetPaths.Add(path);
+            }
+
+            var normalized = PartAtlasPrefabPipeline.NormalizeExtractionTargetPaths(
+                _extractionTargetPaths
+            );
+            _extractionTargetPaths.Clear();
+            foreach (var path in normalized)
+                _extractionTargetPaths.Add(path);
+
+            _options.ForceDeletePaths.Clear();
+            RefreshExtractionTargets();
         }
 
-        private void RefreshExtractionRoot()
+        private IReadOnlyList<Transform> ResolveCurrentExtractionTargets()
+        {
+            if (_loadedPrefabRoot == null)
+                return Array.Empty<Transform>();
+
+            var result = new List<Transform>();
+            foreach (var path in _extractionTargetPaths
+                         .OrderBy(path => path, StringComparer.Ordinal))
+            {
+                var transform = string.IsNullOrEmpty(path)
+                    ? _loadedPrefabRoot.transform
+                    : _loadedPrefabRoot.transform.Find(path);
+                if (transform != null)
+                    result.Add(transform);
+            }
+
+            return result;
+        }
+
+        private void RefreshExtractionTargets()
         {
             InvalidateAnalysis();
-            _entries.Clear();
 
             if (_loadedPrefabRoot == null
                 || _matsukawa == null
-                || _extractionRootPath == null)
+                || _extractionTargetPaths.Count == 0)
             {
-                _extractionRoot = null;
+                _entries.Clear();
                 RefreshMaterialCandidates(preserveSelection: false);
                 return;
             }
 
-            _extractionRoot = string.IsNullOrEmpty(_extractionRootPath)
-                ? _loadedPrefabRoot
-                : _loadedPrefabRoot.transform.Find(_extractionRootPath)?.gameObject;
+            var previousKeep = _entries
+                .Where(entry => entry.Renderer != null)
+                .ToDictionary(entry => entry.Renderer, entry => entry.Keep);
 
-            if (_extractionRoot == null)
+            var targets = ResolveCurrentExtractionTargets();
+            if (targets.Count == 0)
             {
-                _extractionRootPath = null;
+                _entries.Clear();
                 RefreshMaterialCandidates(preserveSelection: false);
                 return;
             }
 
-            _entries = _matsukawa.CollectRenderers(_extractionRoot).ToList();
-            _outputName = _extractionRoot.name;
-            RefreshMaterialCandidates(preserveSelection: false);
+            _entries = _matsukawa
+                .CollectRenderers(_loadedPrefabRoot)
+                .Where(entry =>
+                    entry.Renderer != null
+                    && targets.Any(target =>
+                        entry.Renderer.transform == target
+                        || entry.Renderer.transform.IsChildOf(target)))
+                .ToList();
+
+            foreach (var entry in _entries)
+            {
+                entry.Keep = previousKeep.TryGetValue(entry.Renderer, out var keep)
+                    ? keep
+                    : true;
+            }
+
+            if (string.IsNullOrWhiteSpace(_outputName))
+            {
+                _outputName = targets.Count == 1
+                    ? targets[0].name
+                    : _loadedPrefabRoot.name + "_Part";
+            }
+
+            RefreshMaterialCandidates(preserveSelection: true);
         }
 
         private void RefreshMaterialCandidates(bool preserveSelection)
@@ -1424,7 +1492,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             _materialCandidates.Clear();
 
-            if (_extractionRoot != null)
+            if (_extractionTargetPaths.Count > 0)
             {
                 _materialCandidates.AddRange(
                     _entries
@@ -1508,8 +1576,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private Renderer[] GetAutomaticAtlasRenderers()
         {
-            if (_extractionRoot == null || _atlasSettings == null)
+            if (_loadedPrefabRoot == null
+                || _extractionTargetPaths.Count == 0
+                || _atlasSettings == null)
+            {
                 return Array.Empty<Renderer>();
+            }
 
             var keptRenderers = _entries
                 .Where(entry => entry.Keep && entry.Renderer != null)
@@ -1520,7 +1592,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return Array.Empty<Renderer>();
 
             return PartAtlasPrefabPipeline
-                .GetAtlasCandidateRenderers(_atlasSettings, _extractionRoot)
+                .GetAtlasCandidateRenderers(_atlasSettings, _loadedPrefabRoot)
                 .Where(keptRenderers.Contains)
                 .ToArray();
         }
@@ -1532,9 +1604,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _materialCandidates.Clear();
             _materialGroups.Clear();
             _outputName = "";
-            _extractionRoot = null;
-            _extractionRootPath = null;
-            _validRootPaths.Clear();
+            _extractionTargetPaths.Clear();
+            _validTargetPaths.Clear();
+            _analysisScaffoldCount = 0;
             _rendererLinkHighlightObject = null;
             _rendererLinkHighlightUntil = 0d;
 
@@ -1560,7 +1632,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             Repaint();
 
-            if (transform == null || _extractionRoot == null)
+            if (transform == null || _loadedPrefabRoot == null)
                 return;
 
             var visible = VisibleEntries().ToList();
@@ -1603,12 +1675,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             };
         }
 
-        private bool IsAvatarRootExtraction()
+        private bool IsAvatarSource()
         {
-            if (_extractionRoot == null || _loadedPrefabRoot == null) return false;
-            if (_extractionRoot != _loadedPrefabRoot) return false;
+            if (_loadedPrefabRoot == null) return false;
 
-            return _extractionRoot
+            return _loadedPrefabRoot
                 .GetComponents<Component>()
                 .Where(component => component != null)
                 .Any(component => component.GetType().Name == "VRCAvatarDescriptor");

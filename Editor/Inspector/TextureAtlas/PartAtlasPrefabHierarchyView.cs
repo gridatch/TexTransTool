@@ -15,7 +15,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             internal readonly Transform Transform;
             internal readonly string Path;
 
-            internal TransformItem(int id, int depth, string displayName, Transform transform, string path)
+            internal TransformItem(
+                int id,
+                int depth,
+                string displayName,
+                Transform transform,
+                string path)
                 : base(id, depth, displayName)
             {
                 Transform = transform;
@@ -33,6 +38,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private readonly HashSet<int> _keep = new();
         private readonly HashSet<int> _delete = new();
         private readonly HashSet<int> _protected = new();
+        private readonly HashSet<int> _targetCandidates = new();
+        private readonly HashSet<int> _targets = new();
 
         private GameObject? _prefabRoot;
         private bool _hasAnalysis;
@@ -40,6 +47,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private double _flashUntil;
 
         internal event Action<Transform?>? SelectionChangedTransform;
+        internal event Action<IReadOnlyList<Transform>>? ExtractionTargetsChanged;
 
         internal PartAtlasPrefabHierarchyView(TreeViewState state)
             : base(state)
@@ -64,6 +72,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
         }
 
+        internal IReadOnlyList<Transform> ExtractionTargets =>
+            _targets
+                .Select(id => _items.TryGetValue(id, out var item) ? item.Transform : null)
+                .Where(transform => transform != null)
+                .Cast<Transform>()
+                .OrderBy(transform => RelativePath(_prefabRoot!.transform, transform), StringComparer.Ordinal)
+                .ToArray();
+
         internal bool HasActiveFlash =>
             _flashId != 0 && EditorApplication.timeSinceStartup < _flashUntil;
 
@@ -77,11 +93,41 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _keep.Clear();
             _delete.Clear();
             _protected.Clear();
+            _targetCandidates.Clear();
+            _targets.Clear();
             SetSelection(Array.Empty<int>());
             Reload();
 
             if (_prefabRoot != null)
                 SetExpanded(_prefabRoot.transform.GetInstanceID(), true);
+        }
+
+        internal void SetTargetCandidates(IEnumerable<Transform> candidates)
+        {
+            _targetCandidates.Clear();
+            foreach (var transform in candidates)
+            {
+                if (transform != null && _items.ContainsKey(transform.GetInstanceID()))
+                    _targetCandidates.Add(transform.GetInstanceID());
+            }
+
+            _targets.RemoveWhere(id => _targetCandidates.Contains(id) is false);
+            Repaint();
+        }
+
+        internal void SetExtractionTargets(IEnumerable<Transform> targets)
+        {
+            _targets.Clear();
+
+            var normalized = NormalizeTargets(targets);
+            foreach (var transform in normalized)
+            {
+                var id = transform.GetInstanceID();
+                if (_targetCandidates.Contains(id))
+                    _targets.Add(id);
+            }
+
+            Repaint();
         }
 
         internal void SetAnalysis(MatsukawaAnalysis? analysis)
@@ -145,7 +191,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             GUI.Box(rect, GUIContent.none, EditorStyles.helpBox);
 
             var titleRect = new Rect(rect.x + 6f, rect.y + 4f, rect.width - 12f, 18f);
-            GUI.Label(titleRect, "Prefab Hierarchy", EditorStyles.boldLabel);
+            GUI.Label(
+                titleRect,
+                "Prefab Hierarchy（右端のチェック = 抽出対象）",
+                EditorStyles.boldLabel
+            );
 
             var searchRect = new Rect(rect.x + 6f, titleRect.yMax + 3f, rect.width - 12f, 20f);
             var nextSearch = _searchField.OnGUI(searchRect, searchString);
@@ -353,6 +403,113 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             base.RowGUI(args);
             GUI.color = previousColor;
+
+            DrawExtractionTargetToggle(item, args.rowRect);
+        }
+
+        private void DrawExtractionTargetToggle(TransformItem item, Rect rowRect)
+        {
+            var exact = _targets.Contains(item.id);
+            var inherited = HasSelectedAncestor(item.Transform);
+            var isCandidate = _targetCandidates.Contains(item.id);
+            var value = exact || inherited;
+
+            var toggleRect = new Rect(
+                rowRect.xMax - 20f,
+                rowRect.y,
+                18f,
+                rowRect.height
+            );
+
+            var tooltip = inherited
+                ? "親の抽出対象に含まれています。"
+                : isCandidate
+                    ? "このGameObjectを抽出対象に含めます。"
+                    : "このGameObject配下には抽出可能なMeshがありません。";
+
+            using (new EditorGUI.DisabledScope(isCandidate is false || inherited))
+            {
+                EditorGUI.BeginChangeCheck();
+                var next = GUI.Toggle(
+                    toggleRect,
+                    value,
+                    new GUIContent("", tooltip)
+                );
+                if (EditorGUI.EndChangeCheck())
+                {
+                    ToggleExtractionTarget(item.Transform, next);
+                    Event.current.Use();
+                }
+            }
+        }
+
+        private void ToggleExtractionTarget(Transform transform, bool enabled)
+        {
+            var id = transform.GetInstanceID();
+
+            if (enabled)
+            {
+                _targets.RemoveWhere(existingId =>
+                    _items.TryGetValue(existingId, out var existing)
+                    && existing.Transform != transform
+                    && existing.Transform.IsChildOf(transform));
+                _targets.Add(id);
+            }
+            else
+            {
+                _targets.Remove(id);
+            }
+
+            ExtractionTargetsChanged?.Invoke(ExtractionTargets);
+            Repaint();
+        }
+
+        private bool HasSelectedAncestor(Transform transform)
+        {
+            var current = transform.parent;
+            while (current != null)
+            {
+                if (_targets.Contains(current.GetInstanceID()))
+                    return true;
+
+                if (_prefabRoot != null && current == _prefabRoot.transform)
+                    break;
+
+                current = current.parent;
+            }
+
+            return false;
+        }
+
+        private IReadOnlyList<Transform> NormalizeTargets(IEnumerable<Transform> targets)
+        {
+            if (_prefabRoot == null)
+                return Array.Empty<Transform>();
+
+            var root = _prefabRoot.transform;
+            var ordered = targets
+                .Where(transform =>
+                    transform != null
+                    && (transform == root || transform.IsChildOf(root)))
+                .Distinct()
+                .OrderBy(transform => DepthFrom(root, transform))
+                .ThenBy(transform => RelativePath(root, transform), StringComparer.Ordinal)
+                .ToList();
+
+            var result = new List<Transform>();
+            foreach (var transform in ordered)
+            {
+                if (result.Any(parent =>
+                        transform != parent
+                        && transform.IsChildOf(parent)))
+                {
+                    continue;
+                }
+
+                result.Add(transform);
+            }
+
+            return result;
         }
 
         protected override void SelectionChanged(IList<int> selectedIds)
@@ -375,6 +532,21 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         protected override void RenameEnded(RenameEndedArgs args)
         {
             // Read-only hierarchy: renaming is never accepted.
+        }
+
+        private static int DepthFrom(Transform root, Transform target)
+        {
+            if (target == root) return 0;
+
+            var depth = 0;
+            var current = target;
+            while (current != null && current != root)
+            {
+                depth++;
+                current = current.parent;
+            }
+
+            return depth;
         }
 
         private static string RelativePath(Transform root, Transform target)

@@ -15,12 +15,241 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     internal sealed class PartAtlasPrefabRequest
     {
         internal GameObject SourcePrefabAsset = null!;
-        internal string ExtractionRootPath = "";
+        internal readonly List<string> ExtractionTargetPaths = new();
         internal readonly HashSet<string> KeepRendererKeys = new(StringComparer.Ordinal);
         internal MatsukawaOptions ExtractionOptions = new();
         internal PartAtlasPrefabSettings AtlasSettings = null!;
         internal string OutputName = "";
         internal bool OverwriteExistingOutput;
+    }
+
+    internal sealed class PartAtlasExtractionStaging : IDisposable
+    {
+        private sealed class TargetState
+        {
+            internal Transform Target = null!;
+            internal string SourcePath = "";
+            internal Transform? OriginalParent;
+            internal int OriginalSiblingIndex;
+            internal string StagedPath = "";
+        }
+
+        private readonly GameObject _root;
+        private readonly List<TargetState> _states;
+        private GameObject? _container;
+        private bool _restoreOnDispose = true;
+
+        private PartAtlasExtractionStaging(
+            GameObject root,
+            IReadOnlyList<Transform> targets)
+        {
+            _root = root;
+            _states = targets
+                .Select(target => new TargetState
+                {
+                    Target = target,
+                    SourcePath = RelativePath(root.transform, target),
+                    OriginalParent = target.parent,
+                    OriginalSiblingIndex = target.GetSiblingIndex(),
+                })
+                .ToList();
+
+            if (_states.Count == 1 && _states[0].Target == root.transform)
+                return;
+
+            var containerName = "__WDT_ExtractionTargets";
+            var suffix = 1;
+            while (root.transform.Find(containerName) != null)
+                containerName = "__WDT_ExtractionTargets_" + suffix++;
+
+            _container = new GameObject(containerName);
+            _container.transform.SetParent(root.transform, false);
+
+            for (var i = 0; i < _states.Count; i++)
+            {
+                var state = _states[i];
+                var wrapper = new GameObject("__WDT_Target_" + i.ToString("D4"));
+                wrapper.transform.SetParent(_container.transform, false);
+                state.Target.SetParent(wrapper.transform, true);
+                state.StagedPath = RelativePath(root.transform, state.Target);
+            }
+        }
+
+        internal int ScaffoldCount => _container == null ? 0 : _states.Count + 1;
+
+        internal IReadOnlyList<Transform> Targets =>
+            _states
+                .Where(state => state.Target != null)
+                .Select(state => state.Target)
+                .ToArray();
+
+        internal static PartAtlasExtractionStaging Create(
+            GameObject root,
+            IEnumerable<Transform> targets)
+        {
+            if (root == null)
+                throw new ArgumentNullException(nameof(root));
+
+            var normalized = NormalizeTargets(root.transform, targets);
+            if (normalized.Count == 0)
+                throw new InvalidOperationException("抽出対象が指定されていません。");
+
+            return new PartAtlasExtractionStaging(root, normalized);
+        }
+
+        internal string RemapSourcePath(string sourcePath)
+        {
+            if (_container == null || string.IsNullOrEmpty(sourcePath))
+                return sourcePath;
+
+            foreach (var state in _states)
+            {
+                if (string.Equals(sourcePath, state.SourcePath, StringComparison.Ordinal))
+                    return state.StagedPath;
+
+                var prefix = state.SourcePath + "/";
+                if (sourcePath.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    return state.StagedPath
+                        + sourcePath.Substring(state.SourcePath.Length);
+                }
+            }
+
+            return sourcePath;
+        }
+
+        internal void DisableAutoRestore()
+        {
+            _restoreOnDispose = false;
+        }
+
+        internal bool MoveTargetsToRoot(GameObject outputRoot, out string error)
+        {
+            error = "";
+
+            foreach (var state in _states)
+            {
+                if (state.Target == null)
+                {
+                    error = "HCE抽出後に抽出対象GameObjectが失われました: " + state.SourcePath;
+                    return false;
+                }
+
+                if (state.Target == outputRoot.transform)
+                    continue;
+
+                state.Target.SetParent(outputRoot.transform, true);
+            }
+
+            DestroyScaffolding();
+            _restoreOnDispose = false;
+            return true;
+        }
+
+        public void Dispose()
+        {
+            if (_restoreOnDispose)
+                RestoreOriginalHierarchy();
+
+            DestroyScaffolding();
+        }
+
+        private void RestoreOriginalHierarchy()
+        {
+            foreach (var state in _states)
+            {
+                if (state.Target == null)
+                    continue;
+
+                var parent = state.OriginalParent;
+                if (parent == null && state.Target != _root.transform)
+                    parent = _root.transform;
+
+                if (state.Target != _root.transform)
+                {
+                    state.Target.SetParent(parent, true);
+                    if (parent != null)
+                    {
+                        var maxIndex = Math.Max(0, parent.childCount - 1);
+                        state.Target.SetSiblingIndex(
+                            Math.Min(state.OriginalSiblingIndex, maxIndex)
+                        );
+                    }
+                }
+            }
+        }
+
+        private void DestroyScaffolding()
+        {
+            if (_container != null)
+            {
+                UnityEngine.Object.DestroyImmediate(_container);
+                _container = null;
+            }
+        }
+
+        private static List<Transform> NormalizeTargets(
+            Transform root,
+            IEnumerable<Transform> targets)
+        {
+            var candidates = targets
+                .Where(target =>
+                    target != null
+                    && (target == root || target.IsChildOf(root)))
+                .Distinct()
+                .OrderBy(target => DepthFrom(root, target))
+                .ThenBy(target => RelativePath(root, target), StringComparer.Ordinal)
+                .ToList();
+
+            var result = new List<Transform>();
+            foreach (var target in candidates)
+            {
+                if (result.Any(parent =>
+                        target != parent
+                        && target.IsChildOf(parent)))
+                {
+                    continue;
+                }
+
+                result.RemoveAll(child =>
+                    child != target
+                    && child.IsChildOf(target));
+                result.Add(target);
+            }
+
+            return result;
+        }
+
+        private static int DepthFrom(Transform root, Transform target)
+        {
+            if (target == root) return 0;
+
+            var depth = 0;
+            var current = target;
+            while (current != null && current != root)
+            {
+                depth++;
+                current = current.parent;
+            }
+
+            return depth;
+        }
+
+        private static string RelativePath(Transform root, Transform target)
+        {
+            if (target == root) return "";
+
+            var parts = new List<string>();
+            var current = target;
+            while (current != null && current != root)
+            {
+                parts.Add(current.name);
+                current = current.parent;
+            }
+
+            parts.Reverse();
+            return string.Join("/", parts);
+        }
     }
 
     internal sealed class PartAtlasPrefabResult
@@ -62,6 +291,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (request.AtlasSettings == null)
                 return Fail(result, "AtlasTexture設定が指定されていません。");
 
+            var normalizedTargetPaths = NormalizeExtractionTargetPaths(
+                request.ExtractionTargetPaths
+            );
+            if (normalizedTargetPaths.Count == 0)
+                return Fail(result, "抽出対象GameObjectが選択されていません。");
+
             if (request.KeepRendererKeys.Count == 0)
                 return Fail(result, "抽出対象Rendererが選択されていません。");
 
@@ -85,20 +320,26 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             GameObject? extractionRoot = null;
             MatsukawaExecutionResult? extraction = null;
             var transientInputMeshes = new List<Mesh>();
-            var originalParentPath = "";
-            ParentAttachmentInfo? parentAttachment = null;
-            var isAvatarRootExtraction = false;
-            var defaultAvatarArmaturePath = "";
+            var targetStates = new List<ExtractionTargetState>();
+            var sourceIsAvatar = false;
+            var avatarArmaturePath = "";
             ModularAvatarAdapter? modularAvatarAdapter = null;
             var ownsOutputFolder = false;
             string? backupDirectory = null;
             var committed = false;
+            PartAtlasExtractionStaging? staging = null;
 
             try
             {
-                temporaryScene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
+                temporaryScene = EditorSceneManager.NewScene(
+                    NewSceneSetup.EmptyScene,
+                    NewSceneMode.Additive
+                );
 
-                instantiatedRoot = PrefabUtility.InstantiatePrefab(request.SourcePrefabAsset, temporaryScene) as GameObject;
+                instantiatedRoot = PrefabUtility.InstantiatePrefab(
+                    request.SourcePrefabAsset,
+                    temporaryScene
+                ) as GameObject;
                 if (instantiatedRoot == null)
                     return Fail(result, "入力Prefabを一時Sceneへ展開できませんでした。");
 
@@ -111,49 +352,122 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
                 }
 
-                extractionRoot = ResolveExtractionRoot(instantiatedRoot, request.ExtractionRootPath);
-                if (extractionRoot == null)
-                    return Fail(result, "指定された抽出ルートがPrefab内に見つかりません: " + request.ExtractionRootPath);
+                var extractionTargets = ResolveExtractionTargets(
+                    instantiatedRoot,
+                    normalizedTargetPaths,
+                    out var targetResolveError
+                );
+                if (extractionTargets == null)
+                    return Fail(result, targetResolveError);
 
-                if (ContainsExtractableMesh(extractionRoot) is false)
-                    return Fail(result, "指定された抽出ルート配下に抽出可能なMeshがありません。");
-
-                if (extractionRoot != instantiatedRoot)
+                foreach (var target in extractionTargets)
                 {
-                    if (extractionRoot.transform.parent != null)
+                    if (ContainsExtractableMesh(target.gameObject) is false)
                     {
-                        originalParentPath = RelativePath(
-                            instantiatedRoot.transform,
-                            extractionRoot.transform.parent
-                        );
-                        parentAttachment = FindHumanoidParentAttachment(
-                            instantiatedRoot,
-                            extractionRoot.transform.parent
+                        return Fail(
+                            result,
+                            "抽出対象配下に抽出可能なMeshがありません: "
+                            + RelativePath(instantiatedRoot.transform, target)
                         );
                     }
-
-                    var externalReferenceError = SanitizeAndValidateExternalReferences(
-                        extractionRoot,
-                        instantiatedRoot
-                    );
-                    if (!string.IsNullOrEmpty(externalReferenceError))
-                        return Fail(result, externalReferenceError);
-
-                    // Normalize the detached part transform into the source avatar-root
-                    // coordinate space rather than keeping scene-world coordinates. This keeps a
-                    // BoneProxy/standalone part reusable even when the source avatar root itself
-                    // was moved, rotated, or scaled in the scene used to author the Prefab.
-                    extractionRoot.transform.SetParent(instantiatedRoot.transform, true);
-                    extractionRoot.transform.SetParent(null, false);
-                    UnityEngine.Object.DestroyImmediate(instantiatedRoot);
-                    instantiatedRoot = extractionRoot;
                 }
 
-                // AnimationClip bindings and MA AvatarObjectReference paths are root-relative, so
-                // changing only the temporary extraction root name does not alter child paths.
-                // The source Prefab asset itself is never renamed.
-                extractionRoot.name = requestedOutputName;
-                outputName = extractionRoot.name;
+                sourceIsAvatar = HasAvatarDescriptor(instantiatedRoot);
+
+                targetStates = extractionTargets
+                    .Select(target => new ExtractionTargetState
+                    {
+                        Target = target,
+                        SourcePath = RelativePath(instantiatedRoot.transform, target),
+                        Attachment = target == instantiatedRoot.transform || target.parent == null
+                            ? null
+                            : FindHumanoidParentAttachment(
+                                instantiatedRoot,
+                                target.parent
+                            ),
+                    })
+                    .ToList();
+
+                var atlasSettingsError = ValidateAtlasSettingsReferences(
+                    request.AtlasSettings,
+                    instantiatedRoot
+                );
+                if (!string.IsNullOrEmpty(atlasSettingsError))
+                    return Fail(result, atlasSettingsError);
+
+                var entries = matsukawa.CollectRenderers(instantiatedRoot).ToList();
+                foreach (var entry in entries)
+                {
+                    entry.Keep = request.KeepRendererKeys.Contains(
+                        GetRendererKey(instantiatedRoot, entry.Renderer)
+                    );
+                }
+
+                var selectedEntries = entries
+                    .Where(entry => entry.Keep)
+                    .ToArray();
+                if (selectedEntries.Length == 0)
+                    return Fail(result, "抽出対象RendererがPrefab内で1件も一致しませんでした。");
+
+                var uncoveredTarget = targetStates.FirstOrDefault(state =>
+                    selectedEntries.Any(entry =>
+                        entry.Renderer != null
+                        && (entry.Renderer.transform == state.Target
+                            || entry.Renderer.transform.IsChildOf(state.Target))) is false
+                );
+                if (uncoveredTarget != null)
+                {
+                    return Fail(
+                        result,
+                        "抽出対象「"
+                        + (string.IsNullOrEmpty(uncoveredTarget.SourcePath)
+                            ? "<Prefab Root>"
+                            : uncoveredTarget.SourcePath)
+                        + "」配下で、残すRendererが1件も選択されていません。"
+                    );
+                }
+
+                // Atlas and animation validation must use the original source hierarchy before
+                // extraction targets are staged under the temporary WDT container.
+                var (preflightMaterials, preflightRenderers) = ResolveAtlasTargets(
+                    request.AtlasSettings,
+                    instantiatedRoot,
+                    request.KeepRendererKeys
+                );
+
+                if (preflightMaterials.Count == 0 || preflightRenderers.Length == 0)
+                {
+                    return Fail(
+                        result,
+                        "選択したMaterialを使用する抽出対象Rendererに、アトラス化可能なRendererがありません。"
+                    );
+                }
+
+                var retainedAtlasRenderers = preflightRenderers.ToArray();
+                var preflightMeshes = preflightRenderers
+                    .Select(GetRendererMesh)
+                    .Where(mesh => mesh != null)
+                    .Cast<Mesh>()
+                    .ToHashSet();
+
+                if (AtlasTextureBaker.ValidateAnimationObjectReferences(
+                        instantiatedRoot,
+                        preflightRenderers,
+                        preflightMaterials,
+                        preflightMeshes,
+                        displayDialog: false
+                    ) is false)
+                {
+                    return Fail(
+                        result,
+                        "抽出前のMesh / Materialを直接参照するAnimationClipがあるため中断しました。"
+                        + "該当Clip / bindingはConsoleに出力しています。"
+                    );
+                }
+
+                // HCE owns the output folder name through the working root's name.
+                instantiatedRoot.name = requestedOutputName;
+                outputName = instantiatedRoot.name;
                 outputFolder = matsukawa.GetOutputFolder(outputName);
                 result.OutputFolder = outputFolder;
                 result.AtlasOutputFolder = outputFolder + "/Atlas";
@@ -162,48 +476,42 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (outputExists && request.OverwriteExistingOutput is false)
                     return Fail(result, "同名の抽出結果が既に存在します: " + outputFolder);
 
-                var atlasSettingsError = ValidateAtlasSettingsReferences(request.AtlasSettings, extractionRoot);
-                if (!string.IsNullOrEmpty(atlasSettingsError))
-                    return Fail(result, atlasSettingsError);
+                staging = PartAtlasExtractionStaging.Create(
+                    instantiatedRoot,
+                    extractionTargets
+                );
 
-                var entries = matsukawa.CollectRenderers(extractionRoot).ToList();
-                foreach (var entry in entries)
-                    entry.Keep = request.KeepRendererKeys.Contains(
-                        GetRendererKey(extractionRoot, entry.Renderer)
-                    );
+                var executionOptions = CreateStagedOptions(
+                    request.ExtractionOptions,
+                    staging,
+                    sourceIsAvatar
+                );
 
-                var selectedCount = entries.Count(entry => entry.Keep);
-                if (selectedCount == 0)
-                    return Fail(result, "抽出対象RendererがPrefab内で1件も一致しませんでした。");
-
-                isAvatarRootExtraction =
-                    string.IsNullOrEmpty(request.ExtractionRootPath)
-                    && HasAvatarDescriptor(extractionRoot);
-
-                var executionOptions = CloneOptions(request.ExtractionOptions);
-                // The temporary scene is already the disposable working copy. Asking HCE to make
-                // another scene copy only adds hierarchy noise and complicates output naming.
-                executionOptions.WorkOnCopy = false;
-
-                // A default outfit extracted from an Avatar Prefab must become a part Prefab,
-                // not another avatar. Always remove root Animator/Descriptor/Pipeline components.
-                if (isAvatarRootExtraction)
-                    executionOptions.StripAvatarComponents = true;
-
-                var analysis = matsukawa.Analyze(extractionRoot, entries, executionOptions);
+                var analysis = matsukawa.Analyze(
+                    instantiatedRoot,
+                    entries,
+                    executionOptions
+                );
                 if (analysis.WarningCount > 0)
                 {
                     foreach (var warning in analysis.Warnings)
                         Debug.LogWarning("Part Atlas Prefab / Matsukawa: " + warning);
                 }
 
-                if (isAvatarRootExtraction)
-                    defaultAvatarArmaturePath = FindAvatarArmaturePath(extractionRoot, analysis);
+                var referenceError = SanitizeAndValidateReferencesAgainstAnalysis(
+                    instantiatedRoot,
+                    analysis
+                );
+                if (!string.IsNullOrEmpty(referenceError))
+                    return Fail(result, referenceError);
+
+                if (sourceIsAvatar)
+                    avatarArmaturePath = FindAvatarArmaturePath(instantiatedRoot, analysis);
 
                 var requiresModularAvatar =
-                    parentAttachment != null
-                    || (isAvatarRootExtraction
-                        && string.IsNullOrEmpty(defaultAvatarArmaturePath) is false);
+                    targetStates.Any(state => state.Attachment != null)
+                    || (sourceIsAvatar
+                        && string.IsNullOrEmpty(avatarArmaturePath) is false);
 
                 if (requiresModularAvatar
                     && ModularAvatarAdapter.TryCreate(
@@ -220,49 +528,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
                 }
 
-                // Verify the Atlas renderer/material mapping before touching an existing output folder.
-                // HCE only deletes objects and compacts meshes; it does not reparent kept renderers,
-                // so these stable renderer keys must still resolve after extraction.
-                var (preflightMaterials, preflightRenderers) = ResolveAtlasTargets(
-                    request.AtlasSettings,
-                    extractionRoot,
-                    request.KeepRendererKeys
-                );
-
-                if (preflightMaterials.Count == 0 || preflightRenderers.Length == 0)
-                {
-                    return Fail(
-                        result,
-                        "選択したMaterialを使用する抽出対象Rendererに、アトラス化可能なRendererがありません。"
-                    );
-                }
-
-                // HCE runs in-place on this disposable hierarchy (workOnCopy=false), so kept
-                // Renderer component instances remain the same objects through Execute. Retain
-                // those references instead of re-identifying them after HCE has removed siblings.
-                var retainedAtlasRenderers = preflightRenderers.ToArray();
-
-                var preflightMeshes = preflightRenderers
-                    .Select(GetRendererMesh)
-                    .Where(mesh => mesh != null)
-                    .Cast<Mesh>()
-                    .ToHashSet();
-
-                if (AtlasTextureBaker.ValidateAnimationObjectReferences(
-                        extractionRoot,
-                        preflightRenderers,
-                        preflightMaterials,
-                        preflightMeshes,
-                        displayDialog: false
-                    ) is false)
-                {
-                    return Fail(
-                        result,
-                        "抽出前のMesh / Materialを直接参照するAnimationClipがあるため中断しました。"
-                        + "該当Clip / bindingはConsoleに出力しています。"
-                    );
-                }
-
                 var trimRenderers = analysis.TrimTargets
                     .Where(renderer => renderer != null)
                     .Distinct()
@@ -275,7 +540,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 if (trimRenderers.Length > 0
                     && AtlasTextureBaker.ValidateAnimationObjectReferences(
-                        extractionRoot,
+                        instantiatedRoot,
                         trimRenderers,
                         new HashSet<Material>(),
                         trimSourceMeshes,
@@ -299,9 +564,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 {
                     try
                     {
-                        // Keep the existing Assets path in place so HCE SavePrefab and the
-                        // Atlas manifest can update existing assets without changing their GUIDs.
-                        // Rollback bytes (including .meta files) live outside Assets.
                         backupDirectory = CreateOutputFolderBackup(outputFolder);
                     }
                     catch (Exception backupError)
@@ -314,12 +576,24 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     }
                 }
 
-                // From this point on, outputFolder may be changed by HCE/TTT.
                 ownsOutputFolder = true;
 
-                extraction = matsukawa.Execute(extractionRoot, entries, executionOptions);
+                // From this point HCE may delete original parents, so the staging helper must not
+                // attempt to restore the source hierarchy during disposal.
+                staging.DisableAutoRestore();
+
+                extraction = matsukawa.Execute(
+                    instantiatedRoot,
+                    entries,
+                    executionOptions
+                );
                 if (extraction.Succeeded is false || extraction.Result == null)
                     return Fail(result, "松川ツールの抽出処理が完了しませんでした。");
+
+                extractionRoot = extraction.Result;
+
+                if (staging.MoveTargetsToRoot(extractionRoot, out var moveError) is false)
+                    return Fail(result, moveError);
 
                 var trimValidationError = ValidateTrimResults(
                     analysis,
@@ -332,14 +606,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (string.IsNullOrEmpty(backupDirectory) is false)
                 {
                     PreserveExistingTrimMeshGuids(
-                        extraction.Result,
+                        extractionRoot,
                         extraction.GeneratedMeshes,
                         outputFolder,
                         backupDirectory
                     );
                 }
 
-                if (TransientMeshStillReferenced(extraction.Result, transientInputMeshes))
+                if (TransientMeshStillReferenced(extractionRoot, transientInputMeshes))
                 {
                     return Fail(
                         result,
@@ -348,9 +622,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
                 }
 
-                // HCE itself was asked not to create a second copy, but the entire operation is
-                // already running on a disposable Prefab instance. Normalize the report so it
-                // correctly states that the source Prefab asset was left untouched.
                 matsukawa.SetWorkedOnCopy(extraction, true);
                 matsukawa.SetSourceName(extraction, request.SourcePrefabAsset.name);
 
@@ -364,33 +635,48 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
                 }
 
-                if (string.IsNullOrEmpty(request.ExtractionRootPath) is false)
+                matsukawa.AddReportNote(
+                    extraction,
+                    "入力Prefab内の抽出対象: "
+                    + string.Join(
+                        ", ",
+                        targetStates.Select(state =>
+                            string.IsNullOrEmpty(state.SourcePath)
+                                ? "<Prefab Root>"
+                                : state.SourcePath)
+                    )
+                );
+
+                if (staging.ScaffoldCount > 0)
                 {
                     matsukawa.AddReportNote(
                         extraction,
-                        "入力Prefab内の抽出ルート: " + request.ExtractionRootPath
+                        "依存関係解析のため一時的に抽出対象をステージングし、"
+                        + "抽出後に一時Hierarchyを除去しました。"
                     );
                 }
 
-                if (string.IsNullOrEmpty(originalParentPath) is false)
+                foreach (var targetState in targetStates)
                 {
-                    matsukawa.AddReportNote(
-                        extraction,
-                        "抽出元では親が「" + originalParentPath + "」でした。"
-                    );
-                }
+                    if (targetState.Target == null)
+                    {
+                        return Fail(
+                            result,
+                            "HCE抽出後に抽出対象GameObjectが失われました: "
+                            + targetState.SourcePath
+                        );
+                    }
 
-                extractionRoot = extraction.Result;
+                    if (targetState.Attachment == null)
+                        continue;
 
-                if (parentAttachment != null)
-                {
                     if (modularAvatarAdapter == null)
                         return Fail(result, "MA Bone Proxy設定用のAdapterが利用できません。");
 
                     if (modularAvatarAdapter.ConfigureBoneProxy(
-                            extractionRoot,
-                            parentAttachment.BoneReference,
-                            parentAttachment.SubPath,
+                            targetState.Target.gameObject,
+                            targetState.Attachment.BoneReference,
+                            targetState.Attachment.SubPath,
                             out var addedBoneProxy,
                             out var boneProxyError
                         ) is false)
@@ -404,49 +690,57 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                     matsukawa.AddReportNote(
                         extraction,
-                        addedBoneProxy
-                            ? "元の親ボーン「"
-                              + parentAttachment.ParentPath
-                              + "」へ接続するMA Bone Proxyを追加しました。"
-                            : "既存のMA Bone Proxy設定を保持しました。抽出元の親ボーンは「"
-                              + parentAttachment.ParentPath
-                              + "」です。"
+                        (addedBoneProxy
+                            ? "抽出対象「"
+                              + targetState.SourcePath
+                              + "」へ、元の親ボーン「"
+                              + targetState.Attachment.ParentPath
+                              + "」に接続するMA Bone Proxyを追加しました。"
+                            : "抽出対象「"
+                              + targetState.SourcePath
+                              + "」の既存MA Bone Proxy設定を保持しました。")
                     );
                 }
 
-                if (isAvatarRootExtraction)
+                if (sourceIsAvatar)
                 {
                     matsukawa.AddReportNote(
                         extraction,
-                        "Avatar Rootからの抽出として、Animator / AvatarDescriptor / Pipeline系Componentを出力から外しました。"
+                        "Avatar PrefabからPartを抽出するため、Animator / AvatarDescriptor / Pipeline系Componentを出力Rootから外しました。"
                     );
 
-                    if (string.IsNullOrEmpty(defaultAvatarArmaturePath) is false)
+                    if (string.IsNullOrEmpty(avatarArmaturePath) is false)
                     {
                         if (modularAvatarAdapter == null)
                             return Fail(result, "MA Merge Armature設定用のAdapterが利用できません。");
 
                         if (modularAvatarAdapter.ConfigureArmature(
                                 extractionRoot,
-                                defaultAvatarArmaturePath,
+                                avatarArmaturePath,
                                 out var configureError
                             ) is false)
                         {
                             return Fail(
                                 result,
-                                "デフォルト衣装用のMA Merge Armature設定に失敗しました。\n"
+                                "抽出ArmatureへのMA Merge Armature設定に失敗しました。\n"
                                 + configureError
                             );
                         }
 
                         matsukawa.AddReportNote(
                             extraction,
-                            "デフォルト衣装のArmature「"
-                            + defaultAvatarArmaturePath
-                            + "」にMA Merge Armature / MA Outfit Rootを設定しました。"
+                            "Avatar Armature「"
+                            + avatarArmaturePath
+                            + "」が依存物として残ったため、MA Merge Armature / MA Outfit Rootを設定しました。"
                         );
                     }
                 }
+
+                var finalReferenceError = ValidateNoExternalSceneReferences(
+                    extractionRoot
+                );
+                if (!string.IsNullOrEmpty(finalReferenceError))
+                    return Fail(result, finalReferenceError);
 
                 var (targetMaterials, targetRenderers) = ResolveRetainedAtlasTargets(
                     request.AtlasSettings,
@@ -480,7 +774,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 matsukawa.AddReportNote(
                     extraction,
-                    "TexTransToolでアトラス化し、永続Assetを " + result.AtlasOutputFolder + " に保存しました。"
+                    "TexTransToolでアトラス化し、永続Assetを "
+                    + result.AtlasOutputFolder
+                    + " に保存しました。"
                 );
                 var reportText = matsukawa.BuildReportText(extraction);
                 matsukawa.SetReportText(extraction, reportText);
@@ -510,6 +806,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
             finally
             {
+                staging?.Dispose();
+
                 try { matsukawa.ClearHierarchyHighlight(); } catch { }
 
                 if (temporaryScene.IsValid())
@@ -558,8 +856,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                              && string.IsNullOrEmpty(outputFolder) is false
                              && AssetDatabase.IsValidFolder(outputFolder))
                     {
-                        // No previous output existed. Remove only the partial output created
-                        // by this failed transaction.
                         if (AssetDatabase.DeleteAsset(outputFolder) is false)
                         {
                             Debug.LogError(
@@ -586,6 +882,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             error = error.Replace("ベイク名", "出力名");
             return false;
+        }
+
+        private sealed class ExtractionTargetState
+        {
+            internal Transform Target = null!;
+            internal string SourcePath = "";
+            internal ParentAttachmentInfo? Attachment;
         }
 
         private sealed class ParentAttachmentInfo
@@ -676,10 +979,83 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return false;
         }
 
-        private static GameObject? ResolveExtractionRoot(GameObject prefabRoot, string path)
+        internal static IReadOnlyList<string> NormalizeExtractionTargetPaths(
+            IEnumerable<string> paths)
         {
-            if (string.IsNullOrEmpty(path)) return prefabRoot;
-            return prefabRoot.transform.Find(path)?.gameObject;
+            var ordered = paths
+                .Where(path => path != null)
+                .Select(path => path.Trim('/'))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(path => path.Count(character => character == '/'))
+                .ThenBy(path => path.Length)
+                .ThenBy(path => path, StringComparer.Ordinal)
+                .ToList();
+
+            if (ordered.Contains(""))
+                return new[] { "" };
+
+            var result = new List<string>();
+            foreach (var path in ordered)
+            {
+                if (result.Any(parent =>
+                        path.StartsWith(parent + "/", StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                result.Add(path);
+            }
+
+            return result;
+        }
+
+        private static IReadOnlyList<Transform>? ResolveExtractionTargets(
+            GameObject prefabRoot,
+            IReadOnlyList<string> paths,
+            out string error)
+        {
+            error = "";
+            var targets = new List<Transform>();
+
+            foreach (var path in paths)
+            {
+                var target = string.IsNullOrEmpty(path)
+                    ? prefabRoot.transform
+                    : prefabRoot.transform.Find(path);
+
+                if (target == null)
+                {
+                    error = "指定された抽出対象がPrefab内に見つかりません: " + path;
+                    return null;
+                }
+
+                targets.Add(target);
+            }
+
+            return targets;
+        }
+
+        internal static MatsukawaOptions CreateStagedOptions(
+            MatsukawaOptions source,
+            PartAtlasExtractionStaging staging,
+            bool forceStripAvatarComponents)
+        {
+            var copy = CloneOptions(source);
+            copy.WorkOnCopy = false;
+            if (forceStripAvatarComponents)
+                copy.StripAvatarComponents = true;
+
+            if (copy.ForceDeletePaths.Count > 0)
+            {
+                var remapped = copy.ForceDeletePaths
+                    .Select(staging.RemapSourcePath)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                copy.ForceDeletePaths.Clear();
+                copy.ForceDeletePaths.AddRange(remapped);
+            }
+
+            return copy;
         }
 
         private static MatsukawaOptions CloneOptions(MatsukawaOptions source)
@@ -1193,22 +1569,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
         }
 
-        /// <summary>
-        /// When an installed outfit subtree is detached from an avatar Prefab, direct scene-object
-        /// references outside that subtree cannot be stored in the resulting standalone Prefab.
-        /// Modular Avatar's AvatarObjectReference deliberately stores both a path and a direct cache;
-        /// the direct targetObject cache may be cleared when a non-empty referencePath exists.
-        /// Other external references are rejected instead of being silently broken.
-        /// </summary>
-        private static string SanitizeAndValidateExternalReferences(
-            GameObject extractionRoot,
-            GameObject fullPrefabRoot)
+        private static string SanitizeAndValidateReferencesAgainstAnalysis(
+            GameObject root,
+            MatsukawaAnalysis analysis)
         {
             var issues = new List<string>();
+            var deleted = analysis.DeleteTransforms;
 
-            foreach (var component in extractionRoot.GetComponentsInChildren<Component>(true))
+            foreach (var component in root.GetComponentsInChildren<Component>(true))
             {
                 if (component == null || component is Transform) continue;
+                if (deleted.Contains(component.transform)) continue;
 
                 SerializedObject serialized;
                 try { serialized = new SerializedObject(component); }
@@ -1227,8 +1598,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     var referenced = iterator.objectReferenceValue;
                     var referencedTransform = ToTransform(referenced);
                     if (referencedTransform == null) continue;
-                    if (referencedTransform.IsChildOf(fullPrefabRoot.transform) is false) continue;
-                    if (referencedTransform.IsChildOf(extractionRoot.transform)) continue;
+                    if (referencedTransform.IsChildOf(root.transform) is false) continue;
+                    if (deleted.Contains(referencedTransform) is false) continue;
 
                     if (CanClearAvatarObjectReferenceCache(
                             component,
@@ -1241,21 +1612,24 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     }
 
                     issues.Add(
-                        RelativePath(extractionRoot.transform, component.transform)
+                        RelativePath(root.transform, component.transform)
                         + " :: "
                         + component.GetType().Name
                         + "."
                         + iterator.propertyPath
                         + " -> "
-                        + RelativePath(fullPrefabRoot.transform, referencedTransform)
+                        + RelativePath(root.transform, referencedTransform)
                     );
                 }
 
                 foreach (var propertyPath in safeToClear)
                 {
                     var property = serialized.FindProperty(propertyPath);
-                    if (property != null && property.propertyType == SerializedPropertyType.ObjectReference)
+                    if (property != null
+                        && property.propertyType == SerializedPropertyType.ObjectReference)
+                    {
                         property.objectReferenceValue = null;
+                    }
                 }
 
                 if (safeToClear.Count > 0)
@@ -1268,12 +1642,69 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (issues.Count == 0) return "";
 
             var detail = string.Join("\n", issues.Take(20));
-            if (issues.Count > 20) detail += "\n... and " + (issues.Count - 20) + " more";
+            if (issues.Count > 20)
+                detail += "\n... and " + (issues.Count - 20) + " more";
 
             return
-                "抽出ルートの外側を直接参照しているComponentがあります。"
-                + "\nこの参照を黙って切るとPrefabが壊れるため処理を中断しました。"
-                + "\nデフォルト衣装などAvatar本体のBoneを直接使う構成では、Avatar Rootを抽出ルートにしてください。"
+                "抽出後に削除されるGameObjectを、残るComponentが直接参照しています。"
+                + "\n参照を黙って切るとPrefabが壊れるため処理を中断しました。"
+                + "\n\n"
+                + detail;
+        }
+
+        private static string ValidateNoExternalSceneReferences(GameObject root)
+        {
+            var issues = new List<string>();
+
+            foreach (var component in root.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null || component is Transform) continue;
+
+                SerializedObject serialized;
+                try { serialized = new SerializedObject(component); }
+                catch { continue; }
+
+                var iterator = serialized.GetIterator();
+                var enterChildren = true;
+                var guard = 0;
+
+                while (iterator.Next(enterChildren) && guard++ < 10000)
+                {
+                    enterChildren = true;
+                    if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
+
+                    var referenced = iterator.objectReferenceValue;
+                    if (referenced == null || EditorUtility.IsPersistent(referenced)) continue;
+
+                    var referencedTransform = ToTransform(referenced);
+                    if (referencedTransform == null) continue;
+                    if (referencedTransform == root.transform
+                        || referencedTransform.IsChildOf(root.transform))
+                    {
+                        continue;
+                    }
+
+                    issues.Add(
+                        RelativePath(root.transform, component.transform)
+                        + " :: "
+                        + component.GetType().Name
+                        + "."
+                        + iterator.propertyPath
+                        + " -> "
+                        + referencedTransform.name
+                    );
+                }
+            }
+
+            if (issues.Count == 0) return "";
+
+            var detail = string.Join("\n", issues.Take(20));
+            if (issues.Count > 20)
+                detail += "\n... and " + (issues.Count - 20) + " more";
+
+            return
+                "抽出結果のPrefab外を直接参照しているComponentがあります。"
+                + "\nStandalone Prefabとして保存できないため処理を中断しました。"
                 + "\n\n"
                 + detail;
         }
