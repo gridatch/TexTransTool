@@ -114,8 +114,22 @@ namespace net.rs64.TexTransTool.Editor
         where T : UnityEngine.Object
         {
             var viewWidth = EditorGUIUtility.currentViewWidth - 18f;
+            DrawTargetSelectionSlimLayout(mg, refObject, elementWidth, viewWidth);
+        }
+
+        internal static void DrawTargetSelectionSlimLayout<T>(
+            SerializedProperty mg,
+            IEnumerable<T> refObject,
+            float elementWidth,
+            float availableWidth)
+        where T : UnityEngine.Object
+        {
+            var viewWidth = Mathf.Max(1f, availableWidth);
             var getReqHeight = GetRequireHeightSlim(refObject.Count(), viewWidth, elementWidth);
-            var rect = EditorGUILayout.GetControlRect(GUILayout.Width(viewWidth), GUILayout.Height(getReqHeight));
+            var rect = EditorGUILayout.GetControlRect(
+                GUILayout.Width(viewWidth),
+                GUILayout.Height(getReqHeight)
+            );
             DrawTargetSelectionSlim(rect, mg, refObject, elementWidth);
         }
         internal static float GetRequireHeightSlim(int refCount, float viewWidth, float elementWidth = 128f)

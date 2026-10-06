@@ -415,6 +415,30 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 }
         }
 
+        internal static void MaterialSelectEditor(
+            SerializedProperty targetMaterials,
+            List<List<Material>> tempMaterialGroupAll,
+            float availableWidth)
+        {
+            var groupContentWidth = Mathf.Max(
+                1f,
+                availableWidth
+                - EditorStyles.helpBox.padding.horizontal
+                - EditorStyles.helpBox.margin.horizontal
+            );
+
+            foreach (var matGroup in tempMaterialGroupAll)
+                using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+                {
+                    TargetObjectSelector.DrawTargetSelectionSlimLayout(
+                        targetMaterials,
+                        matGroup,
+                        128f,
+                        groupContentWidth
+                    );
+                }
+        }
+
         public static SerializedProperty FindMatSelector(SerializedProperty targetMaterialArray, Material material)
         {
             for (int i = 0; targetMaterialArray.arraySize > i; i += 1)
