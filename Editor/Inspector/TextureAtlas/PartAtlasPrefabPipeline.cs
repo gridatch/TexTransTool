@@ -624,16 +624,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 matsukawa.SetWorkedOnCopy(extraction, true);
                 matsukawa.SetSourceName(extraction, request.SourcePrefabAsset.name);
 
-                if (transientInputMeshes.Count > 0)
-                {
-                    matsukawa.AddReportNote(
-                        extraction,
-                        "同名Meshの切り詰めAsset衝突を避けるため、解析用コピー上で "
-                        + transientInputMeshes.Count
-                        + " 個のMesh名を一時的に分離しました。元Assetは変更していません。"
-                    );
-                }
-
                 matsukawa.AddReportNote(
                     extraction,
                     "入力Prefab内の抽出対象: "
@@ -764,17 +754,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 matsukawa.AddReportNote(
                     extraction,
-                    "TexTransToolでアトラス化し、永続Assetを "
-                    + result.AtlasOutputFolder
-                    + " に保存しました。"
+                    "Atlas Asset: " + result.AtlasOutputFolder
                 );
-                var reportText = matsukawa.BuildReportText(extraction);
-                matsukawa.SetReportText(extraction, reportText);
-                RewriteReport(extraction.OutputFolder, reportText);
 
                 var prefabPath = matsukawa.SavePrefab(extraction);
                 if (string.IsNullOrEmpty(prefabPath))
                     return Fail(result, "抽出・アトラス化後のPrefabを保存できませんでした。");
+
+                var reportText = matsukawa.BuildReportText(extraction);
+                matsukawa.SetReportText(extraction, reportText);
+                RewriteReport(extraction.OutputFolder, reportText);
 
                 result.PrefabPath = prefabPath;
                 result.ReportText = reportText;

@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas.Editor
@@ -215,7 +216,171 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         internal string BuildReportText(MatsukawaExecutionResult result)
         {
-            return _api.BuildReportText.Invoke(null, new[] { result.RawReport }) as string ?? "";
+            var report = result.RawReport;
+            var keptMeshes = ReadStringList(_api.ReportKeptMeshes.GetValue(report))
+                .Select(CleanReportPath)
+                .ToArray();
+            var trimLog = ReadStringList(_api.ReportTrimLog.GetValue(report));
+            var protectedPaths = ReadStringList(_api.ReportProtectedPaths.GetValue(report))
+                .Select(CleanReportPath)
+                .Where(path => string.IsNullOrWhiteSpace(path) is false)
+                .ToArray();
+            var deletedRoots = ReadStringList(_api.ReportDeletedRoots.GetValue(report))
+                .Select(CleanReportPath)
+                .Where(path => string.IsNullOrWhiteSpace(path) is false)
+                .ToArray();
+            var generatedMeshes = ReadStringList(_api.ReportGeneratedMeshes.GetValue(report));
+            var notes = ReadStringList(_api.ReportNotes.GetValue(report))
+                .Where(IsProductReportNote)
+                .ToArray();
+
+            var sb = new StringBuilder();
+            sb.AppendLine("TexTransTool Prefab抽出・アトラス化 実行レポート");
+            sb.AppendLine("========================================================================");
+            sb.AppendLine("日時          : " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine("入力Prefab     : " + result.SourceName);
+            sb.AppendLine("生成物         : " + (result.Result != null ? result.Result.name : "-"));
+            sb.AppendLine("出力フォルダ   : " + result.OutputFolder);
+            if (string.IsNullOrEmpty(result.PrefabPath) is false)
+                sb.AppendLine("生成Prefab     : " + result.PrefabPath);
+
+            sb.AppendLine();
+            sb.AppendLine("抽出したRenderer (" + keptMeshes.Length + " 件)");
+            foreach (var item in keptMeshes)
+                sb.AppendLine("  ・" + item);
+
+            sb.AppendLine();
+            sb.AppendLine("処理結果");
+            sb.AppendLine("  削除したGameObject          : "
+                + ReadInt(_api.ReportDeletedObjects, report) + " 個");
+            sb.AppendLine("  削除したRenderer            : "
+                + ReadInt(_api.ReportDeletedRenderers, report) + " 件");
+            sb.AppendLine("  Renderer Componentのみ削除  : "
+                + ReadInt(_api.ReportStrippedRenderers, report) + " 件");
+            sb.AppendLine("  除外したComponent           : "
+                + ReadInt(_api.ReportDroppedComponents, report) + " 個");
+            sb.AppendLine("  出力内GameObject            : "
+                + ReadInt(_api.ReportKeptBones, report) + " 個");
+
+            if (trimLog.Length > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("ボーン配列の切り詰め");
+                foreach (var item in trimLog)
+                    sb.AppendLine("  ・" + item);
+            }
+
+            if (protectedPaths.Length > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("保護して残したGameObject (" + protectedPaths.Length + " 件)");
+                foreach (var item in protectedPaths)
+                    sb.AppendLine("  ・" + item);
+            }
+
+            if (deletedRoots.Length > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("削除したHierarchy Root (" + deletedRoots.Length + " 件)");
+                foreach (var item in deletedRoots)
+                    sb.AppendLine("  ・" + item);
+            }
+
+            if (generatedMeshes.Length > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("生成したMesh");
+                foreach (var item in generatedMeshes)
+                    sb.AppendLine("  ・" + item);
+            }
+
+            if (notes.Length > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("補足");
+                foreach (var note in notes)
+                    sb.AppendLine("  ・" + note);
+            }
+
+            return sb.ToString();
+        }
+
+        private static bool IsProductReportNote(string note)
+        {
+            if (string.IsNullOrWhiteSpace(note))
+                return false;
+
+            if (note.Contains("Ctrl+Z", StringComparison.Ordinal))
+                return false;
+
+            if (note.StartsWith(
+                    "実行内容を ",
+                    StringComparison.Ordinal
+                )
+                && note.Contains("抽出レポート.txt", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (note.StartsWith(
+                    "レポートを書き出せませんでした:",
+                    StringComparison.Ordinal
+                ))
+            {
+                return false;
+            }
+
+            if (note.StartsWith(
+                    "子オブジェクトを削除するため、プレハブの接続を解除",
+                    StringComparison.Ordinal
+                ))
+            {
+                return false;
+            }
+
+            if (note.StartsWith(
+                    "切り詰めたメッシュを ",
+                    StringComparison.Ordinal
+                ))
+            {
+                return false;
+            }
+
+            if (note.StartsWith(
+                    "残す物と関係のない揺れ物の部品を ",
+                    StringComparison.Ordinal
+                ))
+            {
+                return false;
+            }
+
+            if (note.StartsWith(
+                    "他のコンポーネントが付いていたため、",
+                    StringComparison.Ordinal
+                ))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static string CleanReportPath(string value)
+        {
+            if (string.IsNullOrEmpty(value)
+                || value.StartsWith("__WDT_ExtractionTargets", StringComparison.Ordinal) is false)
+            {
+                return value;
+            }
+
+            var wrapper = value.IndexOf("/__WDT_Target_", StringComparison.Ordinal);
+            if (wrapper < 0)
+                return "";
+
+            var targetPathStart = value.IndexOf('/', wrapper + 1);
+            return targetPathStart >= 0 && targetPathStart + 1 < value.Length
+                ? value.Substring(targetPathStart + 1)
+                : "";
         }
 
         internal void AddReportNote(MatsukawaExecutionResult result, string note)
@@ -478,7 +643,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             internal FieldInfo ReportResult = null!;
             internal FieldInfo ReportSourceName = null!;
             internal FieldInfo ReportWorkedOnCopy = null!;
+            internal FieldInfo ReportDeletedObjects = null!;
+            internal FieldInfo ReportDeletedRenderers = null!;
+            internal FieldInfo ReportStrippedRenderers = null!;
+            internal FieldInfo ReportDroppedComponents = null!;
+            internal FieldInfo ReportKeptBones = null!;
+            internal FieldInfo ReportKeptMeshes = null!;
             internal FieldInfo ReportGeneratedMeshes = null!;
+            internal FieldInfo ReportTrimLog = null!;
+            internal FieldInfo ReportProtectedPaths = null!;
+            internal FieldInfo ReportDeletedRoots = null!;
             internal FieldInfo ReportNotes = null!;
             internal FieldInfo ReportOutputFolder = null!;
             internal FieldInfo ReportPrefabPath = null!;
@@ -585,7 +759,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 api.ReportResult = Field(api.Report, "result", typeof(GameObject));
                 api.ReportSourceName = Field(api.Report, "sourceName", typeof(string));
                 api.ReportWorkedOnCopy = Field(api.Report, "workedOnCopy", typeof(bool));
+                api.ReportDeletedObjects = Field(api.Report, "deletedObjects", typeof(int));
+                api.ReportDeletedRenderers = Field(api.Report, "deletedRenderers", typeof(int));
+                api.ReportStrippedRenderers = Field(api.Report, "strippedRenderers", typeof(int));
+                api.ReportDroppedComponents = Field(api.Report, "droppedComponents", typeof(int));
+                api.ReportKeptBones = Field(api.Report, "keptBones", typeof(int));
+                api.ReportKeptMeshes = Field(api.Report, "keptMeshes", null);
                 api.ReportGeneratedMeshes = Field(api.Report, "generatedMeshes", null);
+                api.ReportTrimLog = Field(api.Report, "trimLog", null);
+                api.ReportProtectedPaths = Field(api.Report, "protectedPaths", null);
+                api.ReportDeletedRoots = Field(api.Report, "deletedRoots", null);
                 api.ReportNotes = Field(api.Report, "notes", null);
                 api.ReportOutputFolder = Field(api.Report, "outputFolder", typeof(string));
                 api.ReportPrefabPath = Field(api.Report, "prefabPath", typeof(string));

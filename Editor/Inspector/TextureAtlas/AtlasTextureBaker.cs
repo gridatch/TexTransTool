@@ -239,6 +239,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     var persistentTextures = SaveTextures(
                         engine,
                         tunedAtlasTextures,
+                        targetMaterials,
                         bakeName,
                         outputAssetPath,
                         textureAssetPath,
@@ -641,6 +642,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private static Dictionary<string, Texture2D> SaveTextures(
             ITexTransToolForUnity engine,
             FineTuning.TexFineTuningResult tunedAtlasTextures,
+            IReadOnlyCollection<Material> sourceMaterials,
             string bakeName,
             string outputAssetPath,
             string textureAssetPath,
@@ -698,7 +700,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 File.WriteAllBytes(AssetPathToFullPath(assetPath), pngBytes);
                 AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
 
-                ConfigureTextureImporter(assetPath, downloaded, descriptor);
+                var importAsNormalMap = ShouldImportAsNormalMap(
+                    descriptor,
+                    sourceMaterials,
+                    propertyNames
+                );
+                ConfigureTextureImporter(
+                    assetPath,
+                    downloaded,
+                    descriptor,
+                    importAsNormalMap
+                );
 
                 var persistentTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
                 if (persistentTexture == null)
@@ -718,17 +730,85 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             );
         }
 
+        private static bool ShouldImportAsNormalMap(
+            TexTransToolTextureDescriptor descriptor,
+            IReadOnlyCollection<Material> sourceMaterials,
+            IReadOnlyCollection<string> propertyNames)
+        {
+            if (descriptor.IsNormalMap)
+                return true;
+
+            foreach (var material in sourceMaterials)
+            {
+                if (material == null) continue;
+
+                foreach (var propertyName in propertyNames)
+                {
+                    if (string.IsNullOrEmpty(propertyName)
+                        || material.HasProperty(propertyName) is false)
+                    {
+                        continue;
+                    }
+
+                    var sourceTexture = material.GetTexture(propertyName);
+                    if (sourceTexture != null)
+                    {
+                        var sourcePath = AssetDatabase.GetAssetPath(sourceTexture);
+                        if (string.IsNullOrEmpty(sourcePath) is false
+                            && AssetImporter.GetAtPath(sourcePath) is TextureImporter sourceImporter
+                            && sourceImporter.textureType == TextureImporterType.NormalMap)
+                        {
+                            return true;
+                        }
+                    }
+
+                    var shader = material.shader;
+                    if (shader == null) continue;
+
+                    var propertyCount = ShaderUtil.GetPropertyCount(shader);
+                    for (var propertyIndex = 0; propertyIndex < propertyCount; propertyIndex++)
+                    {
+                        if (string.Equals(
+                                ShaderUtil.GetPropertyName(shader, propertyIndex),
+                                propertyName,
+                                StringComparison.Ordinal
+                            ) is false)
+                        {
+                            continue;
+                        }
+
+                        if (ShaderUtil.GetPropertyAttributes(shader, propertyIndex)
+                            .Any(attribute =>
+                                string.Equals(
+                                    attribute,
+                                    "Normal",
+                                    StringComparison.OrdinalIgnoreCase
+                                )))
+                        {
+                            return true;
+                        }
+
+                        break;
+                    }
+                }
+            }
+
+            return false;
+        }
+
         private static void ConfigureTextureImporter(
             string assetPath,
             Texture2D downloaded,
-            TexTransToolTextureDescriptor descriptor)
+            TexTransToolTextureDescriptor descriptor,
+            bool importAsNormalMap)
         {
             if (AssetImporter.GetAtPath(assetPath) is not TextureImporter importer) { return; }
 
-            importer.textureType = descriptor.IsNormalMap
+            importer.textureType = importAsNormalMap
                 ? TextureImporterType.NormalMap
                 : TextureImporterType.Default;
-            importer.sRGBTexture = descriptor.AsLinear is false;
+            importer.sRGBTexture = importAsNormalMap is false
+                && descriptor.AsLinear is false;
             importer.mipmapEnabled = descriptor.UseMipMap;
             importer.filterMode = descriptor.filterMode;
             importer.anisoLevel = descriptor.anisoLevel;
