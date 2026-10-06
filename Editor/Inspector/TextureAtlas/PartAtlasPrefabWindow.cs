@@ -1007,14 +1007,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         _options.StripAvatarComponents = nextStrip;
                 }
 
-                if (avatarSource)
-                {
-                    EditorGUILayout.HelpBox(
-                        "Avatar PrefabからStandalone Partを抽出するため、Animator / AvatarDescriptor / Pipeline系Componentは自動的に外します。Avatar Armatureが依存物として残る場合はMA Merge Armature / MA Outfit Rootも自動設定します。",
-                        MessageType.Info
-                    );
-                }
-
                 if (EditorGUI.EndChangeCheck())
                     InvalidateAnalysis();
             }
@@ -1231,16 +1223,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 && entry.Category == "Unknown"
             );
             var atlasCount = GetAutomaticAtlasRenderers().Length;
-            var deleteCount = _analysis?.DeleteTransformCount ?? 0;
 
             var confirm =
-                "Prefab Asset「"
-                + _sourcePrefab.name
-                + "」の一時コピーから "
-                + deleteCount
-                + " 個のオブジェクトを削除し、"
+                "抽出対象 "
+                + _extractionTargetPaths.Count
+                + " 件をPrefab化し、"
                 + atlasCount
-                + " 件のRendererをアトラス化してPrefab保存します。"
+                + " 件のRendererをアトラス化します。"
                 + "\n\n出力: "
                 + outputFolder;
 

@@ -131,7 +131,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 if (state.Target == null)
                 {
-                    error = "HCE抽出後に抽出対象GameObjectが失われました: " + state.SourcePath;
+                    error = "抽出処理後に対象GameObjectを確認できませんでした: " + state.SourcePath;
                     return false;
                 }
 
@@ -591,7 +591,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     return Fail(result, "松川ツールの抽出処理が完了しませんでした。");
 
                 extractionRoot = extraction.Result;
-                var stagingScaffoldCount = staging.ScaffoldCount;
 
                 if (staging.MoveTargetsToRoot(extractionRoot, out var moveError) is false)
                     return Fail(result, moveError);
@@ -618,8 +617,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 {
                     return Fail(
                         result,
-                        "同名Mesh衝突回避用の一時Meshが抽出結果に残りました。"
-                        + "松川ツールのボーン切り詰めが完了していないため、安全のため中断します。"
+                        "Meshのボーン切り詰め結果を正常に確定できなかったため、処理を中断しました。"
                     );
                 }
 
@@ -648,22 +646,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     )
                 );
 
-                if (stagingScaffoldCount > 0)
-                {
-                    matsukawa.AddReportNote(
-                        extraction,
-                        "依存関係解析のため一時的に抽出対象をステージングし、"
-                        + "抽出後に一時Hierarchyを除去しました。"
-                    );
-                }
-
                 foreach (var targetState in targetStates)
                 {
                     if (targetState.Target == null)
                     {
                         return Fail(
                             result,
-                            "HCE抽出後に抽出対象GameObjectが失われました: "
+                            "抽出処理後に対象GameObjectを確認できませんでした: "
                             + targetState.SourcePath
                         );
                     }
@@ -672,7 +661,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         continue;
 
                     if (modularAvatarAdapter == null)
-                        return Fail(result, "MA Bone Proxy設定用のAdapterが利用できません。");
+                        return Fail(result, "MA Bone Proxyを自動設定できませんでした。");
 
                     if (modularAvatarAdapter.ConfigureBoneProxy(
                             targetState.Target.gameObject,
@@ -713,7 +702,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     if (string.IsNullOrEmpty(avatarArmaturePath) is false)
                     {
                         if (modularAvatarAdapter == null)
-                            return Fail(result, "MA Merge Armature設定用のAdapterが利用できません。");
+                            return Fail(result, "MA Merge Armatureを自動設定できませんでした。");
 
                         if (modularAvatarAdapter.ConfigureArmature(
                                 extractionRoot,
@@ -1186,7 +1175,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             if (analysis.ExpectedTrimBoneCounts.Count == 0) return "";
             if (extraction.Result == null)
-                return "松川ツールの抽出結果が失われました。";
+                return "抽出結果を確認できませんでした。";
 
             var currentRenderers = extraction.Result
                 .GetComponentsInChildren<SkinnedMeshRenderer>(true)
@@ -1201,7 +1190,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 if (renderer == null || currentRenderers.Contains(renderer) is false)
                 {
-                    return "松川ツールのボーン配列切り詰め対象Rendererが抽出結果から失われました。";
+                    return "ボーン切り詰め対象Rendererを抽出結果で確認できませんでした。";
                 }
 
                 if (expectedBoneCount <= 0)
@@ -1324,7 +1313,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (missing.Length > 0)
             {
                 throw new InvalidOperationException(
-                    "HCE抽出後に、選択済みのアトラス対象Rendererが失われました。"
+                    "抽出処理後にアトラス化対象Rendererを確認できませんでした。"
                     + "抽出対象とアトラス対象の組み合わせを確認してください。"
                 );
             }
@@ -1653,8 +1642,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 detail += "\n... and " + (issues.Count - 20) + " more";
 
             return
-                "抽出後に削除されるGameObjectを、残るComponentが直接参照しています。"
-                + "\n参照を黙って切るとPrefabが壊れるため処理を中断しました。"
+                "抽出後に解決できないObject参照が残るため、処理を中断しました。"
                 + "\n\n"
                 + detail;
         }
@@ -1785,8 +1773,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (problems.Count > 20) detail += "\n... and " + (problems.Count - 20) + " more";
 
             return
-                "Atlas設定が抽出結果の外側にあるScene Objectを参照しています。"
-                + "\nPrefab化ではその参照を安全に移せないため処理を中断しました。"
+                "Atlas設定に、出力Prefab内で解決できないScene Object参照が含まれるため、処理を中断しました。"
                 + "\n\n"
                 + detail;
         }

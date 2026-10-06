@@ -135,8 +135,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (existingMerge != null)
             {
                 error =
-                    "抽出したArmature Rootに既存のMA Merge Armatureがあります。"
-                    + "既存設定を上書きすると意味が変わるため自動設定を中断しました。";
+                    "既存のMA Merge Armature設定と競合するため、自動設定を行えませんでした。";
                 return false;
             }
 
@@ -185,8 +184,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (currentArmature != null && currentArmature != armature)
                 {
                     error =
-                        "既存のMA Outfit Rootが別のArmature Rootを参照しています。"
-                        + "既存設定を上書きせず中断しました。";
+                        "既存のMA Outfit Root設定と競合するため、自動設定を行えませんでした。";
                     UnityEngine.Object.DestroyImmediate(merge);
                     return false;
                 }
