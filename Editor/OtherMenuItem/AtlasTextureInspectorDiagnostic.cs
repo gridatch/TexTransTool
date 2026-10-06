@@ -6,8 +6,8 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using UnityEditor;
-using UnityEditor.PackageManager;
 using UnityEngine;
+using UpmPackageInfo = UnityEditor.PackageManager.PackageInfo;
 
 namespace net.rs64.TexTransTool.Editor.OtherMenuItem
 {
@@ -42,7 +42,7 @@ namespace net.rs64.TexTransTool.Editor.OtherMenuItem
             sb.AppendLine("Time: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz"));
             sb.AppendLine();
 
-            var packages = PackageInfo.GetAllRegisteredPackages()
+            var packages = UpmPackageInfo.GetAllRegisteredPackages()
                 .Where(p =>
                     p.name.Contains("tex-trans-tool", StringComparison.OrdinalIgnoreCase)
                     || p.resolvedPath.Contains("tex-trans-tool", StringComparison.OrdinalIgnoreCase)
@@ -274,7 +274,7 @@ namespace net.rs64.TexTransTool.Editor.OtherMenuItem
         }
 
         private static IEnumerable<string> Classify(
-            PackageInfo[] packages,
+            UpmPackageInfo[] packages,
             Type[] atlasTypes,
             Type[] atlasEditorTypes,
             Type[] customEditorTypes,
