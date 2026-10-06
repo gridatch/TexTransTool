@@ -33,6 +33,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private string _filter = "";
         private string _outputName = "";
+        private string _lastSuggestedOutputName = "";
+        private bool _outputNameCustomized;
         private Vector2 _mainScroll;
         private Vector2 _rendererScroll;
         private bool _showOptions = true;
@@ -270,11 +272,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private void DrawHeader()
         {
             EditorGUILayout.LabelField("Prefab抽出・アトラス化", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox(
-                "Prefab Assetから必要なパーツを抽出し、このウィンドウ内で選択したMaterialとAtlas設定を使ってStandalone Prefabを生成します。元Prefab Assetは変更しません。",
-                MessageType.Info
-            );
-
             EditorGUILayout.Space(4f);
         }
 
@@ -349,13 +346,23 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 }
             }
 
-            _outputName = EditorGUILayout.TextField(
+            var nextOutputName = EditorGUILayout.TextField(
                 new GUIContent(
                     "出力名",
                     "生成するStandalone PrefabのRoot名と、松川ツールの抽出フォルダ名に使用します。"
                 ),
                 _outputName
             );
+            if (!string.Equals(nextOutputName, _outputName, StringComparison.Ordinal))
+            {
+                _outputName = nextOutputName;
+                _outputNameCustomized =
+                    string.Equals(
+                        _outputName,
+                        _lastSuggestedOutputName,
+                        StringComparison.Ordinal
+                    ) is false;
+            }
 
             var sanitized = _matsukawa!.SanitizeName(_outputName.Trim());
             var outputFolder = string.IsNullOrWhiteSpace(sanitized)
@@ -692,16 +699,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 SanitizeIslandSizePriorityMaterials();
                 EditorUtility.SetDirty(_atlasSettings);
                 _atlasSettingsObject.UpdateIfRequiredOrScript();
-            }
-
-            var automaticTargets = GetAutomaticAtlasRenderers();
-            if (_atlasSettings.AtlasTargetMaterials.Any(material => material != null)
-                && automaticTargets.Length > 0)
-            {
-                EditorGUILayout.LabelField(
-                    $"選択Materialを使用する抽出Renderer {automaticTargets.Length} 件を自動的にアトラス化します。",
-                    EditorStyles.wordWrappedMiniLabel
-                );
             }
 
             EditorGUILayout.Space(4f);
@@ -1356,6 +1353,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _extractionTargetPaths.Clear();
             _entries.Clear();
             _outputName = "";
+            _lastSuggestedOutputName = "";
+            _outputNameCustomized = false;
             RefreshMaterialCandidates(preserveSelection: false);
             InvalidateAnalysis();
         }
@@ -1477,12 +1476,23 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     : true;
             }
 
-            if (string.IsNullOrWhiteSpace(_outputName))
+            var suggestedOutputName = targets.Count == 1
+                ? targets[0].name
+                : _loadedPrefabRoot.name + "_Part";
+
+            if (_outputNameCustomized is false
+                || string.IsNullOrWhiteSpace(_outputName)
+                || string.Equals(
+                    _outputName,
+                    _lastSuggestedOutputName,
+                    StringComparison.Ordinal
+                ))
             {
-                _outputName = targets.Count == 1
-                    ? targets[0].name
-                    : _loadedPrefabRoot.name + "_Part";
+                _outputName = suggestedOutputName;
+                _outputNameCustomized = false;
             }
+
+            _lastSuggestedOutputName = suggestedOutputName;
 
             RefreshMaterialCandidates(preserveSelection: true);
         }
@@ -1617,6 +1627,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _materialCandidates.Clear();
             _materialGroups.Clear();
             _outputName = "";
+            _lastSuggestedOutputName = "";
+            _outputNameCustomized = false;
             _extractionTargetPaths.Clear();
             _validTargetPaths.Clear();
             _analysisScaffoldCount = 0;

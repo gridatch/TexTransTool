@@ -1582,6 +1582,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (component == null || component is Transform) continue;
                 if (deleted.Contains(component.transform)) continue;
 
+                // HCE owns SkinnedMeshRenderer bone dependency analysis and rewrites the
+                // bones array when it trims unused bones. Treating those references as
+                // generic unsafe references here would reject the exact case HCE is
+                // designed to process.
+                if (component is SkinnedMeshRenderer) continue;
+
                 SerializedObject serialized;
                 try { serialized = new SerializedObject(component); }
                 catch { continue; }
