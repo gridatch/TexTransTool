@@ -1096,9 +1096,22 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 IsAvatarSource()
             );
 
+            // Preview must use the same complete HCE renderer set as execution.
+            // Only the user's selected-target renderers are marked Keep=true; renderers
+            // elsewhere in the source Prefab remain explicit HCE deletion candidates.
+            var keptRenderers = _entries
+                .Where(entry => entry.Keep && entry.Renderer != null)
+                .Select(entry => entry.Renderer)
+                .ToHashSet();
+            var analysisEntries = _matsukawa
+                .CollectRenderers(_loadedPrefabRoot)
+                .ToList();
+            foreach (var entry in analysisEntries)
+                entry.Keep = keptRenderers.Contains(entry.Renderer);
+
             _analysis = _matsukawa.Analyze(
                 _loadedPrefabRoot,
-                _entries,
+                analysisEntries,
                 analysisOptions
             );
             _analysisScaffoldCount = staging.ScaffoldCount;

@@ -591,6 +591,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     return Fail(result, "松川ツールの抽出処理が完了しませんでした。");
 
                 extractionRoot = extraction.Result;
+                var stagingScaffoldCount = staging.ScaffoldCount;
 
                 if (staging.MoveTargetsToRoot(extractionRoot, out var moveError) is false)
                     return Fail(result, moveError);
@@ -647,7 +648,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     )
                 );
 
-                if (staging.ScaffoldCount > 0)
+                if (stagingScaffoldCount > 0)
                 {
                     matsukawa.AddReportNote(
                         extraction,
