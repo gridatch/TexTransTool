@@ -372,6 +372,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         protected override bool CanRename(TreeViewItem item) => false;
 
+        protected override void RenameEnded(RenameEndedArgs args)
+        {
+            // Read-only hierarchy: renaming is never accepted.
+        }
+
         private static string RelativePath(Transform root, Transform target)
         {
             if (target == root) return "";

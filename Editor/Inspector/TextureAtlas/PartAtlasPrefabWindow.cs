@@ -173,44 +173,63 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             GUILayout.BeginArea(rect);
             try
             {
-                if (_atlasSettings == null || _atlasSettingsObject == null)
+                _mainScroll.x = 0f;
+
+                using var scroll = new EditorGUILayout.ScrollViewScope(
+                    _mainScroll,
+                    GUIStyle.none,
+                    GUI.skin.verticalScrollbar,
+                    GUILayout.Width(rect.width),
+                    GUILayout.Height(rect.height)
+                );
+
+                using (new EditorGUILayout.VerticalScope(
+                           GUILayout.Width(Mathf.Max(1f, rect.width - 20f))))
                 {
-                    EditorGUILayout.HelpBox(
-                        "アトラス設定用の一時設定オブジェクトを初期化できませんでした。",
-                        MessageType.Error
-                    );
-                    return;
+                    DrawRightPaneContent();
                 }
 
-                using var scroll = new EditorGUILayout.ScrollViewScope(_mainScroll);
                 _mainScroll = scroll.scrollPosition;
-
-                DrawHeader();
-
-                if (_matsukawa == null)
-                {
-                    EditorGUILayout.HelpBox(
-                        "松川怒りの髪衣装抽出ツール Ver1.1.0 が必要です。\n" + _adapterError,
-                        MessageType.Error
-                    );
-                    if (GUILayout.Button("再検出")) InitializeAdapter();
-                    return;
-                }
-
-                DrawSource();
-                if (_extractionRoot == null) return;
-
-                DrawRendererSelection();
-                DrawAtlasMaterialSelection();
-                DrawAtlasSettings();
-                DrawOptions();
-                DrawAnalysis();
-                DrawExecute();
+                _mainScroll.x = 0f;
             }
             finally
             {
                 GUILayout.EndArea();
             }
+        }
+
+        private void DrawRightPaneContent()
+        {
+            if (_atlasSettings == null || _atlasSettingsObject == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "アトラス設定用の一時設定オブジェクトを初期化できませんでした。",
+                    MessageType.Error
+                );
+                return;
+            }
+
+            DrawHeader();
+
+            if (_matsukawa == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "松川怒りの髪衣装抽出ツール Ver1.1.0 が必要です。\n" + _adapterError,
+                    MessageType.Error
+                );
+                if (GUILayout.Button("再検出")) InitializeAdapter();
+                return;
+            }
+
+            DrawSource();
+            if (_extractionRoot == null) return;
+
+            DrawRendererSelection();
+            DrawAtlasMaterialSelection();
+            DrawAtlasSettings();
+            DrawOptions();
+            DrawAnalysis();
+            DrawExecute();
         }
 
         private void HandleSplitter(Rect splitterRect)
@@ -302,24 +321,45 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var selectedTransform = _hierarchyView?.SelectedTransform;
             var selectedIsValidRoot = IsValidExtractionRoot(selectedTransform);
 
+            var extractionRootDisplay = _extractionRootPath == null
+                ? "[未設定]"
+                : string.IsNullOrEmpty(_extractionRootPath)
+                    ? "<Prefab Root>"
+                    : _extractionRootPath;
+
             EditorGUILayout.LabelField(
                 new GUIContent(
                     "抽出ルート",
-                    "左のPrefab HierarchyでGameObjectを選択し、明示的に抽出ルートへ設定します。"
+                    "現在設定されている抽出ルートです。左のPrefab HierarchyでGameObjectを選択し、次の行のボタンで明示的に変更します。"
                 ),
-                _extractionRootPath == null
-                    ? "未設定"
-                    : string.IsNullOrEmpty(_extractionRootPath)
-                        ? "<Prefab Root>"
-                        : _extractionRootPath
+                new GUIContent(extractionRootDisplay)
             );
 
-            using (new EditorGUI.DisabledScope(selectedIsValidRoot is false))
+            var selectedDisplay = selectedTransform == null
+                ? "[未選択]"
+                : selectedTransform == _loadedPrefabRoot!.transform
+                    ? "<Prefab Root>"
+                    : RelativePath(_loadedPrefabRoot.transform, selectedTransform);
+
+            using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("Hierarchyで選択中を抽出ルートに設定"))
+                EditorGUILayout.LabelField(
+                    new GUIContent(
+                        "選択中",
+                        "左のPrefab Hierarchyで現在選択しているGameObjectです。"
+                    ),
+                    new GUIContent(selectedDisplay)
+                );
+
+                using (new EditorGUI.DisabledScope(selectedIsValidRoot is false))
                 {
-                    SetExtractionRoot(selectedTransform!);
-                    GUIUtility.ExitGUI();
+                    if (GUILayout.Button(
+                            "このGameObjectを抽出ルートに設定する",
+                            GUILayout.Width(230f)))
+                    {
+                        SetExtractionRoot(selectedTransform!);
+                        GUIUtility.ExitGUI();
+                    }
                 }
             }
 
