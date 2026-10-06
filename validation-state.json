@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.8",
-  "lastDebugSerial": 184,
-  "currentDebugVersion": "0.1.8+debug.184.part-atlas-prefab.8983841",
+  "lastDebugSerial": 185,
+  "currentDebugVersion": "0.1.8+debug.185.part-atlas-prefab.9291369",
   "currentDebugChange": "part-atlas-prefab",
   "currentDebugBranch": "feat/part-atlas-prefab",
-  "currentDebugCommit": "89838413449e5bd85b22a4be438458c2d421c361",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.8+debug.184.part-atlas-prefab.8983841.zip"
+  "currentDebugCommit": "92913695c27febf5d92d959e84d1426278987362",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.8+debug.185.part-atlas-prefab.9291369.zip"
 }
