@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using UnityEngine;
 
@@ -32,13 +33,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         }
     }
 
-    [Serializable]
-    internal sealed class PartAtlasMaterialPriority
-    {
-        public Material? Material;
-        [Range(0f, 1f)] public float Priority = 1f;
-    }
-
     /// <summary>
     /// Serialized backing model owned by PartAtlasPrefabWindow.
     /// It deliberately is not an AtlasTexture component and never participates in NDMF.
@@ -46,7 +40,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     internal sealed class PartAtlasPrefabSettings : ScriptableObject
     {
         public List<Material?> AtlasTargetMaterials = new();
-        public List<PartAtlasMaterialPriority> MaterialSizePriorities = new();
+
+        // The standalone Prefab workflow intentionally supports only the hierarchy-independent
+        // SetFromMaterial variant. The list being empty has the same meaning as the regular
+        // AtlasTexture component having no IslandSizePriorityTuner entries.
+        public List<SetFromMaterial> MaterialSizePriorityTuners = new();
 
         public List<AtlasTexture.MaterialMergeGroup> MergeMaterialGroups = new();
         public Material? AllMaterialMergeReference;
@@ -54,28 +52,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         internal PersistentAtlasBakeSettings ToBakeSettings()
         {
-            var priorityTuners = new List<IIslandSizePriorityTuner?>();
-
-            foreach (var priority in MaterialSizePriorities)
-            {
-                if (priority == null
-                    || priority.Material == null
-                    || Mathf.Approximately(priority.Priority, 1f))
-                {
-                    continue;
-                }
-
-                priorityTuners.Add(new SetFromMaterial
-                {
-                    PriorityValue = Mathf.Clamp01(priority.Priority),
-                    Materials = new List<Material> { priority.Material },
-                });
-            }
-
             return new PersistentAtlasBakeSettings
             {
                 AtlasSetting = AtlasSetting,
-                IslandSizePriorityTuner = priorityTuners,
+                IslandSizePriorityTuner = MaterialSizePriorityTuners
+                    .Where(tuner => tuner != null)
+                    .Cast<IIslandSizePriorityTuner?>()
+                    .ToList(),
                 MergeMaterialGroups = MergeMaterialGroups,
                 AllMaterialMergeReference = AllMaterialMergeReference,
                 ExperimentalOptions = null,
