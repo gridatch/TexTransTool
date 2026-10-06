@@ -33,8 +33,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private Vector2 _materialScroll;
         private Vector2 _hierarchyScroll;
         private bool _showOptions = true;
-        private bool _showAtlasSettings = true;
-        private bool _showAdvancedAtlasSettings;
         private bool _showHierarchy = true;
         private bool _showProtected = true;
 
@@ -76,7 +74,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             DestroyAtlasSettings();
 
             _atlasSettings = ScriptableObject.CreateInstance<PartAtlasPrefabSettings>();
-            _atlasSettings.hideFlags = HideFlags.HideAndDontSave;
+            // HideAndDontSave contains HideFlags.NotEditable, which makes SerializedProperty
+            // controls read-only. DontSave keeps this transient without disabling editing.
+            _atlasSettings.hideFlags = HideFlags.DontSave;
             _atlasSettingsObject = new SerializedObject(_atlasSettings);
         }
 
@@ -556,13 +556,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             if (_atlasSettings == null || _atlasSettingsObject == null) return;
 
-            _showAtlasSettings = EditorGUILayout.Foldout(
-                _showAtlasSettings,
-                "Atlas設定",
-                true
-            );
-            if (!_showAtlasSettings) return;
-
             _atlasSettingsObject.Update();
 
             var atlasSetting = _atlasSettingsObject.FindProperty(nameof(PartAtlasPrefabSettings.AtlasSetting));
@@ -584,70 +577,77 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var pixelNormalize = atlasSetting.FindPropertyRelative("PixelNormalize");
             var textureFineTuning = atlasSetting.FindPropertyRelative("TextureFineTuning");
 
-            using var box = new EditorGUILayout.VerticalScope(EditorStyles.helpBox);
-            EditorGUILayout.LabelField(
-                "この抽出処理だけに使用するAtlas設定です。",
-                EditorStyles.wordWrappedMiniLabel
-            );
-
             EditorGUI.BeginChangeCheck();
 
-            EditorGUILayout.LabelField("基本設定", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(autoSize, "AtlasTexture:prop:AutoAtlasTextureSize".GlcV());
-            using (new EditorGUI.DisabledScope(autoSize.boolValue))
+            // Keep the same section order and labels as AtlasTextureEditor.
+            EditorGUILayout.LabelField(
+                "AtlasTexture:label:IslandSizePriority".Glc(),
+                EditorStyles.boldLabel
+            );
+            using (new EditorGUI.IndentLevelScope(1))
             {
-                EditorGUILayout.PropertyField(textureSize, "AtlasTexture:prop:AtlasTextureSize".GlcV());
-                if (customAspect.boolValue)
-                    EditorGUILayout.PropertyField(heightSize, "AtlasTexture:prop:AtlasTextureHeightSize".GlcV());
-                EditorGUILayout.PropertyField(customAspect, "AtlasTexture:prop:CustomAspect".GlcV());
+                EditorGUILayout.LabelField(
+                    "本ツールでは通常のAtlasTextureの SetFromMaterial のみを使用します。"
+                    + "各項目は「アイランド大きさ優先度調整 > SetFromMaterial > PriorityValue」に対応します。",
+                    EditorStyles.wordWrappedMiniLabel
+                );
+                DrawMaterialIslandSizePriorities(materialPriorities);
             }
-            EditorGUILayout.PropertyField(padding, "AtlasTexture:prop:Padding".GlcV());
-            EditorGUILayout.PropertyField(
-                pixelNormalize,
-                "AtlasTexture:prop:PixelNormalize".GlcV()
-            );
 
-            EditorGUILayout.Space(5f);
-            DrawMaterialSizePriorities(materialPriorities);
-
-            var hasCustomPriority = HasCustomMaterialPriority(materialPriorities);
-            if (hasCustomPriority is false)
-                forceSizePriority.boolValue = false;
-
-            EditorGUILayout.Space(5f);
-            EditorGUILayout.LabelField("Material統合", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(
-                mergeMaterialGroups,
-                "AtlasTexture:prop:MergeMaterialGroups".GlcV(),
-                true
+            EditorGUILayout.Space(3f);
+            EditorGUILayout.LabelField(
+                "AtlasTexture:label:MaterialSettings".Glc(),
+                EditorStyles.boldLabel
             );
-            EditorGUILayout.PropertyField(
-                allMaterialMergeReference,
-                "AtlasTexture:prop:AllMaterialMergeReference".GlcV()
-            );
-
-            EditorGUILayout.Space(5f);
-            EditorGUILayout.LabelField("Texture Fine Tuning", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(
-                textureFineTuning,
-                "AtlasTexture:prop:TextureFineTuning".GlcV(),
-                true
-            );
-
-            EditorGUILayout.Space(5f);
-            _showAdvancedAtlasSettings = EditorGUILayout.Foldout(
-                _showAdvancedAtlasSettings,
-                "詳細設定",
-                true
-            );
-            if (_showAdvancedAtlasSettings)
+            using (new EditorGUI.IndentLevelScope(1))
             {
-                using var indent = new EditorGUI.IndentLevelScope(1);
+                EditorGUILayout.PropertyField(
+                    mergeMaterialGroups,
+                    "AtlasTexture:prop:MergeMaterialGroups".GlcV(),
+                    true
+                );
+                EditorGUILayout.PropertyField(
+                    allMaterialMergeReference,
+                    "AtlasTexture:prop:AllMaterialMergeReference".GlcV()
+                );
+            }
+
+            EditorGUILayout.Space(3f);
+            EditorGUILayout.LabelField(
+                "AtlasTexture:label:AtlasSettings".Glc(),
+                EditorStyles.boldLabel
+            );
+            using (new EditorGUI.IndentLevelScope(1))
+            {
+                EditorGUILayout.PropertyField(
+                    autoSize,
+                    "AtlasTexture:prop:AutoAtlasTextureSize".GlcV()
+                );
+
+                using (new EditorGUI.DisabledScope(autoSize.boolValue))
+                {
+                    EditorGUILayout.PropertyField(
+                        textureSize,
+                        "AtlasTexture:prop:AtlasTextureSize".GlcV()
+                    );
+                    if (customAspect.boolValue)
+                    {
+                        EditorGUILayout.PropertyField(
+                            heightSize,
+                            "AtlasTexture:prop:AtlasTextureHeightSize".GlcV()
+                        );
+                    }
+                    EditorGUILayout.PropertyField(
+                        customAspect,
+                        "AtlasTexture:prop:CustomAspect".GlcV()
+                    );
+                }
 
                 EditorGUILayout.PropertyField(
                     uvChannel,
                     "AtlasTexture:prop:AtlasTargetUVChannel".GlcV()
                 );
+
                 EditorGUILayout.PropertyField(
                     usePrimaryMaximum,
                     "AtlasTexture:prop:UsePrimaryMaximumTexture".GlcV()
@@ -660,14 +660,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
                 }
 
-                if (hasCustomPriority)
-                {
-                    EditorGUILayout.PropertyField(
-                        forceSizePriority,
-                        "AtlasTexture:prop:ForceSizePriority".GlcV()
-                    );
-                }
+                EditorGUILayout.PropertyField(
+                    padding,
+                    "AtlasTexture:prop:Padding".GlcV()
+                );
 
+                // IncludeDisabledRenderer is intentionally omitted in this workflow because
+                // extraction Renderers are explicitly selected by the user.
+                EditorGUILayout.PropertyField(
+                    forceSizePriority,
+                    "AtlasTexture:prop:ForceSizePriority".GlcV()
+                );
                 EditorGUILayout.PropertyField(
                     forceSetTexture,
                     "AtlasTexture:prop:ForceSetTexture".GlcV()
@@ -676,38 +679,38 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     backgroundColor,
                     "AtlasTexture:prop:BackGroundColor".GlcV()
                 );
+                EditorGUILayout.PropertyField(
+                    pixelNormalize,
+                    "AtlasTexture:prop:PixelNormalize".GlcV()
+                );
+                EditorGUILayout.PropertyField(
+                    textureFineTuning,
+                    "AtlasTexture:prop:TextureFineTuning".GlcV(),
+                    true
+                );
             }
+
+            _atlasSettingsObject.ApplyModifiedProperties();
 
             if (EditorGUI.EndChangeCheck())
             {
-                _atlasSettingsObject.ApplyModifiedProperties();
+                _analysis = null;
                 Repaint();
-            }
-            else
-            {
-                _atlasSettingsObject.ApplyModifiedProperties();
             }
 
             EditorGUILayout.Space(4f);
         }
 
-        private static void DrawMaterialSizePriorities(SerializedProperty priorities)
+        private static void DrawMaterialIslandSizePriorities(SerializedProperty priorities)
         {
-            EditorGUILayout.LabelField("解像度配分", EditorStyles.boldLabel);
-
             if (priorities.arraySize == 0)
             {
                 EditorGUILayout.LabelField(
-                    "Atlas対象Materialを選択すると、Materialごとの島サイズ優先度を設定できます。",
+                    "Atlas対象Materialを選択すると、Material単位の SetFromMaterial 設定が表示されます。",
                     EditorStyles.wordWrappedMiniLabel
                 );
                 return;
             }
-
-            EditorGUILayout.LabelField(
-                "1.00を基準として、MaterialごとにAtlas内の島サイズ優先度を調整します。",
-                EditorStyles.wordWrappedMiniLabel
-            );
 
             for (var i = 0; i < priorities.arraySize; i++)
             {
@@ -715,42 +718,25 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var material = element.FindPropertyRelative(nameof(PartAtlasMaterialPriority.Material));
                 var priority = element.FindPropertyRelative(nameof(PartAtlasMaterialPriority.Priority));
                 var materialObject = material.objectReferenceValue as Material;
-                var label = materialObject != null ? materialObject.name : "(Missing Material)";
+                var materialName = materialObject != null ? materialObject.name : "(Missing Material)";
 
-                using (new EditorGUILayout.HorizontalScope())
+                using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
                 {
                     EditorGUILayout.LabelField(
                         new GUIContent(
-                            label,
+                            materialName + "  (SetFromMaterial)",
                             materialObject != null
                                 ? AssetDatabase.GetAssetPath(materialObject)
-                                : label
+                                : materialName
                         ),
-                        GUILayout.MinWidth(120f)
+                        EditorStyles.miniBoldLabel
                     );
-                    priority.floatValue = EditorGUILayout.Slider(
-                        priority.floatValue,
-                        0f,
-                        1f,
-                        GUILayout.MinWidth(180f)
+                    EditorGUILayout.PropertyField(
+                        priority,
+                        "IslandSizePriorityTuner:prop:PriorityValue".GlcV()
                     );
                 }
             }
-        }
-
-        private static bool HasCustomMaterialPriority(SerializedProperty priorities)
-        {
-            for (var i = 0; i < priorities.arraySize; i++)
-            {
-                var priority = priorities
-                    .GetArrayElementAtIndex(i)
-                    .FindPropertyRelative(nameof(PartAtlasMaterialPriority.Priority));
-
-                if (Mathf.Approximately(priority.floatValue, 1f) is false)
-                    return true;
-            }
-
-            return false;
         }
 
         private IEnumerable<MatsukawaRendererEntry> VisibleEntries()

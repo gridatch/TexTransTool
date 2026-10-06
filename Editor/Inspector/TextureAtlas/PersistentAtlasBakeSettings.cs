@@ -72,9 +72,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 });
             }
 
-            if (priorityTuners.Count == 0)
-                AtlasSetting.ForceSizePriority = false;
-
             return new PersistentAtlasBakeSettings
             {
                 AtlasSetting = AtlasSetting,
