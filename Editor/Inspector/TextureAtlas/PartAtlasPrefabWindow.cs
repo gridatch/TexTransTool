@@ -1025,7 +1025,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("解析（プレビュー）", GUILayout.Height(26f)))
-                    Analyze();
+                {
+                    EditorApplication.delayCall += Analyze;
+                    GUIUtility.ExitGUI();
+                }
 
                 using (new EditorGUI.DisabledScope(_analysis == null))
                 {
@@ -1325,6 +1328,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 _sourcePrefab = null;
                 return;
             }
+
+            PartAtlasPrefabPipeline.UnpackPrefabInstancesForStaging(_loadedPrefabRoot);
 
             _hierarchyView?.SetRoot(_loadedPrefabRoot);
             BuildValidTargetPaths();

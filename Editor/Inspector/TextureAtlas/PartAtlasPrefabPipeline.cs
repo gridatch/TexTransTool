@@ -270,6 +270,62 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     /// </summary>
     internal static class PartAtlasPrefabPipeline
     {
+        internal static void UnpackPrefabInstancesForStaging(GameObject root)
+        {
+            if (root == null)
+                throw new ArgumentNullException(nameof(root));
+
+            if (PrefabUtility.IsPartOfPrefabInstance(root))
+            {
+                var outermostRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(root);
+                if (outermostRoot == root)
+                {
+                    PrefabUtility.UnpackPrefabInstance(
+                        root,
+                        PrefabUnpackMode.Completely,
+                        InteractionMode.AutomatedAction
+                    );
+                    return;
+                }
+            }
+
+            while (true)
+            {
+                GameObject? nestedInstanceRoot = null;
+
+                foreach (var transform in root.GetComponentsInChildren<Transform>(true))
+                {
+                    if (transform == root.transform
+                        || PrefabUtility.IsPartOfPrefabInstance(transform.gameObject) is false)
+                    {
+                        continue;
+                    }
+
+                    var candidate = PrefabUtility.GetOutermostPrefabInstanceRoot(
+                        transform.gameObject
+                    );
+                    if (candidate == null
+                        || candidate == root
+                        || candidate.transform.IsChildOf(root.transform) is false)
+                    {
+                        continue;
+                    }
+
+                    nestedInstanceRoot = candidate;
+                    break;
+                }
+
+                if (nestedInstanceRoot == null)
+                    break;
+
+                PrefabUtility.UnpackPrefabInstance(
+                    nestedInstanceRoot,
+                    PrefabUnpackMode.Completely,
+                    InteractionMode.AutomatedAction
+                );
+            }
+        }
+
         internal static PartAtlasPrefabResult Execute(PartAtlasPrefabRequest request)
         {
             var result = new PartAtlasPrefabResult();
@@ -353,14 +409,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (instantiatedRoot == null)
                     return Fail(result, "入力Prefabを一時Sceneへ展開できませんでした。");
 
-                if (PrefabUtility.IsPartOfPrefabInstance(instantiatedRoot))
-                {
-                    PrefabUtility.UnpackPrefabInstance(
-                        instantiatedRoot,
-                        PrefabUnpackMode.Completely,
-                        InteractionMode.AutomatedAction
-                    );
-                }
+                UnpackPrefabInstancesForStaging(instantiatedRoot);
 
                 var extractionTargets = ResolveExtractionTargets(
                     instantiatedRoot,
