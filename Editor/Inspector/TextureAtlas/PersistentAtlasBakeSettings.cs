@@ -44,7 +44,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         // The standalone Prefab workflow intentionally supports only the hierarchy-independent
         // SetFromMaterial variant. The list being empty has the same meaning as the regular
         // AtlasTexture component having no IslandSizePriorityTuner entries.
-        public List<SetFromMaterial> MaterialSizePriorityTuners = new();
+        [SerializeReference]
+        public List<SetFromMaterial?> MaterialSizePriorityTuners = new();
 
         public List<AtlasTexture.MaterialMergeGroup> MergeMaterialGroups = new();
         public Material? AllMaterialMergeReference;

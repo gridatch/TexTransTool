@@ -871,8 +871,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     tuners.arraySize += 1;
 
                     var newElement = tuners.GetArrayElementAtIndex(newIndex);
-                    newElement.FindPropertyRelative(nameof(SetFromMaterial.PriorityValue)).floatValue = 1f;
-                    newElement.FindPropertyRelative(nameof(SetFromMaterial.Materials)).arraySize = 0;
+                    newElement.managedReferenceValue = new SetFromMaterial
+                    {
+                        PriorityValue = 1f,
+                        Materials = new List<Material>(),
+                    };
                 }
 
                 using (new EditorGUI.DisabledScope(tuners.arraySize == 0))
@@ -1516,6 +1519,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void OnHierarchySelectionChanged(Transform? transform)
         {
+            Repaint();
+
             if (transform == null || _extractionRoot == null)
                 return;
 

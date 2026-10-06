@@ -35,6 +35,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private readonly HashSet<int> _protected = new();
 
         private GameObject? _prefabRoot;
+        private bool _hasAnalysis;
         private int _flashId;
         private double _flashUntil;
 
@@ -72,6 +73,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             searchString = "";
             _flashId = 0;
             _flashUntil = 0d;
+            _hasAnalysis = false;
             _keep.Clear();
             _delete.Clear();
             _protected.Clear();
@@ -84,6 +86,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         internal void SetAnalysis(MatsukawaAnalysis? analysis)
         {
+            _hasAnalysis = analysis != null;
             _keep.Clear();
             _delete.Clear();
             _protected.Clear();
@@ -189,8 +192,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
         }
 
-        private bool HasAnalysis =>
-            _keep.Count > 0 || _delete.Count > 0 || _protected.Count > 0;
+        private bool HasAnalysis => _hasAnalysis;
 
         protected override TreeViewItem BuildRoot()
         {
@@ -295,8 +297,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return true;
 
             var query = searchString.Trim();
-            return item.displayName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0
-                || item.Path.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+            return item.displayName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         protected override void RowGUI(RowGUIArgs args)
