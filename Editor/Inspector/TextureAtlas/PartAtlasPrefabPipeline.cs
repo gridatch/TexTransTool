@@ -20,9 +20,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal MatsukawaOptions ExtractionOptions = new();
         internal PartAtlasPrefabSettings AtlasSettings = null!;
         internal string OutputName = "";
-        // Prefab化専用のRenderer選択。通常のBakeExcludedRenderersは設定元Hierarchyを
-        // 参照しているため、別Prefabへ暗黙に流用しない。
-        internal readonly HashSet<string> AtlasRendererKeys = new(StringComparer.Ordinal);
         internal bool OverwriteExistingOutput;
     }
 
@@ -67,9 +64,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             if (request.KeepRendererKeys.Count == 0)
                 return Fail(result, "抽出対象Rendererが選択されていません。");
-
-            if (request.AtlasRendererKeys.Count == 0)
-                return Fail(result, "アトラス化対象Rendererが選択されていません。");
 
             var requestedOutputName = matsukawa.SanitizeName(request.OutputName?.Trim() ?? "");
             if (string.IsNullOrWhiteSpace(requestedOutputName))
@@ -120,6 +114,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 extractionRoot = ResolveExtractionRoot(instantiatedRoot, request.ExtractionRootPath);
                 if (extractionRoot == null)
                     return Fail(result, "指定された抽出ルートがPrefab内に見つかりません: " + request.ExtractionRootPath);
+
+                if (ContainsExtractableMesh(extractionRoot) is false)
+                    return Fail(result, "指定された抽出ルート配下に抽出可能なMeshがありません。");
 
                 if (extractionRoot != instantiatedRoot)
                 {
@@ -229,8 +226,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var (preflightMaterials, preflightRenderers) = ResolveAtlasTargets(
                     request.AtlasSettings,
                     extractionRoot,
-                    request.AtlasRendererKeys
+                    request.KeepRendererKeys
                 );
+
+                if (preflightMaterials.Count == 0 || preflightRenderers.Length == 0)
+                {
+                    return Fail(
+                        result,
+                        "選択したMaterialを使用する抽出対象Rendererに、アトラス化可能なRendererがありません。"
+                    );
+                }
 
                 // HCE runs in-place on this disposable hierarchy (workOnCopy=false), so kept
                 // Renderer component instances remain the same objects through Execute. Retain
@@ -658,6 +663,19 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 : "";
         }
 
+        private static bool ContainsExtractableMesh(GameObject root)
+        {
+            foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer is not SkinnedMeshRenderer && renderer is not MeshRenderer)
+                    continue;
+                if (GetRendererMesh(renderer) != null)
+                    return true;
+            }
+
+            return false;
+        }
+
         private static GameObject? ResolveExtractionRoot(GameObject prefabRoot, string path)
         {
             if (string.IsNullOrEmpty(path)) return prefabRoot;
@@ -688,11 +706,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var renderers = root.GetComponentsInChildren<Renderer>(true);
             using var domain = new NotWorkDomain(renderers, null);
 
-            var allowed = AtlasTexture.GetAtlasAllowedRenderers(
-                domain,
-                domain.EnumerateRenderer(),
-                atlasSettings.AtlasSetting.IncludeDisabledRenderer
-            );
+            var allowed = domain
+                .EnumerateRenderer()
+                .Where(AtlasTexture.IsAtlasAllowedRenderer)
+                .ToList();
             var targetMaterials = ResolveSelectedMaterials(
                 domain,
                 allowed,
@@ -765,34 +782,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private static (HashSet<Material> targetMaterials, Renderer[] targetRenderers) ResolveAtlasTargets(
             PartAtlasPrefabSettings atlasSettings,
             GameObject root,
-            IReadOnlyCollection<string> includedRendererKeys)
+            IReadOnlyCollection<string> keepRendererKeys)
         {
             var renderers = root.GetComponentsInChildren<Renderer>(true);
             using var domain = new NotWorkDomain(renderers, null);
 
-            var candidates = GetAtlasCandidateRenderers(atlasSettings, root);
-            var candidateKeys = candidates.ToDictionary(
-                renderer => GetRendererKey(root, renderer),
-                renderer => renderer,
-                StringComparer.Ordinal
-            );
-
-            var missingKeys = includedRendererKeys
-                .Where(key => candidateKeys.ContainsKey(key) is false)
-                .OrderBy(key => key, StringComparer.Ordinal)
-                .ToArray();
-
-            if (missingKeys.Length > 0)
-            {
-                throw new InvalidOperationException(
-                    "選択されていたアトラス化対象Rendererが抽出結果に存在しないか、"
-                    + "現在のAtlasTexture設定では対象外になりました。\n"
-                    + string.Join("\n", missingKeys.Take(20))
-                );
-            }
-
-            var targetRenderers = includedRendererKeys
-                .Select(key => candidateKeys[key])
+            var targetRenderers = GetAtlasCandidateRenderers(atlasSettings, root)
+                .Where(renderer =>
+                    keepRendererKeys.Contains(GetRendererKey(root, renderer))
+                )
                 .ToArray();
 
             var targetMaterials = ResolveSelectedMaterials(

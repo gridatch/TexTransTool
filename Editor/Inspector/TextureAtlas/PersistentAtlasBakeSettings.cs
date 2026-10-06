@@ -1,7 +1,7 @@
 #nullable enable
+using System;
 using System.Collections.Generic;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
-using net.rs64.TexTransTool.Utils;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas.Editor
@@ -32,6 +32,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         }
     }
 
+    [Serializable]
+    internal sealed class PartAtlasMaterialPriority
+    {
+        public Material? Material;
+        [Range(0f, 1f)] public float Priority = 1f;
+    }
+
     /// <summary>
     /// Serialized backing model owned by PartAtlasPrefabWindow.
     /// It deliberately is not an AtlasTexture component and never participates in NDMF.
@@ -39,9 +46,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     internal sealed class PartAtlasPrefabSettings : ScriptableObject
     {
         public List<Material?> AtlasTargetMaterials = new();
-
-        [SerializeReference, SubclassSelector]
-        internal List<IIslandSizePriorityTuner?> IslandSizePriorityTuner = new();
+        public List<PartAtlasMaterialPriority> MaterialSizePriorities = new();
 
         public List<AtlasTexture.MaterialMergeGroup> MergeMaterialGroups = new();
         public Material? AllMaterialMergeReference;
@@ -49,10 +54,31 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         internal PersistentAtlasBakeSettings ToBakeSettings()
         {
+            var priorityTuners = new List<IIslandSizePriorityTuner?>();
+
+            foreach (var priority in MaterialSizePriorities)
+            {
+                if (priority == null
+                    || priority.Material == null
+                    || Mathf.Approximately(priority.Priority, 1f))
+                {
+                    continue;
+                }
+
+                priorityTuners.Add(new SetFromMaterial
+                {
+                    PriorityValue = Mathf.Clamp01(priority.Priority),
+                    Materials = new List<Material> { priority.Material },
+                });
+            }
+
+            if (priorityTuners.Count == 0)
+                AtlasSetting.ForceSizePriority = false;
+
             return new PersistentAtlasBakeSettings
             {
                 AtlasSetting = AtlasSetting,
-                IslandSizePriorityTuner = IslandSizePriorityTuner,
+                IslandSizePriorityTuner = priorityTuners,
                 MergeMaterialGroups = MergeMaterialGroups,
                 AllMaterialMergeReference = AllMaterialMergeReference,
                 ExperimentalOptions = null,
