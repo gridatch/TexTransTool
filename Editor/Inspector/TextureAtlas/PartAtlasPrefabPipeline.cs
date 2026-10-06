@@ -673,9 +673,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         (addedBoneProxy
                             ? "抽出対象「"
                               + targetState.SourcePath
-                              + "」へ、元の親ボーン「"
+                              + "」にMA Bone Proxyを設定しました（接続先: "
                               + targetState.Attachment.ParentPath
-                              + "」に接続するMA Bone Proxyを追加しました。"
+                              + "）。"
                             : "抽出対象「"
                               + targetState.SourcePath
                               + "」の既存MA Bone Proxy設定を保持しました。")
@@ -686,7 +686,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 {
                     matsukawa.AddReportNote(
                         extraction,
-                        "Avatar PrefabからPartを抽出するため、Animator / AvatarDescriptor / Pipeline系Componentを出力Rootから外しました。"
+                        "Avatar用Component（Animator / AvatarDescriptor / Pipeline系）を出力から除外しました。"
                     );
 
                     if (string.IsNullOrEmpty(avatarArmaturePath) is false)
@@ -709,9 +709,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                         matsukawa.AddReportNote(
                             extraction,
-                            "Avatar Armature「"
+                            "Armature「"
                             + avatarArmaturePath
-                            + "」が依存物として残ったため、MA Merge Armature / MA Outfit Rootを設定しました。"
+                            + "」にMA Merge Armature / MA Outfit Rootを設定しました。"
                         );
                     }
                 }
