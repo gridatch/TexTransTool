@@ -9,7 +9,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
     internal sealed class PartAtlasPrefabWindow : EditorWindow
     {
+        private GameObject? _atlasSettingsHost;
         private AtlasTexture? _atlasSettings;
+        private SerializedObject? _atlasSettingsObject;
         private MatsukawaAdapter? _matsukawa;
         private string _adapterError = "";
 
@@ -21,6 +23,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private int _rootIndex;
 
         private List<MatsukawaRendererEntry> _entries = new();
+        private readonly List<Material> _materialCandidates = new();
         private readonly List<Renderer> _atlasCandidates = new();
         private readonly HashSet<string> _atlasIncludedKeys = new(StringComparer.Ordinal);
         private MatsukawaOptions _options = new();
@@ -30,30 +33,40 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private string _outputName = "";
         private Vector2 _mainScroll;
         private Vector2 _rendererScroll;
+        private Vector2 _materialScroll;
         private Vector2 _atlasRendererScroll;
         private Vector2 _hierarchyScroll;
         private bool _showOptions = true;
+        private bool _showAtlasSettings = true;
         private bool _showHierarchy = true;
         private bool _showProtected = true;
 
-        internal static void Open(AtlasTexture atlasSettings)
+        [MenuItem("Tools/TexTransTool/WDT/Prefab抽出・アトラス化...")]
+        private static void OpenFromMenu()
+        {
+            Open();
+        }
+
+        internal static void Open()
         {
             var window = GetWindow<PartAtlasPrefabWindow>();
-            window.titleContent = new GUIContent("TTT Prefab化");
-            window.minSize = new Vector2(520f, 620f);
-            window._atlasSettings = atlasSettings;
+            window.titleContent = new GUIContent("TTT Prefab抽出");
+            window.minSize = new Vector2(560f, 680f);
+            window.EnsureAtlasSettings();
             window.InitializeAdapter();
             window.Show();
         }
 
         private void OnEnable()
         {
+            EnsureAtlasSettings();
             InitializeAdapter();
         }
 
         private void OnDisable()
         {
             UnloadSourcePrefab();
+            DestroyAtlasSettings();
         }
 
         private void InitializeAdapter()
@@ -72,10 +85,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void OnGUI()
         {
-            if (_atlasSettings == null)
+            EnsureAtlasSettings();
+            if (_atlasSettings == null || _atlasSettingsObject == null)
             {
                 EditorGUILayout.HelpBox(
-                    "AtlasTexture設定元が失われました。AtlasTexture InspectorからPrefab化を開き直してください。",
+                    "アトラス設定用の一時Componentを初期化できませんでした。",
                     MessageType.Error
                 );
                 return;
@@ -97,6 +111,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             DrawHeader();
             DrawSource();
             DrawRendererSelection();
+            DrawAtlasMaterialSelection();
+            DrawAtlasSettings();
             DrawAtlasRendererSelection();
             DrawOptions();
             DrawAnalysis();
@@ -105,16 +121,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void DrawHeader()
         {
-            EditorGUILayout.LabelField("Prefab化", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Prefab抽出・アトラス化", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "Prefab Assetを入力として松川ツールの依存解析・抽出を行い、その抽出結果へ現在のAtlasTexture設定を適用してStandalone Prefabを生成します。元Prefab Assetは変更しません。",
+                "Prefab Assetから必要なパーツを抽出し、このウィンドウ内で選択したMaterialとAtlas設定を使ってStandalone Prefabを生成します。元Prefab Assetは変更しません。",
                 MessageType.Info
             );
-
-            using (new EditorGUI.DisabledScope(true))
-            {
-                EditorGUILayout.ObjectField("Atlas設定", _atlasSettings, typeof(AtlasTexture), true);
-            }
 
             EditorGUILayout.Space(4f);
         }
