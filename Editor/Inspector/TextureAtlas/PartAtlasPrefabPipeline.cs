@@ -20,7 +20,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal MatsukawaOptions ExtractionOptions = new();
         internal PartAtlasPrefabSettings AtlasSettings = null!;
         internal string OutputName = "";
-        internal bool OverwriteExistingOutput;
     }
 
     internal sealed class PartAtlasExtractionStaging : IDisposable
@@ -313,8 +312,19 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return Fail(result, outputNameError);
             }
 
-            string outputName = "";
-            string outputFolder = "";
+            var generationTimestamp = DateTime.Now;
+            var outputName = CreateUniqueGeneratedOutputName(
+                matsukawa,
+                requestedOutputName,
+                generationTimestamp,
+                out var generatedNameError
+            );
+            if (string.IsNullOrEmpty(outputName))
+                return Fail(result, generatedNameError);
+
+            var outputFolder = matsukawa.GetOutputFolder(outputName);
+            result.OutputFolder = outputFolder;
+            result.AtlasOutputFolder = outputFolder + "/Atlas";
 
             Scene temporaryScene = default;
             GameObject? instantiatedRoot = null;
@@ -326,7 +336,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var avatarArmaturePath = "";
             ModularAvatarAdapter? modularAvatarAdapter = null;
             var ownsOutputFolder = false;
-            string? backupDirectory = null;
             var committed = false;
             PartAtlasExtractionStaging? staging = null;
 
@@ -466,16 +475,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
                 }
 
-                // HCE owns the output folder name through the working root's name.
-                instantiatedRoot.name = requestedOutputName;
-                outputName = instantiatedRoot.name;
-                outputFolder = matsukawa.GetOutputFolder(outputName);
-                result.OutputFolder = outputFolder;
-                result.AtlasOutputFolder = outputFolder + "/Atlas";
-
-                var outputExists = AssetDatabase.IsValidFolder(outputFolder);
-                if (outputExists && request.OverwriteExistingOutput is false)
-                    return Fail(result, "同名の抽出結果が既に存在します: " + outputFolder);
+                // HCE derives the output folder and Prefab name from the working root name.
+                instantiatedRoot.name = outputName;
 
                 staging = PartAtlasExtractionStaging.Create(
                     instantiatedRoot,
@@ -561,22 +562,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     transientInputMeshes
                 );
 
-                if (outputExists)
-                {
-                    try
-                    {
-                        backupDirectory = CreateOutputFolderBackup(outputFolder);
-                    }
-                    catch (Exception backupError)
-                    {
-                        return Fail(
-                            result,
-                            "既存の抽出結果をバックアップできないため、上書きを中断しました。\n"
-                            + backupError.Message
-                        );
-                    }
-                }
-
                 ownsOutputFolder = true;
 
                 // From this point HCE may delete original parents, so the staging helper must not
@@ -603,16 +588,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 );
                 if (string.IsNullOrEmpty(trimValidationError) is false)
                     return Fail(result, trimValidationError);
-
-                if (string.IsNullOrEmpty(backupDirectory) is false)
-                {
-                    PreserveExistingTrimMeshGuids(
-                        extractionRoot,
-                        extraction.GeneratedMeshes,
-                        outputFolder,
-                        backupDirectory
-                    );
-                }
 
                 if (TransientMeshStillReferenced(extractionRoot, transientInputMeshes))
                 {
@@ -742,10 +717,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         extractionRoot,
                         targetMaterials,
                         targetRenderers,
-                        matsukawa.SanitizeName(outputName),
+                        requestedOutputName,
                         result.AtlasOutputFolder,
                         promptOverwrite: false,
-                        pingOutputFolder: false
+                        pingOutputFolder: false,
+                        recordUndo: false
                     ) is false)
                 {
                     return Fail(result, "TTT Atlas処理に失敗したため、Prefab化を中断しました。");
@@ -769,12 +745,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 result.PrefabPath = prefabPath;
                 result.ReportText = reportText;
                 result.Success = true;
-
-                if (string.IsNullOrEmpty(backupDirectory) is false)
-                {
-                    TryDeleteBackupDirectory(backupDirectory);
-                    backupDirectory = null;
-                }
 
                 committed = true;
                 return result;
@@ -812,37 +782,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         UnityEngine.Object.DestroyImmediate(mesh);
                 }
 
-                if (!committed)
+                if (!committed
+                    && ownsOutputFolder
+                    && string.IsNullOrEmpty(outputFolder) is false
+                    && AssetDatabase.IsValidFolder(outputFolder))
                 {
-                    if (string.IsNullOrEmpty(backupDirectory) is false)
+                    if (AssetDatabase.DeleteAsset(outputFolder) is false)
                     {
-                        try
-                        {
-                            RestoreOutputFolderBackup(outputFolder, backupDirectory);
-                            TryDeleteBackupDirectory(backupDirectory);
-                            backupDirectory = null;
-                        }
-                        catch (Exception restoreError)
-                        {
-                            Debug.LogError(
-                                "TexTransTool Part Atlas Prefab: 旧出力の復元に失敗しました。"
-                                + "\n出力: " + outputFolder
-                                + "\nバックアップ: " + backupDirectory
-                                + "\n" + restoreError
-                            );
-                        }
-                    }
-                    else if (ownsOutputFolder
-                             && string.IsNullOrEmpty(outputFolder) is false
-                             && AssetDatabase.IsValidFolder(outputFolder))
-                    {
-                        if (AssetDatabase.DeleteAsset(outputFolder) is false)
-                        {
-                            Debug.LogError(
-                                "TexTransTool Part Atlas Prefab: 失敗途中の新規出力を削除できませんでした: "
-                                + outputFolder
-                            );
-                        }
+                        Debug.LogError(
+                            "TexTransTool Part Atlas Prefab: 失敗途中の新規出力を削除できませんでした: "
+                            + outputFolder
+                        );
                     }
 
                     AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
@@ -851,6 +801,47 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (!committed && previousSelection != null)
                     Selection.activeObject = previousSelection;
             }
+        }
+
+        private static string CreateUniqueGeneratedOutputName(
+            MatsukawaAdapter matsukawa,
+            string logicalOutputName,
+            DateTime generationTimestamp,
+            out string error)
+        {
+            var stem =
+                logicalOutputName
+                + "_extracted_"
+                + generationTimestamp.ToString(
+                    "yyyyMMdd_HHmmss",
+                    System.Globalization.CultureInfo.InvariantCulture
+                );
+
+            for (var index = 0; index < 10000; index++)
+            {
+                var candidate = index == 0
+                    ? stem
+                    : stem
+                      + "_"
+                      + index.ToString(
+                          "D2",
+                          System.Globalization.CultureInfo.InvariantCulture
+                      );
+
+                if (TryValidateOutputName(candidate, out error) is false)
+                    return "";
+
+                var folder = matsukawa.GetOutputFolder(candidate);
+                if (AssetDatabase.IsValidFolder(folder) is false
+                    && Directory.Exists(AssetPathToFullPath(folder)) is false)
+                {
+                    error = "";
+                    return candidate;
+                }
+            }
+
+            error = "同一生成日時の出力名を確定できませんでした。";
+            return "";
         }
 
         internal static bool TryValidateOutputName(
@@ -1224,73 +1215,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return "";
         }
 
-        private static void PreserveExistingTrimMeshGuids(
-            GameObject extractionRoot,
-            IReadOnlyList<string> generatedMeshPaths,
-            string outputFolder,
-            string backupRoot)
-        {
-            if (generatedMeshPaths.Count == 0) return;
-
-            var normalizedOutput = outputFolder.TrimEnd('/') + "/";
-            var contentBackup = Path.Combine(backupRoot, "Content");
-
-            foreach (var assetPath in generatedMeshPaths.Distinct(StringComparer.Ordinal))
-            {
-                if (string.IsNullOrEmpty(assetPath)
-                    || assetPath.StartsWith(normalizedOutput, StringComparison.Ordinal) is false)
-                {
-                    continue;
-                }
-
-                var relativeAssetPath = assetPath.Substring(normalizedOutput.Length)
-                    .Replace('/', Path.DirectorySeparatorChar);
-                var backupMeta = Path.Combine(contentBackup, relativeAssetPath + ".meta");
-                if (File.Exists(backupMeta) is false) continue;
-
-                var affectedRenderers = extractionRoot
-                    .GetComponentsInChildren<SkinnedMeshRenderer>(true)
-                    .Where(renderer =>
-                        renderer.sharedMesh != null
-                        && string.Equals(
-                            AssetDatabase.GetAssetPath(renderer.sharedMesh),
-                            assetPath,
-                            StringComparison.Ordinal
-                        )
-                    )
-                    .ToArray();
-
-                var currentMeta = AssetPathToFullPath(assetPath) + ".meta";
-                if (File.Exists(currentMeta) is false)
-                    throw new FileNotFoundException(
-                        "生成されたTrim Meshのmetaが見つかりません。",
-                        currentMeta
-                    );
-
-                // HCE recreates trim Mesh assets with DeleteAsset/CreateAsset. Restoring the
-                // previous .meta GUID here keeps external references to that generated Mesh valid
-                // across an overwrite while retaining the newly generated Mesh contents.
-                File.Copy(backupMeta, currentMeta, true);
-                AssetDatabase.ImportAsset(
-                    assetPath,
-                    ImportAssetOptions.ForceUpdate
-                    | ImportAssetOptions.ForceSynchronousImport
-                );
-
-                var persistentMesh = AssetDatabase.LoadAssetAtPath<Mesh>(assetPath);
-                if (persistentMesh == null)
-                    throw new InvalidOperationException(
-                        "GUID復元後のTrim Meshを読み込めません: " + assetPath
-                    );
-
-                foreach (var renderer in affectedRenderers)
-                {
-                    renderer.sharedMesh = persistentMesh;
-                    EditorUtility.SetDirty(renderer);
-                }
-            }
-        }
-
         private static (HashSet<Material> targetMaterials, Renderer[] targetRenderers)
             ResolveRetainedAtlasTargets(
                 PartAtlasPrefabSettings atlasSettings,
@@ -1427,107 +1351,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             AssetDatabase.SaveAssets();
-        }
-
-        private static string CreateOutputFolderBackup(string outputAssetPath)
-        {
-            var sourceFullPath = AssetPathToFullPath(outputAssetPath);
-            if (Directory.Exists(sourceFullPath) is false)
-                throw new DirectoryNotFoundException(sourceFullPath);
-
-            var projectRoot = Directory.GetParent(Application.dataPath)?.FullName
-                ?? throw new InvalidOperationException("Unity project root was not found.");
-
-            var backupRoot = Path.Combine(
-                projectRoot,
-                "Library",
-                "TexTransTool",
-                "PartAtlasBackups",
-                Guid.NewGuid().ToString("N")
-            );
-            var contentBackup = Path.Combine(backupRoot, "Content");
-            Directory.CreateDirectory(contentBackup);
-            CopyDirectory(sourceFullPath, contentBackup);
-
-            var sourceMeta = sourceFullPath + ".meta";
-            if (File.Exists(sourceMeta) is false)
-                throw new FileNotFoundException(
-                    "既存出力フォルダのmetaをバックアップできません。",
-                    sourceMeta
-                );
-
-            File.Copy(sourceMeta, Path.Combine(backupRoot, "Folder.meta"), true);
-            return backupRoot;
-        }
-
-        private static void RestoreOutputFolderBackup(
-            string outputAssetPath,
-            string backupRoot)
-        {
-            var outputFullPath = AssetPathToFullPath(outputAssetPath);
-            var contentBackup = Path.Combine(backupRoot, "Content");
-            if (Directory.Exists(contentBackup) is false)
-                throw new DirectoryNotFoundException(contentBackup);
-
-            if (AssetDatabase.IsValidFolder(outputAssetPath))
-            {
-                if (AssetDatabase.DeleteAsset(outputAssetPath) is false)
-                    throw new IOException("現在の出力フォルダを削除できませんでした: " + outputAssetPath);
-            }
-
-            if (Directory.Exists(outputFullPath))
-                Directory.Delete(outputFullPath, true);
-            if (File.Exists(outputFullPath + ".meta"))
-                File.Delete(outputFullPath + ".meta");
-
-            Directory.CreateDirectory(outputFullPath);
-            CopyDirectory(contentBackup, outputFullPath);
-
-            var backupMeta = Path.Combine(backupRoot, "Folder.meta");
-            if (File.Exists(backupMeta))
-                File.Copy(backupMeta, outputFullPath + ".meta", true);
-
-            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
-        }
-
-        private static void TryDeleteBackupDirectory(string backupRoot)
-        {
-            try
-            {
-                if (Directory.Exists(backupRoot))
-                    Directory.Delete(backupRoot, true);
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning(
-                    "TexTransTool Part Atlas Prefab: 一時バックアップを削除できませんでした: "
-                    + backupRoot
-                    + "\n"
-                    + e.Message
-                );
-            }
-        }
-
-        private static void CopyDirectory(string source, string destination)
-        {
-            Directory.CreateDirectory(destination);
-
-            foreach (var file in Directory.GetFiles(source))
-            {
-                File.Copy(
-                    file,
-                    Path.Combine(destination, Path.GetFileName(file)),
-                    true
-                );
-            }
-
-            foreach (var directory in Directory.GetDirectories(source))
-            {
-                CopyDirectory(
-                    directory,
-                    Path.Combine(destination, Path.GetFileName(directory))
-                );
-            }
         }
 
         private static string AssetPathToFullPath(string assetPath)

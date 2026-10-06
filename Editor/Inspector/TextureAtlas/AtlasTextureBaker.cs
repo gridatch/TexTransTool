@@ -63,7 +63,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             string bakeName,
             string outputAssetPath,
             bool promptOverwrite,
-            bool pingOutputFolder)
+            bool pingOutputFolder,
+            bool recordUndo = true)
         {
             PreviewUtility.ExitPreviews();
 
@@ -298,7 +299,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         domainRoot,
                         targetRenderers,
                         persistentRendererMeshMap,
-                        persistentMaterialMap
+                        persistentMaterialMap,
+                        recordUndo
                     );
 
                     if (pingOutputFolder)
@@ -565,29 +567,33 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             GameObject domainRoot,
             Renderer[] targetRenderers,
             IReadOnlyDictionary<Renderer, Mesh> rendererMeshMap,
-            IReadOnlyDictionary<Material, Material> materialMap)
+            IReadOnlyDictionary<Material, Material> materialMap,
+            bool recordUndo)
         {
-            var undoObjects = new HashSet<UnityEngine.Object>();
-
-            foreach (var renderer in targetRenderers)
+            if (recordUndo)
             {
-                if (renderer == null) { continue; }
+                var undoObjects = new HashSet<UnityEngine.Object>();
 
-                undoObjects.Add(renderer);
-
-                if (renderer is MeshRenderer)
+                foreach (var renderer in targetRenderers)
                 {
-                    var meshFilter = renderer.GetComponent<MeshFilter>();
-                    if (meshFilter != null) undoObjects.Add(meshFilter);
-                }
-            }
+                    if (renderer == null) { continue; }
 
-            if (undoObjects.Count != 0)
-            {
-                Undo.RecordObjects(
-                    undoObjects.ToArray(),
-                    "TexTransTool: アトラス化をベイク"
-                );
+                    undoObjects.Add(renderer);
+
+                    if (renderer is MeshRenderer)
+                    {
+                        var meshFilter = renderer.GetComponent<MeshFilter>();
+                        if (meshFilter != null) undoObjects.Add(meshFilter);
+                    }
+                }
+
+                if (undoObjects.Count != 0)
+                {
+                    Undo.RecordObjects(
+                        undoObjects.ToArray(),
+                        "TexTransTool: アトラス化をベイク"
+                    );
+                }
             }
 
             foreach (var renderer in targetRenderers)

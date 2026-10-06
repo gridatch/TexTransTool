@@ -349,7 +349,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var nextOutputName = EditorGUILayout.TextField(
                 new GUIContent(
                     "出力名",
-                    "生成するStandalone PrefabのRoot名と、松川ツールの抽出フォルダ名に使用します。"
+                    "生成物の内容名です。実際の生成名は <出力名>_extracted_<生成日時> になります。"
                 ),
                 _outputName
             );
@@ -365,12 +365,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             var sanitized = _matsukawa!.SanitizeName(_outputName.Trim());
-            var outputFolder = string.IsNullOrWhiteSpace(sanitized)
+            var generatedNamePreview = string.IsNullOrWhiteSpace(sanitized)
                 ? "-"
-                : _matsukawa.GetOutputFolder(sanitized);
+                : sanitized + "_extracted_<yyyyMMdd_HHmmss>";
             EditorGUILayout.LabelField(
-                new GUIContent("出力"),
-                new GUIContent(outputFolder),
+                new GUIContent("生成名"),
+                new GUIContent(generatedNamePreview),
                 EditorStyles.wordWrappedMiniLabel
             );
 
@@ -1215,9 +1215,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
-            var outputFolder = _matsukawa.GetOutputFolder(sanitizedOutputName);
-            var overwrite = AssetDatabase.IsValidFolder(outputFolder);
-
             var unknownUnchecked = _entries.Count(entry =>
                 entry.Keep is false
                 && entry.Category == "Unknown"
@@ -1230,8 +1227,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 + " 件をPrefab化し、"
                 + atlasCount
                 + " 件のRendererをアトラス化します。"
-                + "\n\n出力: "
-                + outputFolder;
+                + "\n\n生成名: "
+                + sanitizedOutputName
+                + "_extracted_<生成日時>";
 
             if (unknownUnchecked > 0)
             {
@@ -1241,17 +1239,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     + " 件あります。残すべきものが混じっていないか確認してください。";
             }
 
-            if (overwrite)
-            {
-                confirm +=
-                    "\n\n既存の抽出結果があります。既存Assetを可能な限り同じGUIDのまま更新します。"
-                    + "失敗時は事前バックアップから復元します。";
-            }
-
             if (EditorUtility.DisplayDialog(
                     "TTT Prefab化",
                     confirm + "\n\n実行しますか？",
-                    overwrite ? "上書きして実行" : "実行",
+                    "実行",
                     "キャンセル"
                 ) is false)
             {
@@ -1264,7 +1255,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 ExtractionOptions = _options,
                 AtlasSettings = _atlasSettings,
                 OutputName = sanitizedOutputName,
-                OverwriteExistingOutput = overwrite,
             };
 
             foreach (var path in _extractionTargetPaths
