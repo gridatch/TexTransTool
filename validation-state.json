@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.8",
-  "lastDebugSerial": 170,
-  "currentDebugVersion": "0.1.8+debug.170.atlastexture-inspector-regression.ee6e47a",
+  "lastDebugSerial": 171,
+  "currentDebugVersion": "0.1.8+debug.171.atlastexture-inspector-regression.581223c",
   "currentDebugChange": "atlastexture-inspector-regression",
   "currentDebugBranch": "fix/atlastexture-inspector-regression",
-  "currentDebugCommit": "ee6e47a6b825bda503a667db2f3c6df5bf276661",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.8+debug.170.atlastexture-inspector-regression.ee6e47a.zip"
+  "currentDebugCommit": "581223ccd47a910fa73e38f1818fd5bdb2e66df0",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.8+debug.171.atlastexture-inspector-regression.581223c.zip"
 }
