@@ -69,6 +69,37 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             DestroyAtlasSettings();
         }
 
+        private void EnsureAtlasSettings()
+        {
+            if (_atlasSettingsHost != null
+                && _atlasSettings != null
+                && _atlasSettingsObject != null)
+            {
+                return;
+            }
+
+            DestroyAtlasSettings();
+
+            _atlasSettingsHost = new GameObject("__TTT_PartAtlasSettings")
+            {
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+            _atlasSettings = _atlasSettingsHost.AddComponent<AtlasTexture>();
+            _atlasSettingsObject = new SerializedObject(_atlasSettings);
+        }
+
+        private void DestroyAtlasSettings()
+        {
+            _atlasSettingsObject = null;
+            _atlasSettings = null;
+
+            if (_atlasSettingsHost != null)
+            {
+                DestroyImmediate(_atlasSettingsHost);
+                _atlasSettingsHost = null;
+            }
+        }
+
         private void InitializeAdapter()
         {
             if (MatsukawaAdapter.TryCreate(out var adapter, out var error))
@@ -1065,7 +1096,67 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (_extractionRoot == null) return;
             _entries = _matsukawa.CollectRenderers(_extractionRoot).ToList();
             _outputName = _extractionRoot.name;
+            RefreshMaterialCandidates(preserveSelection: false);
             RefreshAtlasCandidates(preserveSelection: false);
+        }
+
+        private void RefreshMaterialCandidates(bool preserveSelection)
+        {
+            if (_atlasSettings == null)
+            {
+                _materialCandidates.Clear();
+                return;
+            }
+
+            var previousSelection = preserveSelection
+                ? _atlasSettings.AtlasTargetMaterials
+                    .Where(material => material != null)
+                    .Cast<Material>()
+                    .ToHashSet()
+                : new HashSet<Material>();
+
+            _materialCandidates.Clear();
+
+            if (_extractionRoot != null)
+            {
+                _materialCandidates.AddRange(
+                    _entries
+                        .Where(entry => entry.Keep && entry.Renderer != null)
+                        .SelectMany(entry => entry.Renderer.sharedMaterials)
+                        .Where(material => material != null)
+                        .Cast<Material>()
+                        .Distinct()
+                        .OrderBy(material => material.name, StringComparer.Ordinal)
+                        .ThenBy(material => AssetDatabase.GetAssetPath(material), StringComparer.Ordinal)
+                );
+            }
+
+            var candidateSet = _materialCandidates.ToHashSet();
+            _atlasSettings.AtlasTargetMaterials = previousSelection
+                .Where(candidateSet.Contains)
+                .Cast<Material?>()
+                .ToList();
+
+            EditorUtility.SetDirty(_atlasSettings);
+            _atlasSettingsObject?.UpdateIfRequiredOrScript();
+        }
+
+        private void SetSelectedMaterials(IEnumerable<Material> materials)
+        {
+            if (_atlasSettings == null) return;
+
+            var candidateSet = _materialCandidates.ToHashSet();
+            _atlasSettings.AtlasTargetMaterials = materials
+                .Where(material => material != null && candidateSet.Contains(material))
+                .Distinct()
+                .Cast<Material?>()
+                .ToList();
+
+            EditorUtility.SetDirty(_atlasSettings);
+            _atlasSettingsObject?.UpdateIfRequiredOrScript();
+
+            RefreshAtlasCandidates(preserveSelection: false);
+            _analysis = null;
         }
 
         private void RefreshAtlasCandidates(bool preserveSelection)
@@ -1107,12 +1198,20 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             _analysis = null;
             _entries.Clear();
+            _materialCandidates.Clear();
             _atlasCandidates.Clear();
             _atlasIncludedKeys.Clear();
             _outputName = "";
             _extractionRoot = null;
             _rootPaths = Array.Empty<string>();
             _rootLabels = Array.Empty<string>();
+
+            if (_atlasSettings != null)
+            {
+                _atlasSettings.AtlasTargetMaterials.Clear();
+                EditorUtility.SetDirty(_atlasSettings);
+                _atlasSettingsObject?.UpdateIfRequiredOrScript();
+            }
 
             if (_loadedPrefabRoot != null)
             {
