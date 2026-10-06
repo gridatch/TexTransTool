@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
