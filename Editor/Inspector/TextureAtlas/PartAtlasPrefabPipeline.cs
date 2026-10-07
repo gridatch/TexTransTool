@@ -551,7 +551,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 var referenceError = SanitizeAndValidateReferencesAgainstAnalysis(
                     instantiatedRoot,
-                    analysis
+                    analysis,
+                    executionOptions.StripAvatarComponents
                 );
                 if (!string.IsNullOrEmpty(referenceError))
                     return Fail(result, referenceError);
@@ -1425,7 +1426,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private static string SanitizeAndValidateReferencesAgainstAnalysis(
             GameObject root,
-            MatsukawaAnalysis analysis)
+            MatsukawaAnalysis analysis,
+            bool stripAvatarComponents)
         {
             var issues = new List<string>();
             var deleted = analysis.DeleteTransforms;
@@ -1434,6 +1436,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 if (component == null || component is Transform) continue;
                 if (deleted.Contains(component.transform)) continue;
+
+                // When HCE is configured to strip Avatar-root components, references owned by
+                // those components are irrelevant to the extracted Prefab because the component
+                // itself will not survive execution. Validating them here would reject normal
+                // AvatarDescriptor references such as Body / Eye_L / Eye_R before HCE removes
+                // the descriptor.
+                if (stripAvatarComponents
+                    && IsAvatarRootComponentRemovedByExtraction(component, root))
+                {
+                    continue;
+                }
 
                 // HCE owns SkinnedMeshRenderer bone dependency analysis and rewrites the
                 // bones array when it trims unused bones. Treating those references as
@@ -1509,6 +1522,29 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 "抽出後に解決できないObject参照が残るため、処理を中断しました。"
                 + "\n\n"
                 + detail;
+        }
+
+        private static bool IsAvatarRootComponentRemovedByExtraction(
+            Component component,
+            GameObject root)
+        {
+            if (component.gameObject != root)
+                return false;
+
+            if (component is Animator)
+                return true;
+
+            var typeName = component.GetType().Name;
+            return string.Equals(
+                       typeName,
+                       "VRCAvatarDescriptor",
+                       StringComparison.Ordinal
+                   )
+                   || string.Equals(
+                       typeName,
+                       "PipelineManager",
+                       StringComparison.Ordinal
+                   );
         }
 
         private static string ValidateNoExternalSceneReferences(GameObject root)
