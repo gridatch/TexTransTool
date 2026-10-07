@@ -901,7 +901,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (AtlasTextureBaker.TryValidateBakeName(outputName, out error))
                 return true;
 
-            error = error.Replace("ベイク名", "出力名");
+            error = error.Replace("ベイク名", "名前");
             return false;
         }
 
