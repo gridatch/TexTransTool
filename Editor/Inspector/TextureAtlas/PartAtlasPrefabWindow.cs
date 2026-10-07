@@ -221,13 +221,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (_extractionTargetPaths.Count == 0) return;
 
             DrawRendererSelection();
-            DrawOptions();
-
-            DrawMajorSectionHeader("アトラス化");
             DrawAtlasMaterialSelection();
             DrawAtlasSettings();
-
-            DrawMajorSectionHeader("確認・実行");
+            DrawOptions();
             DrawAnalysis();
             DrawExecute();
         }
@@ -278,16 +274,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             EditorGUILayout.Space(4f);
         }
 
-        private static void DrawMajorSectionHeader(string title)
-        {
-            EditorGUILayout.Space(6f);
-            EditorGUILayout.LabelField(title, EditorStyles.largeLabel);
-            EditorGUILayout.Space(2f);
-        }
-
         private void DrawSource()
         {
-            DrawMajorSectionHeader("入力");
+            EditorGUILayout.LabelField("入力", EditorStyles.boldLabel);
 
             var next = EditorGUILayout.ObjectField(
                 new GUIContent("Prefab Asset"),
@@ -319,8 +308,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 );
                 return;
             }
-
-            DrawMajorSectionHeader("抽出");
 
             if (_extractionTargetPaths.Count == 0)
             {
