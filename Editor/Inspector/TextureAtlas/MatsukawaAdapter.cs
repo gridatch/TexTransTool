@@ -47,11 +47,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal int TotalTransforms;
         internal int DeleteTransformCount;
         internal int DeleteRendererCount;
-        internal int KeepBoneCount;
         internal int KeepCount;
         internal int DeleteRootCount;
         internal int ProtectedObjectCount;
-        internal int EssentialCount;
         internal int TrimTargetCount;
         internal int WarningCount;
         internal IReadOnlyList<string> Warnings = Array.Empty<string>();
@@ -150,20 +148,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return ReadAnalysis(rawAnalysis);
         }
 
-        internal void SetHierarchyHighlight(MatsukawaAnalysis analysis)
-        {
-            _api.HighlighterSet.Invoke(null, new[] { analysis.Raw });
-        }
-
         internal void ClearHierarchyHighlight()
         {
             _api.HighlighterClear.Invoke(null, null);
-        }
-
-        internal bool HierarchyHighlightEnabled
-        {
-            get => (bool)(_api.HighlighterEnabled.GetValue(null) ?? false);
-            set => _api.HighlighterEnabled.SetValue(null, value);
         }
 
         internal MatsukawaExecutionResult Execute(
@@ -187,20 +174,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return value as string;
         }
 
-        internal string? ExportUnityPackage(MatsukawaExecutionResult result, string destination)
-        {
-            return _api.ExportUnityPackage.Invoke(null, new object[] { result.RawReport, destination }) as string;
-        }
-
         internal string GetOutputFolder(string name)
         {
             return _api.FolderFor.Invoke(null, new object[] { name }) as string
                 ?? throw new InvalidOperationException("HairCostumeExtractor.HceMeshTrimmer.FolderFor returned null.");
-        }
-
-        internal bool DeleteOutputFolder(string name)
-        {
-            return (bool)(_api.DeleteOutputFolder.Invoke(null, new object[] { name }) ?? false);
         }
 
         internal string SanitizeName(string name)
@@ -470,11 +447,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 TotalTransforms = ReadInt(_api.AnalysisTotalTransforms, raw),
                 DeleteTransformCount = ReadInt(_api.AnalysisDeleteTransformCount, raw),
                 DeleteRendererCount = ReadInt(_api.AnalysisDeleteRendererCount, raw),
-                KeepBoneCount = ReadInt(_api.AnalysisKeepBoneCount, raw),
                 KeepCount = Count(_api.AnalysisKeep.GetValue(raw)),
                 DeleteRootCount = Count(_api.AnalysisDeleteRoots.GetValue(raw)),
                 ProtectedObjectCount = Count(_api.AnalysisProtected.GetValue(raw)),
-                EssentialCount = Count(_api.AnalysisEssential.GetValue(raw)),
                 TrimTargetCount = Count(_api.AnalysisTrimTargets.GetValue(raw)),
                 WarningCount = Count(_api.AnalysisWarnings.GetValue(raw)),
                 Warnings = ReadStringList(_api.AnalysisWarnings.GetValue(raw)),
@@ -596,18 +571,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             internal MethodInfo CollectRenderers = null!;
             internal MethodInfo Analyze = null!;
-            internal MethodInfo HighlighterSet = null!;
             internal MethodInfo HighlighterClear = null!;
             internal MethodInfo Execute = null!;
             internal MethodInfo SavePrefab = null!;
-            internal MethodInfo ExportUnityPackage = null!;
-            internal MethodInfo BuildReportText = null!;
             internal MethodInfo FolderFor = null!;
-            internal MethodInfo DeleteOutputFolder = null!;
             internal MethodInfo Sanitize = null!;
             internal MethodInfo EnableReadWrite = null!;
-
-            internal PropertyInfo HighlighterEnabled = null!;
 
             internal FieldInfo EntryRenderer = null!;
             internal FieldInfo EntryPath = null!;
@@ -631,14 +600,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             internal FieldInfo AnalysisKeep = null!;
             internal FieldInfo AnalysisDeleteRoots = null!;
             internal FieldInfo AnalysisProtected = null!;
-            internal FieldInfo AnalysisEssential = null!;
             internal FieldInfo AnalysisTrimTargets = null!;
             internal FieldInfo AnalysisKeepBoneIndices = null!;
             internal FieldInfo AnalysisWarnings = null!;
             internal FieldInfo AnalysisTotalTransforms = null!;
             internal FieldInfo AnalysisDeleteTransformCount = null!;
             internal FieldInfo AnalysisDeleteRendererCount = null!;
-            internal FieldInfo AnalysisKeepBoneCount = null!;
 
             internal FieldInfo ReportResult = null!;
             internal FieldInfo ReportSourceName = null!;
@@ -689,9 +656,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 );
                 RequireReturn(api.Analyze, type => type == api.Analysis, "HceAnalysis");
 
-                api.HighlighterSet = Method(api.Highlighter, "Set", api.Analysis);
                 api.HighlighterClear = Method(api.Highlighter, "Clear");
-                api.HighlighterEnabled = Property(api.Highlighter, "Enabled", typeof(bool), isStatic: true);
 
                 api.Execute = Method(
                     api.Executor,
@@ -705,16 +670,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 api.SavePrefab = Method(api.Executor, "SavePrefab", api.Report);
                 RequireReturn(api.SavePrefab, type => type == typeof(string), "string");
 
-                api.ExportUnityPackage = Method(api.Executor, "ExportUnityPackage", api.Report, typeof(string));
-                RequireReturn(api.ExportUnityPackage, type => type == typeof(string), "string");
-
-                api.BuildReportText = Method(api.Executor, "BuildReportText", api.Report);
-                RequireReturn(api.BuildReportText, type => type == typeof(string), "string");
-
                 api.FolderFor = Method(api.MeshTrimmer, "FolderFor", typeof(string));
                 RequireReturn(api.FolderFor, type => type == typeof(string), "string");
-                api.DeleteOutputFolder = Method(api.MeshTrimmer, "DeleteOutputFolder", typeof(string));
-                RequireReturn(api.DeleteOutputFolder, type => type == typeof(bool), "bool");
                 api.Sanitize = Method(api.MeshTrimmer, "Sanitize", typeof(string));
                 RequireReturn(api.Sanitize, type => type == typeof(string), "string");
 
@@ -747,14 +704,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 api.AnalysisKeep = Field(api.Analysis, "keep", null);
                 api.AnalysisDeleteRoots = Field(api.Analysis, "deleteRoots", null);
                 api.AnalysisProtected = Field(api.Analysis, "protectedObjects", null);
-                api.AnalysisEssential = Field(api.Analysis, "essential", null);
                 api.AnalysisTrimTargets = Field(api.Analysis, "trimTargets", null);
                 api.AnalysisKeepBoneIndices = Field(api.Analysis, "keepBoneIndices", null);
                 api.AnalysisWarnings = Field(api.Analysis, "warnings", null);
                 api.AnalysisTotalTransforms = Field(api.Analysis, "totalTransforms", typeof(int));
                 api.AnalysisDeleteTransformCount = Field(api.Analysis, "deleteTransformCount", typeof(int));
                 api.AnalysisDeleteRendererCount = Field(api.Analysis, "deleteRendererCount", typeof(int));
-                api.AnalysisKeepBoneCount = Field(api.Analysis, "keepBoneCount", typeof(int));
 
                 api.ReportResult = Field(api.Report, "result", typeof(GameObject));
                 api.ReportSourceName = Field(api.Report, "sourceName", typeof(string));
@@ -812,19 +767,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
 
                 return field;
-            }
-
-            private static PropertyInfo Property(Type type, string name, Type expectedType, bool isStatic)
-            {
-                var property = type.GetProperty(
-                    name,
-                    BindingFlags.Public | (isStatic ? BindingFlags.Static : BindingFlags.Instance)
-                ) ?? throw new MissingMemberException(type.FullName, name);
-
-                if (property.PropertyType != expectedType || property.CanRead is false || property.CanWrite is false)
-                    throw new InvalidOperationException($"{type.FullName}.{name} property contract mismatch.");
-
-                return property;
             }
 
             private static void RequireEnumValue(Type type, string name)
