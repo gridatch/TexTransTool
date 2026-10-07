@@ -40,5 +40,26 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             TargetObjectSelector.DrawTargetSelectionSlimLayout(sMaterials, materials);
         }
 
+        public static void DrawNow(
+            SerializedProperty sfm,
+            IEnumerable<Material> materials,
+            float availableWidth)
+        {
+            var sPriorityValue = sfm.FindPropertyRelative(nameof(SetFromMaterial.PriorityValue));
+            var sMaterials = sfm.FindPropertyRelative(nameof(SetFromMaterial.Materials));
+
+            EditorGUILayout.PropertyField(
+                sPriorityValue,
+                "IslandSizePriorityTuner:prop:PriorityValue".GlcV()
+            );
+
+            TargetObjectSelector.DrawTargetSelectionSlimLayout(
+                sMaterials,
+                materials,
+                128f,
+                availableWidth
+            );
+        }
+
     }
 }

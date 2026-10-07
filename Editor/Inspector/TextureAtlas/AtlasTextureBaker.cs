@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCoreEngineForUnity;
 using net.rs64.TexTransTool.Editor.OtherMenuItem;
@@ -31,7 +33,74 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return false;
             }
 
-            var outputAssetPath = GetBakeOutputAssetPath(bakeName);
+            using var resolveDomain = new NotWorkDomain(
+                domainRoot.GetComponentsInChildren<Renderer>(true),
+                null
+            );
+            var (targetMaterials, targetRenderers) =
+                AtlasTextureBakeTargetResolver.ResolveBakeTargets(atlasTexture, resolveDomain);
+
+            return BakeResolved(
+                PersistentAtlasBakeSettings.FromComponent(atlasTexture),
+                domainRoot,
+                targetMaterials,
+                targetRenderers,
+                bakeName,
+                GetBakeOutputAssetPath(bakeName),
+                promptOverwrite: true,
+                pingOutputFolder: true
+            );
+        }
+
+        /// <summary>
+        /// Runs the persistent Atlas bake against an explicitly supplied domain and target set.
+        /// This is the reusable boundary used by workflows that operate on temporary/extracted
+        /// hierarchies rather than the AtlasTexture component's normal avatar domain.
+        /// </summary>
+        internal static bool BakeResolved(
+            PersistentAtlasBakeSettings settings,
+            GameObject domainRoot,
+            HashSet<Material> targetMaterials,
+            Renderer[] targetRenderers,
+            string bakeName,
+            string outputAssetPath,
+            bool promptOverwrite,
+            bool pingOutputFolder,
+            bool recordUndo = true)
+        {
+            PreviewUtility.ExitPreviews();
+
+            if (settings == null)
+            {
+                Debug.LogError("TexTransTool: persistent Atlas bake settings are null.");
+                return false;
+            }
+
+            if (domainRoot == null)
+            {
+                Debug.LogError("TexTransTool: AtlasTexture bake domain root is null.");
+                return false;
+            }
+
+            if (targetMaterials == null || targetRenderers == null)
+            {
+                Debug.LogError("TexTransTool: AtlasTexture bake target set is null.");
+                return false;
+            }
+
+            if (TryValidateBakeName(bakeName, out var bakeNameError) is false)
+            {
+                EditorUtility.DisplayDialog("TexTransTool", bakeNameError, "OK");
+                return false;
+            }
+
+            if (TryValidateOutputAssetPath(outputAssetPath, out var outputPathError) is false)
+            {
+                Debug.LogError("TexTransTool: " + outputPathError);
+                EditorUtility.DisplayDialog("TexTransTool", outputPathError, "OK");
+                return false;
+            }
+
             var manifestAssetPath = outputAssetPath + "/BakeManifest.asset";
             var outputExists = Directory.Exists(AssetPathToFullPath(outputAssetPath));
 
@@ -40,7 +109,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             if (outputExists)
             {
-                if (EditorUtility.DisplayDialog(
+                if (promptOverwrite
+                    && EditorUtility.DisplayDialog(
                         "TexTransTool",
                         $"ベイク名「{bakeName}」は既に存在します。上書きしますか？",
                         "上書き",
@@ -55,7 +125,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 {
                     EditorUtility.DisplayDialog(
                         "TexTransTool",
-                        $"ベイク名「{bakeName}」の管理情報が見つからないため、安全に上書きできません。",
+                        $"出力先「{outputAssetPath}」の管理情報が見つからないため、安全に上書きできません。",
                         "OK"
                     );
                     return false;
@@ -93,12 +163,19 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     engine
                 );
 
-                var (targetMaterials, targetRenderers) =
-                    AtlasTextureBakeTargetResolver.ResolveBakeTargets(atlasTexture, domain);
-
                 if (targetMaterials.Count == 0 || targetRenderers.Length == 0)
                 {
                     Debug.LogWarning("TexTransTool: No AtlasTexture bake target was found.");
+                    return false;
+                }
+
+                var domainRendererSet = domainRoot
+                    .GetComponentsInChildren<Renderer>(true)
+                    .ToHashSet();
+
+                if (targetRenderers.Any(renderer => renderer == null || domainRendererSet.Contains(renderer) is false))
+                {
+                    Debug.LogError("TexTransTool: AtlasTexture bake targets include a renderer outside the supplied domain.");
                     return false;
                 }
 
@@ -118,8 +195,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     engine,
                     targetMaterials,
                     targetRenderers,
-                    atlasTexture.IslandSizePriorityTuner,
-                    atlasTexture.AtlasSetting
+                    settings.IslandSizePriorityTuner,
+                    settings.AtlasSetting
                 );
 
                 if (atlasResult.IsSuccess is false) { return false; }
@@ -134,13 +211,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     return false;
                 }
 
-                var experimentalOptions = atlasTexture.GetComponent<AtlasTextureExperimentalFeature>();
+                var experimentalOptions = settings.ExperimentalOptions;
                 if (experimentalOptions == null) { experimentalOptions = null; }
 
                 var tunedAtlasTextures = AtlasTexture.DoTextureFinTuning(
                     engine,
                     atlasContext,
-                    atlasTexture.AtlasSetting,
+                    settings.AtlasSetting,
                     compiledAtlasTextures,
                     experimentalOptions
                 );
@@ -165,6 +242,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     var persistentTextures = SaveTextures(
                         engine,
                         tunedAtlasTextures,
+                        targetMaterials,
                         bakeName,
                         outputAssetPath,
                         textureAssetPath,
@@ -176,10 +254,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     var (materialMap, _) = AtlasTexture.GenerateAtlasedMaterialMaps(
                         domain,
                         targetMaterials,
-                        atlasTexture.AtlasSetting,
+                        settings.AtlasSetting,
                         (
-                            atlasTexture.MergeMaterialGroups,
-                            atlasTexture.AllMaterialMergeReference,
+                            settings.MergeMaterialGroups,
+                            settings.AllMaterialMergeReference,
                             experimentalOptions
                         ),
                         persistentTextures,
@@ -223,14 +301,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         domainRoot,
                         targetRenderers,
                         persistentRendererMeshMap,
-                        persistentMaterialMap
+                        persistentMaterialMap,
+                        recordUndo
                     );
 
-                    var folderAsset = AssetDatabase.LoadAssetAtPath<DefaultAsset>(outputAssetPath);
-                    if (folderAsset != null)
+                    if (pingOutputFolder)
                     {
-                        Selection.activeObject = folderAsset;
-                        EditorGUIUtility.PingObject(folderAsset);
+                        var folderAsset = AssetDatabase.LoadAssetAtPath<DefaultAsset>(outputAssetPath);
+                        if (folderAsset != null)
+                        {
+                            Selection.activeObject = folderAsset;
+                            EditorGUIUtility.PingObject(folderAsset);
+                        }
                     }
 
                     Debug.Log(
@@ -392,11 +474,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return true;
         }
 
-        private static bool ValidateAnimationObjectReferences(
+        internal static bool ValidateAnimationObjectReferences(
             GameObject domainRoot,
             Renderer[] targetRenderers,
             HashSet<Material> targetMaterials,
-            HashSet<Mesh> targetMeshes)
+            HashSet<Mesh> targetMeshes,
+            bool displayDialog = true)
         {
             var hits = new List<string>();
             var dependencies = EditorUtility.CollectDependencies(new UnityEngine.Object[] { domainRoot });
@@ -438,14 +521,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 "directly restore one or more source Mesh/Material assets.\n" + detail
             );
 
-            EditorUtility.DisplayDialog(
-                "TexTransTool",
-                "アトラス化のベイクを中断しました。\n\n" +
-                "ベイク前の Mesh / Material を直接参照する AnimationClip が見つかりました。\n" +
-                "このままベイクすると、アニメーション再生時に旧アセットへ戻る可能性があります。\n\n" +
-                "Console に該当 Clip / binding を出力しています。",
-                "OK"
-            );
+            if (displayDialog)
+            {
+                EditorUtility.DisplayDialog(
+                    "TexTransTool",
+                    "アトラス化のベイクを中断しました。\n\n" +
+                    "ベイク前の Mesh / Material を直接参照する AnimationClip が見つかりました。\n" +
+                    "このままベイクすると、アニメーション再生時に旧アセットへ戻る可能性があります。\n\n" +
+                    "Console に該当 Clip / binding を出力しています。",
+                    "OK"
+                );
+            }
 
             return false;
         }
@@ -483,29 +569,33 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             GameObject domainRoot,
             Renderer[] targetRenderers,
             IReadOnlyDictionary<Renderer, Mesh> rendererMeshMap,
-            IReadOnlyDictionary<Material, Material> materialMap)
+            IReadOnlyDictionary<Material, Material> materialMap,
+            bool recordUndo)
         {
-            var undoObjects = new HashSet<UnityEngine.Object>();
-
-            foreach (var renderer in targetRenderers)
+            if (recordUndo)
             {
-                if (renderer == null) { continue; }
+                var undoObjects = new HashSet<UnityEngine.Object>();
 
-                undoObjects.Add(renderer);
-
-                if (renderer is MeshRenderer)
+                foreach (var renderer in targetRenderers)
                 {
-                    var meshFilter = renderer.GetComponent<MeshFilter>();
-                    if (meshFilter != null) undoObjects.Add(meshFilter);
-                }
-            }
+                    if (renderer == null) { continue; }
 
-            if (undoObjects.Count != 0)
-            {
-                Undo.RecordObjects(
-                    undoObjects.ToArray(),
-                    "TexTransTool: アトラス化をベイク"
-                );
+                    undoObjects.Add(renderer);
+
+                    if (renderer is MeshRenderer)
+                    {
+                        var meshFilter = renderer.GetComponent<MeshFilter>();
+                        if (meshFilter != null) undoObjects.Add(meshFilter);
+                    }
+                }
+
+                if (undoObjects.Count != 0)
+                {
+                    Undo.RecordObjects(
+                        undoObjects.ToArray(),
+                        "TexTransTool: アトラス化をベイク"
+                    );
+                }
             }
 
             foreach (var renderer in targetRenderers)
@@ -560,6 +650,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private static Dictionary<string, Texture2D> SaveTextures(
             ITexTransToolForUnity engine,
             FineTuning.TexFineTuningResult tunedAtlasTextures,
+            IReadOnlyCollection<Material> sourceMaterials,
             string bakeName,
             string outputAssetPath,
             string textureAssetPath,
@@ -592,13 +683,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     .ToArray();
 
                 var role = "Texture:" + string.Join("|", propertyNames);
-                var displayProperty = string.Join(
-                    "_",
-                    propertyNames
-                        .Select(NormalizeTexturePropertyName)
-                        .Where(name => string.IsNullOrEmpty(name) is false)
-                );
-                if (string.IsNullOrEmpty(displayProperty)) displayProperty = "Texture";
+                var displayProperty = BuildTextureDisplayRole(propertyNames);
 
                 var desiredAssetPath =
                     textureAssetPath + "/" +
@@ -617,7 +702,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 File.WriteAllBytes(AssetPathToFullPath(assetPath), pngBytes);
                 AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
 
-                ConfigureTextureImporter(assetPath, downloaded, descriptor);
+                var importAsNormalMap = ShouldImportAsNormalMap(
+                    descriptor,
+                    sourceMaterials,
+                    propertyNames
+                );
+                ConfigureTextureImporter(
+                    assetPath,
+                    downloaded,
+                    descriptor,
+                    importAsNormalMap
+                );
 
                 var persistentTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
                 if (persistentTexture == null)
@@ -637,17 +732,85 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             );
         }
 
+        private static bool ShouldImportAsNormalMap(
+            TexTransToolTextureDescriptor descriptor,
+            IReadOnlyCollection<Material> sourceMaterials,
+            IReadOnlyCollection<string> propertyNames)
+        {
+            if (descriptor.IsNormalMap)
+                return true;
+
+            foreach (var material in sourceMaterials)
+            {
+                if (material == null) continue;
+
+                foreach (var propertyName in propertyNames)
+                {
+                    if (string.IsNullOrEmpty(propertyName)
+                        || material.HasProperty(propertyName) is false)
+                    {
+                        continue;
+                    }
+
+                    var sourceTexture = material.GetTexture(propertyName);
+                    if (sourceTexture != null)
+                    {
+                        var sourcePath = AssetDatabase.GetAssetPath(sourceTexture);
+                        if (string.IsNullOrEmpty(sourcePath) is false
+                            && AssetImporter.GetAtPath(sourcePath) is TextureImporter sourceImporter
+                            && sourceImporter.textureType == TextureImporterType.NormalMap)
+                        {
+                            return true;
+                        }
+                    }
+
+                    var shader = material.shader;
+                    if (shader == null) continue;
+
+                    var propertyCount = ShaderUtil.GetPropertyCount(shader);
+                    for (var propertyIndex = 0; propertyIndex < propertyCount; propertyIndex++)
+                    {
+                        if (string.Equals(
+                                ShaderUtil.GetPropertyName(shader, propertyIndex),
+                                propertyName,
+                                StringComparison.Ordinal
+                            ) is false)
+                        {
+                            continue;
+                        }
+
+                        if (shader.GetPropertyAttributes(propertyIndex)
+                            .Any(attribute =>
+                                string.Equals(
+                                    attribute,
+                                    "Normal",
+                                    StringComparison.OrdinalIgnoreCase
+                                )))
+                        {
+                            return true;
+                        }
+
+                        break;
+                    }
+                }
+            }
+
+            return false;
+        }
+
         private static void ConfigureTextureImporter(
             string assetPath,
             Texture2D downloaded,
-            TexTransToolTextureDescriptor descriptor)
+            TexTransToolTextureDescriptor descriptor,
+            bool importAsNormalMap)
         {
             if (AssetImporter.GetAtPath(assetPath) is not TextureImporter importer) { return; }
 
-            importer.textureType = descriptor.IsNormalMap
+            importer.textureType = importAsNormalMap
                 ? TextureImporterType.NormalMap
                 : TextureImporterType.Default;
-            importer.sRGBTexture = descriptor.AsLinear is false;
+            importer.sRGBTexture = importAsNormalMap is false
+                && descriptor.AsLinear is false;
             importer.mipmapEnabled = descriptor.UseMipMap;
             importer.filterMode = descriptor.filterMode;
             importer.anisoLevel = descriptor.anisoLevel;
@@ -967,13 +1130,152 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 + componentIndex;
         }
 
-        private static string NormalizeTexturePropertyName(string propertyName)
+        private static readonly IReadOnlyDictionary<string, string> TexturePropertyDisplayRoles =
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["_MainTex"] = "Main",
+                ["_BaseMap"] = "Main",
+                ["_BaseColorMap"] = "Main",
+                ["_Main2ndTex"] = "Main2nd",
+                ["_Main3rdTex"] = "Main3rd",
+                ["_MainGradationTex"] = "MainGradation",
+                ["_MainColorAdjustMask"] = "MainColorAdjustMask",
+                ["_Main2ndBlendMask"] = "Main2ndBlendMask",
+                ["_Main3rdBlendMask"] = "Main3rdBlendMask",
+                ["_Main2ndDissolveMask"] = "Main2ndDissolveMask",
+                ["_Main2ndDissolveNoiseMask"] = "Main2ndDissolveNoiseMask",
+                ["_Main3rdDissolveMask"] = "Main3rdDissolveMask",
+                ["_Main3rdDissolveNoiseMask"] = "Main3rdDissolveNoiseMask",
+                ["_AlphaMask"] = "AlphaMask",
+                ["_BumpMap"] = "Normal",
+                ["_Bump2ndMap"] = "Normal2nd",
+                ["_Bump2ndScaleMask"] = "Normal2ndScaleMask",
+                ["_AnisotropyTangentMap"] = "AnisotropyTangent",
+                ["_AnisotropyScaleMask"] = "AnisotropyScaleMask",
+                ["_AnisotropyShiftNoiseMask"] = "AnisotropyShiftNoiseMask",
+                ["_BacklightColorTex"] = "BacklightColor",
+                ["_ShadowStrengthMask"] = "ShadowStrengthMask",
+                ["_ShadowBorderMask"] = "ShadowBorderMask",
+                ["_ShadowBlurMask"] = "ShadowBlurMask",
+                ["_ShadowColorTex"] = "ShadowColor",
+                ["_Shadow2ndColorTex"] = "Shadow2ndColor",
+                ["_Shadow3rdColorTex"] = "Shadow3rdColor",
+                ["_RimShadeMask"] = "RimShadeMask",
+                ["_SmoothnessTex"] = "Smoothness",
+                ["_MetallicGlossMap"] = "MetallicGloss",
+                ["_ReflectionColorTex"] = "ReflectionColor",
+                ["_MatCapTex"] = "MatCap",
+                ["_MatCapBlendMask"] = "MatCapBlendMask",
+                ["_MatCapBumpMap"] = "MatCapNormal",
+                ["_MatCap2ndTex"] = "MatCap2nd",
+                ["_MatCap2ndBlendMask"] = "MatCap2ndBlendMask",
+                ["_MatCap2ndBumpMap"] = "MatCap2ndNormal",
+                ["_RimColorTex"] = "RimColor",
+                ["_GlitterColorTex"] = "GlitterColor",
+                ["_GlitterShapeTex"] = "GlitterShape",
+                ["_EmissionMap"] = "Emission",
+                ["_Emission2ndMap"] = "Emission2nd",
+                ["_EmissionBlendMask"] = "EmissionBlendMask",
+                ["_Emission2ndBlendMask"] = "Emission2ndBlendMask",
+                ["_EmissionGradTex"] = "EmissionGrad",
+                ["_Emission2ndGradTex"] = "Emission2ndGrad",
+                ["_ParallaxMap"] = "Parallax",
+                ["_AudioLinkMask"] = "AudioLinkMask",
+                ["_OutlineTex"] = "Outline",
+                ["_OutlineWidthMask"] = "OutlineWidthMask",
+                ["_OutlineVectorTex"] = "OutlineVector",
+                ["_OutlineMask"] = "OutlineMask",
+                ["_FurNoiseMask"] = "FurNoiseMask",
+                ["_FurMask"] = "FurMask",
+                ["_FurLengthMask"] = "FurLengthMask",
+                ["_FurVectorTex"] = "FurVector",
+                ["_DitherTex"] = "Dither",
+                ["_DissolveMask"] = "DissolveMask",
+                ["_DissolveNoiseMask"] = "DissolveNoiseMask",
+                ["_OcclusionMap"] = "Occlusion",
+                ["_DetailMask"] = "DetailMask",
+                ["_DetailAlbedoMap"] = "DetailAlbedo",
+                ["_DetailNormalMap"] = "DetailNormal",
+                ["_MetallicMap"] = "Metallic",
+                ["_GlossMap"] = "Gloss",
+                ["_Matcap"] = "MatCap",
+                ["_MatcapMask"] = "MatCapMask",
+                ["_Ramp"] = "Ramp",
+                ["_HueShiftMask"] = "HueShiftMask",
+                ["_ColorMask"] = "ColorMask",
+            };
+
+        private static readonly IReadOnlyDictionary<string, int> TextureRoleSortOrder =
+            new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                ["Main"] = 0,
+                ["Main2nd"] = 1,
+                ["Main3rd"] = 2,
+                ["Normal"] = 10,
+                ["Normal2nd"] = 11,
+                ["Emission"] = 20,
+                ["Emission2nd"] = 21,
+                ["MatCap"] = 30,
+                ["MatCap2nd"] = 31,
+            };
+
+        private static string BuildTextureDisplayRole(IReadOnlyCollection<string> propertyNames)
         {
+            var roles = propertyNames
+                .Where(name => string.IsNullOrWhiteSpace(name) is false)
+                .Select(NormalizeTexturePropertyDisplayRole)
+                .Where(name => string.IsNullOrWhiteSpace(name) is false)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(GetTextureRoleSortOrder)
+                .ThenBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+
+            if (roles.Length == 0) return "Texture";
+
+            var joined = string.Join("_", roles);
+            if (roles.Length <= 4 && joined.Length <= 72)
+                return joined;
+
+            var source = string.Join(
+                "|",
+                propertyNames
+                    .Where(name => string.IsNullOrWhiteSpace(name) is false)
+                    .OrderBy(name => name, StringComparer.Ordinal)
+            );
+
+            return "Shared_"
+                + roles[0]
+                + "_Plus"
+                + (roles.Length - 1)
+                + "_"
+                + StableShortHash(source);
+        }
+
+        private static string NormalizeTexturePropertyDisplayRole(string propertyName)
+        {
+            if (TexturePropertyDisplayRoles.TryGetValue(propertyName, out var role))
+                return role;
+
             var normalized = propertyName.TrimStart('_');
             return string.IsNullOrEmpty(normalized) ? propertyName : normalized;
         }
 
-        private static bool TryValidateBakeName(string bakeName, out string error)
+        private static int GetTextureRoleSortOrder(string role)
+        {
+            return TextureRoleSortOrder.TryGetValue(role, out var order) ? order : 1000;
+        }
+
+        private static string StableShortHash(string value)
+        {
+            using var sha256 = SHA256.Create();
+            var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(value));
+            var builder = new StringBuilder(8);
+            for (var index = 0; index < 4; index++)
+                builder.Append(bytes[index].ToString("X2"));
+            return builder.ToString();
+        }
+
+        internal static bool TryValidateBakeName(string bakeName, out string error)
         {
             if (string.IsNullOrWhiteSpace(bakeName))
             {
@@ -1018,6 +1320,26 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             return "Assets/TexTransToolGenerated/AtlasTexture/"
                 + bakeName;
+        }
+
+        private static bool TryValidateOutputAssetPath(string outputAssetPath, out string error)
+        {
+            if (string.IsNullOrWhiteSpace(outputAssetPath)
+                || outputAssetPath == "Assets"
+                || outputAssetPath.StartsWith("Assets/", StringComparison.Ordinal) is false)
+            {
+                error = "Atlas bake output path must be a folder below Assets/.";
+                return false;
+            }
+
+            if (outputAssetPath.IndexOfAny(new[] { '\\', ':', '*', '?', '"', '<', '>', '|' }) >= 0)
+            {
+                error = "Atlas bake output path contains an invalid character.";
+                return false;
+            }
+
+            error = "";
+            return true;
         }
 
         private static string AssetPathToFullPath(string assetPath)
