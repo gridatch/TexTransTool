@@ -504,7 +504,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         }
 
         private void DrawOutputName()
-        private void DrawOutputName()
         {
             var nextOutputName = EditorGUILayout.TextField(
                 new GUIContent(
