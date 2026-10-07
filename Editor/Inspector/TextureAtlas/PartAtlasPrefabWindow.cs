@@ -897,7 +897,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void DrawAtlasSettings(float contentWidth)
         {
-            if (_atlasSettings == null || _atlasSettingsObject == null) return;
+            if (_atlasSettings == null || _atlasSettingsObject == null)
+                return;
 
             var previousLabelWidth = BeginWideLabels(contentWidth);
             try
@@ -917,20 +918,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     nameof(PartAtlasPrefabSettings.AllMaterialMergeReference)
                 );
 
-                var autoSize = atlasSetting.FindPropertyRelative("AutoAtlasTextureSize");
-                var textureSize = atlasSetting.FindPropertyRelative("AtlasTextureSize");
-                var customAspect = atlasSetting.FindPropertyRelative("CustomAspect");
-                var heightSize = atlasSetting.FindPropertyRelative("AtlasTextureHeightSize");
-                var uvChannel = atlasSetting.FindPropertyRelative("AtlasTargetUVChannel");
-                var usePrimaryMaximum = atlasSetting.FindPropertyRelative("UsePrimaryMaximumTexture");
-                var primaryTextureProperty = atlasSetting.FindPropertyRelative("PrimaryTextureProperty");
-                var padding = atlasSetting.FindPropertyRelative("IslandPadding");
-                var forceSizePriority = atlasSetting.FindPropertyRelative("ForceSizePriority");
-                var forceSetTexture = atlasSetting.FindPropertyRelative("ForceSetTexture");
-                var backgroundColor = atlasSetting.FindPropertyRelative("BackGroundColor");
-                var pixelNormalize = atlasSetting.FindPropertyRelative("PixelNormalize");
-                var textureFineTuning = atlasSetting.FindPropertyRelative("TextureFineTuning");
-
                 EditorGUILayout.LabelField(
                     "AtlasTexture:label:IslandSizePriority".Glc(),
                     MediumSectionLabelStyle
@@ -945,8 +932,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                     if (islandSizePriority.isExpanded)
                     {
-                        DrawMaterialIslandSizePriorityTuners(
+                        var targetMaterials = _atlasSettings.AtlasTargetMaterials
+                            .Where(material => material != null)
+                            .Cast<Material>()
+                            .ToArray();
+
+                        AtlasSettingsEditorGUI.DrawStandaloneMaterialSizePriorityTuners(
                             islandSizePriority,
+                            targetMaterials,
                             content.ContentWidth
                         );
                     }
@@ -956,15 +949,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     "AtlasTexture:label:MaterialSettings".Glc(),
                     MediumSectionLabelStyle
                 );
-                using (var content = new InspectorIndentScope(contentWidth))
+                using (new InspectorIndentScope(contentWidth))
                 {
-                    EditorGUILayout.PropertyField(
+                    var targetMaterials = _atlasSettings.AtlasTargetMaterials
+                        .Where(material => material != null)
+                        .Cast<Material>()
+                        .ToHashSet();
+
+                    AtlasSettingsEditorGUI.DrawMaterialSettingFields(
                         mergeMaterialGroups,
-                        "AtlasTexture:prop:MergeMaterialGroups".GlcV()
-                    );
-                    EditorGUILayout.PropertyField(
                         allMaterialMergeReference,
-                        "AtlasTexture:prop:AllMaterialMergeReference".GlcV()
+                        targetMaterials,
+                        useAtlasTextureMergeGroupEditor: false
                     );
                 }
 
@@ -972,85 +968,22 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     "AtlasTexture:label:AtlasSettings".Glc(),
                     MediumSectionLabelStyle
                 );
-                using (var content = new InspectorIndentScope(contentWidth))
+                using (new InspectorIndentScope(contentWidth))
                 {
-                    EditorGUILayout.PropertyField(
-                        autoSize,
-                        "AtlasTexture:prop:AutoAtlasTextureSize".GlcV()
+                    var changes = AtlasSettingsEditorGUI.DrawAtlasSettingFields(
+                        atlasSetting,
+                        includeDisabledRenderer: false
                     );
 
-                    using (new EditorGUI.DisabledScope(autoSize.boolValue))
-                    {
-                        EditorGUILayout.PropertyField(
-                            textureSize,
-                            "AtlasTexture:prop:AtlasTextureSize".GlcV()
-                        );
-                        if (customAspect.boolValue)
-                        {
-                            EditorGUILayout.PropertyField(
-                                heightSize,
-                                "AtlasTexture:prop:AtlasTextureHeightSize".GlcV()
-                            );
-                        }
-                        EditorGUILayout.PropertyField(
-                            customAspect,
-                            "AtlasTexture:prop:CustomAspect".GlcV()
-                        );
-                    }
+                    if ((changes & AtlasSettingDrawChange.TargetUVChannel) != 0)
+                        RefreshMaterialGroups();
+                }
 
-                    var uvBefore = uvChannel.enumValueIndex;
-                    EditorGUILayout.PropertyField(
-                        uvChannel,
-                        "AtlasTexture:prop:AtlasTargetUVChannel".GlcV()
-                    );
-
-                    EditorGUILayout.PropertyField(
-                        usePrimaryMaximum,
-                        "AtlasTexture:prop:UsePrimaryMaximumTexture".GlcV()
-                    );
-                    if (usePrimaryMaximum.boolValue is false)
-                    {
-                        EditorGUILayout.PropertyField(
-                            primaryTextureProperty,
-                            "AtlasTexture:prop:PrimaryTextureProperty".GlcV()
-                        );
-                    }
-
-                    EditorGUILayout.PropertyField(
-                        padding,
-                        "AtlasTexture:prop:Padding".GlcV()
-                    );
-
-                    EditorGUILayout.PropertyField(
-                        forceSizePriority,
-                        "AtlasTexture:prop:ForceSizePriority".GlcV()
-                    );
-                    EditorGUILayout.PropertyField(
-                        forceSetTexture,
-                        "AtlasTexture:prop:ForceSetTexture".GlcV()
-                    );
-                    EditorGUILayout.PropertyField(
-                        backgroundColor,
-                        "AtlasTexture:prop:BackGroundColor".GlcV()
-                    );
-                    EditorGUILayout.PropertyField(
-                        pixelNormalize,
-                        "AtlasTexture:prop:PixelNormalize".GlcV()
-                    );
-                    EditorGUILayout.PropertyField(
-                        textureFineTuning,
-                        "AtlasTexture:prop:TextureFineTuning".GlcV()
-                    );
-
-                    if (_atlasSettingsObject.ApplyModifiedProperties())
-                    {
-                        if (uvBefore != (int)_atlasSettings.AtlasSetting.AtlasTargetUVChannel)
-                            RefreshMaterialGroups();
-
-                        SanitizeIslandSizePriorityMaterials();
-                        EditorUtility.SetDirty(_atlasSettings);
-                        _atlasSettingsObject.UpdateIfRequiredOrScript();
-                    }
+                if (_atlasSettingsObject.ApplyModifiedProperties())
+                {
+                    SanitizeIslandSizePriorityMaterials();
+                    EditorUtility.SetDirty(_atlasSettings);
+                    _atlasSettingsObject.UpdateIfRequiredOrScript();
                 }
             }
             finally
@@ -1059,64 +992,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             EditorGUILayout.Space(4f);
-        }
-
-        private void DrawMaterialIslandSizePriorityTuners(
-            SerializedProperty tuners,
-            float contentWidth)
-        {
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                if (GUILayout.Button("+ SetFromMaterial", EditorStyles.miniButton))
-                {
-                    var newIndex = tuners.arraySize;
-                    tuners.arraySize += 1;
-
-                    var newElement = tuners.GetArrayElementAtIndex(newIndex);
-                    newElement.managedReferenceValue = new SetFromMaterial
-                    {
-                        PriorityValue = 1f,
-                        Materials = new List<Material>(),
-                    };
-                }
-
-                using (new EditorGUI.DisabledScope(tuners.arraySize == 0))
-                {
-                    if (GUILayout.Button("-", EditorStyles.miniButton, GUILayout.Width(28f)))
-                    {
-                        tuners.DeleteArrayElementAtIndex(tuners.arraySize - 1);
-                    }
-                }
-            }
-
-            var targetMaterials = _atlasSettings!.AtlasTargetMaterials
-                .Where(material => material != null)
-                .Cast<Material>()
-                .ToArray();
-
-            for (var i = 0; i < tuners.arraySize; i++)
-            {
-                using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
-                {
-                    EditorGUILayout.LabelField(
-                        $"SetFromMaterial {i + 1}",
-                        EditorStyles.miniBoldLabel
-                    );
-                    var selectorWidth = Mathf.Max(
-                        1f,
-                        contentWidth
-                        - EditorStyles.helpBox.padding.horizontal
-                        - EditorStyles.helpBox.margin.horizontal
-                        - 24f
-                    );
-
-                    SetFromMaterialDrawer.DrawNow(
-                        tuners.GetArrayElementAtIndex(i),
-                        targetMaterials,
-                        selectorWidth
-                    );
-                }
-            }
         }
 
         private void DrawExtractionOptionsSection(float contentWidth)
