@@ -418,7 +418,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal static void MaterialSelectEditor(
             SerializedProperty targetMaterials,
             List<List<Material>> tempMaterialGroupAll,
-            float availableWidth)
+            float availableWidth,
+            float elementWidth = 128f)
         {
             var groupContentWidth = Mathf.Max(
                 1f,
@@ -433,7 +434,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     TargetObjectSelector.DrawTargetSelectionSlimLayout(
                         targetMaterials,
                         matGroup,
-                        128f,
+                        elementWidth,
                         groupContentWidth
                     );
                 }
