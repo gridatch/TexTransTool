@@ -31,7 +31,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private TreeViewState? _hierarchyTreeState;
         private PartAtlasPrefabHierarchyView? _hierarchyView;
 
-        private string _filter = "";
         private string _outputName = "";
         private string _lastSuggestedOutputName = "";
         private bool _outputNameCustomized;
@@ -348,8 +347,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             var nextOutputName = EditorGUILayout.TextField(
                 new GUIContent(
-                    "出力名",
-                    "生成物の内容名です。実際の生成名は <出力名>_extracted_<生成日時> になります。"
+                    "名前",
+                    "生成物を識別する名前です。保存時に _extracted_<生成日時> が自動的に付与されます。"
                 ),
                 _outputName
             );
@@ -365,14 +364,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             var sanitized = _matsukawa!.SanitizeName(_outputName.Trim());
-            var generatedNamePreview = string.IsNullOrWhiteSpace(sanitized)
-                ? "-"
-                : sanitized + "_extracted_<yyyyMMdd_HHmmss>";
-            EditorGUILayout.LabelField(
-                new GUIContent("生成名"),
-                new GUIContent(generatedNamePreview),
-                EditorStyles.wordWrappedMiniLabel
-            );
 
             if (string.IsNullOrWhiteSpace(sanitized) is false
                 && PartAtlasPrefabPipeline.TryValidateOutputName(
@@ -396,27 +387,20 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 EditorStyles.boldLabel
             );
 
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                if (GUILayout.Button("髪＋衣装", EditorStyles.miniButton))
-                    SelectBy(entry => entry.Category is "Hair" or "Costume");
-                if (GUILayout.Button("髪だけ", EditorStyles.miniButton))
-                    SelectBy(entry => entry.Category == "Hair");
-                if (GUILayout.Button("衣装だけ", EditorStyles.miniButton))
-                    SelectBy(entry => entry.Category == "Costume");
-                if (GUILayout.Button("素体以外", EditorStyles.miniButton))
-                    SelectBy(entry => entry.Category != "Body");
-                if (GUILayout.Button("全解除", EditorStyles.miniButton))
-                    SelectBy(_ => false);
-            }
+            const float rendererRowHeight = 18f;
+            const float rendererListPadding = 8f;
+            const float rendererListMaxHeight = 260f;
+            var rendererListHeight = Mathf.Min(
+                rendererListMaxHeight,
+                Mathf.Max(
+                    rendererRowHeight + rendererListPadding,
+                    _entries.Count * rendererRowHeight + rendererListPadding
+                )
+            );
 
-            _filter = EditorGUILayout.TextField(_filter, EditorStyles.toolbarSearchField);
-
-            var visible = VisibleEntries().ToList();
             using var view = new EditorGUILayout.ScrollViewScope(
                 _rendererScroll,
-                GUILayout.MinHeight(140f),
-                GUILayout.MaxHeight(260f)
+                GUILayout.Height(rendererListHeight)
             );
             _rendererScroll = view.scrollPosition;
 
@@ -424,10 +408,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 if (_entries.Count == 0)
                     EditorGUILayout.LabelField("メッシュが見つかりません。", EditorStyles.miniLabel);
-                else if (visible.Count == 0)
-                    EditorGUILayout.LabelField("絞り込みに一致するものがありません。", EditorStyles.miniLabel);
 
-                foreach (var entry in visible)
+                foreach (var entry in _entries)
                     DrawRendererRow(entry);
             }
 
@@ -683,7 +665,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 AtlasTextureEditor.MaterialSelectEditor(
                     targetMaterials,
                     _materialGroups,
-                    _rightPaneContentWidth
+                    _rightPaneContentWidth,
+                    256f
                 );
             }
             else
@@ -921,24 +904,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
                 }
             }
-        }
-
-        private IEnumerable<MatsukawaRendererEntry> VisibleEntries()
-        {
-            if (string.IsNullOrWhiteSpace(_filter)) return _entries;
-            var filter = _filter.Trim();
-            return _entries.Where(entry =>
-                entry.Path.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0
-                || entry.Renderer.name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0
-            );
-        }
-
-        private void SelectBy(Func<MatsukawaRendererEntry, bool> predicate)
-        {
-            foreach (var entry in _entries) entry.Keep = predicate(entry);
-
-            RefreshMaterialCandidates(preserveSelection: true);
-            InvalidateAnalysis();
         }
 
         private void DrawOptions()
@@ -1214,7 +1179,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var sanitizedOutputName = _matsukawa.SanitizeName(_outputName.Trim());
             if (string.IsNullOrWhiteSpace(sanitizedOutputName))
             {
-                EditorUtility.DisplayDialog("TTT Prefab化", "出力名を入力してください。", "OK");
+                EditorUtility.DisplayDialog("TTT Prefab化", "名前を入力してください。", "OK");
                 return;
             }
 
@@ -1230,9 +1195,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 + " 件をPrefab化し、"
                 + atlasCount
                 + " 件のRendererをアトラス化します。"
-                + "\n\n生成名: "
-                + sanitizedOutputName
-                + "_extracted_<生成日時>";
+                + "\n\n名前: "
+                + sanitizedOutputName;
 
             if (unknownUnchecked > 0)
             {
@@ -1462,7 +1426,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             var suggestedOutputName = targets.Count == 1
                 ? targets[0].name
-                : _loadedPrefabRoot.name + "_Part";
+                : "";
 
             if (_outputNameCustomized is false
                 || string.IsNullOrWhiteSpace(_outputName)
@@ -1644,8 +1608,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (transform == null || _loadedPrefabRoot == null)
                 return;
 
-            var visible = VisibleEntries().ToList();
-            var index = visible.FindIndex(entry =>
+            var index = _entries.FindIndex(entry =>
                 entry.Renderer != null
                 && entry.Renderer.gameObject == transform.gameObject
             );
