@@ -14,7 +14,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
     public partial class AtlasSetting
     {
         [PowerOfTwo] public int AtlasTextureSize = 2048;
-        public bool AutoAtlasTextureSize = false;
+        public bool AutoAtlasTextureSize = true;
 
         public bool CustomAspect = false;
         [PowerOfTwo] public int AtlasTextureHeightSize = 2048;
