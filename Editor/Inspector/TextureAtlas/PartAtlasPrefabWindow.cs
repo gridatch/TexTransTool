@@ -592,29 +592,27 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             using (new InspectorIndentScope(contentWidth))
             {
                 const float rendererRowHeight = 18f;
-                const float rendererListPadding = 8f;
                 const float rendererListMaxHeight = 260f;
-                var rendererListHeight = Mathf.Min(
-                    rendererListMaxHeight,
-                    Mathf.Max(
-                        rendererRowHeight + rendererListPadding,
-                        _entries.Count * rendererRowHeight + rendererListPadding
-                    )
-                );
+                var rendererListNaturalHeight =
+                    Mathf.Max(1, _entries.Count) * rendererRowHeight
+                    + GUI.skin.box.padding.vertical
+                    + GUI.skin.box.margin.vertical;
+                var rendererListNeedsScroll =
+                    rendererListNaturalHeight > rendererListMaxHeight;
 
-                using var view = new EditorGUILayout.ScrollViewScope(
-                    _rendererScroll,
-                    GUILayout.Height(rendererListHeight)
-                );
-                _rendererScroll = view.scrollPosition;
-
-                using (new EditorGUILayout.VerticalScope(GUI.skin.box))
+                if (rendererListNeedsScroll)
                 {
-                    if (_entries.Count == 0)
-                        EditorGUILayout.LabelField("メッシュが見つかりません。", EditorStyles.miniLabel);
-
-                    foreach (var entry in _entries)
-                        DrawRendererRow(entry);
+                    using var view = new EditorGUILayout.ScrollViewScope(
+                        _rendererScroll,
+                        GUILayout.Height(rendererListMaxHeight)
+                    );
+                    _rendererScroll = view.scrollPosition;
+                    DrawRendererListBox();
+                }
+                else
+                {
+                    _rendererScroll = Vector2.zero;
+                    DrawRendererListBox();
                 }
 
                 var unknownUnchecked = _entries.Count(entry =>
@@ -684,6 +682,24 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             EditorGUILayout.Space(4f);
+        }
+
+        private void DrawRendererListBox()
+        {
+            using (new EditorGUILayout.VerticalScope(GUI.skin.box))
+            {
+                if (_entries.Count == 0)
+                {
+                    EditorGUILayout.LabelField(
+                        "メッシュが見つかりません。",
+                        EditorStyles.miniLabel
+                    );
+                    return;
+                }
+
+                foreach (var entry in _entries)
+                    DrawRendererRow(entry);
+            }
         }
 
         private void DrawRendererRow(MatsukawaRendererEntry entry)
