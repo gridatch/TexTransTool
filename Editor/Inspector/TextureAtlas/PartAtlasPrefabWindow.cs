@@ -217,15 +217,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
-            DrawSource();
-            if (_extractionTargetPaths.Count == 0) return;
+            if (DrawInputSection(_rightPaneContentWidth) is false)
+                return;
 
-            DrawRendererSelection();
-            DrawAtlasMaterialSelection();
-            DrawAtlasSettings();
-            DrawOptions();
-            DrawAnalysis();
-            DrawExecute();
+            if (DrawExtractionSection(_rightPaneContentWidth) is false)
+                return;
+
+            DrawAtlasSection(_rightPaneContentWidth);
+            DrawExecutionSection(_rightPaneContentWidth);
         }
 
         private void HandleSplitter(Rect splitterRect)
@@ -274,9 +273,151 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             EditorGUILayout.Space(4f);
         }
 
-        private void DrawSource()
+        private GUIStyle? _majorSectionHeaderStyle;
+        private GUIStyle? _mediumSectionLabelStyle;
+        private GUIStyle? _mediumSectionFoldoutStyle;
+
+        private GUIStyle MajorSectionHeaderStyle
         {
-            EditorGUILayout.LabelField("入力", EditorStyles.boldLabel);
+            get
+            {
+                if (_majorSectionHeaderStyle != null)
+                    return _majorSectionHeaderStyle;
+
+                _majorSectionHeaderStyle = new GUIStyle(EditorStyles.boldLabel)
+                {
+                    fontSize = 13,
+                    fontStyle = FontStyle.Bold,
+                    alignment = TextAnchor.MiddleLeft,
+                };
+                return _majorSectionHeaderStyle;
+            }
+        }
+
+        private GUIStyle MediumSectionLabelStyle
+        {
+            get
+            {
+                if (_mediumSectionLabelStyle != null)
+                    return _mediumSectionLabelStyle;
+
+                // Derive from the normal Inspector label so the visible text starts
+                // at the same x-position as labels on ObjectField/TextField controls.
+                _mediumSectionLabelStyle = new GUIStyle(EditorStyles.label)
+                {
+                    fontStyle = FontStyle.Bold,
+                };
+                return _mediumSectionLabelStyle;
+            }
+        }
+
+        private GUIStyle MediumSectionFoldoutStyle
+        {
+            get
+            {
+                if (_mediumSectionFoldoutStyle != null)
+                    return _mediumSectionFoldoutStyle;
+
+                _mediumSectionFoldoutStyle = new GUIStyle(EditorStyles.foldout)
+                {
+                    fontStyle = FontStyle.Bold,
+                };
+                return _mediumSectionFoldoutStyle;
+            }
+        }
+
+        private void DrawMajorSectionHeader(string title)
+        {
+            EditorGUILayout.Space(8f);
+            using (new EditorGUILayout.HorizontalScope(EditorStyles.helpBox))
+            {
+                EditorGUILayout.LabelField(
+                    title,
+                    MajorSectionHeaderStyle,
+                    GUILayout.Height(EditorGUIUtility.singleLineHeight + 2f)
+                );
+            }
+            EditorGUILayout.Space(2f);
+        }
+
+        private static float InspectorIndentWidth()
+        {
+            var previousIndent = EditorGUI.indentLevel;
+            try
+            {
+                var probe = new Rect(
+                    0f,
+                    0f,
+                    100f,
+                    EditorGUIUtility.singleLineHeight
+                );
+
+                EditorGUI.indentLevel = 0;
+                var baseX = EditorGUI.IndentedRect(probe).x;
+
+                EditorGUI.indentLevel = 1;
+                var indentedX = EditorGUI.IndentedRect(probe).x;
+
+                return Mathf.Max(0f, indentedX - baseX);
+            }
+            finally
+            {
+                EditorGUI.indentLevel = previousIndent;
+            }
+        }
+
+        private sealed class InspectorIndentScope : IDisposable
+        {
+            private readonly EditorGUILayout.HorizontalScope _horizontal;
+            private readonly EditorGUILayout.VerticalScope _vertical;
+
+            internal float ContentWidth { get; }
+
+            internal InspectorIndentScope(float parentContentWidth)
+            {
+                var indentWidth = InspectorIndentWidth();
+
+                _horizontal = new EditorGUILayout.HorizontalScope();
+                GUILayout.Space(indentWidth);
+                _vertical = new EditorGUILayout.VerticalScope();
+
+                ContentWidth = Mathf.Max(1f, parentContentWidth - indentWidth);
+            }
+
+            public void Dispose()
+            {
+                _vertical.Dispose();
+                _horizontal.Dispose();
+            }
+        }
+
+        private bool DrawMediumSectionFoldout(bool expanded, string title)
+        {
+            var rect = EditorGUILayout.GetControlRect(
+                false,
+                EditorGUIUtility.singleLineHeight
+            );
+
+            // Put the disclosure triangle in the parent-indent gutter so the
+            // foldout text itself aligns with the other medium-section labels.
+            var indentWidth = InspectorIndentWidth();
+            rect.x -= indentWidth;
+            rect.width += indentWidth;
+
+            return EditorGUI.Foldout(
+                rect,
+                expanded,
+                title,
+                true,
+                MediumSectionFoldoutStyle
+            );
+        }
+
+        private bool DrawInputSection(float contentWidth)
+        {
+            DrawMajorSectionHeader("入力");
+
+            using var content = new InspectorIndentScope(contentWidth);
 
             var next = EditorGUILayout.ObjectField(
                 new GUIContent("Prefab Asset"),
@@ -297,7 +438,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     "Project上のPrefab Assetを指定してください。",
                     MessageType.None
                 );
-                return;
+                return false;
             }
 
             if (_validTargetPaths.Count == 0)
@@ -306,22 +447,65 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     "このPrefab内に抽出可能なMeshが見つかりません。",
                     MessageType.Warning
                 );
-                return;
+                return false;
             }
+
+            return true;
+        }
+
+        private bool DrawExtractionSection(float contentWidth)
+        {
+            DrawMajorSectionHeader("抽出");
+
+            using var content = new InspectorIndentScope(contentWidth);
 
             if (_extractionTargetPaths.Count == 0)
             {
-                EditorGUILayout.LabelField("抽出対象（0件）", EditorStyles.boldLabel);
-                EditorGUILayout.HelpBox(
-                    "左のPrefab Hierarchy右端のチェックで、抽出したいGameObjectを1件以上選択してください。複数選択できます。",
-                    MessageType.Info
+                EditorGUILayout.LabelField(
+                    "抽出対象（0件）",
+                    MediumSectionLabelStyle
                 );
+
+                using (new InspectorIndentScope(content.ContentWidth))
+                {
+                    EditorGUILayout.HelpBox(
+                        "左のPrefab Hierarchy右端のチェックで、抽出したいGameObjectを1件以上選択してください。複数選択できます。",
+                        MessageType.Info
+                    );
+                }
+
                 EditorGUILayout.Space(4f);
-                return;
+                return false;
             }
 
-            DrawExtractionTargetSummary();
+            DrawExtractionTargetSection(content.ContentWidth);
+            DrawRendererSection(content.ContentWidth);
+            DrawExtractionOptionsSection(content.ContentWidth);
+            return true;
+        }
 
+        private void DrawAtlasSection(float contentWidth)
+        {
+            DrawMajorSectionHeader("アトラス化");
+
+            using var content = new InspectorIndentScope(contentWidth);
+            DrawAtlasMaterialSection(content.ContentWidth);
+            DrawAtlasSettings(content.ContentWidth);
+        }
+
+        private void DrawExecutionSection(float contentWidth)
+        {
+            DrawMajorSectionHeader("実行");
+
+            using var content = new InspectorIndentScope(contentWidth);
+            DrawOutputName();
+            DrawAnalysis();
+            DrawExecute();
+        }
+
+        private void DrawOutputName()
+        private void DrawOutputName()
+        {
             var nextOutputName = EditorGUILayout.TextField(
                 new GUIContent(
                     "名前",
@@ -354,7 +538,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             EditorGUILayout.Space(4f);
         }
 
-        private void DrawExtractionTargetSummary()
+        private void DrawExtractionTargetSection(float contentWidth)
         {
             var paths = _extractionTargetPaths
                 .OrderBy(path => path, StringComparer.Ordinal)
@@ -382,13 +566,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     string.IsNullOrEmpty(path) ? "<Prefab Root>" : path)
             );
 
-            using (new EditorGUILayout.HorizontalScope())
+            EditorGUILayout.LabelField(
+                $"抽出対象（{paths.Length}件）",
+                MediumSectionLabelStyle
+            );
+            using (new InspectorIndentScope(contentWidth))
             {
-                EditorGUILayout.LabelField(
-                    $"抽出対象（{paths.Length}件）",
-                    EditorStyles.boldLabel,
-                    GUILayout.Width(104f)
-                );
                 EditorGUILayout.LabelField(
                     new GUIContent(summary, tooltip),
                     EditorStyles.miniLabel
@@ -396,103 +579,106 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
         }
 
-        private void DrawRendererSelection()
+        private void DrawRendererSection(float contentWidth)
         {
             if (_extractionTargetPaths.Count == 0) return;
 
             var keptCount = _entries.Count(entry => entry.Keep);
             EditorGUILayout.LabelField(
                 $"抽出するRenderer（{keptCount}/{_entries.Count}）",
-                EditorStyles.boldLabel
+                MediumSectionLabelStyle
             );
 
-            const float rendererRowHeight = 18f;
-            const float rendererListPadding = 8f;
-            const float rendererListMaxHeight = 260f;
-            var rendererListHeight = Mathf.Min(
-                rendererListMaxHeight,
-                Mathf.Max(
-                    rendererRowHeight + rendererListPadding,
-                    _entries.Count * rendererRowHeight + rendererListPadding
-                )
-            );
-
-            using var view = new EditorGUILayout.ScrollViewScope(
-                _rendererScroll,
-                GUILayout.Height(rendererListHeight)
-            );
-            _rendererScroll = view.scrollPosition;
-
-            using (new EditorGUILayout.VerticalScope(GUI.skin.box))
+            using (new InspectorIndentScope(contentWidth))
             {
-                if (_entries.Count == 0)
-                    EditorGUILayout.LabelField("メッシュが見つかりません。", EditorStyles.miniLabel);
-
-                foreach (var entry in _entries)
-                    DrawRendererRow(entry);
-            }
-
-            var unknownUnchecked = _entries.Count(entry =>
-                entry.Keep is false
-                && entry.Category == "Unknown"
-            );
-            if (unknownUnchecked > 0)
-            {
-                EditorGUILayout.HelpBox(
-                    "用途が「不明」でチェックの入っていないRendererが "
-                    + unknownUnchecked
-                    + " 件あります。用途推定は名前からの推定なので、必要なものが混じっていないか確認してください。",
-                    MessageType.Warning
-                );
-            }
-
-            if (_options.BoneMode == MatsukawaBoneMode.WeightedOnly)
-            {
-                var unreadableEntries = _entries
-                    .Where(entry =>
-                        entry.Keep
-                        && entry.IsSkinned
-                        && RendererMesh(entry.Renderer) != null
-                        && entry.MeshReadable is false
+                const float rendererRowHeight = 18f;
+                const float rendererListPadding = 8f;
+                const float rendererListMaxHeight = 260f;
+                var rendererListHeight = Mathf.Min(
+                    rendererListMaxHeight,
+                    Mathf.Max(
+                        rendererRowHeight + rendererListPadding,
+                        _entries.Count * rendererRowHeight + rendererListPadding
                     )
-                    .ToArray();
+                );
 
-                if (unreadableEntries.Length > 0)
+                using var view = new EditorGUILayout.ScrollViewScope(
+                    _rendererScroll,
+                    GUILayout.Height(rendererListHeight)
+                );
+                _rendererScroll = view.scrollPosition;
+
+                using (new EditorGUILayout.VerticalScope(GUI.skin.box))
+                {
+                    if (_entries.Count == 0)
+                        EditorGUILayout.LabelField("メッシュが見つかりません。", EditorStyles.miniLabel);
+
+                    foreach (var entry in _entries)
+                        DrawRendererRow(entry);
+                }
+
+                var unknownUnchecked = _entries.Count(entry =>
+                    entry.Keep is false
+                    && entry.Category == "Unknown"
+                );
+                if (unknownUnchecked > 0)
                 {
                     EditorGUILayout.HelpBox(
-                        "残すSkinnedMeshRendererのうち "
-                        + unreadableEntries.Length
-                        + " 件でMeshのRead/Writeが無効です。松川ツールはそのRendererについてBone Weightを読めないため、ボーン配列の全ボーンを残します。",
+                        "用途が「不明」でチェックの入っていないRendererが "
+                        + unknownUnchecked
+                        + " 件あります。用途推定は名前からの推定なので、必要なものが混じっていないか確認してください。",
                         MessageType.Warning
                     );
+                }
 
-                    if (GUILayout.Button("これらのMeshのRead/Writeを有効にして再インポート"))
+                if (_options.BoneMode == MatsukawaBoneMode.WeightedOnly)
+                {
+                    var unreadableEntries = _entries
+                        .Where(entry =>
+                            entry.Keep
+                            && entry.IsSkinned
+                            && RendererMesh(entry.Renderer) != null
+                            && entry.MeshReadable is false
+                        )
+                        .ToArray();
+
+                    if (unreadableEntries.Length > 0)
                     {
-                        var sourcePath = _sourcePrefab != null
-                            ? AssetDatabase.GetAssetPath(_sourcePrefab)
-                            : "";
-                        var meshes = unreadableEntries
-                            .Select(entry => (entry.Renderer as SkinnedMeshRenderer)?.sharedMesh)
-                            .Where(mesh => mesh != null)
-                            .Cast<Mesh>()
-                            .Distinct()
-                            .ToArray();
-
-                        var changed = _matsukawa!.EnableReadWrite(meshes);
-                        EditorUtility.DisplayDialog(
-                            "TTT Prefab化",
-                            changed + " 個のModel ImporterでRead/Writeを有効にしました。",
-                            "OK"
+                        EditorGUILayout.HelpBox(
+                            "残すSkinnedMeshRendererのうち "
+                            + unreadableEntries.Length
+                            + " 件でMeshのRead/Writeが無効です。松川ツールはそのRendererについてBone Weightを読めないため、ボーン配列の全ボーンを残します。",
+                            MessageType.Warning
                         );
 
-                        if (string.IsNullOrEmpty(sourcePath) is false)
+                        if (GUILayout.Button("これらのMeshのRead/Writeを有効にして再インポート"))
                         {
-                            SetSourcePrefab(
-                                AssetDatabase.LoadAssetAtPath<GameObject>(sourcePath)
-                            );
-                        }
+                            var sourcePath = _sourcePrefab != null
+                                ? AssetDatabase.GetAssetPath(_sourcePrefab)
+                                : "";
+                            var meshes = unreadableEntries
+                                .Select(entry => (entry.Renderer as SkinnedMeshRenderer)?.sharedMesh)
+                                .Where(mesh => mesh != null)
+                                .Cast<Mesh>()
+                                .Distinct()
+                                .ToArray();
 
-                        GUIUtility.ExitGUI();
+                            var changed = _matsukawa!.EnableReadWrite(meshes);
+                            EditorUtility.DisplayDialog(
+                                "TTT Prefab化",
+                                changed + " 個のModel ImporterでRead/Writeを有効にしました。",
+                                "OK"
+                            );
+
+                            if (string.IsNullOrEmpty(sourcePath) is false)
+                            {
+                                SetSourcePrefab(
+                                    AssetDatabase.LoadAssetAtPath<GameObject>(sourcePath)
+                                );
+                            }
+
+                            GUIUtility.ExitGUI();
+                        }
                     }
                 }
             }
@@ -613,7 +799,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             };
         }
 
-        private void DrawAtlasMaterialSelection()
+        private void DrawAtlasMaterialSection(float contentWidth)
         {
             if (_extractionTargetPaths.Count == 0
                 || _atlasSettings == null
@@ -629,71 +815,74 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             EditorGUILayout.LabelField(
                 $"アトラス化するMaterial（{_atlasSettings.AtlasTargetMaterials.Count(material => material != null)}/{_materialCandidates.Count}）",
-                EditorStyles.boldLabel
+                MediumSectionLabelStyle
             );
 
-            using (new EditorGUILayout.HorizontalScope())
+            using (var content = new InspectorIndentScope(contentWidth))
             {
-                var buttonLayout = new[]
+                using (new EditorGUILayout.HorizontalScope())
                 {
-                    GUILayout.MaxWidth(64f + 18f),
-                    GUILayout.MinWidth(18f),
-                    GUILayout.Height(18f),
-                };
-
-                using (new EditorGUI.DisabledScope(_materialCandidates.Count == 0))
-                {
-                    if (GUILayout.Button(
-                            "AtlasTexture:button:SelectAll".GlcV(),
-                            buttonLayout))
+                    var buttonLayout = new[]
                     {
-                        _atlasSettingsObject.ApplyModifiedProperties();
-                        SetSelectedMaterials(_materialCandidates);
-                        _atlasSettingsObject.Update();
+                        GUILayout.MaxWidth(64f + 18f),
+                        GUILayout.MinWidth(18f),
+                        GUILayout.Height(18f),
+                    };
+
+                    using (new EditorGUI.DisabledScope(_materialCandidates.Count == 0))
+                    {
+                        if (GUILayout.Button(
+                                "AtlasTexture:button:SelectAll".GlcV(),
+                                buttonLayout))
+                        {
+                            _atlasSettingsObject.ApplyModifiedProperties();
+                            SetSelectedMaterials(_materialCandidates);
+                            _atlasSettingsObject.Update();
+                        }
+
+                        if (GUILayout.Button(
+                                "AtlasTexture:button:Invert".GlcV(),
+                                buttonLayout))
+                        {
+                            _atlasSettingsObject.ApplyModifiedProperties();
+                            var selected = _atlasSettings.AtlasTargetMaterials
+                                .Where(material => material != null)
+                                .Cast<Material>()
+                                .ToHashSet();
+
+                            SetSelectedMaterials(
+                                _materialCandidates.Where(material =>
+                                    selected.Contains(material) is false)
+                            );
+                            _atlasSettingsObject.Update();
+                        }
                     }
 
                     if (GUILayout.Button(
-                            "AtlasTexture:button:Invert".GlcV(),
-                            buttonLayout))
+                            "AtlasTexture:button:RefreshMaterials".GetLocalize()))
                     {
                         _atlasSettingsObject.ApplyModifiedProperties();
-                        var selected = _atlasSettings.AtlasTargetMaterials
-                            .Where(material => material != null)
-                            .Cast<Material>()
-                            .ToHashSet();
-
-                        SetSelectedMaterials(
-                            _materialCandidates.Where(material =>
-                                selected.Contains(material) is false)
-                        );
+                        RefreshMaterialCandidates(preserveSelection: true);
                         _atlasSettingsObject.Update();
                     }
                 }
 
-                if (GUILayout.Button(
-                        "AtlasTexture:button:RefreshMaterials".GetLocalize()))
+                if (_materialGroups.Count > 0)
                 {
-                    _atlasSettingsObject.ApplyModifiedProperties();
-                    RefreshMaterialCandidates(preserveSelection: true);
-                    _atlasSettingsObject.Update();
+                    AtlasTextureEditor.MaterialSelectEditor(
+                        targetMaterials,
+                        _materialGroups,
+                        content.ContentWidth,
+                        256f
+                    );
                 }
-            }
-
-            if (_materialGroups.Count > 0)
-            {
-                AtlasTextureEditor.MaterialSelectEditor(
-                    targetMaterials,
-                    _materialGroups,
-                    _rightPaneContentWidth,
-                    256f
-                );
-            }
-            else
-            {
-                EditorGUILayout.HelpBox(
-                    "現在の抽出対象RendererにはMaterialがありません。",
-                    MessageType.Info
-                );
+                else
+                {
+                    EditorGUILayout.HelpBox(
+                        "現在の抽出対象RendererにはMaterialがありません。",
+                        MessageType.Info
+                    );
+                }
             }
 
             if (_atlasSettingsObject.ApplyModifiedProperties())
@@ -706,11 +895,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             EditorGUILayout.Space(4f);
         }
 
-        private void DrawAtlasSettings()
+        private void DrawAtlasSettings(float contentWidth)
         {
             if (_atlasSettings == null || _atlasSettingsObject == null) return;
 
-            var previousLabelWidth = BeginWideLabels();
+            var previousLabelWidth = BeginWideLabels(contentWidth);
             try
             {
                 _atlasSettingsObject.Update();
@@ -744,9 +933,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 EditorGUILayout.LabelField(
                     "AtlasTexture:label:IslandSizePriority".Glc(),
-                    EditorStyles.boldLabel
+                    MediumSectionLabelStyle
                 );
-                using (new EditorGUI.IndentLevelScope(1))
+                using (var content = new InspectorIndentScope(contentWidth))
                 {
                     islandSizePriority.isExpanded = EditorGUILayout.Foldout(
                         islandSizePriority.isExpanded,
@@ -756,15 +945,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                     if (islandSizePriority.isExpanded)
                     {
-                        DrawMaterialIslandSizePriorityTuners(islandSizePriority);
+                        DrawMaterialIslandSizePriorityTuners(
+                            islandSizePriority,
+                            content.ContentWidth
+                        );
                     }
                 }
 
                 EditorGUILayout.LabelField(
                     "AtlasTexture:label:MaterialSettings".Glc(),
-                    EditorStyles.boldLabel
+                    MediumSectionLabelStyle
                 );
-                using (new EditorGUI.IndentLevelScope(1))
+                using (var content = new InspectorIndentScope(contentWidth))
                 {
                     EditorGUILayout.PropertyField(
                         mergeMaterialGroups,
@@ -778,9 +970,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 EditorGUILayout.LabelField(
                     "AtlasTexture:label:AtlasSettings".Glc(),
-                    EditorStyles.boldLabel
+                    MediumSectionLabelStyle
                 );
-                using (new EditorGUI.IndentLevelScope(1))
+                using (var content = new InspectorIndentScope(contentWidth))
                 {
                     EditorGUILayout.PropertyField(
                         autoSize,
@@ -869,7 +1061,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             EditorGUILayout.Space(4f);
         }
 
-        private void DrawMaterialIslandSizePriorityTuners(SerializedProperty tuners)
+        private void DrawMaterialIslandSizePriorityTuners(
+            SerializedProperty tuners,
+            float contentWidth)
         {
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -910,7 +1104,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
                     var selectorWidth = Mathf.Max(
                         1f,
-                        _rightPaneContentWidth
+                        contentWidth
                         - EditorStyles.helpBox.padding.horizontal
                         - EditorStyles.helpBox.margin.horizontal
                         - 24f
@@ -925,64 +1119,70 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
         }
 
-        private void DrawOptions()
+        private void DrawExtractionOptionsSection(float contentWidth)
         {
             if (_extractionTargetPaths.Count == 0) return;
 
-            _showOptions = EditorGUILayout.Foldout(_showOptions, "抽出設定", true);
+            _showOptions = DrawMediumSectionFoldout(
+                _showOptions,
+                "抽出設定"
+            );
             if (!_showOptions) return;
 
-            var previousLabelWidth = BeginWideLabels();
-            try
+            using (new InspectorIndentScope(contentWidth))
             {
-                EditorGUI.BeginChangeCheck();
-
-                _options.BoneMode = (MatsukawaBoneMode)EditorGUILayout.Popup(
-                    "残すボーン",
-                    (int)_options.BoneMode,
-                    new[]
-                    {
-                        "ウェイトのあるボーンだけ残す（推奨）",
-                        "メッシュが参照しているボーンは全部残す",
-                    }
-                );
-
-                if (_options.BoneMode == MatsukawaBoneMode.WeightedOnly)
+                var previousLabelWidth = BeginWideLabels(contentWidth);
+                try
                 {
-                    _options.WeightThreshold = EditorGUILayout.Slider(
-                        new GUIContent(
-                            "ウェイトのしきい値",
-                            "これ以下のウェイトしか持たないボーンは使っていないと見なします。"
-                        ),
-                        _options.WeightThreshold,
-                        0f,
-                        0.01f
+                    EditorGUI.BeginChangeCheck();
+
+                    _options.BoneMode = (MatsukawaBoneMode)EditorGUILayout.Popup(
+                        "残すボーン",
+                        (int)_options.BoneMode,
+                        new[]
+                        {
+                            "ウェイトのあるボーンだけ残す（推奨）",
+                            "メッシュが参照しているボーンは全部残す",
+                        }
                     );
+
+                    if (_options.BoneMode == MatsukawaBoneMode.WeightedOnly)
+                    {
+                        _options.WeightThreshold = EditorGUILayout.Slider(
+                            new GUIContent(
+                                "ウェイトのしきい値",
+                                "これ以下のウェイトしか持たないボーンは使っていないと見なします。"
+                            ),
+                            _options.WeightThreshold,
+                            0f,
+                            0.01f
+                        );
+                    }
+
+                    _options.KeepPhysBoneChains = EditorGUILayout.Toggle(
+                        "PhysBoneのチェーンとコライダーを残す",
+                        _options.KeepPhysBoneChains
+                    );
+                    _options.KeepReferencedObjects = EditorGUILayout.Toggle(
+                        "参照されているオブジェクトを残す",
+                        _options.KeepReferencedObjects
+                    );
+                    _options.ProtectOtherComponents = EditorGUILayout.Toggle(
+                        "他のコンポーネント付きは削除しない",
+                        _options.ProtectOtherComponents
+                    );
+                    _options.KeepHumanoidBones = EditorGUILayout.Toggle(
+                        "Humanoidボーンは常に残す",
+                        _options.KeepHumanoidBones
+                    );
+
+                    if (EditorGUI.EndChangeCheck())
+                        InvalidateAnalysis();
                 }
-
-                _options.KeepPhysBoneChains = EditorGUILayout.Toggle(
-                    "PhysBoneのチェーンとコライダーを残す",
-                    _options.KeepPhysBoneChains
-                );
-                _options.KeepReferencedObjects = EditorGUILayout.Toggle(
-                    "参照されているオブジェクトを残す",
-                    _options.KeepReferencedObjects
-                );
-                _options.ProtectOtherComponents = EditorGUILayout.Toggle(
-                    "他のコンポーネント付きは削除しない",
-                    _options.ProtectOtherComponents
-                );
-                _options.KeepHumanoidBones = EditorGUILayout.Toggle(
-                    "Humanoidボーンは常に残す",
-                    _options.KeepHumanoidBones
-                );
-
-                if (EditorGUI.EndChangeCheck())
-                    InvalidateAnalysis();
-            }
-            finally
-            {
-                EditorGUIUtility.labelWidth = previousLabelWidth;
+                finally
+                {
+                    EditorGUIUtility.labelWidth = previousLabelWidth;
+                }
             }
 
             EditorGUILayout.Space(4f);
@@ -1630,15 +1830,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             Repaint();
         }
 
-        private float BeginWideLabels()
+        private static float BeginWideLabels(float contentWidth)
         {
             var previous = EditorGUIUtility.labelWidth;
-            var rightPaneWidth = Mathf.Max(
-                0f,
-                position.width - _leftPaneWidth - SplitterWidth
-            );
             EditorGUIUtility.labelWidth = Mathf.Clamp(
-                rightPaneWidth - 60f,
+                contentWidth - 60f,
                 150f,
                 320f
             );
