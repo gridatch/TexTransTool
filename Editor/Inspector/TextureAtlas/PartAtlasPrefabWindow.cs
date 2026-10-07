@@ -309,13 +309,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
-            EditorGUILayout.LabelField(
-                $"抽出対象（{_extractionTargetPaths.Count}件）",
-                EditorStyles.boldLabel
-            );
-
             if (_extractionTargetPaths.Count == 0)
             {
+                EditorGUILayout.LabelField("抽出対象（0件）", EditorStyles.boldLabel);
                 EditorGUILayout.HelpBox(
                     "左のPrefab Hierarchy右端のチェックで、抽出したいGameObjectを1件以上選択してください。複数選択できます。",
                     MessageType.Info
@@ -324,26 +320,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
-            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
-            {
-                foreach (var path in _extractionTargetPaths
-                             .OrderBy(path => path, StringComparer.Ordinal)
-                             .Take(8))
-                {
-                    EditorGUILayout.LabelField(
-                        string.IsNullOrEmpty(path) ? "<Prefab Root>" : path,
-                        EditorStyles.miniLabel
-                    );
-                }
-
-                if (_extractionTargetPaths.Count > 8)
-                {
-                    EditorGUILayout.LabelField(
-                        $"... ほか {_extractionTargetPaths.Count - 8} 件",
-                        EditorStyles.miniLabel
-                    );
-                }
-            }
+            DrawExtractionTargetSummary();
 
             var nextOutputName = EditorGUILayout.TextField(
                 new GUIContent(
@@ -375,6 +352,48 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             EditorGUILayout.Space(4f);
+        }
+
+        private void DrawExtractionTargetSummary()
+        {
+            var paths = _extractionTargetPaths
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            var names = paths
+                .Select(path =>
+                {
+                    if (string.IsNullOrEmpty(path)) return "<Prefab Root>";
+                    var separator = path.LastIndexOf('/');
+                    return separator >= 0 && separator + 1 < path.Length
+                        ? path.Substring(separator + 1)
+                        : path;
+                })
+                .ToArray();
+
+            const int visibleNameCount = 3;
+            var visibleNames = names.Take(visibleNameCount).ToArray();
+            var summary = string.Join(" / ", visibleNames);
+            if (names.Length > visibleNameCount)
+                summary += " / ほか " + (names.Length - visibleNameCount) + " 件";
+
+            var tooltip = string.Join(
+                "\n",
+                paths.Select(path =>
+                    string.IsNullOrEmpty(path) ? "<Prefab Root>" : path)
+            );
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.LabelField(
+                    $"抽出対象（{paths.Length}件）",
+                    EditorStyles.boldLabel,
+                    GUILayout.Width(104f)
+                );
+                EditorGUILayout.LabelField(
+                    new GUIContent(summary, tooltip),
+                    EditorStyles.miniLabel
+                );
+            }
         }
 
         private void DrawRendererSelection()
@@ -957,20 +976,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     "Humanoidボーンは常に残す",
                     _options.KeepHumanoidBones
                 );
-
-                var avatarSource = IsAvatarSource();
-                using (new EditorGUI.DisabledScope(avatarSource))
-                {
-                    var stripValue = avatarSource
-                        ? true
-                        : _options.StripAvatarComponents;
-                    var nextStrip = EditorGUILayout.Toggle(
-                        "アバター用コンポーネントを外す",
-                        stripValue
-                    );
-                    if (avatarSource is false)
-                        _options.StripAvatarComponents = nextStrip;
-                }
 
                 if (EditorGUI.EndChangeCheck())
                     InvalidateAnalysis();

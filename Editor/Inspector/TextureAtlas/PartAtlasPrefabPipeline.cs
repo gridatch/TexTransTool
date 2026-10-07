@@ -1080,8 +1080,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             var copy = CloneOptions(source);
             copy.WorkOnCopy = false;
-            if (forceStripAvatarComponents)
-                copy.StripAvatarComponents = true;
+            copy.StripAvatarComponents = forceStripAvatarComponents;
 
             if (copy.ForceDeletePaths.Count > 0)
             {
