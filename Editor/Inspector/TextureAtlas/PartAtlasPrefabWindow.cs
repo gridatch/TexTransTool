@@ -1138,25 +1138,22 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             EditorGUILayout.Space(8f);
+            var atlasRequested = _atlasSettings != null
+                && _atlasSettings.AtlasTargetMaterials.Any(material => material != null);
             var automaticTargets = GetAutomaticAtlasRenderers();
 
             using (new EditorGUI.DisabledScope(
                        _entries.All(entry => entry.Keep is false)
-                       || automaticTargets.Length == 0))
+                       || (atlasRequested && automaticTargets.Length == 0)))
             {
-                if (GUILayout.Button("抽出 → Atlas → Prefab保存", GUILayout.Height(32f)))
+                var executeLabel = atlasRequested
+                    ? "抽出 → Atlas → Prefab保存"
+                    : "抽出 → Prefab保存";
+                if (GUILayout.Button(executeLabel, GUILayout.Height(32f)))
                     Execute();
             }
 
-            if (_atlasSettings == null
-                || _atlasSettings.AtlasTargetMaterials.Any(material => material != null) is false)
-            {
-                EditorGUILayout.HelpBox(
-                    "アトラス化するMaterialを1件以上選択してください。",
-                    MessageType.Warning
-                );
-            }
-            else if (automaticTargets.Length == 0)
+            if (atlasRequested && automaticTargets.Length == 0)
             {
                 EditorGUILayout.HelpBox(
                     "選択したMaterialを使用する抽出対象Rendererに、アトラス化可能なRendererがありません。",
@@ -1187,16 +1184,22 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 entry.Keep is false
                 && entry.Category == "Unknown"
             );
+            var atlasRequested = _atlasSettings.AtlasTargetMaterials
+                .Any(material => material != null);
             var atlasCount = GetAutomaticAtlasRenderers().Length;
 
             var confirm =
                 "抽出対象 "
                 + _extractionTargetPaths.Count
-                + " 件をPrefab化し、"
-                + atlasCount
-                + " 件のRendererをアトラス化します。"
-                + "\n\n名前: "
-                + sanitizedOutputName;
+                + " 件をPrefab化します。";
+            if (atlasRequested)
+            {
+                confirm +=
+                    "\nアトラス化するRenderer: "
+                    + atlasCount
+                    + " 件";
+            }
+            confirm += "\n\n名前: " + sanitizedOutputName;
 
             if (unknownUnchecked > 0)
             {

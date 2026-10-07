@@ -347,6 +347,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (request.AtlasSettings == null)
                 return Fail(result, "AtlasTexture設定が指定されていません。");
 
+            var atlasRequested = request.AtlasSettings.AtlasTargetMaterials
+                .Any(material => material != null);
+
             var normalizedTargetPaths = NormalizeExtractionTargetPaths(
                 request.ExtractionTargetPaths
             );
@@ -358,7 +361,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             var requestedOutputName = matsukawa.SanitizeName(request.OutputName?.Trim() ?? "");
             if (string.IsNullOrWhiteSpace(requestedOutputName))
-                return Fail(result, "出力名を入力してください。");
+                return Fail(result, "名前を入力してください。");
 
             if (TryValidateOutputName(
                     requestedOutputName,
@@ -447,12 +450,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     })
                     .ToList();
 
-                var atlasSettingsError = ValidateAtlasSettingsReferences(
-                    request.AtlasSettings,
-                    instantiatedRoot
-                );
-                if (!string.IsNullOrEmpty(atlasSettingsError))
-                    return Fail(result, atlasSettingsError);
+                if (atlasRequested)
+                {
+                    var atlasSettingsError = ValidateAtlasSettingsReferences(
+                        request.AtlasSettings,
+                        instantiatedRoot
+                    );
+                    if (!string.IsNullOrEmpty(atlasSettingsError))
+                        return Fail(result, atlasSettingsError);
+                }
 
                 var entries = matsukawa.CollectRenderers(instantiatedRoot).ToList();
                 foreach (var entry in entries)
@@ -486,42 +492,48 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
                 }
 
-                // Atlas and animation validation must use the original source hierarchy before
-                // extraction targets are staged under the temporary WDT container.
-                var (preflightMaterials, preflightRenderers) = ResolveAtlasTargets(
-                    request.AtlasSettings,
-                    instantiatedRoot,
-                    request.KeepRendererKeys
-                );
-
-                if (preflightMaterials.Count == 0 || preflightRenderers.Length == 0)
+                // Atlas-specific preflight is required only when at least one Material was
+                // explicitly selected for atlasing. Extraction itself remains independent.
+                var retainedAtlasRenderers = Array.Empty<Renderer>();
+                if (atlasRequested)
                 {
-                    return Fail(
-                        result,
-                        "選択したMaterialを使用する抽出対象Rendererに、アトラス化可能なRendererがありません。"
-                    );
-                }
-
-                var retainedAtlasRenderers = preflightRenderers.ToArray();
-                var preflightMeshes = preflightRenderers
-                    .Select(GetRendererMesh)
-                    .Where(mesh => mesh != null)
-                    .Cast<Mesh>()
-                    .ToHashSet();
-
-                if (AtlasTextureBaker.ValidateAnimationObjectReferences(
+                    // Atlas and animation validation must use the original source hierarchy before
+                    // extraction targets are staged under the temporary WDT container.
+                    var (preflightMaterials, preflightRenderers) = ResolveAtlasTargets(
+                        request.AtlasSettings,
                         instantiatedRoot,
-                        preflightRenderers,
-                        preflightMaterials,
-                        preflightMeshes,
-                        displayDialog: false
-                    ) is false)
-                {
-                    return Fail(
-                        result,
-                        "抽出前のMesh / Materialを直接参照するAnimationClipがあるため中断しました。"
-                        + "該当Clip / bindingはConsoleに出力しています。"
+                        request.KeepRendererKeys
                     );
+
+                    if (preflightMaterials.Count == 0 || preflightRenderers.Length == 0)
+                    {
+                        return Fail(
+                            result,
+                            "選択したMaterialを使用する抽出対象Rendererに、アトラス化可能なRendererがありません。"
+                        );
+                    }
+
+                    retainedAtlasRenderers = preflightRenderers.ToArray();
+                    var preflightMeshes = preflightRenderers
+                        .Select(GetRendererMesh)
+                        .Where(mesh => mesh != null)
+                        .Cast<Mesh>()
+                        .ToHashSet();
+
+                    if (AtlasTextureBaker.ValidateAnimationObjectReferences(
+                            instantiatedRoot,
+                            preflightRenderers,
+                            preflightMaterials,
+                            preflightMeshes,
+                            displayDialog: false
+                        ) is false)
+                    {
+                        return Fail(
+                            result,
+                            "抽出前のMesh / Materialを直接参照するAnimationClipがあるため中断しました。"
+                            + "該当Clip / bindingはConsoleに出力しています。"
+                        );
+                    }
                 }
 
                 // HCE derives the output folder and Prefab name from the working root name.
@@ -748,45 +760,48 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (!string.IsNullOrEmpty(finalReferenceError))
                     return Fail(result, finalReferenceError);
 
-                var (targetMaterials, targetRenderers) = ResolveRetainedAtlasTargets(
-                    request.AtlasSettings,
-                    extractionRoot,
-                    retainedAtlasRenderers
-                );
-
-                if (targetMaterials.Count == 0 || targetRenderers.Length == 0)
+                if (atlasRequested)
                 {
-                    return Fail(
-                        result,
-                        "抽出結果の中に、現在のAtlasTexture設定と一致するアトラス化対象がありません。"
+                    var (targetMaterials, targetRenderers) = ResolveRetainedAtlasTargets(
+                        request.AtlasSettings,
+                        extractionRoot,
+                        retainedAtlasRenderers
+                    );
+
+                    if (targetMaterials.Count == 0 || targetRenderers.Length == 0)
+                    {
+                        return Fail(
+                            result,
+                            "抽出結果の中に、現在のAtlasTexture設定と一致するアトラス化対象がありません。"
+                        );
+                    }
+
+                    if (AtlasTextureBaker.BakeResolved(
+                            request.AtlasSettings.ToBakeSettings(),
+                            extractionRoot,
+                            targetMaterials,
+                            targetRenderers,
+                            requestedOutputName,
+                            result.AtlasOutputFolder,
+                            promptOverwrite: false,
+                            pingOutputFolder: false,
+                            recordUndo: false
+                        ) is false)
+                    {
+                        return Fail(result, "TTT Atlas処理に失敗したため、Prefab化を中断しました。");
+                    }
+
+                    RemoveSupersededTrimMeshes(matsukawa, extraction);
+
+                    matsukawa.AddReportNote(
+                        extraction,
+                        "Atlas Asset: " + result.AtlasOutputFolder
                     );
                 }
 
-                if (AtlasTextureBaker.BakeResolved(
-                        request.AtlasSettings.ToBakeSettings(),
-                        extractionRoot,
-                        targetMaterials,
-                        targetRenderers,
-                        requestedOutputName,
-                        result.AtlasOutputFolder,
-                        promptOverwrite: false,
-                        pingOutputFolder: false,
-                        recordUndo: false
-                    ) is false)
-                {
-                    return Fail(result, "TTT Atlas処理に失敗したため、Prefab化を中断しました。");
-                }
-
-                RemoveSupersededTrimMeshes(matsukawa, extraction);
-
-                matsukawa.AddReportNote(
-                    extraction,
-                    "Atlas Asset: " + result.AtlasOutputFolder
-                );
-
                 var prefabPath = matsukawa.SavePrefab(extraction);
                 if (string.IsNullOrEmpty(prefabPath))
-                    return Fail(result, "抽出・アトラス化後のPrefabを保存できませんでした。");
+                    return Fail(result, "Prefabを保存できませんでした。");
 
                 var reportText = matsukawa.BuildReportText(extraction);
                 matsukawa.SetReportText(extraction, reportText);
