@@ -6,11 +6,24 @@ using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
     internal sealed class PartAtlasPrefabWindow : EditorWindow
     {
+        // UI Toolkit splitters do not automatically register Unity Editor
+        // resize cursors. DrawImmediate is the same approach Unity 2022.3
+        // uses for its built-in VisualSplitter.
+        private sealed class InspectorPaneSplitter : ImmediateModeElement
+        {
+            protected override void ImmediateRepaint()
+            {
+                EditorGUIUtility.AddCursorRect(
+                    contentRect, MouseCursor.SplitResizeLeftRight);
+            }
+        }
+
         private PartAtlasPrefabSettings? _atlasSettings;
         private SerializedObject? _atlasSettingsObject;
         private MatsukawaAdapter? _matsukawa;
@@ -31,6 +44,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private TreeViewState? _hierarchyTreeState;
         private PartAtlasPrefabHierarchyView? _hierarchyView;
         private PartAtlasPrefabPreview? _preview;
+        private PartAtlasPrefabReadOnlyInspector? _readOnlyInspector;
+        private IMGUIContainer? _legacyPanels;
+        private VisualElement? _inspectorSplitter;
+        private float _splitterStartX;
+        private float _splitterStartWidth;
+        private int _splitterPointerId = -1;
 
         private string _outputName = "";
         private string _lastSuggestedOutputName = "";
@@ -41,6 +60,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private bool _showProtected = true;
 
         private float _leftPaneWidth = 320f;
+        private float _inspectorPaneWidth = 340f;
         private float _hierarchyPaneFraction = 0.58f;
         private float _rightPaneContentWidth = RightPaneMinWidth;
         private GameObject? _rendererLinkHighlightObject;
@@ -51,6 +71,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private const float MinPreviewHeight = 180f;
         private const float LeftPaneMinWidth = 240f;
         private const float RightPaneMinWidth = 560f;
+        private const float InspectorPaneMinWidth = 300f;
 
         [MenuItem("Tools/TexTransTool/WDT/Prefab抽出・アトラス化...")]
         private static void OpenFromMenu()
@@ -62,7 +83,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             var window = GetWindow<PartAtlasPrefabWindow>();
             window.titleContent = new GUIContent("TTT Prefab抽出");
-            window.minSize = new Vector2(900f, 680f);
+            window.minSize = new Vector2(1160f, 680f);
             window.EnsureAtlasSettings();
             window.InitializeAdapter();
             window.Show();
@@ -70,9 +91,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void OnEnable()
         {
+            // Restored windows also need enough width for all three panes.
+            minSize = new Vector2(1160f, 680f);
             EnsureAtlasSettings();
             EnsureHierarchyView();
             _preview ??= new PartAtlasPrefabPreview(Repaint);
+            _readOnlyInspector ??= new PartAtlasPrefabReadOnlyInspector();
             InitializeAdapter();
 
             if (_loadedPrefabRoot != null)
@@ -87,6 +111,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             UnloadSourcePrefab();
             _preview?.Dispose();
             _preview = null;
+            _readOnlyInspector?.Dispose();
+            _readOnlyInspector = null;
+            _legacyPanels = null;
+            _inspectorSplitter = null;
             DestroyAtlasSettings();
         }
 
@@ -144,35 +172,122 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
         }
 
-        private void OnGUI()
+        private void CreateGUI()
+        {
+            _readOnlyInspector ??= new PartAtlasPrefabReadOnlyInspector();
+            var root = rootVisualElement;
+            root.Clear();
+            root.style.flexDirection = FlexDirection.Row;
+            root.style.flexGrow = 1f;
+            root.style.minHeight = 0f;
+
+            // The existing Hierarchy, preview, and extraction settings are kept
+            // in IMGUI. The native custom Inspector must live in UI Toolkit to
+            // support components overriding Editor.CreateInspectorGUI().
+            _legacyPanels = new IMGUIContainer(DrawLegacyPanels);
+            _legacyPanels.style.flexGrow = 1f;
+            _legacyPanels.style.flexShrink = 1f;
+            _legacyPanels.style.minWidth =
+                LeftPaneMinWidth + SplitterWidth + RightPaneMinWidth;
+            root.Add(_legacyPanels);
+
+            _inspectorSplitter = new InspectorPaneSplitter
+            {
+                name = "wdt-inspector-splitter",
+            };
+            _inspectorSplitter.style.width = SplitterWidth;
+            _inspectorSplitter.style.minWidth = SplitterWidth;
+            _inspectorSplitter.style.flexShrink = 0f;
+            _inspectorSplitter.style.backgroundColor =
+                EditorGUIUtility.isProSkin
+                    ? new Color(0.16f, 0.16f, 0.16f)
+                    : new Color(0.72f, 0.72f, 0.72f);
+            _inspectorSplitter.RegisterCallback<PointerDownEvent>(OnInspectorSplitterDown);
+            _inspectorSplitter.RegisterCallback<PointerMoveEvent>(OnInspectorSplitterMove);
+            _inspectorSplitter.RegisterCallback<PointerUpEvent>(OnInspectorSplitterUp);
+            _inspectorSplitter.RegisterCallback<PointerCaptureOutEvent>(OnInspectorSplitterCaptureLost);
+            root.Add(_inspectorSplitter);
+
+            var inspectorPanel = _readOnlyInspector.Root;
+            inspectorPanel.style.width = _inspectorPaneWidth;
+            inspectorPanel.style.minWidth = InspectorPaneMinWidth;
+            inspectorPanel.style.flexGrow = 0f;
+            inspectorPanel.style.flexShrink = 0f;
+            root.Add(inspectorPanel);
+        }
+
+        private void OnInspectorSplitterDown(PointerDownEvent evt)
+        {
+            if (evt.button != 0 || _inspectorSplitter == null)
+                return;
+
+            _splitterStartX = evt.position.x;
+            _splitterStartWidth = _inspectorPaneWidth;
+            _splitterPointerId = evt.pointerId;
+            _inspectorSplitter.CapturePointer(evt.pointerId);
+            evt.StopPropagation();
+        }
+
+        private void OnInspectorSplitterMove(PointerMoveEvent evt)
+        {
+            if (_inspectorSplitter == null
+                || _readOnlyInspector == null
+                || _splitterPointerId != evt.pointerId
+                || !_inspectorSplitter.HasPointerCapture(evt.pointerId))
+                return;
+
+            var maximum = Mathf.Max(InspectorPaneMinWidth,
+                position.width - LeftPaneMinWidth - RightPaneMinWidth - SplitterWidth * 2f);
+            _inspectorPaneWidth = Mathf.Clamp(
+                _splitterStartWidth + _splitterStartX - evt.position.x,
+                InspectorPaneMinWidth, maximum);
+
+            _readOnlyInspector.Root.style.width = _inspectorPaneWidth;
+            _legacyPanels?.MarkDirtyRepaint();
+            evt.StopPropagation();
+        }
+
+        private void OnInspectorSplitterUp(PointerUpEvent evt)
+        {
+            if (_inspectorSplitter == null || evt.pointerId != _splitterPointerId)
+                return;
+
+            _inspectorSplitter.ReleasePointer(evt.pointerId);
+            _splitterPointerId = -1;
+            evt.StopPropagation();
+        }
+
+        private void OnInspectorSplitterCaptureLost(PointerCaptureOutEvent evt)
+        {
+            if (evt.pointerId == _splitterPointerId)
+                _splitterPointerId = -1;
+        }
+
+        private void DrawLegacyPanels()
         {
             EnsureAtlasSettings();
             EnsureHierarchyView();
 
+            var width = _legacyPanels?.contentRect.width ?? Mathf.Max(0f,
+                position.width - _inspectorPaneWidth - SplitterWidth);
+            var height = _legacyPanels?.contentRect.height ?? position.height;
             _leftPaneWidth = Mathf.Clamp(
-                _leftPaneWidth,
-                LeftPaneMinWidth,
-                Mathf.Max(LeftPaneMinWidth, position.width - RightPaneMinWidth - SplitterWidth)
-            );
+                _leftPaneWidth, LeftPaneMinWidth,
+                Mathf.Max(LeftPaneMinWidth, width - RightPaneMinWidth - SplitterWidth));
 
-            var leftRect = new Rect(0f, 0f, _leftPaneWidth, position.height);
-            var splitterRect = new Rect(_leftPaneWidth, 0f, SplitterWidth, position.height);
-            var rightRect = new Rect(
-                splitterRect.xMax,
-                0f,
-                Mathf.Max(0f, position.width - splitterRect.xMax),
-                position.height
-            );
+            var leftRect = new Rect(0f, 0f, _leftPaneWidth, height);
+            var splitterRect = new Rect(leftRect.xMax, 0f, SplitterWidth, height);
+            var centerRect = new Rect(
+                splitterRect.xMax, 0f,
+                Mathf.Max(0f, width - splitterRect.xMax), height);
 
             DrawHierarchyAndPreviewPane(leftRect);
             HandleSplitter(splitterRect);
-            DrawRightPane(rightRect);
+            DrawRightPane(centerRect);
 
             if ((_hierarchyView?.HasActiveFlash ?? false)
                 || EditorApplication.timeSinceStartup < _rendererLinkHighlightUntil)
-            {
                 Repaint();
-            }
         }
 
         private void DrawHierarchyAndPreviewPane(Rect rect)
@@ -325,7 +440,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 _leftPaneWidth = Mathf.Clamp(
                     Event.current.mousePosition.x,
                     LeftPaneMinWidth,
-                    position.width - RightPaneMinWidth - SplitterWidth
+                    (_legacyPanels?.contentRect.width ?? position.width - _inspectorPaneWidth - SplitterWidth)
+                        - RightPaneMinWidth - SplitterWidth
                 );
                 Repaint();
                 Event.current.Use();
@@ -1284,10 +1400,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                             .Where(component => component != null && component is not Transform)
                             .Select(component => component.GetType().Name)
                     );
-                    EditorGUILayout.LabelField(
-                        new GUIContent(path + "  " + components, path + "\n" + components),
-                        EditorStyles.miniLabel
-                    );
+                    // Select the protected object without changing the keep/delete
+                    // decision. The existing checkbox is the only decision control.
+                    if (GUILayout.Button(
+                            new GUIContent(path + "  " + components,
+                                path + "\n" + components + "\nクリックしてInspectorに表示"),
+                            EditorStyles.linkLabel, GUILayout.ExpandWidth(true)))
+                    {
+                        _hierarchyView?.SelectAndReveal(gameObject.transform, flash: true);
+                        OnHierarchySelectionChanged(gameObject.transform);
+                    }
                 }
             }
         }
@@ -1462,6 +1584,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             PartAtlasPrefabPipeline.UnpackPrefabInstancesForStaging(_loadedPrefabRoot);
+            // Load the native Inspector's disposable copy after the source
+            // staging hierarchy has been established.
+            _readOnlyInspector?.SetSourcePrefab(source);
 
             _hierarchyView?.SetRoot(_loadedPrefabRoot);
             BuildValidTargetPaths();
@@ -1766,6 +1891,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _rendererLinkHighlightUntil = 0d;
 
             _hierarchyView?.SetRoot(null);
+            _readOnlyInspector?.SetSourcePrefab(null);
 
             if (_atlasSettings != null)
             {
@@ -1785,6 +1911,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void OnHierarchySelectionChanged(Transform? transform)
         {
+            _readOnlyInspector?.SetSelection(transform, _loadedPrefabRoot?.transform);
             Repaint();
 
             if (transform == null || _loadedPrefabRoot == null)
