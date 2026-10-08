@@ -6,6 +6,7 @@ on:
   push:
     branches: [wdt, 'ci/**']
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

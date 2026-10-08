@@ -14,7 +14,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  syntax:
+    uses: ./.github/workflows/CSharpSyntax.yml
+    permissions:
+      contents: read
+
   publish:
+    needs: syntax
     runs-on: ubuntu-latest
 
     steps:

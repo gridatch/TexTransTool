@@ -36,5 +36,8 @@ See `.github/workflows/CSharpSyntax.yml` for the GitHub Actions job.
 ## Distribution
 
 Debug and Release packagers explicitly exclude `.ci`. The syntax workflow
-does not publish or modify the package. Add publication gates only after
-the positive and negative CI runs have been verified.
+does not publish or modify the package. In this PR the existing Debug and
+Release workflows call the same scanner as a prerequisite; publishing does not
+run if syntax validation fails. Changes are not active until the PR is merged.
+GitHub Actions runs confirmed 350 source files, 15 profiles, zero errors, and
+an expected rejection of a missing-semicolon file.
