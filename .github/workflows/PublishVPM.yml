@@ -141,6 +141,7 @@ jobs:
           rsync -a \
             --exclude='.git' \
             --exclude='.github' \
+            --exclude='.ci' \
             --exclude='DependentUpdater~' \
             --exclude='.vpm-build' \
             ./ "$package_dir/"

@@ -70,6 +70,7 @@ jobs:
           rsync -a \
             --exclude='.git' \
             --exclude='.github' \
+            --exclude='.ci' \
             --exclude='DependentUpdater~' \
             --exclude='.debug-build' \
             ./ "$package_dir/"

@@ -1,50 +1,40 @@
-# Unity compilation CI (WDT)
+# Roslyn C# syntax check
 
-This is an isolated compilation gate prototype, **not** a full integration test of
-the Matsukawa HCE engine or persistent Atlas bake.
+This workflow checks the **C# syntax** of the WDT source with Roslyn. It does
+**not** compile the Unity project or validate references to Unity, Modular
+Avatar, NDMF, Avatar Optimizer, or the Matsukawa HCE API.
 
-- Workflow: `.github/workflows/UnityCompile.yml` (pull requests into `wdt` or manual run).
-- Unity: **2022.3.22f1** (VRChat's supported Editor).
-- Test project: `.ci/unity-project/`.
-- Test package: reconstructed from the **current source commit** using the
-  WDT package-name rewrite and upstream image asset overlay.
-- Dependencies: `vrc-get` from the explicit VPM repositories in the workflow.
-  Versions in `vpm-manifest.json` are **requested baselines**, not a fully
-  locked graph: `vrc-get` may resolve newer compatible versions. Commit a
-  complete VPM lock after the first validated Unity compilation.
-- Acceptance: EditMode tests must run and pass. Unity must first compile all
-  enabled assemblies, then the smoke test verifies core WDT asmdefs are present.
+## What is checked
 
-## Repository Actions secrets required
+- Every `.cs` file under the package source directories.
+- Language version: **C# 9.0**, as used by Unity 2022.3.
+- Multiple preprocessor-symbol profiles, including Unity Editor with and
+  without commonly used optional VRChat/NDMF integrations.
+- Parse errors (including `CS1002: ; expected`) stop CI.
+- The scanner verifies itself using an intentionally invalid C# snippet.
 
-Set in **Settings → Secrets and variables → Actions**:
+The scanner runs in .NET 8 with a pinned Roslyn NuGet dependency. There is
+**no Unity Editor, Unity license, VPM dependency restore, or secret**.
 
-- `UNITY_EMAIL` and `UNITY_PASSWORD`
-- **Personal:** `UNITY_LICENSE` (full contents of `Unity_lic.ulf`)
-- **Pro:** `UNITY_SERIAL` instead of `UNITY_LICENSE`
+## Limitations
 
-See [GameCI activation](https://game.ci/docs/github/activation/).
-If secrets are absent, the workflow **fails**, rather than reporting a skipped
-or successful compile. Never commit credentials or license files. PRs from
-external forks do not have these secrets; those runs are expected to fail until
-an explicit trust-boundary policy is designed.
+- Syntax analysis cannot detect missing types, invalid API calls, incompatible
+  `.asmdef` references, or runtime integration issues.
+- Only preprocessor branches selected by the configured profiles are parsed;
+  not every mathematically possible combination is guaranteed.
+- The Roslyn version is pinned for reproducibility; C# **language version 9**
+  determines which C# grammar is accepted.
 
-## CI scope and release gate rollout
+## Running locally
 
-- Unity compile + NUnit assembly smoke only; no Atlas, Prefab, HCE Reflection
-  contract, or GPU processing verification.
-- A representative, pinned VRChat dependency set, not all version combinations.
-- This source package is assembled independently of the existing ZIP jobs.
-  Reuse common assembly logic or compare shipping sources before release gating.
-- **Do not modify Debug/Release publishing to depend on this check** until
-  a genuine licensed Unity run succeeds and a negative-case compilation
-  failure is demonstrated. This avoids breaking existing distribution.
-- This workflow does not publish anything.
+```sh
+dotnet run --project .ci/syntax-check/CSharpSyntaxCheck.csproj --configuration Release -- .
+```
 
-## Required acceptance tests before release gating
+See `.github/workflows/CSharpSyntax.yml` for the GitHub Actions job.
 
-1. Resolve dependencies and confirm Unity launches under a configured license.
-2. Observe the passing EditMode smoke test in CI.
-3. Add an intentional C# syntax error to a disposable branch; CI must fail.
-4. Fix it; confirm green CI on the same branch.
-5. Only then add fail-closed gates before VPM/Release publication.
+## Distribution
+
+Debug and Release packagers explicitly exclude `.ci`. The syntax workflow
+does not publish or modify the package. Add publication gates only after
+the positive and negative CI runs have been verified.
