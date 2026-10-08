@@ -30,3 +30,20 @@ jobs:
 
       - name: Parse all package C# sources (C# 9)
         run: dotnet run --project .ci/syntax-check/CSharpSyntaxCheck.csproj --configuration Release --no-restore -- .
+
+      - name: Verify broken C# is rejected (CS1002)
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_root="$RUNNER_TEMP/syntax-negative-probe"
+          mkdir -p "$probe_root/Runtime"
+          printf '%s\n' 'class Broken { void Test() { int value = 1 } }' > "$probe_root/Runtime/Broken.cs"
+          set +e
+          output="$(dotnet run --project .ci/syntax-check/CSharpSyntaxCheck.csproj --configuration Release --no-restore -- "$probe_root" 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [[ "$status" -eq 0 ]] || ! grep -q 'error CS1002:' <<< "$output"; then
+            echo "::error::Negative test failed: scanner did not reject a missing semicolon with CS1002."
+            exit 1
+          fi
