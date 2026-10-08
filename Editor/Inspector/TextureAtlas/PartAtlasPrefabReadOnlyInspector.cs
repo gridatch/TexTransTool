@@ -117,9 +117,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             // ApplyModifiedProperties. All values are rendered as plain text.
             try
             {
-                var serialized = new SerializedObject(component);
+                using var serialized = new SerializedObject(component);
                 serialized.UpdateIfRequiredOrScript();
-                var iterator = serialized.GetIterator();
+                using var iterator = serialized.GetIterator();
                 var enterChildren = true;
                 var visited = 0;
 
@@ -132,7 +132,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         break;
                     }
 
-                    var property = iterator.Copy();
+                    // The iterator is consumed synchronously. Copy() would create
+                    // another native SerializedProperty for every displayed row.
+                    var property = iterator;
                     var isGroup = property.hasVisibleChildren
                         && (property.propertyType == SerializedPropertyType.Generic
                             || property.propertyType == SerializedPropertyType.ManagedReference);
