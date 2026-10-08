@@ -51,7 +51,6 @@ jobs:
         with:
           project-path: .ci/unity-project
           repos: |
-            https://vrchat.github.io/packages/index.json
             https://vpm.rs64.net/vpm.json
             https://vpm.nadena.dev/vpm.json
             https://vpm.anatawa12.com/vpm.json
@@ -102,7 +101,7 @@ jobs:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Unity test results
-        if: always()
+        if: always() && steps.unity.outputs.artifactsPath != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: unity-compile-results
