@@ -181,17 +181,17 @@
           },
           "zipSHA256": "c575b161fc34ac961dcdf08a4b9d6d69ae4091d4cfb890cb42d8d0637a0f1db3"
         },
-        "0.1.10+debug.219.read-only-prefab-inspector.4d7dda7": {
+        "0.1.11+wdt.ttt.1.0.2": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.10+debug.219.read-only-prefab-inspector.4d7dda7",
+          "version": "0.1.11+wdt.ttt.1.0.2",
           "unity": "2022.3",
-          "description": "Debug build 219 for read-only-prefab-inspector from feat/read-only-prefab-inspector at 4d7dda7. Based on WDT 0.1.10 / upstream TexTransTool 1.0.2.",
+          "description": "Non-destructive modification to Texture!",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.10+debug.219.read-only-prefab-inspector.4d7dda7.zip",
+          "url": "https://github.com/gridatch/TexTransTool/releases/download/wdt-v0.1.11+wdt.ttt.1.0.2/net.gridatch.tex-trans-tool-0.1.11+wdt.ttt.1.0.2.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -204,7 +204,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "509536397ae64709b90fd412d449a387d5bec3774f1bfe6b1d09ded7282a35da"
+          "zipSHA256": "56a0ba4255c5d18dc118caf898d279c123a3c7addf8ae5c5fac3c18e592f51e9"
         }
       }
     }

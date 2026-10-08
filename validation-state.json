@@ -1,10 +1,5 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
-  "baseVersion": "0.1.10",
-  "lastDebugSerial": 219,
-  "currentDebugVersion": "0.1.10+debug.219.read-only-prefab-inspector.4d7dda7",
-  "currentDebugChange": "read-only-prefab-inspector",
-  "currentDebugBranch": "feat/read-only-prefab-inspector",
-  "currentDebugCommit": "4d7dda7daace374eeb4bc478bc3e6aebee677750",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.10+debug.219.read-only-prefab-inspector.4d7dda7.zip"
+  "baseVersion": "0.1.11+wdt.ttt.1.0.2",
+  "lastDebugSerial": 219
 }
