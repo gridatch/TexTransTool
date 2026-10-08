@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.9",
-  "lastDebugSerial": 211,
-  "currentDebugVersion": "0.1.9+debug.211.part-atlas-preview.e202795",
+  "lastDebugSerial": 212,
+  "currentDebugVersion": "0.1.9+debug.212.part-atlas-preview.6b28407",
   "currentDebugChange": "part-atlas-preview",
   "currentDebugBranch": "feat/part-atlas-preview",
-  "currentDebugCommit": "e2027950c612c866927b17c781a02df37b3623d4",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.9+debug.211.part-atlas-preview.e202795.zip"
+  "currentDebugCommit": "6b2840704953dc9b3bd954acb674283064d1faf0",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.9+debug.212.part-atlas-preview.6b28407.zip"
 }
