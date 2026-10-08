@@ -1,5 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.9",
-  "lastDebugSerial": 210
+  "lastDebugSerial": 211,
+  "currentDebugVersion": "0.1.9+debug.211.part-atlas-preview.e202795",
+  "currentDebugChange": "part-atlas-preview",
+  "currentDebugBranch": "feat/part-atlas-preview",
+  "currentDebugCommit": "e2027950c612c866927b17c781a02df37b3623d4",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.9+debug.211.part-atlas-preview.e202795.zip"
 }
