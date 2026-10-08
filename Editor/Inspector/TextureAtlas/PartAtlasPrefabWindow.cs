@@ -31,6 +31,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private TreeViewState? _hierarchyTreeState;
         private PartAtlasPrefabHierarchyView? _hierarchyView;
         private PartAtlasPrefabPreview? _preview;
+        private PartAtlasPrefabReadOnlyInspector? _readOnlyInspector;
 
         private string _outputName = "";
         private string _lastSuggestedOutputName = "";
@@ -41,6 +42,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private bool _showProtected = true;
 
         private float _leftPaneWidth = 320f;
+        private float _inspectorPaneWidth = 340f;
         private float _hierarchyPaneFraction = 0.58f;
         private float _rightPaneContentWidth = RightPaneMinWidth;
         private GameObject? _rendererLinkHighlightObject;
@@ -51,6 +53,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private const float MinPreviewHeight = 180f;
         private const float LeftPaneMinWidth = 240f;
         private const float RightPaneMinWidth = 560f;
+        private const float InspectorPaneMinWidth = 300f;
 
         [MenuItem("Tools/TexTransTool/WDT/Prefab抽出・アトラス化...")]
         private static void OpenFromMenu()
@@ -62,7 +65,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             var window = GetWindow<PartAtlasPrefabWindow>();
             window.titleContent = new GUIContent("TTT Prefab抽出");
-            window.minSize = new Vector2(900f, 680f);
+            window.minSize = new Vector2(1160f, 680f);
             window.EnsureAtlasSettings();
             window.InitializeAdapter();
             window.Show();
@@ -73,6 +76,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             EnsureAtlasSettings();
             EnsureHierarchyView();
             _preview ??= new PartAtlasPrefabPreview(Repaint);
+            _readOnlyInspector ??= new PartAtlasPrefabReadOnlyInspector();
             InitializeAdapter();
 
             if (_loadedPrefabRoot != null)
@@ -87,6 +91,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             UnloadSourcePrefab();
             _preview?.Dispose();
             _preview = null;
+            _readOnlyInspector?.SetSelection(null, null);
+            _readOnlyInspector = null;
             DestroyAtlasSettings();
         }
 
@@ -148,25 +154,36 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             EnsureAtlasSettings();
             EnsureHierarchyView();
+            _readOnlyInspector ??= new PartAtlasPrefabReadOnlyInspector();
 
-            _leftPaneWidth = Mathf.Clamp(
-                _leftPaneWidth,
-                LeftPaneMinWidth,
-                Mathf.Max(LeftPaneMinWidth, position.width - RightPaneMinWidth - SplitterWidth)
-            );
+            // Reserve independent minimum widths for the hierarchy/preview,
+            // main settings, and read-only Inspector.
+            var leftMax = Mathf.Max(LeftPaneMinWidth,
+                position.width - RightPaneMinWidth - InspectorPaneMinWidth - SplitterWidth * 2f);
+            _leftPaneWidth = Mathf.Clamp(_leftPaneWidth, LeftPaneMinWidth, leftMax);
+
+            var inspectorMax = Mathf.Max(InspectorPaneMinWidth,
+                position.width - _leftPaneWidth - RightPaneMinWidth - SplitterWidth * 2f);
+            _inspectorPaneWidth = Mathf.Clamp(
+                _inspectorPaneWidth, InspectorPaneMinWidth, inspectorMax);
 
             var leftRect = new Rect(0f, 0f, _leftPaneWidth, position.height);
-            var splitterRect = new Rect(_leftPaneWidth, 0f, SplitterWidth, position.height);
-            var rightRect = new Rect(
-                splitterRect.xMax,
-                0f,
-                Mathf.Max(0f, position.width - splitterRect.xMax),
-                position.height
-            );
+            var leftSplitterRect = new Rect(leftRect.xMax, 0f, SplitterWidth, position.height);
+            var inspectorRect = new Rect(
+                Mathf.Max(leftSplitterRect.xMax, position.width - _inspectorPaneWidth),
+                0f, _inspectorPaneWidth, position.height);
+            var rightSplitterRect = new Rect(
+                inspectorRect.x - SplitterWidth, 0f, SplitterWidth, position.height);
+            var centerRect = new Rect(
+                leftSplitterRect.xMax, 0f,
+                Mathf.Max(0f, rightSplitterRect.x - leftSplitterRect.xMax),
+                position.height);
 
             DrawHierarchyAndPreviewPane(leftRect);
-            HandleSplitter(splitterRect);
-            DrawRightPane(rightRect);
+            HandleSplitter(leftSplitterRect);
+            DrawRightPane(centerRect);
+            HandleInspectorSplitter(rightSplitterRect);
+            _readOnlyInspector.Draw(inspectorRect);
 
             if ((_hierarchyView?.HasActiveFlash ?? false)
                 || EditorApplication.timeSinceStartup < _rendererLinkHighlightUntil)
@@ -230,6 +247,41 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         1f - minPreview / availableHeight
                     );
                 }
+                Repaint();
+                Event.current.Use();
+            }
+            else if (eventType == EventType.MouseUp && GUIUtility.hotControl == controlId)
+            {
+                GUIUtility.hotControl = 0;
+                Event.current.Use();
+            }
+        }
+
+        private void HandleInspectorSplitter(Rect splitterRect)
+        {
+            EditorGUIUtility.AddCursorRect(splitterRect, MouseCursor.ResizeHorizontal);
+            if (Event.current.type == EventType.Repaint)
+            {
+                EditorGUI.DrawRect(splitterRect, EditorGUIUtility.isProSkin
+                    ? new Color(0.16f, 0.16f, 0.16f, 1f)
+                    : new Color(0.72f, 0.72f, 0.72f, 1f));
+            }
+
+            var controlId = GUIUtility.GetControlID(FocusType.Passive, splitterRect);
+            var eventType = Event.current.GetTypeForControl(controlId);
+            if (eventType == EventType.MouseDown
+                && Event.current.button == 0
+                && splitterRect.Contains(Event.current.mousePosition))
+            {
+                GUIUtility.hotControl = controlId;
+                Event.current.Use();
+            }
+            else if (eventType == EventType.MouseDrag && GUIUtility.hotControl == controlId)
+            {
+                _inspectorPaneWidth = Mathf.Clamp(
+                    position.width - Event.current.mousePosition.x,
+                    InspectorPaneMinWidth,
+                    position.width - _leftPaneWidth - RightPaneMinWidth - SplitterWidth * 2f);
                 Repaint();
                 Event.current.Use();
             }
@@ -325,7 +377,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 _leftPaneWidth = Mathf.Clamp(
                     Event.current.mousePosition.x,
                     LeftPaneMinWidth,
-                    position.width - RightPaneMinWidth - SplitterWidth
+                    position.width - RightPaneMinWidth - InspectorPaneMinWidth - SplitterWidth * 2f
                 );
                 Repaint();
                 Event.current.Use();
@@ -1284,10 +1336,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                             .Where(component => component != null && component is not Transform)
                             .Select(component => component.GetType().Name)
                     );
-                    EditorGUILayout.LabelField(
-                        new GUIContent(path + "  " + components, path + "\n" + components),
-                        EditorStyles.miniLabel
-                    );
+                    // Select the protected object without changing the keep/delete
+                    // decision. The existing checkbox is the only decision control.
+                    if (GUILayout.Button(
+                            new GUIContent(path + "  " + components,
+                                path + "\n" + components + "\nクリックしてInspectorに表示"),
+                            EditorStyles.miniLabel, GUILayout.ExpandWidth(true)))
+                    {
+                        _hierarchyView?.SelectAndReveal(gameObject.transform, flash: true);
+                        OnHierarchySelectionChanged(gameObject.transform);
+                    }
                 }
             }
         }
@@ -1766,6 +1824,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _rendererLinkHighlightUntil = 0d;
 
             _hierarchyView?.SetRoot(null);
+            _readOnlyInspector?.SetSelection(null, null);
 
             if (_atlasSettings != null)
             {
@@ -1785,6 +1844,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void OnHierarchySelectionChanged(Transform? transform)
         {
+            _readOnlyInspector?.SetSelection(transform, _loadedPrefabRoot?.transform);
             Repaint();
 
             if (transform == null || _loadedPrefabRoot == null)
