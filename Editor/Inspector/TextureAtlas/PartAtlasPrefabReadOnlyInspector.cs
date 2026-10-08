@@ -28,6 +28,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private GameObject? _inspectionRoot;
         private Transform? _originalRoot;
         private Transform? _selectedOriginal;
+        private int _selectionRevision;
 
         internal VisualElement Root => _root;
 
@@ -56,6 +57,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         /// </summary>
         internal void SetSourcePrefab(GameObject? sourcePrefab)
         {
+            _selectionRevision++;
             ClearEditors();
             _selectedOriginal = null;
             _originalRoot = null;
@@ -100,18 +102,31 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             _selectedOriginal = selected;
             _originalRoot = originalRoot;
+            var revision = ++_selectionRevision;
             ClearEditors();
 
             if (selected == null || originalRoot == null || _inspectionRoot == null)
                 return;
 
-            var counterpart = FindCounterpart(selected, originalRoot,
-                _inspectionRoot.transform);
-            if (counterpart == null)
-                return;
+            // TreeView selection changes occur inside an IMGUI event. Custom
+            // Editors can build UI Toolkit/IMGUI hybrids; construct those
+            // inspectors on the next UI Toolkit panel update instead.
+            _root.schedule.Execute(() =>
+            {
+                if (revision != _selectionRevision
+                    || _inspectionRoot == null
+                    || selected == null
+                    || originalRoot == null)
+                    return;
 
-            RenderSelectedObject(counterpart.gameObject);
-            _scroll.scrollOffset = Vector2.zero;
+                var counterpart = FindCounterpart(selected, originalRoot,
+                    _inspectionRoot.transform);
+                if (counterpart == null)
+                    return;
+
+                RenderSelectedObject(counterpart.gameObject);
+                _scroll.scrollOffset = Vector2.zero;
+            }).ExecuteLater(0);
         }
 
         private static Transform? FindCounterpart(
