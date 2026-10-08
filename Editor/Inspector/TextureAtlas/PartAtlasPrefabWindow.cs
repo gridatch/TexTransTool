@@ -30,6 +30,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private TreeViewState? _hierarchyTreeState;
         private PartAtlasPrefabHierarchyView? _hierarchyView;
+        private PartAtlasPrefabPreview? _preview;
 
         private string _outputName = "";
         private string _lastSuggestedOutputName = "";
@@ -40,11 +41,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private bool _showProtected = true;
 
         private float _leftPaneWidth = 320f;
+        private float _hierarchyPaneFraction = 0.58f;
         private float _rightPaneContentWidth = RightPaneMinWidth;
         private GameObject? _rendererLinkHighlightObject;
         private double _rendererLinkHighlightUntil;
 
         private const float SplitterWidth = 5f;
+        private const float MinHierarchyHeight = 190f;
+        private const float MinPreviewHeight = 180f;
         private const float LeftPaneMinWidth = 240f;
         private const float RightPaneMinWidth = 560f;
 
@@ -68,15 +72,21 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             EnsureAtlasSettings();
             EnsureHierarchyView();
+            _preview ??= new PartAtlasPrefabPreview(Repaint);
             InitializeAdapter();
 
             if (_loadedPrefabRoot != null)
+            {
                 _hierarchyView?.SetRoot(_loadedPrefabRoot);
+                Refresh3DPreview();
+            }
         }
 
         private void OnDisable()
         {
             UnloadSourcePrefab();
+            _preview?.Dispose();
+            _preview = null;
             DestroyAtlasSettings();
         }
 
@@ -154,7 +164,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 position.height
             );
 
-            DrawHierarchyPane(leftRect);
+            DrawHierarchyAndPreviewPane(leftRect);
             HandleSplitter(splitterRect);
             DrawRightPane(rightRect);
 
@@ -165,10 +175,69 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
         }
 
-        private void DrawHierarchyPane(Rect rect)
+        private void DrawHierarchyAndPreviewPane(Rect rect)
         {
             if (_hierarchyView == null) return;
-            _hierarchyView.Draw(rect);
+
+            var available = Mathf.Max(0f, rect.height - SplitterWidth);
+            var minHierarchy = Mathf.Min(MinHierarchyHeight, available * 0.5f);
+            var minPreview = Mathf.Min(MinPreviewHeight, available - minHierarchy);
+            var hierarchyHeight = Mathf.Clamp(
+                available * _hierarchyPaneFraction,
+                minHierarchy,
+                available - minPreview
+            );
+
+            var hierarchyRect = new Rect(rect.x, rect.y, rect.width, hierarchyHeight);
+            var splitterRect = new Rect(rect.x, hierarchyRect.yMax, rect.width, SplitterWidth);
+            var previewRect = new Rect(rect.x, splitterRect.yMax, rect.width,
+                Mathf.Max(0f, rect.yMax - splitterRect.yMax));
+
+            _hierarchyView.Draw(hierarchyRect);
+            HandleHierarchyPreviewSplitter(rect, splitterRect, available, minHierarchy, minPreview);
+            _preview?.Draw(previewRect);
+        }
+
+        private void HandleHierarchyPreviewSplitter(
+            Rect paneRect, Rect splitterRect, float availableHeight,
+            float minHierarchy, float minPreview)
+        {
+            EditorGUIUtility.AddCursorRect(splitterRect, MouseCursor.ResizeVertical);
+
+            if (Event.current.type == EventType.Repaint)
+            {
+                EditorGUI.DrawRect(splitterRect, EditorGUIUtility.isProSkin
+                    ? new Color(0.16f, 0.16f, 0.16f, 1f)
+                    : new Color(0.72f, 0.72f, 0.72f, 1f));
+            }
+
+            var controlId = GUIUtility.GetControlID(FocusType.Passive, splitterRect);
+            var eventType = Event.current.GetTypeForControl(controlId);
+            if (eventType == EventType.MouseDown
+                && Event.current.button == 0
+                && splitterRect.Contains(Event.current.mousePosition))
+            {
+                GUIUtility.hotControl = controlId;
+                Event.current.Use();
+            }
+            else if (eventType == EventType.MouseDrag && GUIUtility.hotControl == controlId)
+            {
+                if (availableHeight > 0f)
+                {
+                    _hierarchyPaneFraction = Mathf.Clamp(
+                        (Event.current.mousePosition.y - paneRect.y) / availableHeight,
+                        minHierarchy / availableHeight,
+                        1f - minPreview / availableHeight
+                    );
+                }
+                Repaint();
+                Event.current.Use();
+            }
+            else if (eventType == EventType.MouseUp && GUIUtility.hotControl == controlId)
+            {
+                GUIUtility.hotControl = 0;
+                Event.current.Use();
+            }
         }
 
         private void DrawRightPane(Rect rect)
@@ -724,6 +793,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 RefreshMaterialCandidates(preserveSelection: true);
                 InvalidateAnalysis();
+                Refresh3DPreview();
             }
             x += 20f;
 
@@ -1491,6 +1561,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 _entries.Clear();
                 RefreshMaterialCandidates(preserveSelection: false);
+                Refresh3DPreview();
                 return;
             }
 
@@ -1503,6 +1574,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 _entries.Clear();
                 RefreshMaterialCandidates(preserveSelection: false);
+                Refresh3DPreview();
                 return;
             }
 
@@ -1541,6 +1613,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _lastSuggestedOutputName = suggestedOutputName;
 
             RefreshMaterialCandidates(preserveSelection: true);
+            Refresh3DPreview();
+        }
+
+        private void Refresh3DPreview()
+        {
+            _preview?.SetRenderers(_entries
+                .Where(entry => entry.Keep && entry.Renderer != null)
+                .Select(entry => entry.Renderer));
+            Repaint();
         }
 
         private void RefreshMaterialCandidates(bool preserveSelection)
@@ -1668,6 +1749,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void UnloadSourcePrefab()
         {
+            // Release baked meshes before PrefabUtility destroys their source hierarchy.
+            _preview?.Clear();
+            _preview?.ResetView();
             InvalidateAnalysis();
             _entries.Clear();
             _materialCandidates.Clear();
