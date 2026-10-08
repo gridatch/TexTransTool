@@ -1,0 +1,110 @@
+name: Unity Compile Check
+
+on:
+  pull_request:
+    branches: [wdt]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  compile:
+    name: Unity 2022.3.22f1 / VPM project
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Checkout upstream image assets
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ReinaS-64892/TTT-ImageAssets
+          path: .ci-image-assets
+
+      - name: Assemble the shipping package inside the test project
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_dir="$GITHUB_WORKSPACE/.ci/unity-project/Packages/net.gridatch.tex-trans-tool"
+          mkdir -p "$package_dir"
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.ci' \
+            --exclude='.ci-image-assets' \
+            --exclude='DependentUpdater~' \
+            --exclude='.debug-build' \
+            --exclude='.vpm-build' \
+            ./ "$package_dir/"
+          cp .ci-image-assets/Image/* "$package_dir/Image/"
+          jq '.name = "net.gridatch.tex-trans-tool" | .displayName = "TexTransTool (WDT)"' \
+            "$package_dir/package.json" > "$package_dir/package.json.tmp"
+          mv "$package_dir/package.json.tmp" "$package_dir/package.json"
+          test -f "$package_dir/Editor/Inspector/TextureAtlas/PartAtlasPrefabWindow.cs"
+
+      - name: Resolve VPM dependencies
+        uses: anatawa12/sh-actions/resolve-vpm-packages@1d155c7a26bcd0a54ffd9cb38fd66ab0d32d23cd
+        with:
+          project-path: .ci/unity-project
+          repos: |
+            https://vrchat.github.io/packages/index.json
+            https://vpm.rs64.net/vpm.json
+            https://vpm.nadena.dev/vpm.json
+            https://vpm.anatawa12.com/vpm.json
+
+      - name: Verify required packages were installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            com.vrchat.avatars \
+            nadena.dev.ndmf \
+            nadena.dev.modular-avatar \
+            com.anatawa12.avatar-optimizer \
+            net.rs64.tex-trans-core \
+            net.rs64.ttce-wgpu \
+            net.rs64.reina-s-liltoon-ndmf-utility; do
+            test -f ".ci/unity-project/Packages/$name/package.json" || {
+              echo "::error::VPM dependency not installed: $name"
+              exit 1
+            }
+          done
+
+      - name: Check Unity license secrets
+        shell: bash
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          if [[ -z "$UNITY_EMAIL" || -z "$UNITY_PASSWORD" || ( -z "$UNITY_LICENSE" && -z "$UNITY_SERIAL" ) ]]; then
+            echo "::error::Unity CI needs UNITY_EMAIL, UNITY_PASSWORD and either UNITY_LICENSE (Personal) or UNITY_SERIAL (Pro). See .ci/README.md."
+            exit 1
+          fi
+
+      - name: Compile package and run Editor assembly smoke tests
+        id: unity
+        uses: game-ci/unity-test-runner@32e57712352b500e17974b245a6dce9e11a73213 # v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: .ci/unity-project
+          unityVersion: 2022.3.22f1
+          testMode: editmode
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Unity test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unity-compile-results
+          path: ${{ steps.unity.outputs.artifactsPath }}
+          if-no-files-found: warn

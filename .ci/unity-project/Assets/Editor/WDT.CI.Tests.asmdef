@@ -1,0 +1,20 @@
+{
+  "name": "WDT.CI.Tests",
+  "rootNamespace": "WDT.CI",
+  "references": [
+    "net.rs64.tex-trans-tool.editor",
+    "net.rs64.tex-trans-tool.inspector",
+    "net.rs64.tex-trans-tool.ndmf"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "autoReferenced": false
+}
