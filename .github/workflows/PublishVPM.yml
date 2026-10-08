@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'WDT package version (X.Y.Z)'
+        description: 'WDT package version (X.Y.Z+wdt.ttt.A.B.C)'
         required: true
         type: string
   push:
@@ -35,8 +35,8 @@ jobs:
               exit 1
             fi
           elif [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            if [[ ! "$GITHUB_REF_NAME" =~ ^release/[0-9]+.[0-9]+.[0-9]+$ ]]; then
-              echo "::error::Release branch must be named release/X.Y.Z. Selected ref: $GITHUB_REF_NAME"
+            if [[ ! "$GITHUB_REF_NAME" =~ ^release/[0-9]+\.[0-9]+\.[0-9]+\+wdt\.ttt\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Release branch must be named release/X.Y.Z+wdt.ttt.A.B.C. Selected ref: $GITHUB_REF_NAME"
               exit 1
             fi
           else
@@ -96,8 +96,16 @@ jobs:
             exit 1
           fi
 
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::WDT package version '$version' must be a stable X.Y.Z version."
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+wdt\.ttt\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::WDT package version '$version' must be X.Y.Z+wdt.ttt.A.B.C."
+            exit 1
+          fi
+
+          # The upstream version in the tag must match the source package.
+          # Only a complete upstream integration advances the base version.
+          version_upstream="${version##*+wdt.ttt.}"
+          if [[ "$version_upstream" != "$base_version" ]]; then
+            echo "::error::WDT package version '$version' claims upstream $version_upstream but package.json is $base_version."
             exit 1
           fi
 
