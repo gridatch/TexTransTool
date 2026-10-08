@@ -9,6 +9,9 @@ the Matsukawa HCE engine or persistent Atlas bake.
 - Test package: reconstructed from the **current source commit** using the
   WDT package-name rewrite and upstream image asset overlay.
 - Dependencies: `vrc-get` from the explicit VPM repositories in the workflow.
+  Versions in `vpm-manifest.json` are **requested baselines**, not a fully
+  locked graph: `vrc-get` may resolve newer compatible versions. Commit a
+  complete VPM lock after the first validated Unity compilation.
 - Acceptance: EditMode tests must run and pass. Unity must first compile all
   enabled assemblies, then the smoke test verifies core WDT asmdefs are present.
 
