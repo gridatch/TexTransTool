@@ -50,14 +50,24 @@ jobs:
           base_version="$(jq -r '.baseVersion // empty' "$state_file")"
           last_serial="$(jq -r '.lastDebugSerial // 0' "$state_file")"
 
-          if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Debug package baseVersion '$base_version' is not a stable X.Y.Z version."
+          # Existing X.Y.Z releases remain valid; new stable releases carry
+          # WDT identity and upstream version as SemVer build metadata.
+          # A second '+' would be invalid: append Debug identifiers after
+          # the existing metadata, rather than starting another section.
+          if [[ "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+wdt\.ttt\.([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            if [[ "${BASH_REMATCH[1]}" != "$upstream_version" ]]; then
+              echo "::error::VPM baseVersion '$base_version' does not match upstream package.json version '$upstream_version'."
+              exit 1
+            fi
+            next_serial="$((last_serial + 1))"
+            version="${base_version}.debug.${next_serial}.${change_id}.${short_sha}"
+          elif [[ "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            next_serial="$((last_serial + 1))"
+            version="${base_version}+debug.${next_serial}.${change_id}.${short_sha}"
+          else
+            echo "::error::Unsupported Debug package baseVersion '$base_version'."
             exit 1
           fi
-
-          next_serial="$((last_serial + 1))"
-
-          version="${base_version}+debug.${next_serial}.${change_id}.${short_sha}"
           zip_name="net.gridatch.tex-trans-tool-${version}.zip"
           package_dir="${RUNNER_TEMP}/net.gridatch.tex-trans-tool"
           zip_path="$GITHUB_WORKSPACE/$zip_name"
