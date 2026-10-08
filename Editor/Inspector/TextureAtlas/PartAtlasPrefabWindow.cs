@@ -72,7 +72,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             EnsureAtlasSettings();
             EnsureHierarchyView();
-            _preview ??= new PartAtlasPrefabPreview();
+            _preview ??= new PartAtlasPrefabPreview(Repaint);
             InitializeAdapter();
 
             if (_loadedPrefabRoot != null)
@@ -1751,6 +1751,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             // Release baked meshes before PrefabUtility destroys their source hierarchy.
             _preview?.Clear();
+            _preview?.ResetView();
             InvalidateAnalysis();
             _entries.Clear();
             _materialCandidates.Clear();

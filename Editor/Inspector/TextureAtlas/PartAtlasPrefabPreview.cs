@@ -34,6 +34,22 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private PreviewRenderUtility? _utility;
         private Bounds _bounds;
         private bool _hasBounds;
+        private const float InitialYawDegrees = 145f;
+        private const float DegreesPerCanvasWidth = 360f;
+        private readonly Action _requestRepaint;
+        private float _yawDegrees = InitialYawDegrees;
+        private int _dragControlId;
+
+        internal PartAtlasPrefabPreview(Action requestRepaint)
+        {
+            _requestRepaint = requestRepaint ?? throw new ArgumentNullException(nameof(requestRepaint));
+        }
+
+        internal void ResetView()
+        {
+            _yawDegrees = InitialYawDegrees;
+            _dragControlId = 0;
+        }
 
         internal void SetRenderers(IEnumerable<Renderer> renderers)
         {
@@ -121,6 +137,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var canvas = new Rect(rect.x + 4f, title.yMax + 4f,
                 rect.width - 8f, Mathf.Max(0f, rect.yMax - title.yMax - 8f));
 
+            // Only horizontal left-button drags inside the canvas rotate the camera.
+            // The preview never changes source Transforms or rebuilds mesh snapshots
+            // during a drag.
+            HandleOrbitInput(canvas);
+
             // Empty selections have no messages or extra UI: just the canvas.
             if (Event.current.type != EventType.Repaint)
                 return;
@@ -176,6 +197,55 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
         }
 
+        private void HandleOrbitInput(Rect canvas)
+        {
+            // Stable IMGUI control ID across Layout/MouseDrag/Repaint events.
+            var controlId = GUIUtility.GetControlID(FocusType.Passive, canvas);
+            var evt = Event.current;
+            var eventType = evt.GetTypeForControl(controlId);
+
+            if (eventType == EventType.MouseDown
+                && evt.button == 0
+                && GUIUtility.hotControl == 0
+                && _items.Count > 0
+                && canvas.Contains(evt.mousePosition))
+            {
+                GUIUtility.hotControl = controlId;
+                _dragControlId = controlId;
+                evt.Use();
+            }
+            else if (eventType == EventType.MouseDrag
+                     && GUIUtility.hotControl == controlId
+                     && _dragControlId == controlId)
+            {
+                // A drag across the full canvas width makes one full revolution.
+                // Mathf.Repeat wraps continuously in either direction.
+                var deltaDegrees = evt.delta.x * DegreesPerCanvasWidth / Mathf.Max(1f, canvas.width);
+                if (!Mathf.Approximately(deltaDegrees, 0f))
+                {
+                    _yawDegrees = Mathf.Repeat(_yawDegrees + deltaDegrees, 360f);
+                    _requestRepaint();
+                }
+                evt.Use();
+            }
+            else if ((eventType == EventType.MouseUp && evt.button == 0)
+                     && GUIUtility.hotControl == controlId
+                     && _dragControlId == controlId)
+            {
+                GUIUtility.hotControl = 0;
+                _dragControlId = 0;
+                evt.Use();
+            }
+            else if (eventType == EventType.Ignore
+                     && GUIUtility.hotControl == controlId
+                     && _dragControlId == controlId)
+            {
+                // The OS/editor can cancel a captured drag without MouseUp.
+                GUIUtility.hotControl = 0;
+                _dragControlId = 0;
+            }
+        }
+
         private void EncapsulateBounds(DrawItem item)
         {
             var meshBounds = item.Mesh.bounds;
@@ -202,8 +272,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void ConfigureCamera(Camera camera, float aspect)
         {
-            // Fixed three-quarter view. No camera controls in the initial version.
-            var rotation = Quaternion.Euler(18f, 145f, 0f);
+            // Preserve the original fixed elevation and the current framing.
+            // Only the azimuth changes with horizontal canvas drags.
+            var rotation = Quaternion.Euler(18f, _yawDegrees, 0f);
             var center = _bounds.center;
             var forward = rotation * Vector3.forward;
             var right = rotation * Vector3.right;
