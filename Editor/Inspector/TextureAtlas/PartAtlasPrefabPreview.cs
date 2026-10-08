@@ -34,6 +34,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private PreviewRenderUtility? _utility;
         private Bounds _bounds;
         private bool _hasBounds;
+        // Fitting depends on the geometry and the preview aspect ratio,
+        // never on the current azimuth. Recompute only when either changes.
+        private float _fitAspect = -1f;
+        private float _fitOrthographicSize;
+        private const float CameraElevationDegrees = 18f;
+        private const float FitMargin = 1.2f;
         private const float InitialYawDegrees = 145f;
         private const float DegreesPerCanvasWidth = 360f;
         private readonly Action _requestRepaint;
@@ -123,6 +129,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             _items.Clear();
             _hasBounds = false;
+            _fitAspect = -1f;
         }
 
         internal void Draw(Rect rect)
@@ -272,35 +279,40 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void ConfigureCamera(Camera camera, float aspect)
         {
-            // Preserve the original fixed elevation and the current framing.
-            // Only the azimuth changes with horizontal canvas drags.
-            var rotation = Quaternion.Euler(18f, _yawDegrees, 0f);
-            var center = _bounds.center;
-            var forward = rotation * Vector3.forward;
-            var right = rotation * Vector3.right;
-            var up = rotation * Vector3.up;
-            var extents = _bounds.extents;
-
-            float halfWidth = 0f;
-            float halfHeight = 0f;
-            for (int i = 0; i < 8; i++)
+            // A complete revolution must not change the apparent zoom.
+            // A world-space AABB has a maximum horizontal half-extent of
+            // sqrt(ex² + ez²) over all possible azimuths. At the fixed
+            // elevation, its maximum vertical half-extent is
+            // ey*cos(elevation) + sqrt(ex² + ez²)*sin(elevation).
+            // Both limits are independent of _yawDegrees and safely enclose
+            // the source meshes throughout the full orbit.
+            if (_fitAspect != aspect)
             {
-                var offset = new Vector3(
-                    (i & 1) == 0 ? -extents.x : extents.x,
-                    (i & 2) == 0 ? -extents.y : extents.y,
-                    (i & 4) == 0 ? -extents.z : extents.z);
-                halfWidth = Mathf.Max(halfWidth, Mathf.Abs(Vector3.Dot(offset, right)));
-                halfHeight = Mathf.Max(halfHeight, Mathf.Abs(Vector3.Dot(offset, up)));
+                var extents = _bounds.extents;
+                var horizontalRadius = Mathf.Sqrt(
+                    extents.x * extents.x + extents.z * extents.z);
+                var elevation = CameraElevationDegrees * Mathf.Deg2Rad;
+                var maxHalfWidth = horizontalRadius;
+                var maxHalfHeight = extents.y * Mathf.Cos(elevation)
+                    + horizontalRadius * Mathf.Sin(elevation);
+
+                _fitOrthographicSize = Mathf.Max(0.1f,
+                    Mathf.Max(maxHalfHeight, maxHalfWidth / Mathf.Max(0.01f, aspect))
+                    * FitMargin);
+                _fitAspect = aspect;
             }
 
-            var radius = Mathf.Max(extents.magnitude, 0.01f);
+            var rotation = Quaternion.Euler(CameraElevationDegrees, _yawDegrees, 0f);
+            var center = _bounds.center;
+            var forward = rotation * Vector3.forward;
+            var radius = Mathf.Max(_bounds.extents.magnitude, 0.01f);
             var distance = radius * 3f + 1f;
+
             camera.transform.rotation = rotation;
             camera.transform.position = center - forward * distance;
             camera.nearClipPlane = 0.01f;
             camera.farClipPlane = distance + radius * 3f + 1f;
-            camera.orthographicSize = Mathf.Max(0.1f,
-                Mathf.Max(halfHeight, halfWidth / Mathf.Max(0.01f, aspect)) * 1.2f);
+            camera.orthographicSize = _fitOrthographicSize;
             camera.aspect = aspect;
         }
 
