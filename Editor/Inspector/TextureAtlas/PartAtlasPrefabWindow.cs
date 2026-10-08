@@ -73,6 +73,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void OnEnable()
         {
+            // Restored windows also need enough width for all three panes.
+            minSize = new Vector2(1160f, 680f);
             EnsureAtlasSettings();
             EnsureHierarchyView();
             _preview ??= new PartAtlasPrefabPreview(Repaint);
@@ -1341,7 +1343,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     if (GUILayout.Button(
                             new GUIContent(path + "  " + components,
                                 path + "\n" + components + "\nクリックしてInspectorに表示"),
-                            EditorStyles.miniLabel, GUILayout.ExpandWidth(true)))
+                            EditorStyles.linkLabel, GUILayout.ExpandWidth(true)))
                     {
                         _hierarchyView?.SelectAndReveal(gameObject.transform, flash: true);
                         OnHierarchySelectionChanged(gameObject.transform);
