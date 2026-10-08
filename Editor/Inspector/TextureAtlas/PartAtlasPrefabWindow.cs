@@ -12,6 +12,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
     internal sealed class PartAtlasPrefabWindow : EditorWindow
     {
+        // UI Toolkit splitters do not automatically register Unity Editor
+        // resize cursors. DrawImmediate is the same approach Unity 2022.3
+        // uses for its built-in VisualSplitter.
+        private sealed class InspectorPaneSplitter : ImmediateModeElement
+        {
+            protected override void ImmediateRepaint()
+            {
+                EditorGUIUtility.AddCursorRect(
+                    contentRect, MouseCursor.SplitResizeLeftRight);
+            }
+        }
+
         private PartAtlasPrefabSettings? _atlasSettings;
         private SerializedObject? _atlasSettingsObject;
         private MatsukawaAdapter? _matsukawa;
@@ -179,7 +191,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 LeftPaneMinWidth + SplitterWidth + RightPaneMinWidth;
             root.Add(_legacyPanels);
 
-            _inspectorSplitter = new VisualElement
+            _inspectorSplitter = new InspectorPaneSplitter
             {
                 name = "wdt-inspector-splitter",
             };
