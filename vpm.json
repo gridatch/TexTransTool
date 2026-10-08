@@ -181,17 +181,17 @@
           },
           "zipSHA256": "c575b161fc34ac961dcdf08a4b9d6d69ae4091d4cfb890cb42d8d0637a0f1db3"
         },
-        "0.1.10+debug.214.read-only-prefab-inspector.8cd971d": {
+        "0.1.10+debug.215.read-only-prefab-inspector.7f0abe5": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.10+debug.214.read-only-prefab-inspector.8cd971d",
+          "version": "0.1.10+debug.215.read-only-prefab-inspector.7f0abe5",
           "unity": "2022.3",
-          "description": "Debug build 214 for read-only-prefab-inspector from feat/read-only-prefab-inspector at 8cd971d. Based on WDT 0.1.10 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 215 for read-only-prefab-inspector from feat/read-only-prefab-inspector at 7f0abe5. Based on WDT 0.1.10 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.10+debug.214.read-only-prefab-inspector.8cd971d.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.10+debug.215.read-only-prefab-inspector.7f0abe5.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -204,7 +204,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "378bc68bb22659f1aa6211297620f3f1fb465bd4e0d6c2ca6574241ce130f4e7"
+          "zipSHA256": "923a8059e0f539866a176b9cd30062867cce5d7ace39655283591bf9e68ecedf"
         }
       }
     }
