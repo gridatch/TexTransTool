@@ -32,6 +32,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private static readonly Color DeleteColor = new(0.90f, 0.25f, 0.25f, 0.22f);
         private static readonly Color ProtectColor = new(0.95f, 0.75f, 0.15f, 0.25f);
         private static readonly Color LinkFlashColor = new(0.30f, 0.60f, 1.00f, 0.30f);
+        private const float SearchLabelInset = 20f;
+        private const float SearchTextRightMargin = 8f;
+        private const float SearchToggleReserve = 24f;
+        private const float SearchScrollBarHeight = 15f;
 
         private readonly SearchField _searchField = new();
         private readonly Dictionary<int, TransformItem> _items = new();
@@ -45,6 +49,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private bool _hasAnalysis;
         private int _flashId;
         private double _flashUntil;
+        private float _searchScrollX;
+        private float _searchContentWidth;
+        private bool _searchWidthDirty = true;
 
         internal event Action<Transform?>? SelectionChangedTransform;
         internal event Action<IReadOnlyList<Transform>>? ExtractionTargetsChanged;
@@ -87,6 +94,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             _prefabRoot = prefabRoot;
             searchString = "";
+            _searchScrollX = 0f;
+            _searchContentWidth = 0f;
+            _searchWidthDirty = true;
             _flashId = 0;
             _flashUntil = 0d;
             _hasAnalysis = false;
@@ -208,8 +218,20 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var nextSearch = _searchField.OnGUI(searchRect, searchString);
             if (!string.Equals(nextSearch, searchString, StringComparison.Ordinal))
             {
-                searchString = nextSearch;
+                var clearingSearch = !string.IsNullOrWhiteSpace(searchString)
+                    && string.IsNullOrWhiteSpace(nextSearch);
+                var selected = clearingSearch ? SelectedTransform : null;
+
+                searchString = string.IsNullOrWhiteSpace(nextSearch) ? "" : nextSearch;
+                _searchScrollX = 0f;
+                _searchWidthDirty = true;
                 Reload();
+
+                // Reload retains the selected ID but does not expand its ancestors.
+                // Only on leaving search mode, expand and frame that same object.
+                // SelectAndReveal intentionally does not fire SelectionChanged.
+                if (selected != null)
+                    SelectAndReveal(selected, flash: false);
             }
 
             var legendHeight = HasAnalysis ? 22f : 0f;
@@ -228,9 +250,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     EditorStyles.centeredGreyMiniLabel
                 );
             }
-            else
+            else if (string.IsNullOrWhiteSpace(searchString))
             {
                 base.OnGUI(treeRect);
+            }
+            else
+            {
+                DrawSearchTree(treeRect);
             }
 
             if (HasAnalysis)
@@ -250,6 +276,54 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         }
 
         private bool HasAnalysis => _hasAnalysis;
+
+        private void DrawSearchTree(Rect treeRect)
+        {
+            // Unity's TreeView uses a fixed, flat indentation while searching.
+            // Keep its native vertical scroll/selection and checkbox column;
+            // scroll only our custom text/depth rendering horizontally.
+            if (_searchWidthDirty)
+            {
+                _searchContentWidth = 0f;
+                foreach (var row in GetRows())
+                {
+                    if (row is not TransformItem item)
+                        continue;
+
+                    var labelWidth = EditorStyles.label.CalcSize(
+                        new GUIContent(item.displayName)).x;
+                    _searchContentWidth = Mathf.Max(
+                        _searchContentWidth,
+                        SearchLabelInset + item.depth * depthIndentWidth
+                            + labelWidth + SearchTextRightMargin);
+                }
+
+                _searchWidthDirty = false;
+            }
+
+            var textViewportWidth = Mathf.Max(0f, treeRect.width - SearchToggleReserve);
+            var needsHorizontalScroll = _searchContentWidth > textViewportWidth;
+            var rowsRect = treeRect;
+            if (needsHorizontalScroll)
+                rowsRect.height = Mathf.Max(0f, rowsRect.height - SearchScrollBarHeight);
+
+            if (!needsHorizontalScroll)
+            {
+                _searchScrollX = 0f;
+            }
+            else
+            {
+                var scrollbarRect = new Rect(
+                    treeRect.x, rowsRect.yMax, treeRect.width, SearchScrollBarHeight);
+                _searchScrollX = GUI.HorizontalScrollbar(
+                    scrollbarRect, _searchScrollX, textViewportWidth,
+                    0f, _searchContentWidth);
+                _searchScrollX = Mathf.Clamp(
+                    _searchScrollX, 0f, _searchContentWidth - textViewportWidth);
+            }
+
+            base.OnGUI(rowsRect);
+        }
 
         protected override TreeViewItem BuildRoot()
         {
@@ -408,10 +482,63 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 );
             }
 
-            base.RowGUI(args);
+            if (string.IsNullOrWhiteSpace(searchString))
+            {
+                base.RowGUI(args);
+            }
+            else
+            {
+                DrawSearchRow(args, item);
+            }
             GUI.color = previousColor;
 
             DrawExtractionTargetToggle(item, args.rowRect);
+        }
+
+        private void DrawSearchRow(RowGUIArgs args, TransformItem item)
+        {
+            // Delegate the row's selection styling and focus handling to Unity,
+            // but suppress its flattened search label.
+            var emptyLabelArgs = args;
+            emptyLabelArgs.label = "";
+            base.RowGUI(emptyLabelArgs);
+
+            // Keep the toggle column in view, even while searching deep paths.
+            // No depth cap is applied; horizontal scrolling reveals every level.
+            var available = Mathf.Max(0f, args.rowRect.width - SearchToggleReserve);
+            var clip = new Rect(
+                args.rowRect.x, args.rowRect.y, available, args.rowRect.height);
+            if (clip.width <= 0f)
+                return;
+
+            GUI.BeginGroup(clip);
+            try
+            {
+                var offset = SearchLabelInset + item.depth * depthIndentWidth
+                    - _searchScrollX;
+                var labelWidth = EditorStyles.label.CalcSize(
+                    new GUIContent(item.displayName)).x;
+
+                // Small branch mark visually connects the text to its depth.
+                if (item.depth > 0 && Event.current.type == EventType.Repaint)
+                {
+                    var centerY = clip.height * 0.5f;
+                    var lineColor = EditorGUIUtility.isProSkin
+                        ? new Color(0.62f, 0.62f, 0.62f, 0.6f)
+                        : new Color(0.38f, 0.38f, 0.38f, 0.55f);
+                    EditorGUI.DrawRect(new Rect(offset - 12f, 0f, 1f, centerY), lineColor);
+                    EditorGUI.DrawRect(new Rect(offset - 12f, centerY, 9f, 1f), lineColor);
+                }
+
+                GUI.Label(new Rect(offset, 0f, labelWidth + SearchTextRightMargin,
+                        clip.height),
+                    new GUIContent(item.displayName, item.Path),
+                    EditorStyles.label);
+            }
+            finally
+            {
+                GUI.EndGroup();
+            }
         }
 
         private void DrawExtractionTargetToggle(TransformItem item, Rect rowRect)
