@@ -65,6 +65,8 @@ namespace net.rs64.TexTransTool.NDMF
 
                 .Run(TTTComponentPurgePass.Instance);
             });
+            InPhase(BuildPhase.PlatformFinish)
+                .Run(AutoMaterialAtlasReportPass.Instance);
         }
         internal static Dictionary<TexTransPhase, TogglablePreviewNode> s_togglablePreviewPhases = new() {
             { TexTransPhase.MaterialModification,  TogglablePreviewNode.Create(() => "MaterialModification-Phase", "MaterialModification", true) },

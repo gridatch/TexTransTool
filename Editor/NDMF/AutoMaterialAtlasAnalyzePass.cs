@@ -16,6 +16,15 @@ namespace net.rs64.TexTransTool.NDMF
     /// No mutation is allowed in this pass. It records potential reductions to
     /// NDMF Console; all numbers are estimates, never measured AAO savings.
     /// </summary>
+    internal sealed class AutoAtlasReportState
+    {
+        public bool HasAnalysis;
+        public AutoMaterialAtlas? Component;
+        public string Summary = "";
+        public string Detail = "";
+        public int BeforeMaterialSlots;
+    }
+
     internal sealed class AutoMaterialAtlasAnalyzePass : Pass<AutoMaterialAtlasAnalyzePass>
     {
         public override string DisplayName => "TTT: Analyze Auto Material Atlas";
@@ -150,9 +159,21 @@ namespace net.rs64.TexTransTool.NDMF
                     + (g.RequiresAtlas ? " (atlas candidate)" : " (reference reuse candidate)")
                     + " — predicted " + (g.Materials.Length - 1) + " fewer slots"));
 
-            TTTLog.ReportingObject(components[0], () =>
-                TTTLog.Info("AutoMaterialAtlas:info:AnalysisOnly",
-                    summary, detail));
+            // Defer the report until PlatformFinish. AAO has not run yet,
+            // and would otherwise make the summary appear to be a final result.
+            var report = context.GetState<AutoAtlasReportState>();
+            report.HasAnalysis = true;
+            report.Component = components[0];
+            report.Summary = summary;
+            report.Detail = detail;
+            report.BeforeMaterialSlots = CountMaterialSlots(root);
+        }
+
+        internal static int CountMaterialSlots(GameObject root)
+        {
+            return root.GetComponentsInChildren<Renderer>(true)
+                .Where(r => r != null)
+                .Sum(r => r.sharedMaterials.Length);
         }
 
         private sealed class GroupCandidate
@@ -272,6 +293,32 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
             return true;
+        }
+    }
+
+    /// <summary>
+    /// Runs after AAO. The before/after difference includes all AAO
+    /// optimizations, not savings attributable to Auto Material Atlas.
+    /// </summary>
+    internal sealed class AutoMaterialAtlasReportPass : Pass<AutoMaterialAtlasReportPass>
+    {
+        public override string DisplayName => "TTT: Auto Material Atlas Report";
+
+        protected override void Execute(BuildContext context)
+        {
+            var report = context.GetState<AutoAtlasReportState>();
+            if (!report.HasAnalysis) return;
+
+            var after = AutoMaterialAtlasAnalyzePass.CountMaterialSlots(
+                context.AvatarRootObject);
+            var observed = report.BeforeMaterialSlots + " -> " + after;
+
+            TTTLog.ReportingObject(report.Component != null
+                ? report.Component : context.AvatarRootObject,
+                () => TTTLog.Info("AutoMaterialAtlas:info:AnalysisOnly",
+                    report.Summary,
+                    report.Detail,
+                    observed));
         }
     }
 }

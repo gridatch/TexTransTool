@@ -778,7 +778,7 @@ msgid "AutoMaterialAtlas:info:AnalysisOnly"
 msgstr "Auto Material Atlas: 自動統合候補の解析結果（プレビューのみ）"
 
 msgid "AutoMaterialAtlas:info:AnalysisOnly:description"
-msgstr "現段階ではメッシュ・マテリアル・テクスチャを変更しません。以下はAAO適用結果ではなく、マテリアル設定に基づく候補です。\n{0}\n\n候補一覧:\n{1}"
+msgstr "現段階ではメッシュ・マテリアル・テクスチャを変更しません。以下はAAO適用結果ではなく、マテリアル設定に基づく候補です。\n{0}\n\n候補一覧:\n{1}\nAAO処理前後の全Rendererマテリアルスロット数（自動アトラス化の効果ではありません）: {2}"
 
 msgid "AutoMaterialAtlas:warn:MultipleComponents"
 msgstr "Auto Material Atlas コンポーネントが{0}個見つかったため解析を見送りました。アバター上には1個のみ配置してください。"
