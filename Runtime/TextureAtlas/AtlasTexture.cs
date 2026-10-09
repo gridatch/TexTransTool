@@ -137,6 +137,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , List<IIslandSizePriorityTuner?> islandSizePriorityTuner
 
             , AtlasSetting atlasSetting
+            , int? losslessMaxAtlasSize = null
         )
         {
             using var pf = new PFScope("init");
@@ -178,7 +179,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("IslandProcessing");
             var (atlasTargeSize, movedVirtualIslandArray, relocateResult, relocationTime) =
-                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner);
+                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner, losslessMaxAtlasSize);
+
+            // Automatic material merging must never silently accept the
+            // shrinking fallback used by the legacy auto-sizing mode.
+            // Reject before generating any meshes, textures or replacements.
+            if (losslessMaxAtlasSize.HasValue && !IsLosslessRelocation(relocateResult))
+            {
+                atlasContext.Dispose();
+                return new(false, null, null, null, preserveBump2ndMaterials, preservedOriginalUVChannel);
+            }
+
             if (relocateResult.IslandRelocationResult is null || relocateResult.IslandRelocationResult.IsSuccess is false)
             {
                 // Abort!!!
@@ -458,7 +469,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             IRendererTargeting domain,
             AtlasSetting atlasSetting,
             AtlasContext atlasContext,
-            List<IIslandSizePriorityTuner?> islandSizePriorityTuner)
+            List<IIslandSizePriorityTuner?> islandSizePriorityTuner,
+            int? losslessMaxAtlasSize)
         {
             if (atlasSetting.AutoAtlasTextureSize is false)
             {
@@ -476,11 +488,21 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             IslandTransform[]? selectedIslands = null;
             IslandRelocationManager.RelocateResult? selectedResult = null;
-            var maxCandidateSize = AutoAtlasTextureSizeCandidates[AutoAtlasTextureSizeCandidates.Length - 1];
+            var maxCandidateSize = losslessMaxAtlasSize
+                ?? AutoAtlasTextureSizeCandidates[AutoAtlasTextureSizeCandidates.Length - 1];
             var selectedSize = new Vector2Int(maxCandidateSize, maxCandidateSize);
             long totalRelocationTime = 0;
 
-            foreach (var size in AutoAtlasTextureSizeCandidates)
+            // Existing manual/auto AtlasTexture callers remain capped at 4096.
+            // Only the lossless-only path can consider 8192, and only when
+            // explicitly requested. No 16384 output is permitted.
+            var candidateSizes = losslessMaxAtlasSize.HasValue
+                ? AutoAtlasTextureSizeCandidates
+                    .Concat(new[] { 8192 })
+                    .Where(size => size <= maxCandidateSize)
+                : AutoAtlasTextureSizeCandidates.AsEnumerable();
+
+            foreach (var size in candidateSizes)
             {
                 var candidateSize = new Vector2Int(size, size);
                 var (candidateIslands, candidateResult) = IslandProcessing(
@@ -507,7 +529,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             Debug.Assert(selectedIslands is not null);
             Debug.Assert(selectedResult is not null);
 
-            if (IsLosslessRelocation(selectedResult!) is false)
+            if (losslessMaxAtlasSize.HasValue is false
+                && IsLosslessRelocation(selectedResult!) is false)
             {
                 TTLog.Warning(
                     "AtlasTexture:warn:AutoAtlasTextureSizeLosslessNotFound",
@@ -520,7 +543,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             return (selectedSize, selectedIslands!, selectedResult!, totalRelocationTime);
         }
 
-        private static bool IsLosslessRelocation(IslandRelocationManager.RelocateResult relocateResult)
+        internal static bool IsLosslessRelocation(IslandRelocationManager.RelocateResult relocateResult)
         {
             return relocateResult.IslandRelocationResult?.IsSuccess is true
                 && TTMath.Approximately(relocateResult.PriorityDownScale, 1f)
