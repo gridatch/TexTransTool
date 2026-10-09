@@ -206,17 +206,17 @@
           },
           "zipSHA256": "56a0ba4255c5d18dc118caf898d279c123a3c7addf8ae5c5fac3c18e592f51e9"
         },
-        "0.1.11+wdt.ttt.1.0.2.debug.220.prefab-hierarchy-search-tree.3a5cfc8": {
+        "0.1.11+wdt.ttt.1.0.2.debug.221.prefab-hierarchy-search-tree.f1b4ad9": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.11+wdt.ttt.1.0.2.debug.220.prefab-hierarchy-search-tree.3a5cfc8",
+          "version": "0.1.11+wdt.ttt.1.0.2.debug.221.prefab-hierarchy-search-tree.f1b4ad9",
           "unity": "2022.3",
-          "description": "Debug build 220 for prefab-hierarchy-search-tree from feat/prefab-hierarchy-search-tree at 3a5cfc8. Based on WDT 0.1.11+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 221 for prefab-hierarchy-search-tree from feat/prefab-hierarchy-search-tree at f1b4ad9. Based on WDT 0.1.11+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.11+wdt.ttt.1.0.2.debug.220.prefab-hierarchy-search-tree.3a5cfc8.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.11+wdt.ttt.1.0.2.debug.221.prefab-hierarchy-search-tree.f1b4ad9.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -229,7 +229,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "0b21b4f94a8422465e4977d3e4ddc60d381bd755f79c80aab0754fde16111e76"
+          "zipSHA256": "e875e1a4cf7c3e43563b287c8b52fc17b18983fde99130c3510a6322253d163a"
         }
       }
     }
