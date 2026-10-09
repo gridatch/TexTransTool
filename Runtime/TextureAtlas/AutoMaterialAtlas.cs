@@ -8,8 +8,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
     /// The first implementation milestone only reports candidate groups;
     /// it does not change materials, meshes, or textures.
     /// </summary>
-    [AddComponentMenu("TexTransTool/TTT Auto Material Atlas")]
+    [AddComponentMenu("TexTransTool/" + MenuPath)]
     public sealed class AutoMaterialAtlas : TexTransMonoBaseGameObjectOwned
     {
+        internal const string MenuPath = "TTT Auto Material Atlas";
     }
 }
