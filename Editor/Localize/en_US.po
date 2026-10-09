@@ -776,3 +776,14 @@ msgstr "PropertyNameAsPath"
 
 msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "SelectTexturePreview"
+
+# Auto Material Atlas (candidate-analysis milestone)
+msgid "AutoMaterialAtlas:info:AnalysisOnly"
+msgstr "Auto Material Atlas: Candidate Analysis (Preview Only)"
+
+msgid "AutoMaterialAtlas:info:AnalysisOnly:description"
+msgstr "This milestone does not modify meshes, materials, or textures. These are candidate groups based on material settings, not observed AAO reductions.\\n{0}\\n\\nCandidates:\\n{1}"
+
+msgid "AutoMaterialAtlas:warn:MultipleComponents"
+msgstr "Found {0} Auto Material Atlas components; analysis skipped. Add exactly one per avatar."
+
