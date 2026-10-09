@@ -236,6 +236,16 @@ namespace net.rs64.TexTransTool.NDMF
                 .SetEquals(right.shaderKeywords))
                 return false;
 
+            // Compare commonly overridden render-state tags as well as the
+            // shader's exposed properties. The full compatibility checker
+            // for automated modification will be stricter than this preview.
+            foreach (var tag in new[] { "RenderType", "Queue", "RenderPipeline",
+                         "IgnoreProjector", "DisableBatching", "ForceNoShadowCasting" })
+            {
+                if (left.GetTag(tag, false, "") != right.GetTag(tag, false, ""))
+                    return false;
+            }
+
             var shader = left.shader;
             for (int i = 0; i < shader.GetPropertyCount(); i++)
             {
