@@ -209,12 +209,20 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 foreach (var binding in clip.GetFloatCurveBindings())
                 {
-                    if (IsMaterialBinding(binding.type, binding.propertyName))
+                    // GetClipsForObjectPath(path) returns whole clips.
+                    // Individual bindings may target OTHER renderers in the
+                    // same clip, so their paths must also match.
+                    if (string.Equals(binding.path, path, StringComparison.Ordinal)
+                        && IsMaterialBinding(binding.type, binding.propertyName))
                         return true;
                 }
                 foreach (var binding in clip.GetObjectCurveBindings())
                 {
-                    if (IsMaterialBinding(binding.type, binding.propertyName))
+                    // GetClipsForObjectPath(path) returns whole clips.
+                    // Individual bindings may target OTHER renderers in the
+                    // same clip, so their paths must also match.
+                    if (string.Equals(binding.path, path, StringComparison.Ordinal)
+                        && IsMaterialBinding(binding.type, binding.propertyName))
                         return true;
                 }
             }
