@@ -51,6 +51,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private double _flashUntil;
         private float _searchScrollX;
         private float _searchContentWidth;
+        private bool _searchWidthDirty = true;
 
         internal event Action<Transform?>? SelectionChangedTransform;
         internal event Action<IReadOnlyList<Transform>>? ExtractionTargetsChanged;
@@ -95,6 +96,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             searchString = "";
             _searchScrollX = 0f;
             _searchContentWidth = 0f;
+            _searchWidthDirty = true;
             _flashId = 0;
             _flashUntil = 0d;
             _hasAnalysis = false;
@@ -220,8 +222,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     && string.IsNullOrWhiteSpace(nextSearch);
                 var selected = clearingSearch ? SelectedTransform : null;
 
-                searchString = nextSearch;
+                searchString = string.IsNullOrWhiteSpace(nextSearch) ? "" : nextSearch;
                 _searchScrollX = 0f;
+                _searchWidthDirty = true;
                 Reload();
 
                 // Reload retains the selected ID but does not expand its ancestors.
@@ -279,18 +282,23 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             // Unity's TreeView uses a fixed, flat indentation while searching.
             // Keep its native vertical scroll/selection and checkbox column;
             // scroll only our custom text/depth rendering horizontally.
-            _searchContentWidth = 0f;
-            foreach (var row in GetRows())
+            if (_searchWidthDirty)
             {
-                if (row is not TransformItem item)
-                    continue;
+                _searchContentWidth = 0f;
+                foreach (var row in GetRows())
+                {
+                    if (row is not TransformItem item)
+                        continue;
 
-                var labelWidth = EditorStyles.label.CalcSize(
-                    new GUIContent(item.displayName)).x;
-                _searchContentWidth = Mathf.Max(
-                    _searchContentWidth,
-                    SearchLabelInset + item.depth * depthIndentWidth
-                        + labelWidth + SearchTextRightMargin);
+                    var labelWidth = EditorStyles.label.CalcSize(
+                        new GUIContent(item.displayName)).x;
+                    _searchContentWidth = Mathf.Max(
+                        _searchContentWidth,
+                        SearchLabelInset + item.depth * depthIndentWidth
+                            + labelWidth + SearchTextRightMargin);
+                }
+
+                _searchWidthDirty = false;
             }
 
             var textViewportWidth = Mathf.Max(0f, treeRect.width - SearchToggleReserve);
