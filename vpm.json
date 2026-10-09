@@ -206,17 +206,17 @@
           },
           "zipSHA256": "56a0ba4255c5d18dc118caf898d279c123a3c7addf8ae5c5fac3c18e592f51e9"
         },
-        "0.1.11+wdt.ttt.1.0.2.debug.221.prefab-hierarchy-search-tree.f1b4ad9": {
+        "0.1.12+wdt.ttt.1.0.2": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.11+wdt.ttt.1.0.2.debug.221.prefab-hierarchy-search-tree.f1b4ad9",
+          "version": "0.1.12+wdt.ttt.1.0.2",
           "unity": "2022.3",
-          "description": "Debug build 221 for prefab-hierarchy-search-tree from feat/prefab-hierarchy-search-tree at f1b4ad9. Based on WDT 0.1.11+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Non-destructive modification to Texture!",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.11+wdt.ttt.1.0.2.debug.221.prefab-hierarchy-search-tree.f1b4ad9.zip",
+          "url": "https://github.com/gridatch/TexTransTool/releases/download/wdt-v0.1.12+wdt.ttt.1.0.2/net.gridatch.tex-trans-tool-0.1.12+wdt.ttt.1.0.2.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -229,7 +229,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "e875e1a4cf7c3e43563b287c8b52fc17b18983fde99130c3510a6322253d163a"
+          "zipSHA256": "4ec56a707d33593b5492139d1e41521733a866c40fae2e32ea0d2a031239e79f"
         }
       }
     }

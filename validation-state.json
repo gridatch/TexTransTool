@@ -1,10 +1,5 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
-  "baseVersion": "0.1.11+wdt.ttt.1.0.2",
-  "lastDebugSerial": 221,
-  "currentDebugVersion": "0.1.11+wdt.ttt.1.0.2.debug.221.prefab-hierarchy-search-tree.f1b4ad9",
-  "currentDebugChange": "prefab-hierarchy-search-tree",
-  "currentDebugBranch": "feat/prefab-hierarchy-search-tree",
-  "currentDebugCommit": "f1b4ad9ce8b18764b15f823bb8fca281fdb03f8d",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.11+wdt.ttt.1.0.2.debug.221.prefab-hierarchy-search-tree.f1b4ad9.zip"
+  "baseVersion": "0.1.12+wdt.ttt.1.0.2",
+  "lastDebugSerial": 221
 }
