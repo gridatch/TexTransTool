@@ -35,15 +35,8 @@ namespace net.rs64.TexTransTool.Editor.OtherMenuItem
 
         [M(BP + AtlasTexture.MenuPath)] static void AT() => C<AtlasTexture>();
 
-        // GameObject/TexTransTool is also the Hierarchy context menu.
         [M(BP + AutoMaterialAtlas.MenuPath)] static void AMA() => C<AutoMaterialAtlas>();
         [M(BP + AutoMaterialAtlas.MenuPath, true)] static bool AMAValidate()
-            => Selection.activeGameObject != null;
-
-        // Expose the same creation action through Tools/TexTransTool.
-        private const string AutoAtlasToolsPath = "Tools/TexTransTool/Create/" + AutoMaterialAtlas.MenuPath;
-        [M(AutoAtlasToolsPath)] static void AMAFromTools() => C<AutoMaterialAtlas>();
-        [M(AutoAtlasToolsPath, true)] static bool AMAFromToolsValidate()
             => Selection.activeGameObject != null;
 
         [M(BP + SimpleDecal.MenuPath)] static void SD() => C<SimpleDecal>();

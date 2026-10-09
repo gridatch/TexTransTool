@@ -8,6 +8,7 @@ using net.rs64.TexTransTool.TextureAtlas;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.UIElements;
 
 namespace net.rs64.TexTransTool.NDMF
 {
@@ -297,6 +298,39 @@ namespace net.rs64.TexTransTool.NDMF
     }
 
     /// <summary>
+    /// Renders the normal localized NDMF report, with an additional button
+    /// to copy its complete contents into a bug report or chat message.
+    /// </summary>
+    internal sealed class AutoMaterialAtlasConsoleReport : SimpleError
+    {
+        private readonly string[] _details;
+
+        internal AutoMaterialAtlasConsoleReport(string summary, string detail, string observed)
+        {
+            _details = new[] { summary, detail, observed };
+        }
+
+        public override nadena.dev.ndmf.localization.Localizer Localizer => TTTLog.NDMFLocalizer;
+        public override ErrorSeverity Severity => ErrorSeverity.Information;
+        public override string TitleKey => "AutoMaterialAtlas:info:AnalysisOnly";
+        public override string[] DetailsSubst => _details;
+
+        public override VisualElement CreateVisualElement(ErrorReport report)
+        {
+            var element = base.CreateVisualElement(report);
+            var copyButton = new Button(() =>
+            {
+                EditorGUIUtility.systemCopyBuffer = ToMessage();
+            });
+
+            copyButton.text = Localizer.GetLocalizedString(
+                "AutoMaterialAtlas:action:CopyResult");
+            element.Add(copyButton);
+            return element;
+        }
+    }
+
+    /// <summary>
     /// Runs after AAO. The before/after difference includes all AAO
     /// optimizations, not savings attributable to Auto Material Atlas.
     /// </summary>
@@ -315,10 +349,10 @@ namespace net.rs64.TexTransTool.NDMF
 
             TTTLog.ReportingObject(report.Component != null
                 ? report.Component : context.AvatarRootObject,
-                () => TTTLog.Info("AutoMaterialAtlas:info:AnalysisOnly",
+                () => ErrorReport.ReportError(new AutoMaterialAtlasConsoleReport(
                     report.Summary,
                     report.Detail,
-                    observed));
+                    observed)));
         }
     }
 }
