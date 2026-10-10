@@ -783,8 +783,5 @@ msgstr "Auto Atlas Relocate Result\n{0}\n\nTotal relocate count: {1}\nTime taken
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 
-msgid "AutoAtlasTexture:info:NoChanges"
-msgstr "Auto Atlas: no changes"
-
 msgid "AutoAtlasTexture:info:ResolutionChange"
 msgstr "{0}x{1} → {2}x{3}: {4} files"

@@ -110,7 +110,7 @@ namespace net.rs64.TexTransTool.NDMF
             if (allMaterials.Count == 0)
             {
                 TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info("AutoAtlasTexture:info:NoChanges"));
+                    TTTLog.Info("AtlasTexture:info:TargetNotFound"));
                 return;
             }
 
@@ -357,7 +357,7 @@ namespace net.rs64.TexTransTool.NDMF
                 if (report.Completed.Count == 0)
                 {
                     TTTLog.ReportingObject(configuration, () =>
-                        TTTLog.Info("AutoAtlasTexture:info:NoChanges"));
+                        TTTLog.Info("AtlasTexture:info:TargetNotFound"));
                     return;
                 }
 
