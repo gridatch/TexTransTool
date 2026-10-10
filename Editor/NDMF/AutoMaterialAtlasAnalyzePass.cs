@@ -25,6 +25,7 @@ namespace net.rs64.TexTransTool.NDMF
         public string Detail = "";
         public string AnimationDiagnostics = "";
         public string CandidateDiagnostics = "";
+        public string CrossRendererDiagnostics = "";
         public int BeforeMaterialSlots;
     }
 
@@ -69,6 +70,12 @@ namespace net.rs64.TexTransTool.NDMF
                     .OfType<Material>().ToHashSet();
 
             var groups = new List<GroupCandidate>();
+            // Keep a separate cross-renderer view. These groups are *not*
+            // considered ready for AAO AutoMergeSkinnedMesh; renderer
+            // compatibility, animated property behavior and UVs remain
+            // unverified.
+            var crossRendererMaterialUsers =
+                new Dictionary<Material, HashSet<SkinnedMeshRenderer>>();
             int observedSharedMaterialReferences = 0;
             int observedSharedMaterialRenderers = 0;
             int excludedAnimatedMaterials = 0;
@@ -146,6 +153,16 @@ namespace net.rs64.TexTransTool.NDMF
                 if (sharedMaterialsHere.Count != 0)
                     observedSharedMaterialRenderers++;
 
+                foreach (var mat in candidates)
+                {
+                    if (!crossRendererMaterialUsers.TryGetValue(mat, out var users))
+                    {
+                        users = new HashSet<SkinnedMeshRenderer>();
+                        crossRendererMaterialUsers.Add(mat, users);
+                    }
+                    users.Add(renderer);
+                }
+
                 // Candidate equivalence: same shader and all non-texture
                 // settings. This is NOT yet a UV/texture-density proof.
                 var buckets = new List<List<Material>>();
@@ -203,6 +220,46 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
+            // Across-renderer opportunities are diagnostic only. Distinct
+            // Material references are required: repeating the same Material
+            // reference does not require atlasing and AAO already sees it.
+            var crossBuckets = new List<List<Material>>();
+            foreach (var material in crossRendererMaterialUsers.Keys
+                         .OrderBy(m => m.shader.name, StringComparer.Ordinal)
+                         .ThenBy(m => m.name, StringComparer.Ordinal))
+            {
+                var bucket = crossBuckets.FirstOrDefault(
+                    b => HasSameNonTextureState(b[0], material));
+                if (bucket == null)
+                {
+                    bucket = new List<Material>();
+                    crossBuckets.Add(bucket);
+                }
+                bucket.Add(material);
+            }
+
+            var crossGroups = crossBuckets.Where(bucket =>
+                bucket.Count > 1
+                && bucket.SelectMany(material => crossRendererMaterialUsers[material])
+                    .Distinct().Skip(1).Any()).ToArray();
+
+            const int maxCrossGroups = 20;
+            var crossLines = crossGroups.Take(maxCrossGroups).Select((bucket, index) =>
+            {
+                var userCount = bucket.SelectMany(m => crossRendererMaterialUsers[m])
+                    .Distinct().Count();
+                var differsInTexture = bucket.Skip(1)
+                    .Any(m => !HasSameTextureReferences(bucket[0], m));
+                return (index + 1) + ". " + bucket[0].shader.name
+                    + "; " + bucket.Count + " distinct Material references"
+                    + "; " + userCount + " renderers"
+                    + "; " + (differsInTexture ? "textures differ (atlas candidate)"
+                                            : "same textures (reference reuse candidate)")
+                    + "; examples: "
+                    + string.Join(", ", bucket.Take(4).Select(m => m.name))
+                    + (bucket.Count > 4 ? " ..." : "");
+            }).ToArray();
+
             var orderedGroups = groups
                 .OrderBy(group => AnimationUtility.CalculateTransformPath(
                     group.Renderer.transform, root.transform), StringComparer.Ordinal)
@@ -220,6 +277,7 @@ namespace net.rs64.TexTransTool.NDMF
                 + "; renderers with insufficient distinct materials: " + insufficientMaterialRenderers
                 + "; renderers with no shared shader: " + differentShaderOnlyRenderers
                 + "; renderers with shader-setting mismatch: " + sameShaderButSettingsMismatchRenderers
+                + "; cross-renderer candidate groups (AAO eligibility not checked): " + crossGroups.Length
                 + "; material-slot animation renderer exclusions: " + excludedAnimatedRenderers
                 + "; animated-property renderers (not excluded): " + observedAnimatedPropertyRenderers
                 + "; unsupported renderers: " + excludedUnsupportedRenderers;
@@ -242,6 +300,12 @@ namespace net.rs64.TexTransTool.NDMF
             report.Component = components[0];
             report.Summary = summary;
             report.Detail = detail;
+            report.CrossRendererDiagnostics = crossLines.Length == 0
+                ? "(none)"
+                : string.Join("\n", crossLines)
+                    + (crossGroups.Length > maxCrossGroups
+                        ? "\n... " + (crossGroups.Length - maxCrossGroups)
+                            + " additional groups omitted" : "");
             const int maxCandidateDiagnostics = 20;
             report.CandidateDiagnostics = candidateDiagnostics.Count == 0
                 ? "(none)"
@@ -428,10 +492,12 @@ namespace net.rs64.TexTransTool.NDMF
 
         internal AutoMaterialAtlasConsoleReport(
             string summary, string detail, string observed,
-            string animationDiagnostics, string candidateDiagnostics)
+            string animationDiagnostics, string candidateDiagnostics,
+            string crossRendererDiagnostics)
         {
             _details = new[] {
-                summary, detail, observed, animationDiagnostics, candidateDiagnostics
+                summary, detail, observed, animationDiagnostics,
+                candidateDiagnostics, crossRendererDiagnostics
             };
         }
 
@@ -479,7 +545,8 @@ namespace net.rs64.TexTransTool.NDMF
                     report.Detail,
                     observed,
                     report.AnimationDiagnostics,
-                    report.CandidateDiagnostics)));
+                    report.CandidateDiagnostics,
+                    report.CrossRendererDiagnostics)));
         }
     }
 }
