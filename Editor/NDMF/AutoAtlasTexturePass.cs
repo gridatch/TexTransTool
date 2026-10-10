@@ -339,11 +339,8 @@ namespace net.rs64.TexTransTool.NDMF
                                 .Select(texture => $"{texture.Width}×{texture.Height}")
                                 .Distinct());
                         var after = change.GeneratedTexture;
-                        var enlarged = change.SourceTextures.Any(texture =>
-                            (long)after.Width * after.Height > (long)texture.Width * texture.Height);
                         var props = string.Join(" / ", change.PropertyNames);
-                        return $"  {props}: {before} → {after.Width}×{after.Height}" +
-                            (enlarged ? "AutoAtlasTexture:label:IncreasedResolution".GetLocalize() : "");
+                        return $"  {props}: {before} → {after.Width}×{after.Height}";
                     }));
 
                     var materialNames = string.Join("\n", groupReport.MaterialNames
