@@ -181,7 +181,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("IslandProcessing");
             var (atlasTargeSize, movedVirtualIslandArray, relocateResult, relocationTime) =
-                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner, maxAtlasSize);
+                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner, maxAtlasSize, requireLossless);
             if (requireLossless && IsLosslessRelocation(relocateResult) is false)
             {
                 atlasContext.Dispose();
@@ -472,7 +472,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             AtlasSetting atlasSetting,
             AtlasContext atlasContext,
             List<IIslandSizePriorityTuner?> islandSizePriorityTuner,
-            int maxAtlasSize)
+            int maxAtlasSize,
+            bool requireLossless)
         {
             if (atlasSetting.AutoAtlasTextureSize is false)
             {
@@ -521,7 +522,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             Debug.Assert(selectedIslands is not null);
             Debug.Assert(selectedResult is not null);
 
-            if (IsLosslessRelocation(selectedResult!) is false)
+            if (!requireLossless && IsLosslessRelocation(selectedResult!) is false)
             {
                 TTLog.Warning(
                     "AtlasTexture:warn:AutoAtlasTextureSizeLosslessNotFound",
