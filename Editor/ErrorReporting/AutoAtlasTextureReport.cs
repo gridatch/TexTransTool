@@ -41,8 +41,6 @@ namespace net.rs64.TexTransTool.Editor
     {
         public string MaterialNames = "";
         public string Reason = "";
-        // Short, localizable category for compact NDMF summaries.
-        // Skipped entries are available in the detailed report only.
     }
 
     internal sealed class AutoAtlasTextureBuildReport

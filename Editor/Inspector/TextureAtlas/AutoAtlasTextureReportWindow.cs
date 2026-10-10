@@ -36,12 +36,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 $"成功: {report.Completed.Count}グループ / {report.MaterialCount}マテリアル　見送り: {report.Skipped.Count}グループ");
             EditorGUILayout.LabelField(
                 $"テクスチャ数: {report.OriginalTextureCount} → {report.GeneratedTextureCount}");
-            EditorGUILayout.LabelField(
-                $"対象テクスチャの総画素数: {FormatPixels(report.OriginalPixels)} → {FormatPixels(report.GeneratedPixels)}　" +
-                $"削減 {report.SavedPercentage:F1}%");
             EditorGUILayout.HelpBox(
-                "総画素数は、この処理によって置換される元テクスチャと生成テクスチャの合計です。" +
-                "圧縮形式・MipMap・他のビルドツールによる変更は考慮しておらず、VRAMの実測値ではありません。",
+                "グループを展開すると、元テクスチャと生成テクスチャの名前・解像度、" +
+                "上部の空き領域を確認できます。",
                 MessageType.Info);
 
             if (GUILayout.Button("レポート全文をコピー"))
@@ -53,7 +50,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var group = report.Completed[i];
                 var title = $"#{i + 1} {string.Join(", ", group.MaterialNames.Take(3))}" +
                             (group.MaterialNames.Length > 3 ? $" ほか{group.MaterialNames.Length - 3}件" : "") +
-                            $"  |  {group.SavedPercentage:F1}% 削減";
+                            $"  |  上部の空き領域: {group.TopFreeFraction * 100f:F1}%";
                 var expanded = _expanded.Contains(i);
                 var next = EditorGUILayout.Foldout(expanded, title, true);
                 if (next) _expanded.Add(i);
@@ -90,8 +87,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     foreach (var image in group.GeneratedTextures)
                         EditorGUILayout.LabelField(DescribeImage(image), EditorStyles.wordWrappedLabel);
                     EditorGUILayout.LabelField(
-                        $"合計: {FormatPixels(group.SourcePixels)} → {FormatPixels(group.GeneratedPixels)} " +
-                        $"({group.SavedPercentage:F1}% 削減)");
+                        $"参考・総画素数: {FormatPixels(group.SourcePixels)} → {FormatPixels(group.GeneratedPixels)} " +
+                        $"({group.SavedPercentage:F1}% 削減。VRAM実測値ではありません)");
                 }
                 EditorGUILayout.Space(5f);
             }
