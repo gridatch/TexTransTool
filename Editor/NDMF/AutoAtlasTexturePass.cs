@@ -14,6 +14,29 @@ using UnityEngine;
 
 namespace net.rs64.TexTransTool.NDMF
 {
+    // The original renderer/material-slot names are captured before material
+    // transformers run. ObjectRegistry is preferred; this snapshot handles
+    // unregistered temporary material clones without parsing their names.
+    internal sealed class AutoAtlasTextureOriginalNames
+    {
+        internal readonly Dictionary<ObjectReference, string[]> Slots = new();
+    }
+
+    internal sealed class CaptureAutoAtlasSourceMaterialsPass : Pass<CaptureAutoAtlasSourceMaterialsPass>
+    {
+        protected override void Execute(BuildContext context)
+        {
+            if (context.AvatarRootObject.GetComponentsInChildren<AutoAtlasTexture>(true).Length == 0)
+                return;
+            var names = context.GetState(_ => new AutoAtlasTextureOriginalNames());
+            foreach (var renderer in context.AvatarRootObject.GetComponentsInChildren<Renderer>(true))
+            {
+                names.Slots[ObjectRegistry.GetReference(renderer)] =
+                    renderer.sharedMaterials.Select(material => material != null ? material.name : "").ToArray();
+            }
+        }
+    }
+
     /// <summary>
     /// Runs after regular, explicitly configured AtlasTexture components.
     /// AutoAtlasTexture is deliberately not in the ordinary component phase list.
@@ -36,23 +59,54 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             AutoAtlasTextureProcessor.Execute(
-                TTTContext(context).Domain, context.AvatarRootObject, configurations[0]);
+                TTTContext(context).Domain, context.AvatarRootObject,
+                configurations[0], context.GetState(_ => new AutoAtlasTextureOriginalNames()));
         }
     }
 
     internal static class AutoAtlasTextureProcessor
     {
-        internal static void Execute(IDomain domain, GameObject avatarRoot, AutoAtlasTexture configuration)
+        internal static void Execute(IDomain domain, GameObject avatarRoot,
+            AutoAtlasTexture configuration, AutoAtlasTextureOriginalNames initialNames)
         {
             var report = new AutoAtlasTextureBuildReport { AvatarName = avatarRoot.name };
             // The report is reset for every build, including builds without candidates.
             AutoAtlasTextureReportStore.Set(report);
 
+            // Build a stable per-material lookup from initial renderer slot names.
+            // A changed slot count is not mapped: silently guessing the slot would
+            // be worse than keeping the build-stage name.
+            var sourceNamesByMaterial = new Dictionary<Material, HashSet<string>>();
+            foreach (var renderer in domain.EnumerateRenderer())
+            {
+                if (renderer == null ||
+                    !initialNames.Slots.TryGetValue(ObjectRegistry.GetReference(renderer), out var originalSlots))
+                    continue;
+                var currentSlots = domain.GetMaterials(renderer);
+                if (currentSlots.Length != originalSlots.Length) continue;
+
+                for (var i = 0; i < currentSlots.Length; i++)
+                {
+                    var material = currentSlots[i];
+                    if (material == null || string.IsNullOrEmpty(originalSlots[i])) continue;
+                    if (!sourceNamesByMaterial.TryGetValue(material, out var names))
+                        sourceNamesByMaterial[material] = names = new HashSet<string>();
+                    names.Add(originalSlots[i]);
+                }
+            }
+
             string OriginalMaterialName(Material material)
             {
-                // Follow NDMF replacement tracking to the pre-build material asset.
-                // Never infer the name by stripping build-tool-specific suffixes.
+                // Use NDMF's original asset when the replacing tool registered it.
                 var original = ObjectRegistry.GetReference(material)?.Object as Material;
+                if (original != null && original != material) return original.name;
+
+                // For unregistered clones, use the material-slot name saved
+                // before the avatar build's Transforming phase.
+                if (sourceNamesByMaterial.TryGetValue(material, out var names) && names.Count == 1)
+                    return names.First();
+
+                // Do not remove suffixes heuristically: that would invent a name.
                 return original != null ? original.name : material.name;
             }
 
