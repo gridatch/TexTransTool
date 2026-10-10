@@ -16,10 +16,19 @@ namespace net.rs64.TexTransTool.Editor
         public long Pixels => (long)Width * Height;
     }
 
+    internal sealed class AutoAtlasTexturePropertyReport
+    {
+        public string PropertyName = "";
+        public AutoAtlasTextureImageReport[] SourceTextures = Array.Empty<AutoAtlasTextureImageReport>();
+        public AutoAtlasTextureImageReport GeneratedTexture = new();
+    }
+
     internal sealed class AutoAtlasTextureGroupReport
     {
         public string[] MaterialNames = Array.Empty<string>();
         public string[] RendererNames = Array.Empty<string>();
+        public AutoAtlasTexturePropertyReport[] PropertyChanges = Array.Empty<AutoAtlasTexturePropertyReport>();
+        public float TopFreeFraction;
         public AutoAtlasTextureImageReport[] SourceTextures = Array.Empty<AutoAtlasTextureImageReport>();
         public AutoAtlasTextureImageReport[] GeneratedTextures = Array.Empty<AutoAtlasTextureImageReport>();
         public long SourcePixels => SourceTextures.Sum(image => image.Pixels);
@@ -33,7 +42,7 @@ namespace net.rs64.TexTransTool.Editor
         public string MaterialNames = "";
         public string Reason = "";
         // Short, localizable category for compact NDMF summaries.
-        public string CategoryKey = "";
+        // Skipped entries are available in the detailed report only.
     }
 
     internal sealed class AutoAtlasTextureBuildReport

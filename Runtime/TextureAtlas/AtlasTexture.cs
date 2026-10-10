@@ -231,7 +231,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                   , source2MovedVirtualIsland
               );
             pf.Split("exit");
-            return new(true, atlasContext, atlasedMeshes, compiledAtlasTextures, preserveBump2ndMaterials, preservedOriginalUVChannel);
+            return new(true, atlasContext, atlasedMeshes, compiledAtlasTextures, preserveBump2ndMaterials,
+                preservedOriginalUVChannel, atlasedTextureSize, (float)(1 - height));
         }
         internal record AtlasResult
         {
@@ -243,6 +244,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
             public readonly Dictionary<string, ITTRenderTexture>? CompiledAtlasTextures;
             public readonly HashSet<Material> PreserveBump2ndMaterials;
             public readonly int? PreservedOriginalUVChannel;
+            // Final output size includes TTT's optional unused top-row removal.
+            public readonly Vector2Int? OutputTextureSize;
+            // Same pre-trim "上部の空き領域" value used by regular AtlasTexture.
+            public readonly float? TopFreeFraction;
 
             public AtlasResult(
                 bool isSuccess,
@@ -250,7 +255,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 Mesh[]? atlasedMesh,
                 Dictionary<string, ITTRenderTexture>? compiledAtlasTextures,
                 HashSet<Material> preserveBump2ndMaterials,
-                int? preservedOriginalUVChannel)
+                int? preservedOriginalUVChannel,
+                Vector2Int? outputTextureSize = null,
+                float? topFreeFraction = null)
             {
                 IsSuccess = isSuccess;
                 AtlasContext = atlasContext;
@@ -258,6 +265,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 CompiledAtlasTextures = compiledAtlasTextures;
                 PreserveBump2ndMaterials = preserveBump2ndMaterials;
                 PreservedOriginalUVChannel = preservedOriginalUVChannel;
+                OutputTextureSize = outputTextureSize;
+                TopFreeFraction = topFreeFraction;
             }
         }
         internal static TexFineTuningResult DoTextureFinTuning(ITexTransToolForUnity engine, AtlasContext atlasContext, AtlasSetting atlasSetting, Dictionary<string, ITTRenderTexture> compiledAtlasTextures, AtlasTextureExperimentalFeature? experimentalOptions)

@@ -777,5 +777,8 @@ msgstr "PropertyNameAsPath"
 msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "SelectTexturePreview"
 
-msgid "AutoAtlasTexture:info:Summary"
-msgstr "Auto Atlas Result: {0} groups / {1} materials, {7} groups skipped\nTextures: {2} → {3}\nSource and output texels: {4} → {5} ({6}% reduction)\nMaterials: {8}\nDetails: AutoAtlasTexture Inspector > Show Previous Auto Atlas Report\nNote: This is not measured VRAM usage."
+msgid "AutoAtlasTexture:info:AppliedGroup"
+msgstr "Auto Atlas: processed materials\\n{0}\\nTexture changes (before → after)\\n{1}\\nUnused top region: {2}%"
+
+msgid "AutoAtlasTexture:info:NoChanges"
+msgstr "Auto Atlas: no changes"

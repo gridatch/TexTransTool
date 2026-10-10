@@ -773,5 +773,8 @@ msgstr "パスとなるプロパティネーム"
 msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "選択テクスチャーのプレビュー"
 
-msgid "AutoAtlasTexture:info:Summary"
-msgstr "自動アトラス化結果: 成功 {0}グループ / {1}マテリアル、見送り {7}グループ\n対象テクスチャ: {2}枚 → {3}枚\nテクスチャ総画素数: {4} → {5} (削減 {6}%)\n対象Material: {8}\n詳細: AutoAtlasTextureのInspector → 前回の自動アトラス化結果を表示\n※VRAMの実測値ではありません。"
+msgid "AutoAtlasTexture:info:AppliedGroup"
+msgstr "自動アトラス化：適用したマテリアル\\n{0}\\nテクスチャの変更（変更前 → 変更後）\\n{1}\\n上部の空き領域：{2}%"
+
+msgid "AutoAtlasTexture:info:NoChanges"
+msgstr "自動アトラス化：変更なし"

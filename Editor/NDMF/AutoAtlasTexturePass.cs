@@ -48,13 +48,21 @@ namespace net.rs64.TexTransTool.NDMF
             // The report is reset for every build, including builds without candidates.
             AutoAtlasTextureReportStore.Set(report);
 
-            void Skip(HashSet<Material> group, string categoryKey, string reason)
+            string OriginalMaterialName(Material material)
+            {
+                // Follow NDMF replacement tracking to the pre-build material asset.
+                // Never infer the name by stripping build-tool-specific suffixes.
+                var original = ObjectRegistry.GetReference(material)?.Object as Material;
+                return original != null ? original.name : material.name;
+            }
+
+            void Skip(HashSet<Material> group, string reason)
             {
                 report.Skipped.Add(new AutoAtlasTextureSkippedGroup
                 {
-                    MaterialNames = string.Join(", ", group.Select(material => material.name).OrderBy(name => name)),
+                    MaterialNames = string.Join(", ", group.Select(OriginalMaterialName)
+                        .Distinct().OrderBy(name => name, StringComparer.Ordinal)),
                     Reason = reason,
-                    CategoryKey = categoryKey,
                 });
             }
 
@@ -83,7 +91,8 @@ namespace net.rs64.TexTransTool.NDMF
                 .ToHashSet();
             if (allMaterials.Count == 0)
             {
-                LogSummary();
+                TTTLog.ReportingObject(configuration, () =>
+                    TTTLog.Info("AutoAtlasTexture:info:NoChanges"));
                 return;
             }
 
@@ -126,7 +135,7 @@ namespace net.rs64.TexTransTool.NDMF
                     manuallySelectedMaterials.Any(selected =>
                         domain.OriginEqual(selected, material))))
                 {
-                    Skip(group, "AutoAtlasTexture:reason:Excluded", "除外指定、または手動AtlasTextureの対象Materialとの重複");
+                    Skip(group, "除外指定、または手動AtlasTextureの対象Materialとの重複");
                     continue;
                 }
 
@@ -138,7 +147,7 @@ namespace net.rs64.TexTransTool.NDMF
                 if (referencingRenderers.Length == 0 ||
                     referencingRenderers.Any(renderer => !allowedRenderers.Contains(renderer)))
                 {
-                    Skip(group, "AutoAtlasTexture:reason:Renderer", "参照Rendererの一部が処理対象外（除外指定、EditorOnlyなど）");
+                    Skip(group, "参照Rendererの一部が処理対象外（除外指定、EditorOnlyなど）");
                     continue;
                 }
 
@@ -146,7 +155,7 @@ namespace net.rs64.TexTransTool.NDMF
                     domain, referencingRenderers, UVChannel.UV0);
                 if (atlasRenderers.Length != referencingRenderers.Length)
                 {
-                    Skip(group, "AutoAtlasTexture:reason:UV", "UV0を持たないRendererがある");
+                    Skip(group, "UV0を持たないRendererがある");
                     continue;
                 }
 
@@ -156,7 +165,7 @@ namespace net.rs64.TexTransTool.NDMF
                     .ToHashSet();
                 if (texturesToReplace.Count == 0)
                 {
-                    Skip(group, "AutoAtlasTexture:reason:NoTexture", "置き換え可能なTextureがない");
+                    Skip(group, "置き換え可能なTextureがない");
                     continue;
                 }
 
@@ -167,7 +176,7 @@ namespace net.rs64.TexTransTool.NDMF
                 if (!ReferencesAreExclusive(
                     allMaterials, group, propertyTextures, texturesToReplace))
                 {
-                    Skip(group, "AutoAtlasTexture:reason:Shared", "対象Textureが処理対象外のMaterial/プロパティにも参照されている");
+                    Skip(group, "対象Textureが処理対象外のMaterial/プロパティにも参照されている");
                     continue;
                 }
 
@@ -199,7 +208,6 @@ namespace net.rs64.TexTransTool.NDMF
                 if (!atlasResult.IsSuccess)
                 {
                     Skip(group,
-                        rejectedByPixelCount ? "AutoAtlasTexture:reason:NoSavings" : "AutoAtlasTexture:reason:Packing",
                         rejectedByPixelCount
                             ? "生成後の総画素数が小さくならない"
                             : "指定された最大サイズ内に縮小なしで配置できない、または生成に失敗");
@@ -218,8 +226,35 @@ namespace net.rs64.TexTransTool.NDMF
                 // Capture immutable names/dimensions while the source references still exist.
                 var groupReport = new AutoAtlasTextureGroupReport
                 {
-                    MaterialNames = group.Select(material => material.name)
-                        .OrderBy(name => name).ToArray(),
+                    MaterialNames = group.Select(OriginalMaterialName)
+                        .Distinct().OrderBy(name => name, StringComparer.Ordinal).ToArray(),
+                    TopFreeFraction = atlasResult.TopFreeFraction ?? 0f,
+                    PropertyChanges = tuningResult.RenderTextures
+                        .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+                        .Select(entry => new AutoAtlasTexturePropertyReport
+                        {
+                            PropertyName = entry.Key,
+                            SourceTextures = group
+                                .Select(material => propertyTextures[material]
+                                    .TryGetValue(entry.Key, out var texture) ? texture : null)
+                                .Where(texture => texture != null)
+                                .Cast<Texture>()
+                                .Distinct()
+                                .OrderBy(texture => texture.name, StringComparer.Ordinal)
+                                .Select(texture => new AutoAtlasTextureImageReport
+                                {
+                                    Name = texture.name,
+                                    Width = texture.width,
+                                    Height = texture.height,
+                                })
+                                .ToArray(),
+                            GeneratedTexture = new AutoAtlasTextureImageReport
+                            {
+                                Name = entry.Value.Name,
+                                Width = entry.Value.Width,
+                                Height = entry.Value.Hight,
+                            },
+                        }).ToArray(),
                     RendererNames = atlasRenderers.Select(RendererPath)
                         .OrderBy(name => name).ToArray(),
                     SourceTextures = texturesToReplace
@@ -232,7 +267,7 @@ namespace net.rs64.TexTransTool.NDMF
                             Properties = string.Join(", ", group.SelectMany(material =>
                                 propertyTextures[material]
                                     .Where(item => item.Value == texture)
-                                    .Select(item => material.name + "." + item.Key))
+                                    .Select(item => OriginalMaterialName(material) + "." + item.Key))
                                 .Distinct().OrderBy(name => name)),
                         }).ToArray(),
                     GeneratedTextures = tuningResult.RenderTextures
@@ -269,67 +304,37 @@ namespace net.rs64.TexTransTool.NDMF
                 report.Completed.Add(groupReport);
             }
 
-            LogSummary();
+            LogResults();
 
-            void LogSummary()
+            void LogResults()
             {
-                var candidateCount = report.Completed.Count + report.Skipped.Count;
-                var skippedByReason = report.Skipped
-                    .GroupBy(item => item.CategoryKey)
-                    .OrderByDescending(items => items.Count())
-                    .ThenBy(items => items.Key, StringComparer.Ordinal)
-                    .ToArray();
-                var reasons = string.Join(" / ", skippedByReason.Take(3).Select(items =>
-                    $"{items.Key.GetLocalize()} {items.Count()}"));
-                if (skippedByReason.Length > 3)
-                    reasons += $" / {"AutoAtlasTexture:label:Other".GetLocalize()} " +
-                        skippedByReason.Skip(3).Sum(items => items.Count());
-
+                // A successful atlas operation is the unit of reporting.
+                // No console spam for groups that did not need changing.
                 if (report.Completed.Count == 0)
                 {
                     TTTLog.ReportingObject(configuration, () =>
-                        TTTLog.Info("AutoAtlasTexture:info:NoChanges",
-                            candidateCount, reasons));
+                        TTTLog.Info("AutoAtlasTexture:info:NoChanges"));
                     return;
                 }
 
-                // The full generated names are kept in the detailed report.
-                // LLC clone suffixes are a build-time implementation detail, not
-                // useful in the narrow NDMF console.
-                string ShortMaterialName(string name)
+                foreach (var groupReport in report.Completed)
                 {
-                    var llc = name.IndexOf("(LLC Clone)", StringComparison.Ordinal);
-                    if (llc > 0) name = name.Substring(0, llc);
-                    return name.Length > 48 ? name.Substring(0, 47) + "…" : name;
+                    var changes = string.Join("\n", groupReport.PropertyChanges.Select(change =>
+                    {
+                        var before = string.Join(", ", change.SourceTextures.Select(texture =>
+                            $"{texture.Name} ({texture.Width}×{texture.Height})"));
+                        var after = change.GeneratedTexture;
+                        return $"  {change.PropertyName}: {before} → {after.Name} ({after.Width}×{after.Height})";
+                    }));
+
+                    var materialNames = string.Join("\n", groupReport.MaterialNames
+                        .Select(name => "  " + name));
+                    TTTLog.ReportingObject(configuration, () =>
+                        TTTLog.Info("AutoAtlasTexture:info:AppliedGroup",
+                            materialNames,
+                            changes,
+                            (groupReport.TopFreeFraction * 100f).ToString("F1")));
                 }
-                var allNames = report.Completed
-                    .SelectMany(group => group.MaterialNames)
-                    .Select(ShortMaterialName)
-                    .Distinct()
-                    .OrderBy(name => name, StringComparer.Ordinal)
-                    .ToArray();
-                var materialPreview = string.Join(", ", allNames.Take(2));
-                if (allNames.Length > 2)
-                    materialPreview += $" (+{allNames.Length - 2})";
-
-                string PixelText(long value) => value >= 1000000
-                    ? (value / 1000000.0).ToString("0.00") + " Mpx"
-                    : value.ToString("N0") + " px";
-
-                TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info("AutoAtlasTexture:info:Summary",
-                        report.Completed.Count,
-                        candidateCount,
-                        report.MaterialCount,
-                        report.OriginalTextureCount,
-                        report.GeneratedTextureCount,
-                        PixelText(report.OriginalPixels),
-                        PixelText(report.GeneratedPixels),
-                        PixelText(report.OriginalPixels - report.GeneratedPixels),
-                        report.SavedPercentage.ToString("F1"),
-                        materialPreview,
-                        report.Skipped.Count,
-                        reasons));
             }
         }
 

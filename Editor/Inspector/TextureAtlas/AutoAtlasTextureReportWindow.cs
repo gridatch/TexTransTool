@@ -70,6 +70,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     foreach (var renderer in group.RendererNames)
                         EditorGUILayout.LabelField(renderer, EditorStyles.wordWrappedLabel);
 
+                    EditorGUILayout.LabelField(
+                        $"上部の空き領域: {group.TopFreeFraction * 100f:F1}%",
+                        EditorStyles.boldLabel);
+                    EditorGUILayout.LabelField("テクスチャ別の変更内容", EditorStyles.boldLabel);
+                    foreach (var change in group.PropertyChanges)
+                    {
+                        var before = string.Join(", ", change.SourceTextures
+                            .Select(image => DescribeImage(image)));
+                        EditorGUILayout.LabelField(
+                            $"{change.PropertyName}: {before} → {DescribeImage(change.GeneratedTexture)}",
+                            EditorStyles.wordWrappedLabel);
+                    }
                     EditorGUILayout.LabelField("元のテクスチャ", EditorStyles.boldLabel);
                     foreach (var image in group.SourceTextures)
                         EditorGUILayout.LabelField(DescribeImage(image), EditorStyles.wordWrappedLabel);
@@ -118,6 +130,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 sb.AppendLine($"\n#{group.index + 1}: {string.Join(", ", group.value.MaterialNames)}");
                 sb.AppendLine("Renderers: " + string.Join(", ", group.value.RendererNames));
+                sb.AppendLine($"上部の空き領域: {group.value.TopFreeFraction * 100f:F1}%");
+                foreach (var change in group.value.PropertyChanges)
+                {
+                    var before = string.Join(", ", change.SourceTextures
+                        .Select(image => DescribeImage(image)));
+                    sb.AppendLine($"  {change.PropertyName}: {before} → {DescribeImage(change.GeneratedTexture)}");
+                }
                 sb.AppendLine("Before:");
                 foreach (var image in group.value.SourceTextures)
                     sb.AppendLine("  " + DescribeImage(image));
