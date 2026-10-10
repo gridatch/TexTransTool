@@ -782,7 +782,7 @@ msgid "AutoMaterialAtlas:info:AnalysisOnly"
 msgstr "Auto Material Atlas: Candidate Analysis (Preview Only)"
 
 msgid "AutoMaterialAtlas:info:AnalysisOnly:description"
-msgstr "This milestone does not modify meshes, materials, or textures. These are candidate groups based on material settings, not observed AAO reductions.\n{0}\n\nCandidates:\n{1}\nTotal Renderer material slots before/after AAO (NOT the effect of auto atlasing): {2}\n\nMaterial animation exclusions (matched curves for each renderer):\n{3}"
+msgstr "This milestone does not modify meshes, materials, or textures. These are candidate groups based on material settings, not observed AAO reductions.\n{0}\n\nCandidates:\n{1}\nTotal Renderer material slots before/after AAO (NOT the effect of auto atlasing): {2}\n\nMaterial animation bindings (property animation observed, slot animation excluded):\n{3}"
 
 msgid "AutoMaterialAtlas:action:CopyResult"
 msgstr "Copy analysis result"

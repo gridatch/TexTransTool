@@ -71,6 +71,7 @@ namespace net.rs64.TexTransTool.NDMF
             int excludedSharedMaterials = 0;
             int excludedAnimatedMaterials = 0;
             int excludedAnimatedRenderers = 0;
+            int observedAnimatedPropertyRenderers = 0;
             var animatedRendererDiagnostics = new List<string>();
             int excludedUnsupportedRenderers = 0;
             int analyzedRenderers = 0;
@@ -85,20 +86,30 @@ namespace net.rs64.TexTransTool.NDMF
 
                 analyzedRenderers++;
 
-                // Reject renderers with animated shader parameters or material
-                // slots. A reference-only scan is insufficient for these curves.
-                var matchedBindings = GetMaterialAnimationBindings(
+                // AAO's MergeMaterialSlots distinguishes object-reference
+                // animation of material slots from animated shader properties.
+                // Only slot-reference animation excludes the renderer from this
+                // preview. Float material curves are recorded as a compatibility
+                // concern; merging them safely is NOT yet proven.
+                var (propertyBindings, slotBindings) = GetMaterialAnimationBindings(
                     animationIndex, root.transform, renderer);
-                if (matchedBindings.Length != 0)
+                var rendererPath = AnimationUtility.CalculateTransformPath(
+                    renderer.transform, root.transform);
+                var displayPath = string.IsNullOrEmpty(rendererPath)
+                    ? "(avatar root)" : rendererPath;
+                if (propertyBindings.Length != 0)
+                {
+                    observedAnimatedPropertyRenderers++;
+                    animatedRendererDiagnostics.Add(
+                        displayPath + " [property animation; not excluded]: "
+                        + FormatBindings(propertyBindings));
+                }
+                if (slotBindings.Length != 0)
                 {
                     excludedAnimatedRenderers++;
-                    var rendererPath = AnimationUtility.CalculateTransformPath(
-                        renderer.transform, root.transform);
                     animatedRendererDiagnostics.Add(
-                        (string.IsNullOrEmpty(rendererPath) ? "(avatar root)" : rendererPath)
-                        + ": " + string.Join("; ", matchedBindings.Take(3))
-                        + (matchedBindings.Length > 3
-                            ? " (+" + (matchedBindings.Length - 3) + " more)" : ""));
+                        displayPath + " [material slot animation; excluded]: "
+                        + FormatBindings(slotBindings));
                     continue;
                 }
 
@@ -142,7 +153,8 @@ namespace net.rs64.TexTransTool.NDMF
                     var differsInTexture = bucket.Skip(1)
                         .Any(mat => !HasSameTextureReferences(bucket[0], mat));
                     groups.Add(new GroupCandidate(
-                        renderer, bucket.ToArray(), differsInTexture));
+                        renderer, bucket.ToArray(), differsInTexture,
+                        propertyBindings.Length != 0));
                 }
             }
 
@@ -159,7 +171,8 @@ namespace net.rs64.TexTransTool.NDMF
                 + orderedGroups.Sum(group => group.Materials.Length - 1)
                 + "; shared-material exclusions: " + excludedSharedMaterials
                 + "; animated-material exclusions: " + excludedAnimatedMaterials
-                + "; animated-renderer exclusions: " + excludedAnimatedRenderers
+                + "; material-slot animation renderer exclusions: " + excludedAnimatedRenderers
+                + "; animated-property renderers (not excluded): " + observedAnimatedPropertyRenderers
                 + "; unsupported renderers: " + excludedUnsupportedRenderers;
 
             var detail = orderedGroups.Length == 0
@@ -169,7 +182,8 @@ namespace net.rs64.TexTransTool.NDMF
                     + AnimationUtility.CalculateTransformPath(g.Renderer.transform, root.transform)
                     + " : [" + string.Join(", ", g.Materials.Select(m => m.name)) + "]"
                     + (g.RequiresAtlas ? " (atlas candidate)" : " (reference reuse candidate)")
-                    + " — predicted " + (g.Materials.Length - 1) + " fewer slots"));
+                    + (g.HasAnimatedProperties ? " (animated properties; merge compatibility unverified)" : "")
+                    + " — estimated " + (g.Materials.Length - 1) + " fewer slots"));
 
             // Defer the report until PlatformFinish. AAO has not run yet,
             // and would otherwise make the summary appear to be a final result.
@@ -200,55 +214,75 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly SkinnedMeshRenderer Renderer;
             internal readonly Material[] Materials;
             internal readonly bool RequiresAtlas;
+            internal readonly bool HasAnimatedProperties;
 
             internal GroupCandidate(
                 SkinnedMeshRenderer renderer,
                 Material[] materials,
-                bool requiresAtlas)
+                bool requiresAtlas,
+                bool hasAnimatedProperties)
             {
                 Renderer = renderer;
                 Materials = materials;
                 RequiresAtlas = requiresAtlas;
+                HasAnimatedProperties = hasAnimatedProperties;
             }
         }
 
-        private static string[] GetMaterialAnimationBindings(
-            AnimationIndex? index,
-            Transform avatarRoot,
-            SkinnedMeshRenderer renderer)
+        private static string FormatBindings(string[] bindings)
         {
-            // Missing index is not proof of an unanimated renderer.
-            if (index == null) return new[] { "(animation index unavailable)" };
+            return string.Join("; ", bindings.Take(3))
+                + (bindings.Length > 3
+                    ? " (+" + (bindings.Length - 3) + " more)" : "");
+        }
+
+        private static (string[] propertyBindings, string[] slotBindings)
+            GetMaterialAnimationBindings(
+                AnimationIndex? index,
+                Transform avatarRoot,
+                SkinnedMeshRenderer renderer)
+        {
+            // Treat an unavailable animation index as unverified rather than
+            // mistakenly concluding that this renderer is static.
+            if (index == null)
+                return (Array.Empty<string>(),
+                    new[] { "(animation index unavailable)" });
 
             var path = AnimationUtility.CalculateTransformPath(
                 renderer.transform, avatarRoot);
-            var bindings = new HashSet<string>(StringComparer.Ordinal);
+            var properties = new HashSet<string>(StringComparer.Ordinal);
+            var materialSlots = new HashSet<string>(StringComparer.Ordinal);
+
             foreach (var clip in index.GetClipsForObjectPath(path))
             {
                 foreach (var binding in clip.GetFloatCurveBindings())
-                {
-                    if (string.Equals(binding.path, path, StringComparison.Ordinal)
-                        && IsMaterialBinding(binding.type, binding.propertyName))
-                        bindings.Add("float " + binding.type.Name + "."
-                            + binding.propertyName);
-                }
+                    AddBinding(binding, "float");
                 foreach (var binding in clip.GetObjectCurveBindings())
-                {
-                    if (string.Equals(binding.path, path, StringComparison.Ordinal)
-                        && IsMaterialBinding(binding.type, binding.propertyName))
-                        bindings.Add("object " + binding.type.Name + "."
-                            + binding.propertyName);
-                }
+                    AddBinding(binding, "object");
             }
-            return bindings.OrderBy(value => value, StringComparer.Ordinal).ToArray();
-        }
 
-        private static bool IsMaterialBinding(Type type, string propertyName)
-        {
-            return (typeof(Renderer).IsAssignableFrom(type)
-                    || type == typeof(Material))
-                && (propertyName.StartsWith("material.", StringComparison.Ordinal)
-                    || propertyName.StartsWith("m_Materials.", StringComparison.Ordinal));
+            return (
+                properties.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
+                materialSlots.OrderBy(x => x, StringComparer.Ordinal).ToArray()
+            );
+
+            void AddBinding(EditorCurveBinding binding, string kind)
+            {
+                if (!string.Equals(binding.path, path, StringComparison.Ordinal))
+                    return;
+
+                if (!typeof(Renderer).IsAssignableFrom(binding.type)
+                    && binding.type != typeof(Material))
+                    return;
+
+                var label = kind + " " + binding.type.Name + "."
+                    + binding.propertyName;
+
+                if (binding.propertyName.StartsWith("m_Materials.", StringComparison.Ordinal))
+                    materialSlots.Add(label);
+                else if (binding.propertyName.StartsWith("material.", StringComparison.Ordinal))
+                    properties.Add(label);
+            }
         }
 
         private static bool HasSameTextureReferences(Material left, Material right)
