@@ -232,7 +232,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
               );
             pf.Split("exit");
             return new(true, atlasContext, atlasedMeshes, compiledAtlasTextures, preserveBump2ndMaterials,
-                preservedOriginalUVChannel, atlasedTextureSize, (float)(1 - height));
+                preservedOriginalUVChannel, (float)(1 - height));
         }
         internal record AtlasResult
         {
@@ -244,8 +244,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
             public readonly Dictionary<string, ITTRenderTexture>? CompiledAtlasTextures;
             public readonly HashSet<Material> PreserveBump2ndMaterials;
             public readonly int? PreservedOriginalUVChannel;
-            // Final output size includes TTT's optional unused top-row removal.
-            public readonly Vector2Int? OutputTextureSize;
             // Same pre-trim "上部の空き領域" value used by regular AtlasTexture.
             public readonly float? TopFreeFraction;
 
@@ -256,7 +254,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 Dictionary<string, ITTRenderTexture>? compiledAtlasTextures,
                 HashSet<Material> preserveBump2ndMaterials,
                 int? preservedOriginalUVChannel,
-                Vector2Int? outputTextureSize = null,
                 float? topFreeFraction = null)
             {
                 IsSuccess = isSuccess;
@@ -265,7 +262,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 CompiledAtlasTextures = compiledAtlasTextures;
                 PreserveBump2ndMaterials = preserveBump2ndMaterials;
                 PreservedOriginalUVChannel = preservedOriginalUVChannel;
-                OutputTextureSize = outputTextureSize;
                 TopFreeFraction = topFreeFraction;
             }
         }

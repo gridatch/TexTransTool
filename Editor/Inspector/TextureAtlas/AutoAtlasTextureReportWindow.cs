@@ -33,7 +33,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             EditorGUILayout.LabelField("ビルド時刻", report.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
             EditorGUILayout.Space(4f);
             EditorGUILayout.LabelField(
-                $"成功: {report.Completed.Count}グループ / {report.MaterialCount}マテリアル　見送り: {report.Skipped.Count}グループ");
+                $"適用: {report.Completed.Count}グループ / {report.MaterialCount}マテリアル");
             EditorGUILayout.LabelField(
                 $"テクスチャ数: {report.OriginalTextureCount} → {report.GeneratedTextureCount}");
             EditorGUILayout.HelpBox(
@@ -93,14 +93,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 EditorGUILayout.Space(5f);
             }
 
-            if (report.Skipped.Count != 0)
-            {
-                EditorGUILayout.Space(7f);
-                EditorGUILayout.LabelField("変更を見送ったグループ", EditorStyles.boldLabel);
-                foreach (var skipped in report.Skipped)
-                    EditorGUILayout.LabelField(
-                        $"{skipped.MaterialNames} — {skipped.Reason}", EditorStyles.wordWrappedLabel);
-            }
             EditorGUILayout.EndScrollView();
         }
 
@@ -119,7 +111,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             var sb = new StringBuilder();
             sb.AppendLine($"TTT AutoAtlasTexture / {report.AvatarName} / {report.CreatedAt:yyyy-MM-dd HH:mm:ss}");
-            sb.AppendLine($"成功 {report.Completed.Count}グループ、{report.MaterialCount}マテリアル、見送り {report.Skipped.Count}グループ");
+            sb.AppendLine($"適用 {report.Completed.Count}グループ、{report.MaterialCount}マテリアル");
             sb.AppendLine($"対象テクスチャ {report.OriginalTextureCount} → {report.GeneratedTextureCount}");
             sb.AppendLine($"総画素数 {report.OriginalPixels:N0} → {report.GeneratedPixels:N0} (削減 {report.SavedPercentage:F1}%)");
             sb.AppendLine("注: 画素数の比較であり、VRAMの実測削減量ではありません。");
@@ -141,12 +133,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 foreach (var image in group.value.GeneratedTextures)
                     sb.AppendLine("  " + DescribeImage(image));
                 sb.AppendLine($"削減 {group.value.SavedPercentage:F1}%");
-            }
-            if (report.Skipped.Count != 0)
-            {
-                sb.AppendLine("\n見送り:");
-                foreach (var skip in report.Skipped)
-                    sb.AppendLine($"  {skip.MaterialNames}: {skip.Reason}");
             }
             return sb.ToString();
         }
