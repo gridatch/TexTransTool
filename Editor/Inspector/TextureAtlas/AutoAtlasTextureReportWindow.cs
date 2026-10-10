@@ -73,8 +73,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     EditorGUILayout.LabelField("テクスチャ別の変更内容", EditorStyles.boldLabel);
                     foreach (var change in group.PropertyChanges)
                     {
-                        var before = string.Join(", ", change.SourceTextures
-                            .Select(image => DescribeImage(image)));
+                        var before = change.SourceTextures.Length == 0
+                            ? "（元テクスチャなし）"
+                            : string.Join(", ", change.SourceTextures
+                                .Select(image => DescribeImage(image)));
                         EditorGUILayout.LabelField(
                             $"{change.PropertyName}: {before} → {DescribeImage(change.GeneratedTexture)}",
                             EditorStyles.wordWrappedLabel);
@@ -122,8 +124,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 sb.AppendLine($"上部の空き領域: {group.value.TopFreeFraction * 100f:F1}%");
                 foreach (var change in group.value.PropertyChanges)
                 {
-                    var before = string.Join(", ", change.SourceTextures
-                        .Select(image => DescribeImage(image)));
+                    var before = change.SourceTextures.Length == 0
+                        ? "（元テクスチャなし）"
+                        : string.Join(", ", change.SourceTextures
+                            .Select(image => DescribeImage(image)));
                     sb.AppendLine($"  {change.PropertyName}: {before} → {DescribeImage(change.GeneratedTexture)}");
                 }
                 sb.AppendLine("Before:");

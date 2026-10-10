@@ -375,8 +375,10 @@ namespace net.rs64.TexTransTool.NDMF
                 {
                     var changes = string.Join("\n", groupReport.PropertyChanges.Select(change =>
                     {
-                        var before = string.Join(", ", change.SourceTextures.Select(texture =>
-                            $"{texture.Name} ({texture.Width}×{texture.Height})"));
+                        var before = change.SourceTextures.Length == 0
+                            ? "（元テクスチャなし）"
+                            : string.Join(", ", change.SourceTextures.Select(texture =>
+                                $"{texture.Name} ({texture.Width}×{texture.Height})"));
                         var after = change.GeneratedTexture;
                         return $"  {change.PropertyName}: {before} → {after.Name} ({after.Width}×{after.Height})";
                     }));
