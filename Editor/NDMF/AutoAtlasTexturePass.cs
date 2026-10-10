@@ -91,9 +91,11 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 // Reuse NDMF's object identity; build-stage suffixes are not
                 // stripped or guessed from the material name.
-                var source = ObjectRegistry.GetReference(material)?.Object as Material;
-                if (source != null) return source.name;
-                return material.name;
+                var identity = ObjectRegistry.GetReference(material);
+                if (identity?.Object is Material source && source != null) return source.name;
+                // ObjectReference snapshots its display name at creation; this
+                // remains available even if the original Unity object was destroyed.
+                return identity?.ToString() ?? material.name;
             }
 
             void Skip(HashSet<Material> group, string reason)
