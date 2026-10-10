@@ -35,6 +35,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             EditorGUILayout.LabelField("アトラスサイズ", "無劣化の最小サイズを自動選択");
             EditorGUILayout.LabelField("マテリアル統合", "行わない");
 
+            using (new EditorGUI.DisabledScope(AutoAtlasTextureReportStore.Latest == null))
+            {
+                if (GUILayout.Button("前回の自動アトラス化結果を表示"))
+                    AutoAtlasTextureReportWindow.Open();
+            }
+
             _advanced = EditorGUILayout.Foldout(_advanced, "詳細設定", true);
             if (!_advanced) return;
 
