@@ -31,7 +31,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             using (new EditorGUI.IndentLevelScope())
             {
                 EditorGUILayout.PropertyField(
-                    _islandPadding, new GUIContent("アイランドパディング"));
+                    _islandPadding, "AtlasTexture:prop:Padding".GlcV());
                 EditorGUILayout.PropertyField(
                     _excludedRenderers, new GUIContent("除外レンダラー"), true);
                 EditorGUILayout.PropertyField(
