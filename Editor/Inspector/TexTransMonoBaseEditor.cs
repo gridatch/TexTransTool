@@ -15,7 +15,7 @@ namespace net.rs64.TexTransTool.Editor
             var ttMonoBase = target as TexTransMonoBase;
             if (ttMonoBase == null) { return; }// 通常ありえないコードパス
             DrawOldSaveDataVersionWarning(ttMonoBase);
-            DrawerWarning(ttMonoBase);
+            if (DrawExperimentalWarning) DrawerWarning(ttMonoBase);
 
             serializedObject.Update();
             OnTexTransComponentInspectorGUI();
@@ -24,6 +24,7 @@ namespace net.rs64.TexTransTool.Editor
             if (DrawPreviewButton) PreviewButtonDrawUtil.Draw(ttMonoBase);
         }
         protected virtual bool DrawPreviewButton => true;
+        protected virtual bool DrawExperimentalWarning => true;
 
         protected virtual void OnTexTransComponentInspectorGUI()
         {

@@ -14,6 +14,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private SerializedProperty _excludedMaterials = null!;
         private bool _advanced;
 
+        private static readonly GUIContent[] s_maxAtlasSizeLabels =
+        {
+            new("256"), new("512"), new("1024"), new("2048"), new("4096"),
+        };
+        private static readonly int[] s_maxAtlasSizeValues =
+        {
+            256, 512, 1024, 2048, 4096,
+        };
+
         private void OnEnable()
         {
             _maxAtlasSize = serializedObject.FindProperty(nameof(AutoAtlasTexture.MaxAtlasSize));
@@ -24,30 +33,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         // This is a build-time domain-wide operation, not an individual render effect.
         protected override bool DrawPreviewButton => false;
+        protected override bool DrawExperimentalWarning => false;
 
         protected override void OnTexTransComponentInspectorGUI()
         {
-            EditorGUILayout.HelpBox(
-                "ビルド時に使用されるUV領域を自動的にアトラス化します。対象マテリアルの手動選択は不要です。",
-                MessageType.Info);
-
-            EditorGUILayout.LabelField("対象マテリアル", "自動選択");
-            EditorGUILayout.LabelField("アトラスサイズ", "無劣化の最小サイズを自動選択");
-            EditorGUILayout.LabelField("マテリアル統合", "行わない");
-
-            using (new EditorGUI.DisabledScope(AutoAtlasTextureReportStore.Latest == null))
-            {
-                if (GUILayout.Button("前回の自動アトラス化結果を表示"))
-                    AutoAtlasTextureReportWindow.Open();
-            }
-
             _advanced = EditorGUILayout.Foldout(_advanced, "詳細設定", true);
             if (!_advanced) return;
 
             using (new EditorGUI.IndentLevelScope())
             {
-                EditorGUILayout.PropertyField(
-                    _maxAtlasSize, new GUIContent("最大アトラスサイズ"));
+                EditorGUILayout.IntPopup(
+                    _maxAtlasSize, s_maxAtlasSizeLabels, s_maxAtlasSizeValues,
+                    new GUIContent("最大アトラスサイズ"));
                 EditorGUILayout.PropertyField(
                     _islandPadding, new GUIContent("アイランドパディング"));
                 EditorGUILayout.PropertyField(
