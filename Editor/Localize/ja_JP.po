@@ -772,3 +772,17 @@ msgstr "パスとなるプロパティネーム"
 
 msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "選択テクスチャーのプレビュー"
+
+# Auto Material Atlas (candidate-analysis milestone)
+msgid "AutoMaterialAtlas:info:AnalysisOnly"
+msgstr "Auto Material Atlas: 自動統合候補の解析結果（プレビューのみ）"
+
+msgid "AutoMaterialAtlas:info:AnalysisOnly:description"
+msgstr "現段階ではメッシュ・マテリアル・テクスチャを変更しません。以下はAAO適用結果ではなく、マテリアル設定に基づく候補です。\n{0}\n\n候補一覧:\n{1}\nAAO処理前後の全Rendererマテリアルスロット数（自動アトラス化の効果ではありません）: {2}\n\nマテリアルアニメーションの検出結果（プロパティ操作は観測のみ、スロット操作は除外）:\n{3}\n\nシェーダーが同じでも非テクスチャ設定が一致しない例（最大20件）:\n{4}\n\nRenderer間のマテリアル設定互換候補（AAOによるRenderer統合可否は未判定）:\n{5}\n\n同一Renderer内の全Material Slotペア調査（完全一致候補以外も含む・統合可能性は未判定）:\n{6}"
+
+msgid "AutoMaterialAtlas:action:CopyResult"
+msgstr "解析結果をコピー"
+
+msgid "AutoMaterialAtlas:warn:MultipleComponents"
+msgstr "Auto Material Atlas コンポーネントが{0}個見つかったため解析を見送りました。アバター上には1個のみ配置してください。"
+

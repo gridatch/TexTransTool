@@ -34,6 +34,11 @@ namespace net.rs64.TexTransTool.Editor.OtherMenuItem
         const string BP = GOPath + "/" + TexTransBehavior.TTTName + "/";
 
         [M(BP + AtlasTexture.MenuPath)] static void AT() => C<AtlasTexture>();
+
+        [M(BP + AutoMaterialAtlas.MenuPath)] static void AMA() => C<AutoMaterialAtlas>();
+        [M(BP + AutoMaterialAtlas.MenuPath, true)] static bool AMAValidate()
+            => Selection.activeGameObject != null;
+
         [M(BP + SimpleDecal.MenuPath)] static void SD() => C<SimpleDecal>();
 
         [M(BP + MultiLayerImageCanvas.MenuPath)] static void MLIC() => C<MultiLayerImageCanvas>();

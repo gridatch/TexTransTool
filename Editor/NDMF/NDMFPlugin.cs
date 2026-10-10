@@ -60,10 +60,13 @@ namespace net.rs64.TexTransTool.NDMF
                 .Run(ReFindRenderersPass.Instance).Then
 
                 .Run(OptimizingPass.Instance).Then
+                .Run(AutoMaterialAtlasAnalyzePass.Instance).Then
                 .Run(TTTSessionEndPass.Instance).PreviewingWith(new TexTransDomainFilter(TexTransPhase.Optimizing), new EverythingUnlitTexture(), new PreviewIslandSelector()).Then
 
                 .Run(TTTComponentPurgePass.Instance);
             });
+            InPhase(BuildPhase.PlatformFinish)
+                .Run(AutoMaterialAtlasReportPass.Instance);
         }
         internal static Dictionary<TexTransPhase, TogglablePreviewNode> s_togglablePreviewPhases = new() {
             { TexTransPhase.MaterialModification,  TogglablePreviewNode.Create(() => "MaterialModification-Phase", "MaterialModification", true) },

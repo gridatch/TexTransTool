@@ -776,3 +776,17 @@ msgstr "PropertyNameAsPath"
 
 msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "SelectTexturePreview"
+
+# Auto Material Atlas (candidate-analysis milestone)
+msgid "AutoMaterialAtlas:info:AnalysisOnly"
+msgstr "Auto Material Atlas: Candidate Analysis (Preview Only)"
+
+msgid "AutoMaterialAtlas:info:AnalysisOnly:description"
+msgstr "This milestone does not modify meshes, materials, or textures. These are candidate groups based on material settings, not observed AAO reductions.\n{0}\n\nCandidates:\n{1}\nTotal Renderer material slots before/after AAO (NOT the effect of auto atlasing): {2}\n\nMaterial animation bindings (property animation observed, slot animation excluded):\n{3}\n\nExamples of same-shader material settings mismatches (up to 20):\n{4}\n\nCross-renderer material-state compatible candidates (AAO renderer merge eligibility not tested):\n{5}\n\nExhaustive same-Renderer material-slot pair survey (including nonmatching pairs; merge eligibility not established):\n{6}"
+
+msgid "AutoMaterialAtlas:action:CopyResult"
+msgstr "Copy analysis result"
+
+msgid "AutoMaterialAtlas:warn:MultipleComponents"
+msgstr "Found {0} Auto Material Atlas components; analysis skipped. Add exactly one per avatar."
+
