@@ -25,8 +25,19 @@ namespace net.rs64.TexTransTool.Editor
         public AutoAtlasTextureImageReport GeneratedTexture = new();
     }
 
+    internal sealed class AutoAtlasTextureResolutionChangeReport
+    {
+        public int BeforeWidth;
+        public int BeforeHeight;
+        public int AfterWidth;
+        public int AfterHeight;
+        public int TextureCount;
+    }
+
     internal sealed class AutoAtlasTextureGroupReport
     {
+        public AutoAtlasTextureResolutionChangeReport[] ResolutionChanges =
+            Array.Empty<AutoAtlasTextureResolutionChangeReport>();
         public string[] MaterialNames = Array.Empty<string>();
         public string[] RendererNames = Array.Empty<string>();
         public AutoAtlasTexturePropertyReport[] PropertyChanges = Array.Empty<AutoAtlasTexturePropertyReport>();

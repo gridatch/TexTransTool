@@ -774,7 +774,10 @@ msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "選択テクスチャーのプレビュー"
 
 msgid "AutoAtlasTexture:info:AppliedGroup"
-msgstr "自動アトラス化：適用したマテリアル\n{0}\nテクスチャの変更（変更前 → 変更後）\n{1}\n上部の空き領域：{2}%"
+msgstr "自動アトラス化：適用したマテリアル\n{0}\n解像度別の対象テクスチャ数（変更前 → 変更後）\n{1}\n上部の空き領域：{2}%"
 
 msgid "AutoAtlasTexture:info:NoChanges"
 msgstr "自動アトラス化：変更なし"
+
+msgid "AutoAtlasTexture:info:ResolutionChange"
+msgstr "  {0}×{1} → {2}×{3}：{4}枚"

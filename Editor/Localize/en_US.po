@@ -778,7 +778,10 @@ msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "SelectTexturePreview"
 
 msgid "AutoAtlasTexture:info:AppliedGroup"
-msgstr "Auto Atlas: processed materials\n{0}\nTexture changes (before → after)\n{1}\nUnused top region: {2}%"
+msgstr "Auto Atlas: processed materials\n{0}\nTexture counts by resolution (before → after)\n{1}\nUnused top region: {2}%"
 
 msgid "AutoAtlasTexture:info:NoChanges"
 msgstr "Auto Atlas: no changes"
+
+msgid "AutoAtlasTexture:info:ResolutionChange"
+msgstr "  {0}x{1} → {2}x{3}: {4} textures"
