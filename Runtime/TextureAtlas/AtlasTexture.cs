@@ -137,6 +137,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , List<IIslandSizePriorityTuner?> islandSizePriorityTuner
 
             , AtlasSetting atlasSetting
+            , bool requireLossless = false
+            , int maxAtlasSize = 4096
+            , Func<AtlasContext, Vector2Int, bool>? acceptAtlasSize = null
         )
         {
             using var pf = new PFScope("init");
@@ -178,7 +181,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("IslandProcessing");
             var (atlasTargeSize, movedVirtualIslandArray, relocateResult, relocationTime) =
-                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner);
+                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner, maxAtlasSize);
+            if (requireLossless && IsLosslessRelocation(relocateResult) is false)
+            {
+                atlasContext.Dispose();
+                return new(false, null, null, null, preserveBump2ndMaterials, preservedOriginalUVChannel);
+            }
             if (relocateResult.IslandRelocationResult is null || relocateResult.IslandRelocationResult.IsSuccess is false)
             {
                 // Abort!!!
@@ -201,6 +209,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             TTLog.Info("AtlasTexture:info:RelocateResult", 1 - height, relocateResult.PriorityDownScale, relocateResult.OverallDownScale, relocateResult.TotalRelocateCount, relocationTime);
             var atlasedTextureSize = new Vector2Int(atlasTargeSize.x, atlasTextureHeightSize);
+            if (acceptAtlasSize != null && acceptAtlasSize(atlasContext, atlasedTextureSize) is false)
+            {
+                atlasContext.Dispose();
+                return new(false, null, null, null, preserveBump2ndMaterials, preservedOriginalUVChannel);
+            }
 
             //新しいUVを持つMeshを生成するフェーズ
 
@@ -458,7 +471,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             IRendererTargeting domain,
             AtlasSetting atlasSetting,
             AtlasContext atlasContext,
-            List<IIslandSizePriorityTuner?> islandSizePriorityTuner)
+            List<IIslandSizePriorityTuner?> islandSizePriorityTuner,
+            int maxAtlasSize)
         {
             if (atlasSetting.AutoAtlasTextureSize is false)
             {
@@ -480,7 +494,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var selectedSize = new Vector2Int(maxCandidateSize, maxCandidateSize);
             long totalRelocationTime = 0;
 
-            foreach (var size in AutoAtlasTextureSizeCandidates)
+            foreach (var size in AutoAtlasTextureSizeCandidates.Where(candidate => candidate <= maxAtlasSize))
             {
                 var candidateSize = new Vector2Int(size, size);
                 var (candidateIslands, candidateResult) = IslandProcessing(
