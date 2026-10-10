@@ -232,7 +232,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
               );
             pf.Split("exit");
             return new(true, atlasContext, atlasedMeshes, compiledAtlasTextures, preserveBump2ndMaterials,
-                preservedOriginalUVChannel, (float)(1 - height));
+                preservedOriginalUVChannel, (float)(1 - height),
+                relocateResult.TotalRelocateCount, relocationTime);
         }
         internal record AtlasResult
         {
@@ -246,6 +247,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             public readonly int? PreservedOriginalUVChannel;
             // Same pre-trim "上部の空き領域" value used by regular AtlasTexture.
             public readonly float? TopFreeFraction;
+            public readonly int TotalRelocateCount;
+            public readonly long RelocationTimeMilliseconds;
 
             public AtlasResult(
                 bool isSuccess,
@@ -254,7 +257,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 Dictionary<string, ITTRenderTexture>? compiledAtlasTextures,
                 HashSet<Material> preserveBump2ndMaterials,
                 int? preservedOriginalUVChannel,
-                float? topFreeFraction = null)
+                float? topFreeFraction = null,
+                int totalRelocateCount = 0,
+                long relocationTimeMilliseconds = 0)
             {
                 IsSuccess = isSuccess;
                 AtlasContext = atlasContext;
@@ -263,6 +268,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 PreserveBump2ndMaterials = preserveBump2ndMaterials;
                 PreservedOriginalUVChannel = preservedOriginalUVChannel;
                 TopFreeFraction = topFreeFraction;
+                TotalRelocateCount = totalRelocateCount;
+                RelocationTimeMilliseconds = relocationTimeMilliseconds;
             }
         }
         internal static TexFineTuningResult DoTextureFinTuning(ITexTransToolForUnity engine, AtlasContext atlasContext, AtlasSetting atlasSetting, Dictionary<string, ITTRenderTexture> compiledAtlasTextures, AtlasTextureExperimentalFeature? experimentalOptions)

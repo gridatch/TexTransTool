@@ -777,11 +777,14 @@ msgstr "PropertyNameAsPath"
 msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "SelectTexturePreview"
 
-msgid "AutoAtlasTexture:info:AppliedGroup"
-msgstr "Auto Atlas: processed materials\n{0}\nTexture counts by resolution (before → after)\n{1}\nUnused top region: {2}%"
+msgid "AutoAtlasTexture:info:RelocateResult"
+msgstr "Auto Atlas Relocate Result\n{0}\n\nTotal relocate count: {1}\nTime taken relocate: {2}ms"
+
+msgid "AutoAtlasTexture:info:MaterialBlock"
+msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 
 msgid "AutoAtlasTexture:info:NoChanges"
 msgstr "Auto Atlas: no changes"
 
 msgid "AutoAtlasTexture:info:ResolutionChange"
-msgstr "  {0}x{1} → {2}x{3}: {4} textures"
+msgstr "{0}x{1} → {2}x{3}: {4} files"

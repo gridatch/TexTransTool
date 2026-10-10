@@ -232,6 +232,8 @@ namespace net.rs64.TexTransTool.NDMF
                     MaterialNames = group.Select(OriginalMaterialName)
                         .Distinct().OrderBy(name => name, StringComparer.Ordinal).ToArray(),
                     TopFreeFraction = atlasResult.TopFreeFraction ?? 0f,
+                    TotalRelocateCount = atlasResult.TotalRelocateCount,
+                    RelocationTimeMilliseconds = atlasResult.RelocationTimeMilliseconds,
                     // Count unique source texture objects per before/after size.
                     // A texture may be referenced by several material properties,
                     // including aliases created by ReferenceCopy, but must be
@@ -359,23 +361,26 @@ namespace net.rs64.TexTransTool.NDMF
                     return;
                 }
 
-                foreach (var groupReport in report.Completed)
+                var resolutionLine = "AutoAtlasTexture:info:ResolutionChange".GetLocalize();
+                var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
+                var blocks = report.Completed.Select(groupReport =>
                 {
-                    var resolutionLine = "AutoAtlasTexture:info:ResolutionChange".GetLocalize();
                     var changes = string.Join("\n", groupReport.ResolutionChanges.Select(change =>
                         string.Format(resolutionLine,
                             change.BeforeWidth, change.BeforeHeight,
                             change.AfterWidth, change.AfterHeight,
                             change.TextureCount)));
+                    return string.Format(materialBlock,
+                        string.Join(", ", groupReport.MaterialNames),
+                        groupReport.TopFreeFraction,
+                        changes);
+                });
 
-                    var materialNames = string.Join("\n", groupReport.MaterialNames
-                        .Select(name => "  " + name));
-                    TTTLog.ReportingObject(configuration, () =>
-                        TTTLog.Info("AutoAtlasTexture:info:AppliedGroup",
-                            materialNames,
-                            changes,
-                            (groupReport.TopFreeFraction * 100f).ToString("F1")));
-                }
+                TTTLog.ReportingObject(configuration, () =>
+                    TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
+                        string.Join("\n\n", blocks),
+                        report.Completed.Sum(groupReport => groupReport.TotalRelocateCount),
+                        report.Completed.Sum(groupReport => groupReport.RelocationTimeMilliseconds)));
             }
         }
 

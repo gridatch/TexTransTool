@@ -773,11 +773,14 @@ msgstr "パスとなるプロパティネーム"
 msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "選択テクスチャーのプレビュー"
 
-msgid "AutoAtlasTexture:info:AppliedGroup"
-msgstr "自動アトラス化：適用したマテリアル\n{0}\n解像度別の対象テクスチャ数（変更前 → 変更後）\n{1}\n上部の空き領域：{2}%"
+msgid "AutoAtlasTexture:info:RelocateResult"
+msgstr "自動アトラス再配置結果\n{0}\n\n累計再配置計算回数: {1}回\n再配置実行時間: {2}ms"
+
+msgid "AutoAtlasTexture:info:MaterialBlock"
+msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
 
 msgid "AutoAtlasTexture:info:NoChanges"
 msgstr "自動アトラス化：変更なし"
 
 msgid "AutoAtlasTexture:info:ResolutionChange"
-msgstr "  {0}×{1} → {2}×{3}：{4}枚"
+msgstr "{0}×{1} → {2}×{3}: {4}ファイル"

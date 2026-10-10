@@ -42,6 +42,8 @@ namespace net.rs64.TexTransTool.Editor
         public string[] RendererNames = Array.Empty<string>();
         public AutoAtlasTexturePropertyReport[] PropertyChanges = Array.Empty<AutoAtlasTexturePropertyReport>();
         public float TopFreeFraction;
+        public int TotalRelocateCount;
+        public long RelocationTimeMilliseconds;
         public AutoAtlasTextureImageReport[] SourceTextures = Array.Empty<AutoAtlasTextureImageReport>();
         public AutoAtlasTextureImageReport[] GeneratedTextures = Array.Empty<AutoAtlasTextureImageReport>();
         public long SourcePixels => SourceTextures.Sum(image => image.Pixels);
