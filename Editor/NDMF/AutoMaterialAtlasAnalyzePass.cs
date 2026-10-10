@@ -26,6 +26,7 @@ namespace net.rs64.TexTransTool.NDMF
         public string AnimationDiagnostics = "";
         public string CandidateDiagnostics = "";
         public string CrossRendererDiagnostics = "";
+        public string PairSurveyDiagnostics = "";
         public int BeforeMaterialSlots;
     }
 
@@ -320,6 +321,7 @@ namespace net.rs64.TexTransTool.NDMF
                     + (animatedRendererDiagnostics.Count > maxDiagnosticRenderers
                         ? "\n... " + (animatedRendererDiagnostics.Count - maxDiagnosticRenderers)
                             + " additional renderers omitted" : "");
+            report.PairSurveyDiagnostics = BuildMaterialPairSurvey(root, renderers, animationMaterials, animationIndex);
             report.BeforeMaterialSlots = CountMaterialSlots(root);
         }
 
@@ -428,58 +430,236 @@ namespace net.rs64.TexTransTool.NDMF
 
         // Return the first mismatch in the same order as the compatibility
         // predicate. This is diagnostic, not a shader-compatibility guarantee.
-        private static string? DescribeNonTextureMismatch(Material left, Material right)
-        {
-            if (left == null || right == null) return "missing material";
-            if (left.shader != right.shader) return "different shader";
-            if (left.renderQueue != right.renderQueue) return "renderQueue";
-            if (left.enableInstancing != right.enableInstancing) return "enableInstancing";
-            if (left.doubleSidedGI != right.doubleSidedGI) return "doubleSidedGI";
-            if (left.globalIlluminationFlags != right.globalIlluminationFlags)
-                return "globalIlluminationFlags";
 
+        // Observational material-slot census. Deliberately includes all material
+        // animations and compares ALL pairs, even when the existing strict
+        // candidate filter excluded the renderer. This is not an AAO prediction.
+        private static string BuildMaterialPairSurvey(
+            GameObject root, SkinnedMeshRenderer[] renderers,
+            HashSet<Material> referencedMaterials, AnimationIndex? animationIndex)
+        {
+            int slotsCompared = 0, sameReference = 0, differentShader = 0;
+            int sameShader = 0, sameState = 0, differentState = 0;
+            int textureDiffers = 0, textureSame = 0, singleDifference = 0;
+            int topologySame = 0, topologyDifferent = 0, topologyUnknown = 0;
+            int slotAnimation = 0, materialReferenceAnimation = 0, partialAAOPreconditions = 0;
+            var frequency = new Dictionary<string, int>(StringComparer.Ordinal);
+            var examples = new List<MaterialPairSurveyEntry>();
+
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null || !AtlasTexture.IsAtlasAllowedRenderer(renderer))
+                    continue;
+                var materials = renderer.sharedMaterials;
+                var rendererPath = AnimationUtility.CalculateTransformPath(renderer.transform, root.transform);
+                if (rendererPath.Length == 0) rendererPath = "(avatar root)";
+                var (_, animatedSlots) = GetMaterialAnimationBindings(
+                    animationIndex, root.transform, renderer);
+                bool unverifiedSlots = animatedSlots.Length != 0;
+                var mesh = renderer.sharedMesh;
+
+                for (int i = 0; i < materials.Length; i++)
+                for (int j = i + 1; j < materials.Length; j++)
+                {
+                    var left = materials[i];
+                    var right = materials[j];
+                    if (left == null || right == null) continue;
+                    slotsCompared++;
+
+                    if (left == right)
+                    {
+                        // AAO already receives one shared Material reference.
+                        sameReference++;
+                        continue;
+                    }
+
+                    if (left.shader == null || left.shader != right.shader)
+                    {
+                        differentShader++;
+                        continue;
+                    }
+
+                    sameShader++;
+                    var differences = CollectAllNonTextureDifferences(left, right);
+                    var texturesDiffer = !HasSameTextureReferences(left, right);
+                    bool usesAnimatedReference = referencedMaterials.Contains(left)
+                        || referencedMaterials.Contains(right);
+
+                    bool knownTopology = mesh != null
+                        && i < mesh.subMeshCount && j < mesh.subMeshCount;
+                    bool matchesTopology = knownTopology && mesh!.GetTopology(i) == mesh.GetTopology(j);
+                    if (!knownTopology) topologyUnknown++;
+                    else if (matchesTopology) topologySame++;
+                    else topologyDifferent++;
+
+                    if (unverifiedSlots) slotAnimation++;
+                    if (usesAnimatedReference) materialReferenceAnimation++;
+
+                    if (differences.Length == 0)
+                    {
+                        sameState++;
+                        if (texturesDiffer) textureDiffers++;
+                        else textureSame++;
+                        if (matchesTopology && !unverifiedSlots && !usesAnimatedReference)
+                            partialAAOPreconditions++;
+                    }
+                    else
+                    {
+                        differentState++;
+                        if (differences.Length == 1) singleDifference++;
+                        foreach (var difference in differences)
+                        {
+                            frequency.TryGetValue(difference, out int count);
+                            frequency[difference] = count + 1;
+                        }
+                    }
+
+                    examples.Add(new MaterialPairSurveyEntry(
+                        rendererPath, i, j, left.name, right.name, left.shader.name,
+                        differences, texturesDiffer, knownTopology, matchesTopology,
+                        unverifiedSlots, usesAnimatedReference));
+                }
+            }
+
+            var frequent = frequency.OrderByDescending(x => x.Value)
+                .ThenBy(x => x.Key, StringComparer.Ordinal)
+                .Take(24)
+                .Select(x => x.Key + ": " + x.Value)
+                .ToArray();
+
+            // Up to two closest pairs per renderer keeps one complex outfit
+            // from crowding out every other renderer in the sample.
+            var chosen = examples.GroupBy(x => x.RendererPath)
+                .SelectMany(g => g.OrderBy(x => x.Differences.Length)
+                    .ThenBy(x => x.TextureReferencesDiffer ? 0 : 1)
+                    .ThenBy(x => x.SlotA).ThenBy(x => x.SlotB).Take(2))
+                .OrderBy(x => x.Differences.Length)
+                .ThenBy(x => x.RendererPath, StringComparer.Ordinal)
+                .ThenBy(x => x.SlotA).ThenBy(x => x.SlotB)
+                .Take(24)
+                .Select((x, index) =>
+                {
+                    var shown = x.Differences.Take(8).ToArray();
+                    var mismatchDescription = x.Differences.Length == 0
+                        ? "non-texture settings equal"
+                        : x.Differences.Length + " differing settings: "
+                          + string.Join(", ", shown)
+                          + (x.Differences.Length > shown.Length ? ", ..." : "");
+                    return (index + 1) + ". " + x.RendererPath
+                        + " [" + x.SlotA + "/" + x.SlotB + "]: "
+                        + x.MaterialA + " vs " + x.MaterialB
+                        + " (" + x.ShaderName + "); " + mismatchDescription
+                        + "; " + (x.TextureReferencesDiffer ? "texture refs differ" : "texture refs equal")
+                        + "; " + (!x.TopologyKnown ? "topology unverified"
+                            : x.TopologyMatches ? "topology equal" : "topology differs")
+                        + (x.SlotAnimationUnverified ? "; slot animation/index unverified" : "")
+                        + (x.MaterialReferenceAnimation ? "; material PPtr animation" : "");
+                }).ToArray();
+
+            return "MATERIAL DIFFERENCE SURVEY (all same-Renderer slot pairs; before AAO; read-only):\n"
+                + "Total non-null slot pairs: " + slotsCompared
+                + "; shared Material-ref pairs (AAO already sees reference): " + sameReference
+                + "; different/missing shader pairs: " + differentShader
+                + "; distinct-ref same-shader pairs: " + sameShader + "\n"
+                + "Same shader + equal non-texture state: " + sameState
+                + " (different texture refs: " + textureDiffers
+                + "; equal texture refs: " + textureSame + ")\n"
+                + "Same shader + different state: " + differentState
+                + " (exactly one differing setting: " + singleDifference + ")\n"
+                + "Same-shader topology: equal=" + topologySame
+                + "; different=" + topologyDifferent
+                + "; unknown=" + topologyUnknown + "\n"
+                + "Same-shader pairs involving slot animation/unavailable index: " + slotAnimation
+                + "; PPtr-animated Materials: " + materialReferenceAnimation + "\n"
+                + "Equal-state pairs passing only basic topology + reference checks: "
+                + partialAAOPreconditions + " (PAIR COUNT, NOT savings or certified compatibility)\n"
+                + "All differing properties and states (frequency per same-shader pair; top 24): "
+                + (frequent.Length == 0 ? "(none)" : string.Join("; ", frequent)) + "\n"
+                + "Closest examples (at most 2 per Renderer, 24 total; NOT merge-safe verdicts):\n"
+                + (chosen.Length == 0 ? "(none)" : string.Join("\n", chosen))
+                + (examples.Count > chosen.Length ? "\n(Additional pairs included in full statistics)" : "")
+                + "\nUnverified for ALL pairs: effective shader semantics, UV/texture quality,"
+                + " live material-property animation, AAO options/merging, memory and draw-call delta.";
+        }
+
+        private sealed class MaterialPairSurveyEntry
+        {
+            internal readonly string RendererPath;
+            internal readonly int SlotA, SlotB;
+            internal readonly string MaterialA, MaterialB, ShaderName;
+            internal readonly string[] Differences;
+            internal readonly bool TextureReferencesDiffer, TopologyKnown, TopologyMatches;
+            internal readonly bool SlotAnimationUnverified, MaterialReferenceAnimation;
+
+            internal MaterialPairSurveyEntry(string rendererPath, int slotA, int slotB,
+                string materialA, string materialB, string shaderName, string[] differences,
+                bool textureReferencesDiffer, bool topologyKnown, bool topologyMatches,
+                bool slotAnimationUnverified, bool materialReferenceAnimation)
+            {
+                RendererPath = rendererPath;
+                SlotA = slotA; SlotB = slotB;
+                MaterialA = materialA; MaterialB = materialB; ShaderName = shaderName;
+                Differences = differences;
+                TextureReferencesDiffer = textureReferencesDiffer;
+                TopologyKnown = topologyKnown; TopologyMatches = topologyMatches;
+                SlotAnimationUnverified = slotAnimationUnverified;
+                MaterialReferenceAnimation = materialReferenceAnimation;
+            }
+        }
+
+        private static string? DescribeNonTextureMismatch(Material left, Material right)
+            => CollectAllNonTextureDifferences(left, right).FirstOrDefault();
+
+        // Report serialized differences, never guess which shader properties are
+        // inactive. The same comparator is used by strict candidate detection.
+        private static string[] CollectAllNonTextureDifferences(Material left, Material right)
+        {
+            var diff = new List<string>();
+            if (left == null || right == null) return new[] { "state.missingMaterial" };
+            if (left.shader != right.shader) return new[] { "state.differentShader" };
+            if (left.shader == null) return new[] { "state.missingShader" };
+            if (left.renderQueue != right.renderQueue) diff.Add("state.renderQueue");
+            if (left.enableInstancing != right.enableInstancing) diff.Add("state.enableInstancing");
+            if (left.doubleSidedGI != right.doubleSidedGI) diff.Add("state.doubleSidedGI");
+            if (left.globalIlluminationFlags != right.globalIlluminationFlags)
+                diff.Add("state.globalIlluminationFlags");
             if (!left.shaderKeywords.ToHashSet(StringComparer.Ordinal)
                 .SetEquals(right.shaderKeywords))
-                return "shaderKeywords";
+                diff.Add("state.shaderKeywords");
 
             foreach (var tag in new[] { "RenderType", "Queue", "RenderPipeline",
                          "IgnoreProjector", "DisableBatching", "ForceNoShadowCasting" })
             {
                 if (left.GetTag(tag, false, "") != right.GetTag(tag, false, ""))
-                    return "shader tag " + tag;
+                    diff.Add("state.tag." + tag);
             }
 
             var shader = left.shader;
             for (int i = 0; i < shader.GetPropertyCount(); i++)
             {
-                var property = shader.GetPropertyName(i);
+                var name = shader.GetPropertyName(i);
+                bool mismatch;
                 switch (shader.GetPropertyType(i))
                 {
                     case ShaderPropertyType.Color:
-                        if (left.GetColor(property) != right.GetColor(property))
-                            return property + " (color)";
-                        break;
+                        mismatch = left.GetColor(name) != right.GetColor(name); break;
                     case ShaderPropertyType.Vector:
-                        if (left.GetVector(property) != right.GetVector(property))
-                            return property + " (vector)";
-                        break;
+                        mismatch = left.GetVector(name) != right.GetVector(name); break;
                     case ShaderPropertyType.Float:
                     case ShaderPropertyType.Range:
-                        if (left.GetFloat(property) != right.GetFloat(property))
-                            return property + " (float/range)";
-                        break;
+                        mismatch = left.GetFloat(name) != right.GetFloat(name); break;
                     case ShaderPropertyType.Int:
-                        if (left.GetInt(property) != right.GetInt(property))
-                            return property + " (int)";
-                        break;
+                        mismatch = left.GetInt(name) != right.GetInt(name); break;
                     case ShaderPropertyType.Texture:
-                        break;
+                        continue;
                     default:
-                        return property + " (unsupported property type)";
+                        diff.Add("state.unsupportedPropertyType." + name); continue;
                 }
+                if (mismatch) diff.Add("property." + name);
             }
-            return null;
+            return diff.ToArray();
         }
+
     }
 
     /// <summary>
@@ -493,11 +673,11 @@ namespace net.rs64.TexTransTool.NDMF
         internal AutoMaterialAtlasConsoleReport(
             string summary, string detail, string observed,
             string animationDiagnostics, string candidateDiagnostics,
-            string crossRendererDiagnostics)
+            string crossRendererDiagnostics, string pairSurveyDiagnostics)
         {
             _details = new[] {
                 summary, detail, observed, animationDiagnostics,
-                candidateDiagnostics, crossRendererDiagnostics
+                candidateDiagnostics, crossRendererDiagnostics, pairSurveyDiagnostics
             };
         }
 
@@ -546,7 +726,8 @@ namespace net.rs64.TexTransTool.NDMF
                     observed,
                     report.AnimationDiagnostics,
                     report.CandidateDiagnostics,
-                    report.CrossRendererDiagnostics)));
+                    report.CrossRendererDiagnostics,
+                    report.PairSurveyDiagnostics)));
         }
     }
 }
