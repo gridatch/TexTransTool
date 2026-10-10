@@ -37,18 +37,11 @@ namespace net.rs64.TexTransTool.Editor
             (1.0 - (double)GeneratedPixels / SourcePixels) * 100.0;
     }
 
-    internal sealed class AutoAtlasTextureSkippedGroup
-    {
-        public string MaterialNames = "";
-        public string Reason = "";
-    }
-
     internal sealed class AutoAtlasTextureBuildReport
     {
         public string AvatarName = "";
         public DateTime CreatedAt = DateTime.Now;
         public readonly List<AutoAtlasTextureGroupReport> Completed = new();
-        public readonly List<AutoAtlasTextureSkippedGroup> Skipped = new();
 
         public int MaterialCount => Completed.Sum(g => g.MaterialNames.Length);
         public int OriginalTextureCount => Completed.Sum(g => g.SourceTextures.Length);
