@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.12+wdt.ttt.1.0.2",
-  "lastDebugSerial": 265,
-  "currentDebugVersion": "0.1.12+wdt.ttt.1.0.2.debug.265.auto-texture-atlas.c94d640",
+  "lastDebugSerial": 266,
+  "currentDebugVersion": "0.1.12+wdt.ttt.1.0.2.debug.266.auto-texture-atlas.d0e7026",
   "currentDebugChange": "auto-texture-atlas",
   "currentDebugBranch": "feat/auto-texture-atlas",
-  "currentDebugCommit": "c94d6401faca0aea9f20287c7e5f3cf116eeb3d0",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.12+wdt.ttt.1.0.2.debug.265.auto-texture-atlas.c94d640.zip"
+  "currentDebugCommit": "d0e7026662ffceaeaa59506ad5c6093d185abf98",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.12+wdt.ttt.1.0.2.debug.266.auto-texture-atlas.d0e7026.zip"
 }
