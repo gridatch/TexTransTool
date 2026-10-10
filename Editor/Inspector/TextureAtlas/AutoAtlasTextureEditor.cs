@@ -22,7 +22,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         // This is a build-time domain-wide operation, not an individual render effect.
         protected override bool DrawPreviewButton => false;
-        protected override bool DrawExperimentalWarning => false;
 
         protected override void OnTexTransComponentInspectorGUI()
         {

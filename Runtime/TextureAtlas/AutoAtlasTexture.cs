@@ -9,10 +9,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
     /// Add using the same Hierarchy TexTransTool menu as TTT AtlasTexture.
     /// </summary>
     [AddComponentMenu(TexTransBehavior.TTTName + "/" + MenuPath)]
-    public sealed class AutoAtlasTexture : TexTransMonoBaseGameObjectOwned
+    public sealed class AutoAtlasTexture : TexTransMonoBaseGameObjectOwned, ITexTransToolStableComponent
     {
         public const string ComponentName = "TTT AutoAtlasTexture";
         public const string MenuPath = ComponentName;
+        public int StabilizeSaveDataVersion => TTTDataVersion_0_10_X;
 
         [Range(0f, 0.05f)]
         public float IslandPadding = 0.01f;
