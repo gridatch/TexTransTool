@@ -24,6 +24,7 @@ namespace net.rs64.TexTransTool.NDMF
         public string Summary = "";
         public string Detail = "";
         public string AnimationDiagnostics = "";
+        public string CandidateDiagnostics = "";
         public int BeforeMaterialSlots;
     }
 
@@ -68,8 +69,13 @@ namespace net.rs64.TexTransTool.NDMF
                     .OfType<Material>().ToHashSet();
 
             var groups = new List<GroupCandidate>();
-            int excludedSharedMaterials = 0;
+            int observedSharedMaterialReferences = 0;
+            int observedSharedMaterialRenderers = 0;
             int excludedAnimatedMaterials = 0;
+            int sameShaderButSettingsMismatchRenderers = 0;
+            int insufficientMaterialRenderers = 0;
+            int differentShaderOnlyRenderers = 0;
+            var candidateDiagnostics = new List<string>();
             int excludedAnimatedRenderers = 0;
             int observedAnimatedPropertyRenderers = 0;
             var animatedRendererDiagnostics = new List<string>();
@@ -113,15 +119,20 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
+                // A shared material is unsafe for the current global replacement
+                // executor, but sharing alone cannot disqualify it from a
+                // READ-ONLY candidate analysis. Track the references and mark
+                // those groups as needing isolation before any real mutation.
                 var candidates = new List<Material>();
+                var sharedMaterialsHere = new HashSet<Material>();
                 foreach (var mat in renderer.sharedMaterials.Distinct())
                 {
                     if (mat == null) continue;
-                    if (!materialUsers.TryGetValue(mat, out var users)
-                        || users.Length != 1 || users[0] != renderer)
+                    if (materialUsers.TryGetValue(mat, out var users)
+                        && users.Length > 1)
                     {
-                        excludedSharedMaterials++;
-                        continue;
+                        observedSharedMaterialReferences++;
+                        sharedMaterialsHere.Add(mat);
                     }
 
                     if (animationMaterials.Contains(mat))
@@ -132,6 +143,8 @@ namespace net.rs64.TexTransTool.NDMF
 
                     candidates.Add(mat);
                 }
+                if (sharedMaterialsHere.Count != 0)
+                    observedSharedMaterialRenderers++;
 
                 // Candidate equivalence: same shader and all non-texture
                 // settings. This is NOT yet a UV/texture-density proof.
@@ -148,13 +161,45 @@ namespace net.rs64.TexTransTool.NDMF
                     bucket.Add(mat);
                 }
 
-                foreach (var bucket in buckets.Where(b => b.Count > 1))
+                var viableBuckets = buckets.Where(b => b.Count > 1).ToArray();
+                foreach (var bucket in viableBuckets)
                 {
                     var differsInTexture = bucket.Skip(1)
                         .Any(mat => !HasSameTextureReferences(bucket[0], mat));
                     groups.Add(new GroupCandidate(
                         renderer, bucket.ToArray(), differsInTexture,
-                        propertyBindings.Length != 0));
+                        propertyBindings.Length != 0,
+                        bucket.Any(sharedMaterialsHere.Contains)));
+                }
+
+                // Give a concrete reason for zero groups instead of emitting
+                // only an undifferentiated "no candidate groups" message.
+                if (viableBuckets.Length == 0)
+                {
+                    if (candidates.Count < 2)
+                    {
+                        insufficientMaterialRenderers++;
+                    }
+                    else
+                    {
+                        var sameShader = candidates.GroupBy(m => m.shader)
+                            .OrderByDescending(g => g.Count())
+                            .FirstOrDefault(g => g.Count() > 1);
+                        if (sameShader == null)
+                        {
+                            differentShaderOnlyRenderers++;
+                        }
+                        else
+                        {
+                            sameShaderButSettingsMismatchRenderers++;
+                            var examples = sameShader.Take(2).ToArray();
+                            candidateDiagnostics.Add(displayPath + ": "
+                                + examples[0].name + " vs " + examples[1].name
+                                + " (" + examples[0].shader.name + ") — "
+                                + (DescribeNonTextureMismatch(examples[0], examples[1])
+                                    ?? "(no mismatch identified)"));
+                        }
+                    }
                 }
             }
 
@@ -169,8 +214,12 @@ namespace net.rs64.TexTransTool.NDMF
                 + "; candidate groups: " + orderedGroups.Length
                 + "; potential slot reductions: "
                 + orderedGroups.Sum(group => group.Materials.Length - 1)
-                + "; shared-material exclusions: " + excludedSharedMaterials
+                + "; shared-material references (included): " + observedSharedMaterialReferences
+                + "; renderers using shared materials: " + observedSharedMaterialRenderers
                 + "; animated-material exclusions: " + excludedAnimatedMaterials
+                + "; renderers with insufficient distinct materials: " + insufficientMaterialRenderers
+                + "; renderers with no shared shader: " + differentShaderOnlyRenderers
+                + "; renderers with shader-setting mismatch: " + sameShaderButSettingsMismatchRenderers
                 + "; material-slot animation renderer exclusions: " + excludedAnimatedRenderers
                 + "; animated-property renderers (not excluded): " + observedAnimatedPropertyRenderers
                 + "; unsupported renderers: " + excludedUnsupportedRenderers;
@@ -183,7 +232,8 @@ namespace net.rs64.TexTransTool.NDMF
                     + " : [" + string.Join(", ", g.Materials.Select(m => m.name)) + "]"
                     + (g.RequiresAtlas ? " (atlas candidate)" : " (reference reuse candidate)")
                     + (g.HasAnimatedProperties ? " (animated properties; merge compatibility unverified)" : "")
-                    + " — estimated " + (g.Materials.Length - 1) + " fewer slots"));
+                    + (g.UsesSharedMaterials ? " (shared material; per-renderer isolation required)" : "")
+                    + " — theoretical maximum " + (g.Materials.Length - 1) + " fewer slots"));
 
             // Defer the report until PlatformFinish. AAO has not run yet,
             // and would otherwise make the summary appear to be a final result.
@@ -192,7 +242,14 @@ namespace net.rs64.TexTransTool.NDMF
             report.Component = components[0];
             report.Summary = summary;
             report.Detail = detail;
-            const int maxDiagnosticRenderers = 64;
+            const int maxCandidateDiagnostics = 20;
+            report.CandidateDiagnostics = candidateDiagnostics.Count == 0
+                ? "(none)"
+                : string.Join("\n", candidateDiagnostics.Take(maxCandidateDiagnostics))
+                    + (candidateDiagnostics.Count > maxCandidateDiagnostics
+                        ? "\n... " + (candidateDiagnostics.Count - maxCandidateDiagnostics)
+                            + " additional mismatches omitted" : "");
+            const int maxDiagnosticRenderers = 12;
             report.AnimationDiagnostics = animatedRendererDiagnostics.Count == 0
                 ? "(none)"
                 : string.Join("\n", animatedRendererDiagnostics.Take(maxDiagnosticRenderers))
@@ -215,17 +272,20 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Material[] Materials;
             internal readonly bool RequiresAtlas;
             internal readonly bool HasAnimatedProperties;
+            internal readonly bool UsesSharedMaterials;
 
             internal GroupCandidate(
                 SkinnedMeshRenderer renderer,
                 Material[] materials,
                 bool requiresAtlas,
-                bool hasAnimatedProperties)
+                bool hasAnimatedProperties,
+                bool usesSharedMaterials)
             {
                 Renderer = renderer;
                 Materials = materials;
                 RequiresAtlas = requiresAtlas;
                 HasAnimatedProperties = hasAnimatedProperties;
+                UsesSharedMaterials = usesSharedMaterials;
             }
         }
 
@@ -300,28 +360,29 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         private static bool HasSameNonTextureState(Material left, Material right)
-        {
-            if (left == null || right == null || left.shader != right.shader)
-                return false;
+            => DescribeNonTextureMismatch(left, right) == null;
 
-            if (left.renderQueue != right.renderQueue
-                || left.enableInstancing != right.enableInstancing
-                || left.doubleSidedGI != right.doubleSidedGI
-                || left.globalIlluminationFlags != right.globalIlluminationFlags)
-                return false;
+        // Return the first mismatch in the same order as the compatibility
+        // predicate. This is diagnostic, not a shader-compatibility guarantee.
+        private static string? DescribeNonTextureMismatch(Material left, Material right)
+        {
+            if (left == null || right == null) return "missing material";
+            if (left.shader != right.shader) return "different shader";
+            if (left.renderQueue != right.renderQueue) return "renderQueue";
+            if (left.enableInstancing != right.enableInstancing) return "enableInstancing";
+            if (left.doubleSidedGI != right.doubleSidedGI) return "doubleSidedGI";
+            if (left.globalIlluminationFlags != right.globalIlluminationFlags)
+                return "globalIlluminationFlags";
 
             if (!left.shaderKeywords.ToHashSet(StringComparer.Ordinal)
                 .SetEquals(right.shaderKeywords))
-                return false;
+                return "shaderKeywords";
 
-            // Compare commonly overridden render-state tags as well as the
-            // shader's exposed properties. The full compatibility checker
-            // for automated modification will be stricter than this preview.
             foreach (var tag in new[] { "RenderType", "Queue", "RenderPipeline",
                          "IgnoreProjector", "DisableBatching", "ForceNoShadowCasting" })
             {
                 if (left.GetTag(tag, false, "") != right.GetTag(tag, false, ""))
-                    return false;
+                    return "shader tag " + tag;
             }
 
             var shader = left.shader;
@@ -331,25 +392,29 @@ namespace net.rs64.TexTransTool.NDMF
                 switch (shader.GetPropertyType(i))
                 {
                     case ShaderPropertyType.Color:
-                        if (left.GetColor(property) != right.GetColor(property)) return false;
+                        if (left.GetColor(property) != right.GetColor(property))
+                            return property + " (color)";
                         break;
                     case ShaderPropertyType.Vector:
-                        if (left.GetVector(property) != right.GetVector(property)) return false;
+                        if (left.GetVector(property) != right.GetVector(property))
+                            return property + " (vector)";
                         break;
                     case ShaderPropertyType.Float:
                     case ShaderPropertyType.Range:
-                        if (left.GetFloat(property) != right.GetFloat(property)) return false;
+                        if (left.GetFloat(property) != right.GetFloat(property))
+                            return property + " (float/range)";
                         break;
                     case ShaderPropertyType.Int:
-                        if (left.GetInt(property) != right.GetInt(property)) return false;
+                        if (left.GetInt(property) != right.GetInt(property))
+                            return property + " (int)";
                         break;
                     case ShaderPropertyType.Texture:
                         break;
                     default:
-                        return false;
+                        return property + " (unsupported property type)";
                 }
             }
-            return true;
+            return null;
         }
     }
 
@@ -362,9 +427,12 @@ namespace net.rs64.TexTransTool.NDMF
         private readonly string[] _details;
 
         internal AutoMaterialAtlasConsoleReport(
-            string summary, string detail, string observed, string animationDiagnostics)
+            string summary, string detail, string observed,
+            string animationDiagnostics, string candidateDiagnostics)
         {
-            _details = new[] { summary, detail, observed, animationDiagnostics };
+            _details = new[] {
+                summary, detail, observed, animationDiagnostics, candidateDiagnostics
+            };
         }
 
         public override nadena.dev.ndmf.localization.Localizer Localizer => TTTLog.NDMFLocalizer;
@@ -410,7 +478,8 @@ namespace net.rs64.TexTransTool.NDMF
                     report.Summary,
                     report.Detail,
                     observed,
-                    report.AnimationDiagnostics)));
+                    report.AnimationDiagnostics,
+                    report.CandidateDiagnostics)));
         }
     }
 }
