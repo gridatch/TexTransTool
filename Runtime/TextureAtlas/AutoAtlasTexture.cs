@@ -14,9 +14,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
         public const string ComponentName = "TTT AutoAtlasTexture";
         public const string MenuPath = ComponentName;
 
-        [Min(256)]
-        public int MaxAtlasSize = 4096;
-
         [Range(0f, 0.05f)]
         public float IslandPadding = 0.01f;
 

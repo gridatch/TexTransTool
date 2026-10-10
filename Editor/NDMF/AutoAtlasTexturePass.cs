@@ -83,9 +83,8 @@ namespace net.rs64.TexTransTool.NDMF
         internal static void Execute(IDomain domain, GameObject avatarRoot,
             AutoAtlasTexture configuration, IReadOnlyCollection<AtlasTexture> manualAtlases)
         {
-            var report = new AutoAtlasTextureBuildReport { AvatarName = avatarRoot.name };
-            // The report is reset for every build, including builds without candidates.
-            AutoAtlasTextureReportStore.Set(report);
+            // Store only the NDMF console summary for this build.
+            var completed = new List<(string Block, int Relocations, long Milliseconds)>();
 
             string OriginalMaterialName(Material material)
             {
@@ -143,8 +142,9 @@ namespace net.rs64.TexTransTool.NDMF
             // default 512px resize to non-main textures for this component.
             settings.TextureFineTuning.RemoveAll(tuning => tuning is Resize);
 
-            var maxSize = Mathf.Clamp(configuration.MaxAtlasSize, 256, 4096);
             var groups = MakeTextureConnectedGroups(allMaterials, propertyTextures);
+            var resolutionLine = "AutoAtlasTexture:info:ResolutionChange".GetLocalize();
+            var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
             foreach (var group in groups)
             {
                 if (group.Any(material => excludedMaterials.Any(excluded =>
@@ -204,7 +204,6 @@ namespace net.rs64.TexTransTool.NDMF
                     new List<IIslandSizePriorityTuner?>(),
                     settings,
                     requireLossless: true,
-                    maxAtlasSize: maxSize,
                     acceptAtlasSize: (atlasContext, size) =>
                     {
                         var texturePropertyCount =
@@ -226,106 +225,33 @@ namespace net.rs64.TexTransTool.NDMF
                     item => engine.GetReferenceRenderTexture(item.Value));
                 var retainedRenderTextures = tuningResult.TextureDescriptors.Keys.ToHashSet();
 
-                // Capture immutable names/dimensions while the source references still exist.
-                var groupReport = new AutoAtlasTextureGroupReport
-                {
-                    MaterialNames = group.Select(OriginalMaterialName)
-                        .Distinct().OrderBy(name => name, StringComparer.Ordinal).ToArray(),
-                    TopFreeFraction = atlasResult.TopFreeFraction ?? 0f,
-                    TotalRelocateCount = atlasResult.TotalRelocateCount,
-                    RelocationTimeMilliseconds = atlasResult.RelocationTimeMilliseconds,
-                    // Count unique source texture objects per before/after size.
-                    // A texture may be referenced by several material properties,
-                    // including aliases created by ReferenceCopy, but must be
-                    // counted only once for each resolution transition.
-                    ResolutionChanges = group
-                        .SelectMany(material => propertyTextures[material]
-                            .Where(property => tuningResult.RenderTextures.ContainsKey(property.Key))
-                            .Select(property => new
-                            {
-                                Source = property.Value,
-                                Output = tuningResult.RenderTextures[property.Key],
-                            }))
-                        .GroupBy(entry => (entry.Source, entry.Output.Width, entry.Output.Hight))
-                        .Select(entries => entries.First())
-                        .GroupBy(entry => (
-                            BeforeWidth: entry.Source.width,
-                            BeforeHeight: entry.Source.height,
-                            AfterWidth: entry.Output.Width,
-                            AfterHeight: entry.Output.Hight))
-                        .OrderByDescending(entries => (long)entries.Key.BeforeWidth * entries.Key.BeforeHeight)
-                        .ThenByDescending(entries => (long)entries.Key.AfterWidth * entries.Key.AfterHeight)
-                        .Select(entries => new AutoAtlasTextureResolutionChangeReport
+                // A source texture may be used by multiple shader properties.
+                // Count it only once for each resolution transition.
+                var resolutionChanges = group
+                    .SelectMany(material => propertyTextures[material]
+                        .Where(property => tuningResult.RenderTextures.ContainsKey(property.Key))
+                        .Select(property => new
                         {
-                            BeforeWidth = entries.Key.BeforeWidth,
-                            BeforeHeight = entries.Key.BeforeHeight,
-                            AfterWidth = entries.Key.AfterWidth,
-                            AfterHeight = entries.Key.AfterHeight,
-                            TextureCount = entries.Count(),
-                        })
-                        .ToArray(),
-                    // One row per generated RenderTexture rather than per material
-                    // property. ReferenceCopy aliases are therefore shown only once.
-                    PropertyChanges = tuningResult.RenderTextures
-                        .GroupBy(entry => entry.Value)
-                        .OrderBy(entries => entries.Min(entry => entry.Key), StringComparer.Ordinal)
-                        .Select(entries => new AutoAtlasTexturePropertyReport
-                        {
-                            PropertyNames = entries.Select(entry => entry.Key)
-                                .OrderBy(name => name, StringComparer.Ordinal)
-                                .ToArray(),
-                            SourceTextures = entries
-                                .SelectMany(entry => group.Select(material =>
-                                    propertyTextures[material].TryGetValue(entry.Key, out var texture)
-                                        ? texture
-                                        : null))
-                                .Where(texture => texture != null)
-                                .Cast<Texture>()
-                                .Distinct()
-                                .OrderBy(texture => texture.name, StringComparer.Ordinal)
-                                .Select(texture => new AutoAtlasTextureImageReport
-                                {
-                                    Name = texture.name,
-                                    Width = texture.width,
-                                    Height = texture.height,
-                                })
-                                .ToArray(),
-                            GeneratedTexture = new AutoAtlasTextureImageReport
-                            {
-                                Name = entries.Key.Name,
-                                Width = entries.Key.Width,
-                                Height = entries.Key.Hight,
-                            },
-                        }).ToArray(),
-                    RendererNames = atlasRenderers.Select(renderer =>
-                        UnityEditor.AnimationUtility.CalculateTransformPath(
-                            renderer.transform, avatarRoot.transform))
-                        .OrderBy(name => name).ToArray(),
-                    SourceTextures = texturesToReplace
-                        .OrderBy(texture => texture.name)
-                        .Select(texture => new AutoAtlasTextureImageReport
-                        {
-                            Name = texture.name,
-                            Width = texture.width,
-                            Height = texture.height,
-                            Properties = string.Join(", ", group.SelectMany(material =>
-                                propertyTextures[material]
-                                    .Where(item => item.Value == texture)
-                                    .Select(item => OriginalMaterialName(material) + "." + item.Key))
-                                .Distinct().OrderBy(name => name)),
-                        }).ToArray(),
-                    GeneratedTextures = tuningResult.RenderTextures
-                        .GroupBy(item => item.Value)
-                        .Select(entries => new AutoAtlasTextureImageReport
-                        {
-                            Name = entries.Key.Name,
-                            Width = entries.Key.Width,
-                            Height = entries.Key.Hight,
-                            Properties = string.Join(", ", entries.Select(entry => entry.Key)
-                                .OrderBy(name => name)),
-                        })
-                        .OrderBy(image => image.Name).ToArray(),
-                };
+                            Source = property.Value,
+                            Output = tuningResult.RenderTextures[property.Key],
+                        }))
+                    .GroupBy(entry => (entry.Source, entry.Output.Width, entry.Output.Hight))
+                    .Select(entries => entries.First())
+                    .GroupBy(entry => (
+                        BeforeWidth: entry.Source.width,
+                        BeforeHeight: entry.Source.height,
+                        AfterWidth: entry.Output.Width,
+                        AfterHeight: entry.Output.Hight))
+                    .OrderByDescending(entries => (long)entries.Key.BeforeWidth * entries.Key.BeforeHeight)
+                    .ThenByDescending(entries => (long)entries.Key.AfterWidth * entries.Key.AfterHeight)
+                    .Select(entries => string.Format(resolutionLine,
+                        entries.Key.BeforeWidth, entries.Key.BeforeHeight,
+                        entries.Key.AfterWidth, entries.Key.AfterHeight, entries.Count()));
+                var block = string.Format(materialBlock,
+                    string.Join(", ", group.Select(OriginalMaterialName)
+                        .Distinct().OrderBy(name => name, StringComparer.Ordinal)),
+                    atlasResult.TopFreeFraction ?? 0f,
+                    string.Join("\n", resolutionChanges));
 
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
@@ -345,43 +271,22 @@ namespace net.rs64.TexTransTool.NDMF
                     domain.RegisterPostProcessingAndLazyGPUReadBack(
                         descriptor.Key, descriptor.Value);
 
-                report.Completed.Add(groupReport);
+                completed.Add((block, atlasResult.TotalRelocateCount,
+                    atlasResult.RelocationTimeMilliseconds));
             }
 
-            LogResults();
-
-            void LogResults()
+            if (completed.Count == 0)
             {
-                // A successful atlas operation is the unit of reporting.
-                // No console spam for groups that did not need changing.
-                if (report.Completed.Count == 0)
-                {
-                    TTTLog.ReportingObject(configuration, () =>
-                        TTTLog.Info("AtlasTexture:info:TargetNotFound"));
-                    return;
-                }
-
-                var resolutionLine = "AutoAtlasTexture:info:ResolutionChange".GetLocalize();
-                var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
-                var blocks = report.Completed.Select(groupReport =>
-                {
-                    var changes = string.Join("\n", groupReport.ResolutionChanges.Select(change =>
-                        string.Format(resolutionLine,
-                            change.BeforeWidth, change.BeforeHeight,
-                            change.AfterWidth, change.AfterHeight,
-                            change.TextureCount)));
-                    return string.Format(materialBlock,
-                        string.Join(", ", groupReport.MaterialNames),
-                        groupReport.TopFreeFraction,
-                        changes);
-                });
-
                 TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
-                        string.Join("\n\n", blocks),
-                        report.Completed.Sum(groupReport => groupReport.TotalRelocateCount),
-                        report.Completed.Sum(groupReport => groupReport.RelocationTimeMilliseconds)));
+                    TTTLog.Info("AtlasTexture:info:TargetNotFound"));
+                return;
             }
+
+            TTTLog.ReportingObject(configuration, () =>
+                TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
+                    string.Join("\n\n", completed.Select(item => item.Block)),
+                    completed.Sum(item => item.Relocations),
+                    completed.Sum(item => item.Milliseconds)));
         }
 
         private static bool ReferencesAreExclusive(
