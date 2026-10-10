@@ -778,3 +778,6 @@ msgstr "自動アトラス化：適用したマテリアル\n{0}\nテクスチ�
 
 msgid "AutoAtlasTexture:info:NoChanges"
 msgstr "自動アトラス化：変更なし"
+
+msgid "AutoAtlasTexture:label:IncreasedResolution"
+msgstr " [解像度増加あり]"

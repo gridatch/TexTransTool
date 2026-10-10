@@ -782,3 +782,6 @@ msgstr "Auto Atlas: processed materials\n{0}\nTexture changes (before → after)
 
 msgid "AutoAtlasTexture:info:NoChanges"
 msgstr "Auto Atlas: no changes"
+
+msgid "AutoAtlasTexture:label:IncreasedResolution"
+msgstr " [increased resolution]"

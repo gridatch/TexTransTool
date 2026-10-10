@@ -343,7 +343,7 @@ namespace net.rs64.TexTransTool.NDMF
                             (long)after.Width * after.Height > (long)texture.Width * texture.Height);
                         var props = string.Join(" / ", change.PropertyNames);
                         return $"  {props}: {before} → {after.Width}×{after.Height}" +
-                            (enlarged ? " [解像度増加あり]" : "");
+                            (enlarged ? "AutoAtlasTexture:label:IncreasedResolution".GetLocalize() : "");
                     }));
 
                     var materialNames = string.Join("\n", groupReport.MaterialNames
