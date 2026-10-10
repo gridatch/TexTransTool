@@ -23,6 +23,7 @@ namespace net.rs64.TexTransTool.NDMF
         public AutoMaterialAtlas? Component;
         public string Summary = "";
         public string Detail = "";
+        public string AnimationDiagnostics = "";
         public int BeforeMaterialSlots;
     }
 
@@ -70,6 +71,7 @@ namespace net.rs64.TexTransTool.NDMF
             int excludedSharedMaterials = 0;
             int excludedAnimatedMaterials = 0;
             int excludedAnimatedRenderers = 0;
+            var animatedRendererDiagnostics = new List<string>();
             int excludedUnsupportedRenderers = 0;
             int analyzedRenderers = 0;
 
@@ -85,9 +87,18 @@ namespace net.rs64.TexTransTool.NDMF
 
                 // Reject renderers with animated shader parameters or material
                 // slots. A reference-only scan is insufficient for these curves.
-                if (HasMaterialAnimations(animationIndex, root.transform, renderer))
+                var matchedBindings = GetMaterialAnimationBindings(
+                    animationIndex, root.transform, renderer);
+                if (matchedBindings.Length != 0)
                 {
                     excludedAnimatedRenderers++;
+                    var rendererPath = AnimationUtility.CalculateTransformPath(
+                        renderer.transform, root.transform);
+                    animatedRendererDiagnostics.Add(
+                        (string.IsNullOrEmpty(rendererPath) ? "(avatar root)" : rendererPath)
+                        + ": " + string.Join("; ", matchedBindings.Take(3))
+                        + (matchedBindings.Length > 3
+                            ? " (+" + (matchedBindings.Length - 3) + " more)" : ""));
                     continue;
                 }
 
@@ -167,6 +178,13 @@ namespace net.rs64.TexTransTool.NDMF
             report.Component = components[0];
             report.Summary = summary;
             report.Detail = detail;
+            const int maxDiagnosticRenderers = 64;
+            report.AnimationDiagnostics = animatedRendererDiagnostics.Count == 0
+                ? "(none)"
+                : string.Join("\n", animatedRendererDiagnostics.Take(maxDiagnosticRenderers))
+                    + (animatedRendererDiagnostics.Count > maxDiagnosticRenderers
+                        ? "\n... " + (animatedRendererDiagnostics.Count - maxDiagnosticRenderers)
+                            + " additional renderers omitted" : "");
             report.BeforeMaterialSlots = CountMaterialSlots(root);
         }
 
@@ -194,39 +212,35 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        private static bool HasMaterialAnimations(
+        private static string[] GetMaterialAnimationBindings(
             AnimationIndex? index,
             Transform avatarRoot,
             SkinnedMeshRenderer renderer)
         {
-            // Lack of an animation index must not be treated as proof that a
-            // renderer is static. This pass is strictly observational.
-            if (index == null) return true;
+            // Missing index is not proof of an unanimated renderer.
+            if (index == null) return new[] { "(animation index unavailable)" };
 
             var path = AnimationUtility.CalculateTransformPath(
                 renderer.transform, avatarRoot);
+            var bindings = new HashSet<string>(StringComparer.Ordinal);
             foreach (var clip in index.GetClipsForObjectPath(path))
             {
                 foreach (var binding in clip.GetFloatCurveBindings())
                 {
-                    // GetClipsForObjectPath(path) returns whole clips.
-                    // Individual bindings may target OTHER renderers in the
-                    // same clip, so their paths must also match.
                     if (string.Equals(binding.path, path, StringComparison.Ordinal)
                         && IsMaterialBinding(binding.type, binding.propertyName))
-                        return true;
+                        bindings.Add("float " + binding.type.Name + "."
+                            + binding.propertyName);
                 }
                 foreach (var binding in clip.GetObjectCurveBindings())
                 {
-                    // GetClipsForObjectPath(path) returns whole clips.
-                    // Individual bindings may target OTHER renderers in the
-                    // same clip, so their paths must also match.
                     if (string.Equals(binding.path, path, StringComparison.Ordinal)
                         && IsMaterialBinding(binding.type, binding.propertyName))
-                        return true;
+                        bindings.Add("object " + binding.type.Name + "."
+                            + binding.propertyName);
                 }
             }
-            return false;
+            return bindings.OrderBy(value => value, StringComparer.Ordinal).ToArray();
         }
 
         private static bool IsMaterialBinding(Type type, string propertyName)
@@ -313,9 +327,10 @@ namespace net.rs64.TexTransTool.NDMF
     {
         private readonly string[] _details;
 
-        internal AutoMaterialAtlasConsoleReport(string summary, string detail, string observed)
+        internal AutoMaterialAtlasConsoleReport(
+            string summary, string detail, string observed, string animationDiagnostics)
         {
-            _details = new[] { summary, detail, observed };
+            _details = new[] { summary, detail, observed, animationDiagnostics };
         }
 
         public override nadena.dev.ndmf.localization.Localizer Localizer => TTTLog.NDMFLocalizer;
@@ -360,7 +375,8 @@ namespace net.rs64.TexTransTool.NDMF
                 () => ErrorReport.ReportError(new AutoMaterialAtlasConsoleReport(
                     report.Summary,
                     report.Detail,
-                    observed)));
+                    observed,
+                    report.AnimationDiagnostics)));
         }
     }
 }
