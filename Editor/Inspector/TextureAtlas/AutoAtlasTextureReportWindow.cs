@@ -78,7 +78,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                             : string.Join(", ", change.SourceTextures
                                 .Select(image => DescribeImage(image)));
                         EditorGUILayout.LabelField(
-                            $"{change.PropertyName}: {before} → {DescribeImage(change.GeneratedTexture)}",
+                            $"{string.Join(" / ", change.PropertyNames)}: {before} → {DescribeImage(change.GeneratedTexture)}",
                             EditorStyles.wordWrappedLabel);
                     }
                     EditorGUILayout.LabelField("元のテクスチャ", EditorStyles.boldLabel);
@@ -128,7 +128,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         ? "（元テクスチャなし）"
                         : string.Join(", ", change.SourceTextures
                             .Select(image => DescribeImage(image)));
-                    sb.AppendLine($"  {change.PropertyName}: {before} → {DescribeImage(change.GeneratedTexture)}");
+                    sb.AppendLine($"  {string.Join(" / ", change.PropertyNames)}: {before} → {DescribeImage(change.GeneratedTexture)}");
                 }
                 sb.AppendLine("Before:");
                 foreach (var image in group.value.SourceTextures)

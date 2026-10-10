@@ -232,14 +232,21 @@ namespace net.rs64.TexTransTool.NDMF
                     MaterialNames = group.Select(OriginalMaterialName)
                         .Distinct().OrderBy(name => name, StringComparer.Ordinal).ToArray(),
                     TopFreeFraction = atlasResult.TopFreeFraction ?? 0f,
+                    // One row per generated RenderTexture rather than per material
+                    // property. ReferenceCopy aliases are therefore shown only once.
                     PropertyChanges = tuningResult.RenderTextures
-                        .OrderBy(entry => entry.Key, StringComparer.Ordinal)
-                        .Select(entry => new AutoAtlasTexturePropertyReport
+                        .GroupBy(entry => entry.Value)
+                        .OrderBy(entries => entries.Min(entry => entry.Key), StringComparer.Ordinal)
+                        .Select(entries => new AutoAtlasTexturePropertyReport
                         {
-                            PropertyName = entry.Key,
-                            SourceTextures = group
-                                .Select(material => propertyTextures[material]
-                                    .TryGetValue(entry.Key, out var texture) ? texture : null)
+                            PropertyNames = entries.Select(entry => entry.Key)
+                                .OrderBy(name => name, StringComparer.Ordinal)
+                                .ToArray(),
+                            SourceTextures = entries
+                                .SelectMany(entry => group.Select(material =>
+                                    propertyTextures[material].TryGetValue(entry.Key, out var texture)
+                                        ? texture
+                                        : null))
                                 .Where(texture => texture != null)
                                 .Cast<Texture>()
                                 .Distinct()
@@ -253,9 +260,9 @@ namespace net.rs64.TexTransTool.NDMF
                                 .ToArray(),
                             GeneratedTexture = new AutoAtlasTextureImageReport
                             {
-                                Name = entry.Value.Name,
-                                Width = entry.Value.Width,
-                                Height = entry.Value.Hight,
+                                Name = entries.Key.Name,
+                                Width = entries.Key.Width,
+                                Height = entries.Key.Hight,
                             },
                         }).ToArray(),
                     RendererNames = atlasRenderers.Select(renderer =>
@@ -327,11 +334,16 @@ namespace net.rs64.TexTransTool.NDMF
                     var changes = string.Join("\n", groupReport.PropertyChanges.Select(change =>
                     {
                         var before = change.SourceTextures.Length == 0
-                            ? "（元テクスチャなし）"
-                            : string.Join(", ", change.SourceTextures.Select(texture =>
-                                $"{texture.Name} ({texture.Width}×{texture.Height})"));
+                            ? "—"
+                            : string.Join(" / ", change.SourceTextures
+                                .Select(texture => $"{texture.Width}×{texture.Height}")
+                                .Distinct());
                         var after = change.GeneratedTexture;
-                        return $"  {change.PropertyName}: {before} → {after.Name} ({after.Width}×{after.Height})";
+                        var enlarged = change.SourceTextures.Any(texture =>
+                            (long)after.Width * after.Height > (long)texture.Width * texture.Height);
+                        var props = string.Join(" / ", change.PropertyNames);
+                        return $"  {props}: {before} → {after.Width}×{after.Height}" +
+                            (enlarged ? " [解像度増加あり]" : "");
                     }));
 
                     var materialNames = string.Join("\n", groupReport.MaterialNames

@@ -18,7 +18,9 @@ namespace net.rs64.TexTransTool.Editor
 
     internal sealed class AutoAtlasTexturePropertyReport
     {
-        public string PropertyName = "";
+        // Multiple shader properties can reference the same final RenderTexture
+        // through TTT's existing FineTuning.ReferenceCopy.
+        public string[] PropertyNames = Array.Empty<string>();
         public AutoAtlasTextureImageReport[] SourceTextures = Array.Empty<AutoAtlasTextureImageReport>();
         public AutoAtlasTextureImageReport GeneratedTexture = new();
     }
