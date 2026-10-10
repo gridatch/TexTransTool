@@ -22,11 +22,8 @@ namespace net.rs64.TexTransTool.NDMF
     {
         protected override void Execute(BuildContext context)
         {
-            var configurations = context.AvatarRootObject
-                .GetComponentsInChildren<AutoAtlasTexture>(true)
-                .Where(component => component != null &&
-                    TexTransBehaviorSearch.CheckIsActive(component.gameObject, context.AvatarRootObject))
-                .ToArray();
+            var configurations = AutoAtlasTextureProcessor.GetActiveConfigurations(
+                context.AvatarRootObject);
 
             if (configurations.Length == 0) return;
             if (configurations.Length != 1)
@@ -48,6 +45,41 @@ namespace net.rs64.TexTransTool.NDMF
 
     internal static class AutoAtlasTextureProcessor
     {
+        internal static AutoAtlasTexture[] GetActiveConfigurations(GameObject root)
+        {
+            return root.GetComponentsInChildren<AutoAtlasTexture>(true)
+                .Where(component => component != null &&
+                    TexTransBehaviorSearch.CheckIsActive(component.gameObject, root))
+                .ToArray();
+        }
+
+        // This is an upper bound computed before the AAO-specific UV negotiation,
+        // not the final atlas selection, which can change during later NDMF phases.
+        internal static Renderer[] GetPotentialRenderers(IRendererTargeting domain,
+            AutoAtlasTexture configuration)
+        {
+            var allowed = AtlasTexture.GetAtlasAllowedRenderers(
+                    domain, domain.EnumerateRenderer(), includeDisabledRenderer: true)
+                .Where(renderer => !configuration.ExcludedRenderers.Any(excluded =>
+                    excluded != null && domain.OriginEqual(excluded, renderer)))
+                .ToArray();
+
+            // UV0 is the only channel repacked by AutoAtlasTexture. Do not
+            // evacuate UVs for renderers whose materials have no compatible
+            // textured properties at the time of negotiation.
+            var materials = allowed.SelectMany(domain.GetMaterials)
+                .UOfType<Material>().ToHashSet();
+            if (materials.Count == 0) return Array.Empty<Renderer>();
+            var textureUsages = new MaterialGroupingContext(materials, UVChannel.UV0, null);
+            var candidates = textureUsages.ContainsTextureDictionaries
+                .Where(pair => pair.Value.Count != 0)
+                .Select(pair => pair.Key)
+                .ToHashSet();
+            return allowed.Where(renderer =>
+                domain.GetMaterials(renderer).UOfType<Material>().Any(candidates.Contains))
+                .ToArray();
+        }
+
         internal static void Execute(IDomain domain, GameObject avatarRoot,
             AutoAtlasTexture configuration, IReadOnlyCollection<AtlasTexture> manualAtlases)
         {
@@ -75,13 +107,12 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             var allRenderers = domain.EnumerateRenderer().Where(renderer => renderer != null).ToArray();
-            var allowedRenderers = AtlasTexture.GetAtlasAllowedRenderers(
-                domain, allRenderers, includeDisabledRenderer: true)
-                .Where(renderer => !configuration.ExcludedRenderers.Any(excluded =>
-                    excluded != null && domain.OriginEqual(excluded, renderer)))
-                .ToHashSet();
+            var allowedRenderers = GetPotentialRenderers(domain, configuration).ToHashSet();
 
-            var allMaterials = RendererUtility.GetFilteredMaterials(allRenderers).ToHashSet();
+            // Selection is renderer-scoped. Domain.GetAllMaterials() is used
+            // separately for safety checks because it also includes animation refs.
+            var allMaterials = allRenderers.SelectMany(domain.GetMaterials)
+                .UOfType<Material>().ToHashSet();
             // Includes animation material references in the NDMF domain.
             var allReferencedMaterials = domain.GetAllMaterials();
             if (allMaterials.Count == 0)

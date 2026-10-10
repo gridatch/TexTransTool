@@ -19,11 +19,8 @@ namespace net.rs64.TexTransTool.NDMF.AAO
         {
             var tttCtx = TTTContext(context);
             var tttComponents = tttCtx.PhaseAtList.SelectMany(i => i.Value);
-            var autoConfigurations = context.AvatarRootObject
-                .GetComponentsInChildren<AutoAtlasTexture>(true)
-                .Where(component => component != null &&
-                    TexTransBehaviorSearch.CheckIsActive(component.gameObject, context.AvatarRootObject))
-                .ToArray();
+            var autoConfigurations = AutoAtlasTextureProcessor.GetActiveConfigurations(
+                context.AvatarRootObject);
             if (tttComponents.Any() is false && autoConfigurations.Length == 0) { return; }
 
             var config = context.AvatarRootObject.GetComponent<NegotiateAAOConfig>();
@@ -31,26 +28,21 @@ namespace net.rs64.TexTransTool.NDMF.AAO
             var uvEvacuationAndRegisterToAAO = config?.UVEvacuationAndRegisterToAAO ?? true;
             var overrideEvacuationIndex = (config?.OverrideEvacuationUVChannel ?? false) ? config?.OverrideEvacuationUVChannelIndex : null;
 
-            var manualTarget = tttComponents.Where(i => i is AtlasTexture)
+            var uvEditTarget = tttComponents.Where(i => i is AtlasTexture)
                 .SelectMany(i => i.ModificationTargetRenderers(tttCtx.Domain))
-                .OfType<SkinnedMeshRenderer>();
+                .OfType<SkinnedMeshRenderer>().Distinct();
 
             // Reserve the original UV and remove AAO-predicted unused primitives before
             // the later automatic atlas pass changes UV0. Like manual AtlasTexture,
             // this is done before the actual atlas generation; no extra pass is
             // registered after AAO.
             var autoTarget = autoConfigurations.Length == 1
-                ? AtlasTexture.GetAtlasAllowedRenderers(
-                    tttCtx.Domain, tttCtx.Domain.EnumerateRenderer(), true)
-                    .Where(renderer => !autoConfigurations[0].ExcludedRenderers.Any(
-                        excluded => excluded != null && tttCtx.Domain.OriginEqual(excluded, renderer)))
-                    .OfType<SkinnedMeshRenderer>()
+                ? AutoAtlasTextureProcessor.GetPotentialRenderers(
+                    tttCtx.Domain, autoConfigurations[0]).OfType<SkinnedMeshRenderer>()
                 : Enumerable.Empty<SkinnedMeshRenderer>();
 
-            var uvEditTarget = manualTarget.Concat(autoTarget).Distinct();
-
             List<Vector4> uvBuf = null;
-            foreach (var smr in uvEditTarget)
+            foreach (var smr in uvEditTarget.Concat(autoTarget).Distinct())
             {
                 if (uvEvacuationAndRegisterToAAO && UVUsageCompabilityAPI.IsTexCoordUsed(smr, 0))
                     UVEvacuation(uvBuf, smr, overrideEvacuationIndex);
