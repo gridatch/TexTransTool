@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.12+wdt.ttt.1.0.2",
-  "lastDebugSerial": 232,
-  "currentDebugVersion": "0.1.12+wdt.ttt.1.0.2.debug.232.auto-material-atlas.4e637ba",
+  "lastDebugSerial": 233,
+  "currentDebugVersion": "0.1.12+wdt.ttt.1.0.2.debug.233.auto-material-atlas.6ac4aa6",
   "currentDebugChange": "auto-material-atlas",
   "currentDebugBranch": "feat/auto-material-atlas",
-  "currentDebugCommit": "4e637ba3cda9fd289f923e7b601392cbfde7e2a6",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.12+wdt.ttt.1.0.2.debug.232.auto-material-atlas.4e637ba.zip"
+  "currentDebugCommit": "6ac4aa6085e6111be31748ce96668adc323212c5",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.12+wdt.ttt.1.0.2.debug.233.auto-material-atlas.6ac4aa6.zip"
 }
