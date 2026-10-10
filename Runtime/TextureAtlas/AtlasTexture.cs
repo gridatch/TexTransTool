@@ -140,6 +140,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , bool requireLossless = false
             , int maxAtlasSize = 4096
             , Func<AtlasContext, Vector2Int, bool>? acceptAtlasSize = null
+            , bool reportProgressInfo = true
         )
         {
             using var pf = new PFScope("init");
@@ -181,7 +182,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("IslandProcessing");
             var (atlasTargeSize, movedVirtualIslandArray, relocateResult, relocationTime) =
-                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner, maxAtlasSize, requireLossless);
+                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner, maxAtlasSize, requireLossless, reportProgressInfo);
             if (requireLossless && IsLosslessRelocation(relocateResult) is false)
             {
                 atlasContext.Dispose();
@@ -207,7 +208,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var atlasTextureHeightSize = Mathf.Max(GetNormalizedMinHeightSize(atlasTargeSize.y, height), 4);//4以下はちょっと怪しい挙動しそうだからクランプ
             Debug.Assert(Mathf.IsPowerOfTwo(atlasTextureHeightSize));
 
-            TTLog.Info("AtlasTexture:info:RelocateResult", 1 - height, relocateResult.PriorityDownScale, relocateResult.OverallDownScale, relocateResult.TotalRelocateCount, relocationTime);
+            if (reportProgressInfo)
+                TTLog.Info("AtlasTexture:info:RelocateResult", 1 - height, relocateResult.PriorityDownScale, relocateResult.OverallDownScale, relocateResult.TotalRelocateCount, relocationTime);
             var atlasedTextureSize = new Vector2Int(atlasTargeSize.x, atlasTextureHeightSize);
             if (acceptAtlasSize != null && acceptAtlasSize(atlasContext, atlasedTextureSize) is false)
             {
@@ -473,7 +475,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             AtlasContext atlasContext,
             List<IIslandSizePriorityTuner?> islandSizePriorityTuner,
             int maxAtlasSize,
-            bool requireLossless)
+            bool requireLossless,
+            bool reportProgressInfo)
         {
             if (atlasSetting.AutoAtlasTextureSize is false)
             {
@@ -514,7 +517,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                 if (IsLosslessRelocation(candidateResult))
                 {
-                    TTLog.Info("AtlasTexture:info:AutoAtlasTextureSizeSelected", size);
+                    if (reportProgressInfo)
+                        TTLog.Info("AtlasTexture:info:AutoAtlasTextureSizeSelected", size);
                     break;
                 }
             }
