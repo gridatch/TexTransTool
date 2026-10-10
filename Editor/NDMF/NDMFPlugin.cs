@@ -60,6 +60,7 @@ namespace net.rs64.TexTransTool.NDMF
                 .Run(ReFindRenderersPass.Instance).Then
 
                 .Run(OptimizingPass.Instance).Then
+                .Run(AutoAtlasTexturePass.Instance).Then
                 .Run(TTTSessionEndPass.Instance).PreviewingWith(new TexTransDomainFilter(TexTransPhase.Optimizing), new EverythingUnlitTexture(), new PreviewIslandSelector()).Then
 
                 .Run(TTTComponentPurgePass.Instance);
