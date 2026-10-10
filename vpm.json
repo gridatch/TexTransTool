@@ -231,17 +231,17 @@
           },
           "zipSHA256": "4ec56a707d33593b5492139d1e41521733a866c40fae2e32ea0d2a031239e79f"
         },
-        "0.1.12+wdt.ttt.1.0.2.debug.235.auto-material-atlas.3a84e23": {
+        "0.1.12+wdt.ttt.1.0.2.debug.236.auto-material-atlas.397f04c": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.12+wdt.ttt.1.0.2.debug.235.auto-material-atlas.3a84e23",
+          "version": "0.1.12+wdt.ttt.1.0.2.debug.236.auto-material-atlas.397f04c",
           "unity": "2022.3",
-          "description": "Debug build 235 for auto-material-atlas from feat/auto-material-atlas at 3a84e23. Based on WDT 0.1.12+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 236 for auto-material-atlas from feat/auto-material-atlas at 397f04c. Based on WDT 0.1.12+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.12+wdt.ttt.1.0.2.debug.235.auto-material-atlas.3a84e23.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.12+wdt.ttt.1.0.2.debug.236.auto-material-atlas.397f04c.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -254,7 +254,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "aea89b87ffe1a30913e13b50090ef5fe3e7f378884a6e1ec1db2b2ae9524cca9"
+          "zipSHA256": "2746c1aaa3a449b59d4e5e72dfdbec50f114eca36d8daef8285c42332cfae796"
         }
       }
     }
