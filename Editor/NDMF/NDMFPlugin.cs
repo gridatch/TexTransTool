@@ -26,8 +26,7 @@ namespace net.rs64.TexTransTool.NDMF
         {
             InPhase(BuildPhase.Resolving)
             .Run(PreviewCancelerPass.Instance).Then
-            .Run(CheckOldSaveDataComponents.Instance).Then
-            .Run(CaptureAutoAtlasSourceMaterialsPass.Instance);
+            .Run(CheckOldSaveDataComponents.Instance);
 
 
             InPhase(BuildPhase.Transforming)

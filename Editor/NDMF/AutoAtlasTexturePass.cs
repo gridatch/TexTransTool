@@ -14,29 +14,6 @@ using UnityEngine;
 
 namespace net.rs64.TexTransTool.NDMF
 {
-    // The original renderer/material-slot names are captured before material
-    // transformers run. ObjectRegistry is preferred; this snapshot handles
-    // unregistered temporary material clones without parsing their names.
-    internal sealed class AutoAtlasTextureOriginalNames
-    {
-        internal readonly Dictionary<ObjectReference, string[]> Slots = new();
-    }
-
-    internal sealed class CaptureAutoAtlasSourceMaterialsPass : Pass<CaptureAutoAtlasSourceMaterialsPass>
-    {
-        protected override void Execute(BuildContext context)
-        {
-            if (context.AvatarRootObject.GetComponentsInChildren<AutoAtlasTexture>(true).Length == 0)
-                return;
-            var names = context.GetState(_ => new AutoAtlasTextureOriginalNames());
-            foreach (var renderer in context.AvatarRootObject.GetComponentsInChildren<Renderer>(true))
-            {
-                names.Slots[ObjectRegistry.GetReference(renderer)] =
-                    renderer.sharedMaterials.Select(material => material != null ? material.name : "").ToArray();
-            }
-        }
-    }
-
     /// <summary>
     /// Runs after regular, explicitly configured AtlasTexture components.
     /// AutoAtlasTexture is deliberately not in the ordinary component phase list.
@@ -58,56 +35,33 @@ namespace net.rs64.TexTransTool.NDMF
                 return;
             }
 
+            var session = TTTContext(context);
+            var manualAtlases = session.PhaseAtList[TexTransPhase.Optimizing]
+                .OfType<AtlasTexture>()
+                .Where(atlas => TexTransBehaviorSearch.CheckIsActiveBehavior(
+                    atlas, context.AvatarRootObject))
+                .ToArray();
             AutoAtlasTextureProcessor.Execute(
-                TTTContext(context).Domain, context.AvatarRootObject,
-                configurations[0], context.GetState(_ => new AutoAtlasTextureOriginalNames()));
+                session.Domain, context.AvatarRootObject, configurations[0], manualAtlases);
         }
     }
 
     internal static class AutoAtlasTextureProcessor
     {
         internal static void Execute(IDomain domain, GameObject avatarRoot,
-            AutoAtlasTexture configuration, AutoAtlasTextureOriginalNames initialNames)
+            AutoAtlasTexture configuration, IReadOnlyCollection<AtlasTexture> manualAtlases)
         {
             var report = new AutoAtlasTextureBuildReport { AvatarName = avatarRoot.name };
             // The report is reset for every build, including builds without candidates.
             AutoAtlasTextureReportStore.Set(report);
 
-            // Build a stable per-material lookup from initial renderer slot names.
-            // A changed slot count is not mapped: silently guessing the slot would
-            // be worse than keeping the build-stage name.
-            var sourceNamesByMaterial = new Dictionary<Material, HashSet<string>>();
-            foreach (var renderer in domain.EnumerateRenderer())
-            {
-                if (renderer == null ||
-                    !initialNames.Slots.TryGetValue(ObjectRegistry.GetReference(renderer), out var originalSlots))
-                    continue;
-                var currentSlots = domain.GetMaterials(renderer);
-                if (currentSlots.Length != originalSlots.Length) continue;
-
-                for (var i = 0; i < currentSlots.Length; i++)
-                {
-                    var material = currentSlots[i];
-                    if (material == null || string.IsNullOrEmpty(originalSlots[i])) continue;
-                    if (!sourceNamesByMaterial.TryGetValue(material, out var names))
-                        sourceNamesByMaterial[material] = names = new HashSet<string>();
-                    names.Add(originalSlots[i]);
-                }
-            }
-
             string OriginalMaterialName(Material material)
             {
-                // Use NDMF's original asset when the replacing tool registered it.
-                var original = ObjectRegistry.GetReference(material)?.Object as Material;
-                if (original != null && original != material) return original.name;
-
-                // For unregistered clones, use the material-slot name saved
-                // before the avatar build's Transforming phase.
-                if (sourceNamesByMaterial.TryGetValue(material, out var names) && names.Count == 1)
-                    return names.First();
-
-                // Do not remove suffixes heuristically: that would invent a name.
-                return original != null ? original.name : material.name;
+                // Reuse NDMF's object identity; build-stage suffixes are not
+                // stripped or guessed from the material name.
+                var source = ObjectRegistry.GetReference(material)?.Object as Material;
+                if (source != null) return source.name;
+                return material.name;
             }
 
             void Skip(HashSet<Material> group, string reason)
@@ -120,18 +74,6 @@ namespace net.rs64.TexTransTool.NDMF
                 });
             }
 
-            string RendererPath(Renderer renderer)
-            {
-                var parts = new Stack<string>();
-                var transform = renderer.transform;
-                while (transform != null && transform != avatarRoot.transform)
-                {
-                    parts.Push(transform.name);
-                    transform = transform.parent;
-                }
-                return string.Join("/", parts);
-            }
-
             var allRenderers = domain.EnumerateRenderer().Where(renderer => renderer != null).ToArray();
             var allowedRenderers = AtlasTexture.GetAtlasAllowedRenderers(
                 domain, allRenderers, includeDisabledRenderer: true)
@@ -139,10 +81,9 @@ namespace net.rs64.TexTransTool.NDMF
                     excluded != null && domain.OriginEqual(excluded, renderer)))
                 .ToHashSet();
 
-            var allMaterials = allRenderers
-                .SelectMany(renderer => domain.GetMaterials(renderer))
-                .UOfType<Material>()
-                .ToHashSet();
+            var allMaterials = RendererUtility.GetFilteredMaterials(allRenderers).ToHashSet();
+            // Includes animation material references in the NDMF domain.
+            var allReferencedMaterials = domain.GetAllMaterials();
             if (allMaterials.Count == 0)
             {
                 TTTLog.ReportingObject(configuration, () =>
@@ -159,14 +100,13 @@ namespace net.rs64.TexTransTool.NDMF
                 .Where(material => material != null)
                 .ToArray();
 
-            var manuallySelectedMaterials = avatarRoot
-                .GetComponentsInChildren<AtlasTexture>(true)
-                .Where(atlas => atlas != null &&
-                    TexTransBehaviorSearch.CheckIsActive(atlas.gameObject, avatarRoot))
-                .SelectMany(atlas => atlas.AtlasTargetMaterials)
-                .Where(material => material != null)
-                .Cast<Material>()
-                .ToArray();
+            // Resolve manual AtlasTexture targets through TTT's existing lookup
+            // rather than rescanning hierarchy and comparing raw user selections.
+            var manuallySelectedMaterials = manualAtlases
+                .SelectMany(atlas => atlas.GetTargetMaterials(domain,
+                    AtlasTexture.GetAtlasAllowedRenderers(domain,
+                        domain.EnumerateRenderer(), atlas.AtlasSetting.IncludeDisabledRenderer)))
+                .ToHashSet();
 
             var settings = new AtlasSetting
             {
@@ -228,7 +168,7 @@ namespace net.rs64.TexTransTool.NDMF
                 // must be eligible; otherwise generating an additional atlas can
                 // increase memory usage.
                 if (!ReferencesAreExclusive(
-                    allMaterials, group, propertyTextures, texturesToReplace))
+                    allReferencedMaterials, group, propertyTextures, texturesToReplace))
                 {
                     Skip(group, "対象Textureが処理対象外のMaterial/プロパティにも参照されている");
                     continue;
@@ -309,7 +249,9 @@ namespace net.rs64.TexTransTool.NDMF
                                 Height = entry.Value.Hight,
                             },
                         }).ToArray(),
-                    RendererNames = atlasRenderers.Select(RendererPath)
+                    RendererNames = atlasRenderers.Select(renderer =>
+                        UnityEditor.AnimationUtility.CalculateTransformPath(
+                            renderer.transform, avatarRoot.transform))
                         .OrderBy(name => name).ToArray(),
                     SourceTextures = texturesToReplace
                         .OrderBy(texture => texture.name)
@@ -395,22 +337,24 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         private static bool ReferencesAreExclusive(
-            HashSet<Material> allMaterials,
+            HashSet<Material> allReferencedMaterials,
             HashSet<Material> group,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
             HashSet<Texture> replacedTextures)
         {
-            foreach (var material in allMaterials)
+            foreach (var material in allReferencedMaterials)
             {
                 var isTarget = group.Contains(material);
-                var atlasProperties = propertyTextures[material];
-                foreach (var property in material.GetTexturePropertyNames())
+                propertyTextures.TryGetValue(material, out var atlasProperties);
+                // Reuse TTT's shader-aware property enumeration. The old
+                // implementation only saw renderer materials and could overlook
+                // materials referenced exclusively by animations.
+                foreach (var property in material.GetTextureReferences())
                 {
-                    var texture = material.GetTexture(property);
-                    if (texture == null || !replacedTextures.Contains(texture)) continue;
-                    if (!isTarget ||
-                        !atlasProperties.TryGetValue(property, out var atlasTexture) ||
-                        atlasTexture != texture)
+                    if (!replacedTextures.Contains(property.Value)) continue;
+                    if (!isTarget || atlasProperties == null ||
+                        !atlasProperties.TryGetValue(property.Key, out var atlasTexture) ||
+                        atlasTexture != property.Value)
                         return false;
                 }
             }
