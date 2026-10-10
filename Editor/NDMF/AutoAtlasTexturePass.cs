@@ -6,6 +6,7 @@ using nadena.dev.ndmf;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.Editor;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using net.rs64.TexTransTool.Utils;
@@ -43,6 +44,31 @@ namespace net.rs64.TexTransTool.NDMF
     {
         internal static void Execute(IDomain domain, GameObject avatarRoot, AutoAtlasTexture configuration)
         {
+            var report = new AutoAtlasTextureBuildReport { AvatarName = avatarRoot.name };
+            // The report is reset for every build, including builds without candidates.
+            AutoAtlasTextureReportStore.Set(report);
+
+            void Skip(HashSet<Material> group, string reason)
+            {
+                report.Skipped.Add(new AutoAtlasTextureSkippedGroup
+                {
+                    MaterialNames = string.Join(", ", group.Select(material => material.name).OrderBy(name => name)),
+                    Reason = reason,
+                });
+            }
+
+            string RendererPath(Renderer renderer)
+            {
+                var parts = new Stack<string>();
+                var transform = renderer.transform;
+                while (transform != null && transform != avatarRoot.transform)
+                {
+                    parts.Push(transform.name);
+                    transform = transform.parent;
+                }
+                return string.Join("/", parts);
+            }
+
             var allRenderers = domain.EnumerateRenderer().Where(renderer => renderer != null).ToArray();
             var allowedRenderers = AtlasTexture.GetAtlasAllowedRenderers(
                 domain, allRenderers, includeDisabledRenderer: true)
@@ -54,7 +80,11 @@ namespace net.rs64.TexTransTool.NDMF
                 .SelectMany(renderer => domain.GetMaterials(renderer))
                 .UOfType<Material>()
                 .ToHashSet();
-            if (allMaterials.Count == 0) return;
+            if (allMaterials.Count == 0)
+            {
+                LogSummary();
+                return;
+            }
 
             // Material groups follow the textures actually transformed by TTT for UV0,
             // not merely common shaders or all texture references in the material.
@@ -87,7 +117,6 @@ namespace net.rs64.TexTransTool.NDMF
             settings.TextureFineTuning.RemoveAll(tuning => tuning is Resize);
 
             var maxSize = Mathf.Clamp(configuration.MaxAtlasSize, 256, 4096);
-            var succeeded = 0;
             var groups = MakeTextureConnectedGroups(allMaterials, propertyTextures);
             foreach (var group in groups)
             {
@@ -95,7 +124,10 @@ namespace net.rs64.TexTransTool.NDMF
                         domain.OriginEqual(excluded, material)) ||
                     manuallySelectedMaterials.Any(selected =>
                         domain.OriginEqual(selected, material))))
+                {
+                    Skip(group, "除外指定、または手動AtlasTextureの対象Materialとの重複");
                     continue;
+                }
 
                 // Every renderer referencing a material must be transformed together:
                 // replacing a shared material while leaving another mesh's UVs intact
@@ -104,17 +136,28 @@ namespace net.rs64.TexTransTool.NDMF
                     domain.GetMaterials(renderer).UOfType<Material>().Any(group.Contains)).ToArray();
                 if (referencingRenderers.Length == 0 ||
                     referencingRenderers.Any(renderer => !allowedRenderers.Contains(renderer)))
+                {
+                    Skip(group, "参照Rendererの一部が処理対象外（除外指定、EditorOnlyなど）");
                     continue;
+                }
 
                 var atlasRenderers = AtlasTexture.FilterExistUVChannel(
                     domain, referencingRenderers, UVChannel.UV0);
-                if (atlasRenderers.Length != referencingRenderers.Length) continue;
+                if (atlasRenderers.Length != referencingRenderers.Length)
+                {
+                    Skip(group, "UV0を持たないRendererがある");
+                    continue;
+                }
 
                 var texturesToReplace = group
                     .SelectMany(material => propertyTextures[material].Values)
                     .Where(texture => texture != null)
                     .ToHashSet();
-                if (texturesToReplace.Count == 0) continue;
+                if (texturesToReplace.Count == 0)
+                {
+                    Skip(group, "置き換え可能なTextureがない");
+                    continue;
+                }
 
                 // A source texture cannot be removed if it is also referenced by a
                 // property outside this atlas operation. The complete source set
@@ -122,11 +165,15 @@ namespace net.rs64.TexTransTool.NDMF
                 // increase memory usage.
                 if (!ReferencesAreExclusive(
                     allMaterials, group, propertyTextures, texturesToReplace))
+                {
+                    Skip(group, "対象Textureが処理対象外のMaterial/プロパティにも参照されている");
                     continue;
+                }
 
                 var originalPixels = texturesToReplace.Sum(texture =>
                     (long)texture.width * texture.height);
 
+                var rejectedByPixelCount = false;
                 var engine = domain.GetTexTransCoreEngineForUnity();
                 var atlasResult = AtlasTexture.DoAtlasTexture(
                     domain,
@@ -143,10 +190,18 @@ namespace net.rs64.TexTransTool.NDMF
                             atlasContext.MaterialGroupingCtx.GetContainsAllProperties().Count;
                         if (texturePropertyCount == 0) return false;
                         var outputPixels = (long)size.x * size.y * texturePropertyCount;
-                        return outputPixels < originalPixels;
-                    });
+                        rejectedByPixelCount = outputPixels >= originalPixels;
+                        return !rejectedByPixelCount;
+                    },
+                    reportProgressInfo: false);
 
-                if (!atlasResult.IsSuccess) continue;
+                if (!atlasResult.IsSuccess)
+                {
+                    Skip(group, rejectedByPixelCount
+                        ? "生成後の総画素数が小さくならない"
+                        : "指定された最大サイズ内に縮小なしで配置できない、または生成に失敗");
+                    continue;
+                }
 
                 using var atlasContext = atlasResult.AtlasContext!;
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
@@ -156,6 +211,39 @@ namespace net.rs64.TexTransTool.NDMF
                     item => item.Key,
                     item => engine.GetReferenceRenderTexture(item.Value));
                 var retainedRenderTextures = tuningResult.TextureDescriptors.Keys.ToHashSet();
+
+                // Capture immutable names/dimensions while the source references still exist.
+                var groupReport = new AutoAtlasTextureGroupReport
+                {
+                    MaterialNames = group.Select(material => material.name)
+                        .OrderBy(name => name).ToArray(),
+                    RendererNames = atlasRenderers.Select(RendererPath)
+                        .OrderBy(name => name).ToArray(),
+                    SourceTextures = texturesToReplace
+                        .OrderBy(texture => texture.name)
+                        .Select(texture => new AutoAtlasTextureImageReport
+                        {
+                            Name = texture.name,
+                            Width = texture.width,
+                            Height = texture.height,
+                            Properties = string.Join(", ", group.SelectMany(material =>
+                                propertyTextures[material]
+                                    .Where(item => item.Value == texture)
+                                    .Select(item => material.name + "." + item.Key))
+                                .Distinct().OrderBy(name => name)),
+                        }).ToArray(),
+                    GeneratedTextures = tuningResult.RenderTextures
+                        .GroupBy(item => item.Value)
+                        .Select(entries => new AutoAtlasTextureImageReport
+                        {
+                            Name = entries.Key.Name,
+                            Width = entries.Key.Width,
+                            Height = entries.Key.Hight,
+                            Properties = string.Join(", ", entries.Select(entry => entry.Key)
+                                .OrderBy(name => name)),
+                        })
+                        .OrderBy(image => image.Name).ToArray(),
+                };
 
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
@@ -175,10 +263,31 @@ namespace net.rs64.TexTransTool.NDMF
                     domain.RegisterPostProcessingAndLazyGPUReadBack(
                         descriptor.Key, descriptor.Value);
 
-                succeeded++;
+                report.Completed.Add(groupReport);
             }
 
-            Debug.Log($"AutoAtlasTexture: {succeeded} グループをアトラス化しました。");
+            LogSummary();
+
+            void LogSummary()
+            {
+                var materialPreview = string.Join(" / ", report.Completed.Take(4)
+                    .Select(group => string.Join(", ", group.MaterialNames.Take(2))));
+                if (report.Completed.Count > 4)
+                    materialPreview += $" ほか{report.Completed.Count - 4}グループ";
+                if (report.Completed.Count == 0) materialPreview = "変更なし";
+
+                TTTLog.ReportingObject(configuration, () =>
+                    TTTLog.Info("AutoAtlasTexture:info:Summary",
+                        report.Completed.Count,
+                        report.MaterialCount,
+                        report.OriginalTextureCount,
+                        report.GeneratedTextureCount,
+                        report.OriginalPixels.ToString("N0"),
+                        report.GeneratedPixels.ToString("N0"),
+                        report.SavedPercentage.ToString("F1"),
+                        report.Skipped.Count,
+                        materialPreview));
+            }
         }
 
         private static bool ReferencesAreExclusive(
