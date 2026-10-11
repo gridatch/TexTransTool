@@ -306,17 +306,17 @@
           },
           "zipSHA256": "a71a381e3507303e958885fa2ccad16bd62ed696b8ce0a38697102a54f0a6fcd"
         },
-        "0.1.15+wdt.ttt.1.0.2.debug.299.protected-object-analysis-refresh.ab3cb8d": {
+        "0.1.15+wdt.ttt.1.0.2.debug.300.protected-object-analysis-refresh.4f9ab91": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.15+wdt.ttt.1.0.2.debug.299.protected-object-analysis-refresh.ab3cb8d",
+          "version": "0.1.15+wdt.ttt.1.0.2.debug.300.protected-object-analysis-refresh.4f9ab91",
           "unity": "2022.3",
-          "description": "Debug build 299 for protected-object-analysis-refresh from fix/protected-object-analysis-refresh at ab3cb8d. Based on WDT 0.1.15+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 300 for protected-object-analysis-refresh from fix/protected-object-analysis-refresh at 4f9ab91. Based on WDT 0.1.15+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.15+wdt.ttt.1.0.2.debug.299.protected-object-analysis-refresh.ab3cb8d.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.15+wdt.ttt.1.0.2.debug.300.protected-object-analysis-refresh.4f9ab91.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -329,7 +329,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "f83aa2a36d6c523b85077d40315fa07292f8b8d6a629e572ade73df4991e6930"
+          "zipSHA256": "39fb604a7b54b1d77c0a39097497ce7bdd57d424ea5d7d6f1e53322f77fa45cf"
         }
       }
     }

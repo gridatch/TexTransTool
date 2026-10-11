@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.15+wdt.ttt.1.0.2",
-  "lastDebugSerial": 299,
-  "currentDebugVersion": "0.1.15+wdt.ttt.1.0.2.debug.299.protected-object-analysis-refresh.ab3cb8d",
+  "lastDebugSerial": 300,
+  "currentDebugVersion": "0.1.15+wdt.ttt.1.0.2.debug.300.protected-object-analysis-refresh.4f9ab91",
   "currentDebugChange": "protected-object-analysis-refresh",
   "currentDebugBranch": "fix/protected-object-analysis-refresh",
-  "currentDebugCommit": "ab3cb8dec2e97838ec6c0cb8527607458d572f2b",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.15+wdt.ttt.1.0.2.debug.299.protected-object-analysis-refresh.ab3cb8d.zip"
+  "currentDebugCommit": "4f9ab919c91e229024823a8ab88f8a6df497c99d",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.15+wdt.ttt.1.0.2.debug.300.protected-object-analysis-refresh.4f9ab91.zip"
 }
