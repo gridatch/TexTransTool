@@ -170,7 +170,7 @@ jobs:
             zip -r "$GITHUB_WORKSPACE/$ZIP_NAME" ./*
           )
 
-      - name: Create GitHub Release
+      - name: Create or reuse GitHub Release
         id: release
         shell: bash
         env:
@@ -183,16 +183,34 @@ jobs:
           set -euo pipefail
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "::error::GitHub Release tag '$TAG' already exists."
-            exit 1
+            release_commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq '.sha')"
+            if [[ "$release_commit" != "$GITHUB_SHA" ]]; then
+              echo "::error::Existing GitHub Release '$TAG' points to $release_commit instead of $GITHUB_SHA."
+              exit 1
+            fi
+
+            existing_dir="$RUNNER_TEMP/existing-vpm-release"
+            rm -rf "$existing_dir"
+            mkdir -p "$existing_dir"
+
+            if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.assets[].name' \
+              | grep -Fxq "$ZIP_NAME"; then
+              gh release download "$TAG" --pattern "$ZIP_NAME" --dir "$existing_dir"
+              sha256="$(sha256sum "$existing_dir/$ZIP_NAME" | awk '{print $1}')"
+              echo "Reusing existing GitHub Release '$TAG' and package asset '$ZIP_NAME'."
+            else
+              gh release upload "$TAG" "$ZIP_NAME"
+              sha256="$(sha256sum "$ZIP_NAME" | awk '{print $1}')"
+              echo "Uploaded missing package asset '$ZIP_NAME' to existing GitHub Release '$TAG'."
+            fi
+          else
+            gh release create "$TAG" "$ZIP_NAME" \
+              --target "$GITHUB_SHA" \
+              --title "TexTransTool (WDT) $VERSION" \
+              --notes "WDT release $VERSION. Based on upstream TexTransTool $UPSTREAM_VERSION. Source commit: \`$GITHUB_SHA\`."
+            sha256="$(sha256sum "$ZIP_NAME" | awk '{print $1}')"
           fi
 
-          gh release create "$TAG" "$ZIP_NAME" \
-            --target "$GITHUB_SHA" \
-            --title "TexTransTool (WDT) $VERSION" \
-            --notes "WDT release $VERSION. Based on upstream TexTransTool $UPSTREAM_VERSION. Source commit: \`$GITHUB_SHA\`."
-
-          sha256="$(sha256sum "$ZIP_NAME" | awk '{print $1}')"
           echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
       - name: Add version to VPM repository
         shell: bash
