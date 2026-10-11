@@ -256,17 +256,17 @@
           },
           "zipSHA256": "675d9a65f428b93c6acc658ff22df28c762dffece224f4fdd3566a2863b71bdc"
         },
-        "0.1.13+wdt.ttt.1.0.2.debug.285.audit-pre-autoatlas.5429fbe": {
+        "0.1.14+wdt.ttt.1.0.2": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.13+wdt.ttt.1.0.2.debug.285.audit-pre-autoatlas.5429fbe",
+          "version": "0.1.14+wdt.ttt.1.0.2",
           "unity": "2022.3",
-          "description": "Debug build 285 for audit-pre-autoatlas from fix/audit-pre-autoatlas at 5429fbe. Based on WDT 0.1.13+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Non-destructive modification to Texture!",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.13+wdt.ttt.1.0.2.debug.285.audit-pre-autoatlas.5429fbe.zip",
+          "url": "https://github.com/gridatch/TexTransTool/releases/download/wdt-v0.1.14+wdt.ttt.1.0.2/net.gridatch.tex-trans-tool-0.1.14+wdt.ttt.1.0.2.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -279,7 +279,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "6c7313d1f2e761dd27fe4e27c708621942cd62e68b92ead05ea28566cf7cd62c"
+          "zipSHA256": "baeb00403f4447f0b9af754a666ffe735e27cce512b8c8712158f1be4c2f3a75"
         }
       }
     }
