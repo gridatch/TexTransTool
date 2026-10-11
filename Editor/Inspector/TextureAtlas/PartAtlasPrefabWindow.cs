@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
+using net.rs64.TexTransTool.Utils;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
@@ -819,7 +820,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         .Where(entry =>
                             entry.Keep
                             && entry.IsSkinned
-                            && RendererMesh(entry.Renderer) != null
+                            && entry.Renderer.GetMesh() != null
                             && entry.MeshReadable is false
                         )
                         .ToArray();
@@ -935,7 +936,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var displayName = string.IsNullOrEmpty(entry.Path)
                 ? entry.Renderer.gameObject.name
                 : entry.Path;
-            var meshMissing = RendererMesh(entry.Renderer) == null;
+            var meshMissing = entry.Renderer.GetMesh() == null;
             var label = displayName;
             var tooltip = displayName;
 
@@ -1612,7 +1613,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 if (renderer is not SkinnedMeshRenderer && renderer is not MeshRenderer)
                     continue;
-                if (RendererMesh(renderer) == null)
+                if (renderer.GetMesh() == null)
                     continue;
 
                 var current = renderer.transform;
@@ -1668,9 +1669,20 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (string.IsNullOrEmpty(path))
                     continue;
 
-                var transform = _loadedPrefabRoot.transform.Find(path);
-                if (transform != null)
+                if (HierarchyIdentityUtility.TryResolveUniqueNamePath(
+                        _loadedPrefabRoot.transform,
+                        path,
+                        out var transform,
+                        out var error
+                    )
+                    && transform != null)
+                {
                     result.Add(transform);
+                }
+                else
+                {
+                    Debug.LogError("TexTransTool Part Atlas Prefab: " + error);
+                }
             }
 
             return result;
@@ -1940,16 +1952,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 320f
             );
             return previous;
-        }
-
-        private static Mesh? RendererMesh(Renderer renderer)
-        {
-            return renderer switch
-            {
-                SkinnedMeshRenderer skinned => skinned.sharedMesh,
-                MeshRenderer meshRenderer => meshRenderer.GetComponent<MeshFilter>()?.sharedMesh,
-                _ => null,
-            };
         }
 
         private bool IsAvatarSource()

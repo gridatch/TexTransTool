@@ -132,28 +132,23 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private static Transform? FindCounterpart(
             Transform original, Transform originalRoot, Transform copyRoot)
         {
-            var indices = new List<int>();
-            var current = original;
-            while (current != originalRoot)
+            int[] indices;
+            try
             {
-                if (current.parent == null)
-                    return null;
-
-                indices.Add(current.GetSiblingIndex());
-                current = current.parent;
+                indices = HierarchyIdentityUtility.GetSiblingIndexPath(
+                    originalRoot,
+                    original
+                );
+            }
+            catch (ArgumentException)
+            {
+                return null;
             }
 
-            var target = copyRoot;
-            for (var i = indices.Count - 1; i >= 0; i--)
-            {
-                var index = indices[i];
-                if (index < 0 || index >= target.childCount)
-                    return null;
-
-                target = target.GetChild(index);
-            }
-
-            return target;
+            return HierarchyIdentityUtility.ResolveSiblingIndexPath(
+                copyRoot,
+                indices
+            );
         }
 
         private void RenderSelectedObject(GameObject gameObject)

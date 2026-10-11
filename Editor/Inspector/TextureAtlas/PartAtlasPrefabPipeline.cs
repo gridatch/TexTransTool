@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using net.rs64.TexTransCore;
+using net.rs64.TexTransTool.Utils;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -270,6 +271,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     /// </summary>
     internal static class PartAtlasPrefabPipeline
     {
+        private const int SerializedPropertyScanLimit = 10000;
         internal static void UnpackPrefabInstancesForStaging(GameObject root)
         {
             if (root == null)
@@ -422,6 +424,26 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (extractionTargets == null)
                     return Fail(result, targetResolveError);
 
+                foreach (var forceDeletePath in request.ExtractionOptions.ForceDeletePaths
+                             .Distinct(StringComparer.Ordinal))
+                {
+                    if (HierarchyIdentityUtility.TryResolveUniqueNamePath(
+                            instantiatedRoot.transform,
+                            forceDeletePath,
+                            out _,
+                            out var forceDeletePathError
+                        ) is false)
+                    {
+                        return Fail(
+                            result,
+                            "手動削除対象を一意に解決できません: "
+                            + forceDeletePath
+                            + "\n"
+                            + forceDeletePathError
+                        );
+                    }
+                }
+
                 foreach (var target in extractionTargets)
                 {
                     if (ContainsExtractableMesh(target.gameObject) is false)
@@ -515,22 +537,27 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                     retainedAtlasRenderers = preflightRenderers.ToArray();
                     var preflightMeshes = preflightRenderers
-                        .Select(GetRendererMesh)
+                        .Select(renderer => renderer.GetMesh())
                         .Where(mesh => mesh != null)
                         .Cast<Mesh>()
                         .ToHashSet();
+                    var preflightTextures = AtlasTextureBaker.GetAtlasSourceTextures(
+                        preflightMaterials,
+                        request.AtlasSettings.AtlasSetting.AtlasTargetUVChannel
+                    );
 
                     if (AtlasTextureBaker.ValidateAnimationObjectReferences(
                             instantiatedRoot,
                             preflightRenderers,
                             preflightMaterials,
                             preflightMeshes,
+                            preflightTextures,
                             displayDialog: false
                         ) is false)
                     {
                         return Fail(
                             result,
-                            "抽出前のMesh / Materialを直接参照するAnimationClipがあるため中断しました。"
+                            "抽出前のMesh / Material / Textureを直接参照するAnimationClipがあるため中断しました。"
                             + "該当Clip / bindingはConsoleに出力しています。"
                         );
                     }
@@ -1008,7 +1035,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 if (renderer is not SkinnedMeshRenderer && renderer is not MeshRenderer)
                     continue;
-                if (GetRendererMesh(renderer) != null)
+                if (renderer.GetMesh() != null)
                     return true;
             }
 
@@ -1059,11 +1086,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     return null;
                 }
 
-                var target = prefabRoot.transform.Find(path);
-
-                if (target == null)
+                if (HierarchyIdentityUtility.TryResolveUniqueNamePath(
+                        prefabRoot.transform,
+                        path,
+                        out var target,
+                        out error
+                    ) is false
+                    || target == null)
                 {
-                    error = "指定された抽出対象がPrefab内に見つかりません: " + path;
                     return null;
                 }
 
@@ -1161,35 +1191,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 .ToHashSet();
         }
 
-        private static Mesh? GetRendererMesh(Renderer renderer)
-        {
-            return renderer switch
-            {
-                SkinnedMeshRenderer skinned => skinned.sharedMesh,
-                MeshRenderer meshRenderer => meshRenderer.GetComponent<MeshFilter>()?.sharedMesh,
-                _ => null,
-            };
-        }
-
-        internal static string GetRendererPath(GameObject root, Renderer renderer)
-        {
-            return AnimationUtility.CalculateTransformPath(
-                renderer.transform,
-                root.transform
-            );
-        }
-
         internal static string GetRendererKey(GameObject root, Renderer renderer)
         {
-            var path = GetRendererPath(root, renderer);
-            var renderers = renderer.GetComponents<Renderer>();
-            var componentIndex = Array.IndexOf(renderers, renderer);
-
-            return path
-                + "|"
-                + renderer.GetType().FullName
-                + "|"
-                + componentIndex;
+            return HierarchyIdentityUtility.GetRendererKey(root, renderer);
         }
 
         private static (HashSet<Material> targetMaterials, Renderer[] targetRenderers) ResolveAtlasTargets(
@@ -1410,11 +1414,39 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             foreach (var generatedPath in extraction.GeneratedMeshes.ToArray())
             {
                 if (stillReferenced.Contains(generatedPath)) continue;
+
+                if (IsAssetPathInside(generatedPath, extraction.OutputFolder) is false)
+                {
+                    Debug.LogError(
+                        "TexTransTool Part Atlas Prefab: 松川ツールの生成Mesh一覧に"
+                        + "出力フォルダ外のAssetが含まれているため削除を拒否しました: "
+                        + generatedPath
+                    );
+                    continue;
+                }
+
                 if (AssetDatabase.DeleteAsset(generatedPath))
                     matsukawa.RemoveGeneratedMesh(extraction, generatedPath);
             }
 
             AssetDatabase.SaveAssets();
+        }
+
+        private static bool IsAssetPathInside(
+            string assetPath,
+            string folderAssetPath)
+        {
+            if (string.IsNullOrEmpty(assetPath)
+                || string.IsNullOrEmpty(folderAssetPath))
+            {
+                return false;
+            }
+
+            var normalizedFolder = folderAssetPath.TrimEnd('/') + "/";
+            return assetPath.StartsWith(
+                normalizedFolder,
+                StringComparison.Ordinal
+            );
         }
 
         private static string AssetPathToFullPath(string assetPath)
@@ -1469,16 +1501,43 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (component is SkinnedMeshRenderer) continue;
 
                 SerializedObject serialized;
-                try { serialized = new SerializedObject(component); }
-                catch { continue; }
+                try
+                {
+                    serialized = new SerializedObject(component);
+                }
+                catch (Exception e)
+                {
+                    issues.Add(
+                        RelativePath(root.transform, component.transform)
+                        + " :: "
+                        + component.GetType().Name
+                        + " のObject参照を検査できませんでした ("
+                        + e.GetType().Name
+                        + ")"
+                    );
+                    continue;
+                }
 
                 var safeToClear = new List<string>();
                 var iterator = serialized.GetIterator();
                 var enterChildren = true;
                 var guard = 0;
 
-                while (iterator.Next(enterChildren) && guard++ < 10000)
+                while (iterator.Next(enterChildren))
                 {
+                    if (++guard > SerializedPropertyScanLimit)
+                    {
+                        issues.Add(
+                            RelativePath(root.transform, component.transform)
+                            + " :: "
+                            + component.GetType().Name
+                            + " のSerializedProperty数が検査上限 "
+                            + SerializedPropertyScanLimit
+                            + " を超えました。"
+                        );
+                        break;
+                    }
+
                     enterChildren = true;
                     if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
 
@@ -1570,15 +1629,42 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (component == null || component is Transform) continue;
 
                 SerializedObject serialized;
-                try { serialized = new SerializedObject(component); }
-                catch { continue; }
+                try
+                {
+                    serialized = new SerializedObject(component);
+                }
+                catch (Exception e)
+                {
+                    issues.Add(
+                        RelativePath(root.transform, component.transform)
+                        + " :: "
+                        + component.GetType().Name
+                        + " のObject参照を検査できませんでした ("
+                        + e.GetType().Name
+                        + ")"
+                    );
+                    continue;
+                }
 
                 var iterator = serialized.GetIterator();
                 var enterChildren = true;
                 var guard = 0;
 
-                while (iterator.Next(enterChildren) && guard++ < 10000)
+                while (iterator.Next(enterChildren))
                 {
+                    if (++guard > SerializedPropertyScanLimit)
+                    {
+                        issues.Add(
+                            RelativePath(root.transform, component.transform)
+                            + " :: "
+                            + component.GetType().Name
+                            + " のSerializedProperty数が検査上限 "
+                            + SerializedPropertyScanLimit
+                            + " を超えました。"
+                        );
+                        break;
+                    }
+
                     enterChildren = true;
                     if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
 
@@ -1659,8 +1745,19 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var enterChildren = true;
             var guard = 0;
 
-            while (iterator.NextVisible(enterChildren) && guard++ < 10000)
+            while (iterator.NextVisible(enterChildren))
             {
+                if (++guard > SerializedPropertyScanLimit)
+                {
+                    problems.Add(
+                        atlasSettings.GetType().Name
+                        + " のSerializedProperty数が検査上限 "
+                        + SerializedPropertyScanLimit
+                        + " を超えました。"
+                    );
+                    break;
+                }
+
                 enterChildren = true;
                 if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
                 if (iterator.propertyPath == "m_Script") continue;

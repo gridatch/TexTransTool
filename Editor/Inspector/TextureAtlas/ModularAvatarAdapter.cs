@@ -31,7 +31,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private readonly FieldInfo _boneProxySubPath;
         private readonly FieldInfo _boneProxyAttachmentMode;
         private readonly FieldInfo _boneProxyMatchScale;
-        private readonly MethodInfo? _resetArmatureLock;
+        private readonly MethodInfo _resetArmatureLock;
 
         private ModularAvatarAdapter(
             Type mergeArmatureType,
@@ -65,8 +65,22 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _boneProxyMatchScale = Field(_boneProxyType, "matchScale", typeof(bool));
             _resetArmatureLock = _mergeArmatureType.GetMethod(
                 "ResetArmatureLock",
-                BindingFlags.NonPublic | BindingFlags.Instance
+                BindingFlags.NonPublic | BindingFlags.Instance,
+                binder: null,
+                types: Type.EmptyTypes,
+                modifiers: null
+            ) ?? throw new MissingMethodException(
+                _mergeArmatureType.FullName,
+                "ResetArmatureLock"
             );
+            if (_resetArmatureLock.ReturnType != typeof(void))
+            {
+                throw new InvalidOperationException(
+                    _mergeArmatureType.FullName
+                    + ".ResetArmatureLock return type mismatch: "
+                    + _resetArmatureLock.ReturnType.FullName
+                );
+            }
 
             if (_armatureLockModeType.IsEnum is false
                 || Enum.GetNames(_armatureLockModeType).Contains("BaseToMerge") is false)
@@ -124,10 +138,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             error = "";
 
-            var armature = partRoot.transform.Find(armaturePath);
-            if (armature == null)
+            if (HierarchyIdentityUtility.TryResolveUniqueNamePath(
+                    partRoot.transform,
+                    armaturePath,
+                    out var armature,
+                    out var resolveError
+                ) is false
+                || armature == null)
             {
-                error = "抽出後のArmatureが見つかりません: " + armaturePath;
+                error = "抽出後のArmatureを一意に解決できません: "
+                    + armaturePath
+                    + "\n"
+                    + resolveError;
                 return false;
             }
 
@@ -194,7 +216,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             EditorUtility.SetDirty((UnityEngine.Object)merge);
             EditorUtility.SetDirty((UnityEngine.Object)outfitRoot);
-            _resetArmatureLock?.Invoke(merge, null);
+            _resetArmatureLock.Invoke(merge, null);
             return true;
         }
 
