@@ -231,17 +231,17 @@
           },
           "zipSHA256": "4ec56a707d33593b5492139d1e41521733a866c40fae2e32ea0d2a031239e79f"
         },
-        "0.1.12+wdt.ttt.1.0.2.debug.277.auto-texture-atlas.683e979": {
+        "0.1.12+wdt.ttt.1.0.2.debug.278.auto-texture-atlas.0cb9e05": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.12+wdt.ttt.1.0.2.debug.277.auto-texture-atlas.683e979",
+          "version": "0.1.12+wdt.ttt.1.0.2.debug.278.auto-texture-atlas.0cb9e05",
           "unity": "2022.3",
-          "description": "Debug build 277 for auto-texture-atlas from feat/auto-texture-atlas at 683e979. Based on WDT 0.1.12+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 278 for auto-texture-atlas from feat/auto-texture-atlas at 0cb9e05. Based on WDT 0.1.12+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.12+wdt.ttt.1.0.2.debug.277.auto-texture-atlas.683e979.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.12+wdt.ttt.1.0.2.debug.278.auto-texture-atlas.0cb9e05.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -254,7 +254,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "8ae2fcdab0e8864c5fb64679e1153a35ee526bf1ee15d6c00a484d949b4af177"
+          "zipSHA256": "928faa5ce78afed5ff41d0c709ecb6fc49e67e7b2836d45ee4b47f207608f8f5"
         }
       }
     }
