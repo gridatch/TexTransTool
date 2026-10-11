@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.13+wdt.ttt.1.0.2",
-  "lastDebugSerial": 284,
-  "currentDebugVersion": "0.1.13+wdt.ttt.1.0.2.debug.284.audit-pre-autoatlas.29a83b2",
+  "lastDebugSerial": 285,
+  "currentDebugVersion": "0.1.13+wdt.ttt.1.0.2.debug.285.audit-pre-autoatlas.5429fbe",
   "currentDebugChange": "audit-pre-autoatlas",
   "currentDebugBranch": "fix/audit-pre-autoatlas",
-  "currentDebugCommit": "29a83b28933b218be2d6571f925b1fa564eeff51",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.13+wdt.ttt.1.0.2.debug.284.audit-pre-autoatlas.29a83b2.zip"
+  "currentDebugCommit": "5429fbe96784b7902b7e8f34401c15487d9d8e1a",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.13+wdt.ttt.1.0.2.debug.285.audit-pre-autoatlas.5429fbe.zip"
 }
