@@ -11,24 +11,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             AtlasTexture atlasTexture,
             IDomain domain)
         {
-            var allowedRenderers = AtlasTexture.GetAtlasAllowedRenderers(
-                domain,
-                domain.EnumerateRenderer(),
-                atlasTexture.AtlasSetting.IncludeDisabledRenderer
-            );
-
-            var targetMaterials = atlasTexture.GetTargetMaterials(domain, allowedRenderers).ToHashSet();
-            var candidateRenderers = AtlasTexture.FilterTargetRenderers(
-                domain,
-                allowedRenderers,
-                targetMaterials
-            );
-
-            return AtlasTexture.FilterExistUVChannel(
-                domain,
-                candidateRenderers,
-                atlasTexture.AtlasSetting.AtlasTargetUVChannel
-            );
+            return atlasTexture.ResolveAtlasTargets(domain).targetRenderers;
         }
 
         internal static (

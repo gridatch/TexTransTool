@@ -169,8 +169,6 @@ msgid "AtlasTexture:prop:LimitCandidateMaterials:tooltip"
 msgstr "下に表示されるマテリアルを、割り当てた GameObject 配下のレンダラーの物だけにします。"
 
 
-
-
 msgid "AtlasTexture:button:BakeAtlas"
 msgstr "アトラス化をベイク"
 
@@ -182,7 +180,6 @@ msgstr "アトラス化をベイク"
 
 msgid "AtlasTexture:prop:BakeName"
 msgstr "ベイク名"
-
 
 msgid "AtlasTexture:label:BakeTargetRenderers"
 msgstr "ベイク対象Renderer ({0}/{1})"
@@ -219,7 +216,6 @@ msgstr "選択済みマテリアル"
 
 msgid "AtlasTexture:prop:SelectedMaterialView:tooltip"
 msgstr "プレハブオーバーライド設定などの特殊な操作をするための物"
-
 
 
 msgid "AtlasTexture:label:AtlasSettings"

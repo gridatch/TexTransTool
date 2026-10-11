@@ -168,8 +168,6 @@ msgid "AtlasTexture:prop:LimitCandidateMaterials:tooltip"
 msgstr "Limit candidate materials to GameObject subordinates."
 
 
-
-
 msgid "AtlasTexture:button:BakeAtlas"
 msgstr "Bake Atlasing"
 
@@ -181,7 +179,6 @@ msgstr "Bake Atlasing"
 
 msgid "AtlasTexture:prop:BakeName"
 msgstr "Bake Name"
-
 
 msgid "AtlasTexture:label:BakeTargetRenderers"
 msgstr "Bake Target Renderers ({0}/{1})"
@@ -218,7 +215,6 @@ msgstr "SelectedMaterial"
 
 msgid "AtlasTexture:prop:SelectedMaterialView:tooltip"
 msgstr "view for special operations such as prefab override settings"
-
 
 
 msgid "AtlasTexture:label:AtlasSettings"

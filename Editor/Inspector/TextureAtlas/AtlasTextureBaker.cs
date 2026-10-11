@@ -365,34 +365,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             foreach (var renderer in targetRenderers)
             {
-                var mesh = domain.GetMesh(renderer);
-                if (mesh == null) { continue; }
-                if (atlasContext.NormalizedMeshCtx.Origin2NormalizedMesh.ContainsKey(mesh) is false) { continue; }
-
-                var normalizedMesh = atlasContext.NormalizedMeshCtx.Origin2NormalizedMesh[mesh];
-                var meshID = atlasContext.NormalizedMeshCtx.Normalized2MeshID[normalizedMesh];
-                var matIDs = domain.GetMaterials(renderer)
-                    .Select(m => m != null ? atlasContext.MaterialGroupingCtx.GetMaterialGroupID(m) : -1)
-                    .ToArray();
-
-                var subSet = new AtlasSubMeshIndexID?[matIDs.Length];
-                for (var i = 0; i < subSet.Length; i += 1)
-                {
-                    var matID = matIDs[i];
-                    if (matID is -1) { subSet[i] = null; }
-                    else { subSet[i] = new AtlasSubMeshIndexID(meshID, i, matID); }
-                }
-
-                var identicalSubSetID = atlasContext.AtlasSubMeshIndexSetCtx.AtlasSubSets.FindIndex(candidate =>
-                {
-                    if (candidate.Length == subSet.Length && candidate.SequenceEqual(subSet)) { return true; }
-                    if (AtlasSubMeshIndexIDSetContext.SubPartEqual(candidate, subSet) is false) { return false; }
-                    return candidate.Length >= subSet.Length;
-                });
-
-                if (identicalSubSetID is -1) { continue; }
-
-                rendererMeshMap[renderer] = atlasedMeshes[identicalSubSetID];
+                var resolved = AtlasTexture.ResolveAtlasedMeshForRenderer(
+                    domain, renderer, atlasContext, atlasedMeshes);
+                if (resolved is not { } meshPair) { continue; }
+                rendererMeshMap[renderer] = meshPair.atlasMesh;
             }
 
             return rendererMeshMap;
