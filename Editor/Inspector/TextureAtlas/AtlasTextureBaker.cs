@@ -6,6 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using net.rs64.TexTransCore;
+using net.rs64.TexTransTool.Utils;
 using net.rs64.TexTransCoreEngineForUnity;
 using net.rs64.TexTransTool.Editor.OtherMenuItem;
 using UnityEditor;
@@ -131,6 +132,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     return false;
                 }
 
+                if (manifest.Version != AtlasTextureBakeManifest.CurrentVersion)
+                {
+                    EditorUtility.DisplayDialog(
+                        "TexTransTool",
+                        "BakeManifestのVersionが現在の形式と一致しないため、安全に上書きできません。"
+                        + "\n"
+                        + $"Manifest: {manifest.Version}, Current: {AtlasTextureBakeManifest.CurrentVersion}",
+                        "OK"
+                    );
+                    return false;
+                }
+
                 previousEntries = manifest.Entries
                     .Where(entry =>
                         entry != null
@@ -143,6 +156,21 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         AssetPath = entry.AssetPath,
                     })
                     .ToArray();
+
+                var invalidManagedEntry = previousEntries.FirstOrDefault(entry =>
+                    IsPathInside(entry.AssetPath, outputAssetPath) is false
+                );
+                if (invalidManagedEntry != null)
+                {
+                    EditorUtility.DisplayDialog(
+                        "TexTransTool",
+                        "BakeManifestに出力フォルダ外のAssetが登録されているため、安全に上書きできません。"
+                        + "\n"
+                        + invalidManagedEntry.AssetPath,
+                        "OK"
+                    );
+                    return false;
+                }
             }
 
             var previousRoleAssets = previousEntries
@@ -184,8 +212,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     .Where(mesh => mesh != null)
                     .Cast<Mesh>()
                     .ToHashSet();
+                var targetTextures = GetAtlasSourceTextures(
+                    targetMaterials,
+                    settings.AtlasSetting.AtlasTargetUVChannel
+                );
 
-                if (ValidateAnimationObjectReferences(domainRoot, targetRenderers, targetMaterials, targetMeshes) is false)
+                if (ValidateAnimationObjectReferences(
+                        domainRoot,
+                        targetRenderers,
+                        targetMaterials,
+                        targetMeshes,
+                        targetTextures
+                    ) is false)
                 {
                     return false;
                 }
@@ -232,6 +270,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var generatedMaterials = new List<Material>();
                 var currentEntries = new List<AtlasTextureBakeManifest.Entry>();
 
+                using var outputTransaction = new BakeOutputTransaction(
+                    outputAssetPath,
+                    outputExists
+                );
+
                 Directory.CreateDirectory(AssetPathToFullPath(textureAssetPath));
                 Directory.CreateDirectory(AssetPathToFullPath(materialAssetPath));
                 Directory.CreateDirectory(AssetPathToFullPath(meshAssetPath));
@@ -269,6 +312,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                     var persistentMaterialMap = SaveMaterials(
                         materialMap,
+                        domainRoot,
+                        domain,
                         bakeName,
                         outputAssetPath,
                         materialAssetPath,
@@ -286,7 +331,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         currentEntries
                     );
 
-                    DeleteStaleManagedAssets(previousEntries, currentEntries);
+                    DeleteStaleManagedAssets(
+                        previousEntries,
+                        currentEntries,
+                        outputAssetPath
+                    );
                     manifest = SaveManifest(
                         manifest,
                         manifestAssetPath,
@@ -297,13 +346,24 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     AssetDatabase.SaveAssets();
                     AssetDatabase.Refresh();
 
-                    ApplyBakedAtlas(
-                        domainRoot,
-                        targetRenderers,
-                        persistentRendererMeshMap,
-                        persistentMaterialMap,
-                        recordUndo
-                    );
+                    var rendererState = CaptureRendererState(targetRenderers);
+                    try
+                    {
+                        ApplyBakedAtlas(
+                            domainRoot,
+                            targetRenderers,
+                            persistentRendererMeshMap,
+                            persistentMaterialMap,
+                            recordUndo
+                        );
+                    }
+                    catch
+                    {
+                        RestoreRendererState(rendererState);
+                        throw;
+                    }
+
+                    outputTransaction.Commit();
 
                     if (pingOutputFolder)
                     {
@@ -450,11 +510,31 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return true;
         }
 
+        internal static HashSet<Texture> GetAtlasSourceTextures(
+            HashSet<Material> targetMaterials,
+            UVChannel atlasTargetUVChannel)
+        {
+            if (targetMaterials.Count == 0)
+                return new HashSet<Texture>();
+
+            var grouping = new MaterialGroupingContext(
+                targetMaterials,
+                atlasTargetUVChannel,
+                primaryTexturePropertyOrMaximum: null
+            );
+
+            return grouping.ContainsTextureDictionaries.Values
+                .SelectMany(properties => properties.Values)
+                .Where(texture => texture != null)
+                .ToHashSet();
+        }
+
         internal static bool ValidateAnimationObjectReferences(
             GameObject domainRoot,
             Renderer[] targetRenderers,
             HashSet<Material> targetMaterials,
             HashSet<Mesh> targetMeshes,
+            HashSet<Texture>? targetTextures = null,
             bool displayDialog = true)
         {
             var hits = new List<string>();
@@ -475,6 +555,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         .FirstOrDefault(value =>
                             value is Material material && targetMaterials.Contains(material)
                             || value is Mesh mesh && targetMeshes.Contains(mesh)
+                            || value is Texture texture
+                                && targetTextures != null
+                                && targetTextures.Contains(texture)
                         );
 
                     if (referencedSourceAsset != null)
@@ -494,7 +577,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             Debug.LogError(
                 "TexTransTool: Atlas bake was aborted because AnimationClip object-reference curves " +
-                "directly restore one or more source Mesh/Material assets.\n" + detail
+                "directly restore one or more source Mesh/Material/Texture assets.\n" + detail
             );
 
             if (displayDialog)
@@ -502,7 +585,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 EditorUtility.DisplayDialog(
                     "TexTransTool",
                     "アトラス化のベイクを中断しました。\n\n" +
-                    "ベイク前の Mesh / Material を直接参照する AnimationClip が見つかりました。\n" +
+                    "ベイク前の Mesh / Material / Texture を直接参照する AnimationClip が見つかりました。\n" +
                     "このままベイクすると、アニメーション再生時に旧アセットへ戻る可能性があります。\n\n" +
                     "Console に該当 Clip / binding を出力しています。",
                     "OK"
@@ -517,17 +600,23 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             EditorCurveBinding binding,
             Renderer[] targetRenderers)
         {
-            var targetTransform = string.IsNullOrEmpty(binding.path)
-                ? domainRoot.transform
-                : domainRoot.transform.Find(binding.path);
-
-            if (targetTransform == null) { return false; }
+            bool PathMatches(Renderer renderer)
+            {
+                return string.Equals(
+                    AnimationUtility.CalculateTransformPath(
+                        renderer.transform,
+                        domainRoot.transform
+                    ),
+                    binding.path,
+                    StringComparison.Ordinal
+                );
+            }
 
             if (binding.type == typeof(MeshFilter))
             {
                 return targetRenderers
                     .OfType<MeshRenderer>()
-                    .Any(renderer => renderer.transform == targetTransform);
+                    .Any(PathMatches);
             }
 
             if (typeof(Renderer).IsAssignableFrom(binding.type) is false)
@@ -536,9 +625,70 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             return targetRenderers.Any(renderer =>
-                renderer.transform == targetTransform
+                PathMatches(renderer)
                 && binding.type.IsAssignableFrom(renderer.GetType())
             );
+        }
+
+        private sealed class RendererBakeState
+        {
+            internal Renderer Renderer = null!;
+            internal Mesh? Mesh;
+            internal Material[] Materials = Array.Empty<Material>();
+        }
+
+        private static RendererBakeState[] CaptureRendererState(
+            IEnumerable<Renderer> renderers)
+        {
+            return renderers
+                .Where(renderer => renderer != null)
+                .Select(renderer => new RendererBakeState
+                {
+                    Renderer = renderer,
+                    Mesh = renderer switch
+                    {
+                        SkinnedMeshRenderer skinned => skinned.sharedMesh,
+                        MeshRenderer => renderer.GetComponent<MeshFilter>()?.sharedMesh,
+                        _ => null,
+                    },
+                    Materials = renderer.sharedMaterials.ToArray(),
+                })
+                .ToArray();
+        }
+
+        private static void RestoreRendererState(
+            IEnumerable<RendererBakeState> states)
+        {
+            foreach (var state in states)
+            {
+                var renderer = state.Renderer;
+                if (renderer == null) continue;
+
+                switch (renderer)
+                {
+                    case SkinnedMeshRenderer skinned:
+                        skinned.sharedMesh = state.Mesh;
+                        EditorUtility.SetDirty(skinned);
+                        break;
+
+                    case MeshRenderer:
+                        var meshFilter = renderer.GetComponent<MeshFilter>();
+                        if (meshFilter != null)
+                        {
+                            meshFilter.sharedMesh = state.Mesh;
+                            EditorUtility.SetDirty(meshFilter);
+                            if (PrefabUtility.IsPartOfPrefabInstance(meshFilter))
+                                PrefabUtility.RecordPrefabInstancePropertyModifications(meshFilter);
+                        }
+                        break;
+                }
+
+                renderer.sharedMaterials = state.Materials;
+                EditorUtility.SetDirty(renderer);
+
+                if (PrefabUtility.IsPartOfPrefabInstance(renderer))
+                    PrefabUtility.RecordPrefabInstancePropertyModifications(renderer);
+            }
         }
 
         private static void ApplyBakedAtlas(
@@ -620,6 +770,152 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 if (PrefabUtility.IsPartOfPrefabInstance(obj))
                     PrefabUtility.RecordPrefabInstancePropertyModifications(obj);
+            }
+        }
+
+        private sealed class BakeOutputTransaction : IDisposable
+        {
+            private readonly string _assetPath;
+            private readonly string _fullPath;
+            private readonly string _metaPath;
+            private readonly string _backupRoot;
+            private readonly string _backupContentPath;
+            private readonly string _backupMetaPath;
+            private readonly bool _hadOriginal;
+            private bool _committed;
+            private bool _disposed;
+
+            internal BakeOutputTransaction(
+                string assetPath,
+                bool hadOriginal)
+            {
+                _assetPath = assetPath;
+                _fullPath = AssetPathToFullPath(assetPath)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                _metaPath = _fullPath + ".meta";
+                _hadOriginal = hadOriginal;
+
+                _backupRoot = Path.Combine(
+                    Path.GetTempPath(),
+                    "TexTransTool-AtlasBake-" + Guid.NewGuid().ToString("N")
+                );
+                _backupContentPath = Path.Combine(_backupRoot, "content");
+                _backupMetaPath = Path.Combine(_backupRoot, "folder.meta");
+
+                if (!_hadOriginal) return;
+
+                if (!Directory.Exists(_fullPath))
+                {
+                    throw new DirectoryNotFoundException(
+                        "Atlas bake output folder disappeared before backup: "
+                        + _assetPath
+                    );
+                }
+
+                Directory.CreateDirectory(_backupRoot);
+                CopyDirectory(_fullPath, _backupContentPath);
+
+                if (File.Exists(_metaPath))
+                    File.Copy(_metaPath, _backupMetaPath, overwrite: true);
+            }
+
+            internal void Commit()
+            {
+                _committed = true;
+            }
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+
+                try
+                {
+                    if (!_committed)
+                        Rollback();
+                }
+                finally
+                {
+                    if (Directory.Exists(_backupRoot))
+                    {
+                        try
+                        {
+                            Directory.Delete(_backupRoot, recursive: true);
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogWarning(
+                                "TexTransTool: Failed to remove temporary Atlas bake backup: "
+                                + e.Message
+                            );
+                        }
+                    }
+                }
+            }
+
+            private void Rollback()
+            {
+                try
+                {
+                    if (AssetDatabase.IsValidFolder(_assetPath))
+                        AssetDatabase.DeleteAsset(_assetPath);
+
+                    // DeleteAsset can fail (for example because of file permissions).
+                    // Never restore by overlaying the backup: extra files created by the
+                    // failed bake must not survive the rollback.
+                    if (Directory.Exists(_fullPath))
+                        Directory.Delete(_fullPath, recursive: true);
+
+                    if (File.Exists(_metaPath))
+                        File.Delete(_metaPath);
+
+                    if (_hadOriginal)
+                    {
+                        CopyDirectory(_backupContentPath, _fullPath);
+                        if (File.Exists(_backupMetaPath))
+                            File.Copy(_backupMetaPath, _metaPath, overwrite: true);
+                    }
+
+                    AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+                    Debug.LogWarning(
+                        "TexTransTool: Atlas bake failed; persistent output assets were restored."
+                    );
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError(
+                        "TexTransTool: Atlas bake rollback failed. "
+                        + "The output folder may require manual recovery.\n"
+                        + e
+                    );
+                }
+            }
+
+            private static void CopyDirectory(string source, string destination)
+            {
+                Directory.CreateDirectory(destination);
+
+                foreach (var directory in Directory.GetDirectories(
+                             source,
+                             "*",
+                             SearchOption.AllDirectories))
+                {
+                    var relative = directory.Substring(source.Length)
+                        .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    Directory.CreateDirectory(Path.Combine(destination, relative));
+                }
+
+                foreach (var file in Directory.GetFiles(
+                             source,
+                             "*",
+                             SearchOption.AllDirectories))
+                {
+                    var relative = file.Substring(source.Length)
+                        .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    var destinationFile = Path.Combine(destination, relative);
+                    Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
+                    File.Copy(file, destinationFile, overwrite: true);
+                }
             }
         }
 
@@ -843,6 +1139,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private static Dictionary<Material, Material> SaveMaterials(
             IReadOnlyDictionary<Material, Material> materialMap,
+            GameObject domainRoot,
+            IRendererTargeting targeting,
             string bakeName,
             string outputAssetPath,
             string materialAssetPath,
@@ -855,7 +1153,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 var generatedMaterial = group.Key;
                 var sourceKeys = group
-                    .Select(pair => GetStableMaterialKey(pair.Key))
+                    .Select(pair => GetStableMaterialKey(pair.Key, domainRoot, targeting))
                     .OrderBy(key => key, StringComparer.Ordinal)
                     .ToArray();
 
@@ -1025,7 +1323,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private static void DeleteStaleManagedAssets(
             IEnumerable<AtlasTextureBakeManifest.Entry> previousEntries,
-            IEnumerable<AtlasTextureBakeManifest.Entry> currentEntries)
+            IEnumerable<AtlasTextureBakeManifest.Entry> currentEntries,
+            string outputAssetPath)
         {
             var current = currentEntries.ToArray();
             var currentPaths = new HashSet<string>(
@@ -1042,8 +1341,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (currentPaths.Contains(previous.AssetPath))
                     continue;
 
-                if (string.IsNullOrEmpty(previous.AssetPath) is false)
-                    AssetDatabase.DeleteAsset(previous.AssetPath);
+                if (string.IsNullOrEmpty(previous.AssetPath)
+                    || IsPathInside(previous.AssetPath, outputAssetPath) is false)
+                {
+                    Debug.LogError(
+                        "TexTransTool: BakeManifest contained an unmanaged stale asset path; deletion was skipped: "
+                        + previous.AssetPath
+                    );
+                    continue;
+                }
+
+                AssetDatabase.DeleteAsset(previous.AssetPath);
             }
         }
 
@@ -1074,7 +1382,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return assetPath.StartsWith(normalizedFolder, StringComparison.Ordinal);
         }
 
-        private static string GetStableMaterialKey(Material material)
+        private static string GetStableMaterialKey(
+            Material material,
+            GameObject domainRoot,
+            IRendererTargeting targeting)
         {
             if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(
                     material,
@@ -1086,24 +1397,45 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return guid + ":" + localId;
             }
 
-            return material.name + "|" + (material.shader != null ? material.shader.name : "");
+            var referenceLocations = targeting.EnumerateRenderer()
+                .Where(renderer =>
+                    renderer != null
+                    && (renderer.transform == domainRoot.transform
+                        || renderer.transform.IsChildOf(domainRoot.transform)))
+                .SelectMany(renderer =>
+                    targeting.GetMaterials(renderer)
+                        .Select((candidate, materialIndex) => new
+                        {
+                            Renderer = renderer,
+                            Material = candidate,
+                            MaterialIndex = materialIndex,
+                        }))
+                .Where(entry => ReferenceEquals(entry.Material, material))
+                .Select(entry =>
+                    HierarchyIdentityUtility.GetRendererKey(
+                        domainRoot,
+                        entry.Renderer
+                    )
+                    + "#"
+                    + entry.MaterialIndex)
+                .OrderBy(location => location, StringComparer.Ordinal)
+                .ToArray();
+
+            if (referenceLocations.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    "Cannot create a stable persistent-bake key for non-persistent material '"
+                    + material.name
+                    + "' because it is not referenced by any renderer in the bake domain."
+                );
+            }
+
+            return "RendererSlots:" + string.Join("|", referenceLocations);
         }
 
         private static string GetStableRendererKey(GameObject domainRoot, Renderer renderer)
         {
-            var path = AnimationUtility.CalculateTransformPath(
-                renderer.transform,
-                domainRoot.transform
-            );
-
-            var renderers = renderer.GetComponents<Renderer>();
-            var componentIndex = Array.IndexOf(renderers, renderer);
-
-            return path
-                + "|"
-                + renderer.GetType().FullName
-                + "|"
-                + componentIndex;
+            return HierarchyIdentityUtility.GetRendererKey(domainRoot, renderer);
         }
 
         private static readonly IReadOnlyDictionary<string, string> TexturePropertyDisplayRoles =
