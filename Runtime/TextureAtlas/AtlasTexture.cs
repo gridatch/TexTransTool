@@ -6,7 +6,6 @@ using System;
 using net.rs64.TexTransCoreEngineForUnity;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.TextureAtlas.IslandRelocator;
-using UnityEngine.Serialization;
 using net.rs64.TexTransTool.Utils;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
@@ -24,12 +23,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         // targeting
         public List<Material?> AtlasTargetMaterials = new List<Material?>();
-
-        // Bake-only settings. These do not affect normal NDMF AtlasTexture processing.
-        public string BakeName = "";
-
-        [FormerlySerializedAs("AtlasExcludedRenderers")]
-        public List<Renderer?> BakeExcludedRenderers = new List<Renderer?>();
 
         // IslandSizePriorityTuner
         [SerializeReference, SubclassSelector] internal List<IIslandSizePriorityTuner?> IslandSizePriorityTuner = new();
