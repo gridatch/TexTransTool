@@ -19,7 +19,9 @@ namespace net.rs64.TexTransTool.NDMF.AAO
         {
             var tttCtx = TTTContext(context);
             var tttComponents = tttCtx.PhaseAtList.SelectMany(i => i.Value);
-            if (tttComponents.Any() is false) { return; }
+            var autoConfigurations = AutoAtlasTextureProcessor.GetActiveConfigurations(
+                context.AvatarRootObject);
+            if (tttComponents.Any() is false && autoConfigurations.Length == 0) { return; }
 
             var config = context.AvatarRootObject.GetComponent<NegotiateAAOConfig>();
             var removalToIsland = config?.AAORemovalToIsland ?? true;
@@ -29,8 +31,13 @@ namespace net.rs64.TexTransTool.NDMF.AAO
             var uvEditTarget = tttComponents.Where(i => i is AtlasTexture)//後々 UV いじる系でありどの UV をいじるかを示す形が必要になる。今は AtlasTexture しかないから問題ないけど
                 .SelectMany(i => i.ModificationTargetRenderers(tttCtx.Domain)).OfType<SkinnedMeshRenderer>().Distinct();
 
+            var autoTarget = autoConfigurations.Length == 1
+                ? AutoAtlasTextureProcessor.GetAAONegotiationRenderers(
+                    tttCtx.Domain, autoConfigurations[0]).OfType<SkinnedMeshRenderer>()
+                : Enumerable.Empty<SkinnedMeshRenderer>();
+
             List<Vector4> uvBuf = null;
-            foreach (var smr in uvEditTarget)
+            foreach (var smr in uvEditTarget.Concat(autoTarget).Distinct())
             {
                 if (uvEvacuationAndRegisterToAAO && UVUsageCompabilityAPI.IsTexCoordUsed(smr, 0))
                     UVEvacuation(uvBuf, smr, overrideEvacuationIndex);

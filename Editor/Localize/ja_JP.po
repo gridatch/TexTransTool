@@ -141,6 +141,27 @@ msgstr "{0}まで試しましたが無劣化で収まるアトラスサイズが
 msgid "AtlasTexture:info:RelocateResult"
 msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応じた縮小: {1}倍 \n全体的な縮小: {2}倍 \n累計再配置計算回数: {3}回 \n再配置実行時間: {4}ms"
 
+msgid "AutoAtlasTexture:info:RelocateResult"
+msgstr "自動アトラス再配置結果\n{0}\n\n累計再配置計算回数: {1}回\n再配置実行時間: {2}ms"
+
+msgid "AutoAtlasTexture:info:MaterialBlock"
+msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
+
+msgid "AutoAtlasTexture:info:ResolutionChange"
+msgstr "{0}×{1} → {2}×{3}: {4}ファイル"
+
+msgid "AutoAtlasTexture:prop:ExcludedRenderers"
+msgstr "除外レンダラー"
+
+msgid "AutoAtlasTexture:prop:ExcludedMaterials"
+msgstr "除外マテリアル"
+
+msgid "AutoAtlasTexture:warn:MultipleConfigurations"
+msgstr "同一アバターに有効な AutoAtlasTexture が複数あります。二重処理を防ぐため実行しません。"
+
+msgid "AutoAtlasTexture:label:AdvancedSettings"
+msgstr "詳細設定"
+
 msgid "AtlasTexture:prop:LimitCandidateMaterials"
 msgstr "マテリアル選択候補の制限"
 

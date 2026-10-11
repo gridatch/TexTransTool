@@ -137,6 +137,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , List<IIslandSizePriorityTuner?> islandSizePriorityTuner
 
             , AtlasSetting atlasSetting
+            , AtlasExecutionOptions? executionOptions = null
         )
         {
             using var pf = new PFScope("init");
@@ -178,7 +179,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("IslandProcessing");
             var (atlasTargeSize, movedVirtualIslandArray, relocateResult, relocationTime) =
-                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner);
+                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner, executionOptions);
+            if (executionOptions?.RequireLossless == true &&
+                IsLosslessRelocation(relocateResult) is false)
+            {
+                atlasContext.Dispose();
+                return new(false, null, null, null, preserveBump2ndMaterials, preservedOriginalUVChannel);
+            }
             if (relocateResult.IslandRelocationResult is null || relocateResult.IslandRelocationResult.IsSuccess is false)
             {
                 // Abort!!!
@@ -199,8 +206,19 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var atlasTextureHeightSize = Mathf.Max(GetNormalizedMinHeightSize(atlasTargeSize.y, height), 4);//4以下はちょっと怪しい挙動しそうだからクランプ
             Debug.Assert(Mathf.IsPowerOfTwo(atlasTextureHeightSize));
 
-            TTLog.Info("AtlasTexture:info:RelocateResult", 1 - height, relocateResult.PriorityDownScale, relocateResult.OverallDownScale, relocateResult.TotalRelocateCount, relocationTime);
+            if (executionOptions?.ReportProgressInfo != false)
+                TTLog.Info("AtlasTexture:info:RelocateResult", 1 - height, relocateResult.PriorityDownScale, relocateResult.OverallDownScale, relocateResult.TotalRelocateCount, relocationTime);
             var atlasedTextureSize = new Vector2Int(atlasTargeSize.x, atlasTextureHeightSize);
+            if (executionOptions?.AcceptAtlasSize is { } acceptAtlasSize)
+            {
+                var metrics = new AtlasExecutionMetrics(
+                    (float)(1 - height), relocateResult.TotalRelocateCount, relocationTime);
+                if (acceptAtlasSize(atlasContext, atlasedTextureSize, metrics) is false)
+                {
+                    atlasContext.Dispose();
+                    return new(false, null, null, null, preserveBump2ndMaterials, preservedOriginalUVChannel);
+                }
+            }
 
             //新しいUVを持つMeshを生成するフェーズ
 
@@ -216,7 +234,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                   , source2MovedVirtualIsland
               );
             pf.Split("exit");
-            return new(true, atlasContext, atlasedMeshes, compiledAtlasTextures, preserveBump2ndMaterials, preservedOriginalUVChannel);
+            return new(true, atlasContext, atlasedMeshes, compiledAtlasTextures,
+                preserveBump2ndMaterials, preservedOriginalUVChannel);
         }
         internal record AtlasResult
         {
@@ -458,7 +477,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             IRendererTargeting domain,
             AtlasSetting atlasSetting,
             AtlasContext atlasContext,
-            List<IIslandSizePriorityTuner?> islandSizePriorityTuner)
+            List<IIslandSizePriorityTuner?> islandSizePriorityTuner,
+            AtlasExecutionOptions? executionOptions)
         {
             if (atlasSetting.AutoAtlasTextureSize is false)
             {
@@ -499,7 +519,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                 if (IsLosslessRelocation(candidateResult))
                 {
-                    TTLog.Info("AtlasTexture:info:AutoAtlasTextureSizeSelected", size);
+                    if (executionOptions?.ReportProgressInfo != false)
+                        TTLog.Info("AtlasTexture:info:AutoAtlasTextureSizeSelected", size);
                     break;
                 }
             }
@@ -507,7 +528,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             Debug.Assert(selectedIslands is not null);
             Debug.Assert(selectedResult is not null);
 
-            if (IsLosslessRelocation(selectedResult!) is false)
+            if (executionOptions?.RequireLossless != true &&
+                IsLosslessRelocation(selectedResult!) is false)
             {
                 TTLog.Warning(
                     "AtlasTexture:warn:AutoAtlasTextureSizeLosslessNotFound",
