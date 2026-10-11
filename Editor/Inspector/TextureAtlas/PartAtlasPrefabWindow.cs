@@ -1370,47 +1370,149 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             if (_analysis == null || _loadedPrefabRoot == null) return;
 
+            var protectedObjects = _analysis.ProtectedObjects
+                .Where(gameObject => gameObject != null)
+                .OrderBy(gameObject =>
+                    RelativePath(
+                        _loadedPrefabRoot.transform,
+                        gameObject.transform
+                    ),
+                    StringComparer.Ordinal
+                )
+                .ToArray();
+            var forcedPaths = _options.ForceDeletePaths
+                .Where(path => string.IsNullOrEmpty(path) is false)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+
+            if (protectedObjects.Length == 0 && forcedPaths.Length == 0)
+                return;
+
             _showProtected = EditorGUILayout.Foldout(
                 _showProtected,
-                $"保護して残すオブジェクト（{_analysis.ProtectedObjects.Count}）",
+                $"保護して残すオブジェクト（{protectedObjects.Length}）",
                 true
             );
             if (!_showProtected) return;
 
-            foreach (var gameObject in _analysis.ProtectedObjects
-                         .Where(gameObject => gameObject != null)
-                         .OrderBy(gameObject => RelativePath(_loadedPrefabRoot.transform, gameObject.transform)))
+            foreach (var gameObject in protectedObjects)
             {
-                var path = RelativePath(_loadedPrefabRoot.transform, gameObject.transform);
-                var currentlyForced = _options.ForceDeletePaths.Contains(path);
+                var path = RelativePath(
+                    _loadedPrefabRoot.transform,
+                    gameObject.transform
+                );
+                var components = string.Join(
+                    ", ",
+                    gameObject.GetComponents<Component>()
+                        .Where(component =>
+                            component != null
+                            && component is not Transform)
+                        .Select(component => component.GetType().Name)
+                );
 
-                using (new EditorGUILayout.HorizontalScope())
+                DrawProtectedObjectRow(
+                    path,
+                    components,
+                    isKept: true,
+                    gameObject
+                );
+            }
+
+            foreach (var path in forcedPaths)
+            {
+                GameObject? gameObject = null;
+                if (HierarchyIdentityUtility.TryResolveUniqueNamePath(
+                        _loadedPrefabRoot.transform,
+                        path,
+                        out var transform,
+                        out _
+                    )
+                    && transform != null)
                 {
-                    var keep = EditorGUILayout.Toggle(!currentlyForced, GUILayout.Width(18f));
-                    if (keep == currentlyForced)
-                    {
-                        if (keep) _options.ForceDeletePaths.Remove(path);
-                        else if (!_options.ForceDeletePaths.Contains(path)) _options.ForceDeletePaths.Add(path);
-                        InvalidateAnalysis();
-                        GUIUtility.ExitGUI();
-                    }
+                    gameObject = transform.gameObject;
+                }
 
-                    var components = string.Join(
-                        ", ",
-                        gameObject.GetComponents<Component>()
-                            .Where(component => component != null && component is not Transform)
-                            .Select(component => component.GetType().Name)
-                    );
-                    // Select the protected object without changing the keep/delete
-                    // decision. The existing checkbox is the only decision control.
-                    if (GUILayout.Button(
-                            new GUIContent(path + "  " + components,
-                                path + "\n" + components + "\nクリックしてInspectorに表示"),
-                            EditorStyles.linkLabel, GUILayout.ExpandWidth(true)))
+                DrawProtectedObjectRow(
+                    path,
+                    "（消す指定）",
+                    isKept: false,
+                    gameObject
+                );
+            }
+        }
+
+        private void DrawProtectedObjectRow(
+            string path,
+            string description,
+            bool isKept,
+            GameObject? gameObject)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUI.BeginChangeCheck();
+                var keep = EditorGUILayout.Toggle(
+                    isKept,
+                    GUILayout.Width(18f)
+                );
+                if (EditorGUI.EndChangeCheck())
+                {
+                    var requestedKeep = keep;
+                    var requestedPath = path;
+
+                    // Keep the currently displayed analysis and force-delete state
+                    // consistent for the rest of this IMGUI frame. HCE updates the
+                    // option and analysis atomically from the user's point of view;
+                    // WDT delays both together because Analyze() temporarily stages
+                    // the loaded Prefab hierarchy.
+                    EditorApplication.delayCall += () =>
                     {
-                        _hierarchyView?.SelectAndReveal(gameObject.transform, flash: true);
+                        if (requestedKeep)
+                        {
+                            _options.ForceDeletePaths.Remove(requestedPath);
+                        }
+                        else if (_options.ForceDeletePaths.Contains(requestedPath) is false)
+                        {
+                            _options.ForceDeletePaths.Add(requestedPath);
+                        }
+
+                        Analyze();
+                    };
+                    GUIUtility.ExitGUI();
+                }
+
+                var label = path
+                    + (string.IsNullOrEmpty(description)
+                        ? ""
+                        : "  " + description);
+
+                if (gameObject != null)
+                {
+                    if (GUILayout.Button(
+                            new GUIContent(
+                                label,
+                                path
+                                + "\n"
+                                + description
+                                + "\nクリックしてInspectorに表示"
+                            ),
+                            EditorStyles.linkLabel,
+                            GUILayout.ExpandWidth(true)
+                        ))
+                    {
+                        _hierarchyView?.SelectAndReveal(
+                            gameObject.transform,
+                            flash: true
+                        );
                         OnHierarchySelectionChanged(gameObject.transform);
                     }
+                }
+                else
+                {
+                    EditorGUILayout.LabelField(
+                        new GUIContent(label, label),
+                        EditorStyles.miniLabel
+                    );
                 }
             }
         }
