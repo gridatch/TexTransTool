@@ -56,6 +56,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal readonly HashSet<Transform> KeepTransforms = new();
         internal readonly HashSet<Transform> DeleteTransforms = new();
         internal readonly HashSet<GameObject> ProtectedObjects = new();
+        internal readonly HashSet<Renderer> StrippedRenderers = new();
+        internal readonly HashSet<Component> DroppedComponents = new();
         internal readonly List<SkinnedMeshRenderer> TrimTargets = new();
         internal readonly Dictionary<SkinnedMeshRenderer, int> ExpectedTrimBoneCounts = new();
 
@@ -146,11 +148,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 ?? throw new InvalidOperationException("HairCostumeExtractor.HceCore.Analyze returned null.");
 
             return ReadAnalysis(rawAnalysis);
-        }
-
-        internal void ClearHierarchyHighlight()
-        {
-            _api.HighlighterClear.Invoke(null, null);
         }
 
         internal MatsukawaExecutionResult Execute(
@@ -479,6 +476,20 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         result.ProtectedObjects.Add(gameObject);
             }
 
+            if (_api.AnalysisStrippedRenderers.GetValue(raw) is IEnumerable strippedRenderers)
+            {
+                foreach (var item in strippedRenderers)
+                    if (item is Renderer renderer)
+                        result.StrippedRenderers.Add(renderer);
+            }
+
+            if (_api.AnalysisDropComponents.GetValue(raw) is IEnumerable droppedComponents)
+            {
+                foreach (var item in droppedComponents)
+                    if (item is Component component)
+                        result.DroppedComponents.Add(component);
+            }
+
             if (_api.AnalysisTrimTargets.GetValue(raw) is IEnumerable trimTargets)
             {
                 foreach (var item in trimTargets)
@@ -564,14 +575,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             internal Type Entry = null!;
             internal Type Analysis = null!;
             internal Type BoneMode = null!;
-            internal Type Highlighter = null!;
             internal Type Executor = null!;
             internal Type MeshTrimmer = null!;
             internal Type Report = null!;
 
             internal MethodInfo CollectRenderers = null!;
             internal MethodInfo Analyze = null!;
-            internal MethodInfo HighlighterClear = null!;
             internal MethodInfo Execute = null!;
             internal MethodInfo SavePrefab = null!;
             internal MethodInfo FolderFor = null!;
@@ -600,6 +609,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             internal FieldInfo AnalysisKeep = null!;
             internal FieldInfo AnalysisDeleteRoots = null!;
             internal FieldInfo AnalysisProtected = null!;
+            internal FieldInfo AnalysisStrippedRenderers = null!;
+            internal FieldInfo AnalysisDropComponents = null!;
             internal FieldInfo AnalysisTrimTargets = null!;
             internal FieldInfo AnalysisKeepBoneIndices = null!;
             internal FieldInfo AnalysisWarnings = null!;
@@ -635,7 +646,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     Entry = TypeOf("HairCostumeExtractor.HceRendererEntry"),
                     Analysis = TypeOf("HairCostumeExtractor.HceAnalysis"),
                     BoneMode = TypeOf("HairCostumeExtractor.HceBoneMode"),
-                    Highlighter = TypeOf("HairCostumeExtractor.HceHighlighter"),
                     Executor = TypeOf("HairCostumeExtractor.HceExecutor"),
                     MeshTrimmer = TypeOf("HairCostumeExtractor.HceMeshTrimmer"),
                     Report = TypeOf("HairCostumeExtractor.HceReport"),
@@ -655,8 +665,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     api.Options
                 );
                 RequireReturn(api.Analyze, type => type == api.Analysis, "HceAnalysis");
-
-                api.HighlighterClear = Method(api.Highlighter, "Clear");
 
                 api.Execute = Method(
                     api.Executor,
@@ -704,6 +712,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 api.AnalysisKeep = Field(api.Analysis, "keep", null);
                 api.AnalysisDeleteRoots = Field(api.Analysis, "deleteRoots", null);
                 api.AnalysisProtected = Field(api.Analysis, "protectedObjects", null);
+                api.AnalysisStrippedRenderers = Field(
+                    api.Analysis,
+                    "strippedRenderers",
+                    typeof(List<Renderer>)
+                );
+                api.AnalysisDropComponents = Field(
+                    api.Analysis,
+                    "dropComponents",
+                    typeof(List<Component>)
+                );
                 api.AnalysisTrimTargets = Field(api.Analysis, "trimTargets", null);
                 api.AnalysisKeepBoneIndices = Field(api.Analysis, "keepBoneIndices", null);
                 api.AnalysisWarnings = Field(api.Analysis, "warnings", null);

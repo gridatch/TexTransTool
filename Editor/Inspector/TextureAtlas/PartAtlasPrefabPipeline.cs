@@ -850,7 +850,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 staging?.Dispose();
 
-                try { matsukawa.ClearHierarchyHighlight(); } catch { }
 
                 if (temporaryScene.IsValid())
                 {
@@ -1476,23 +1475,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             bool stripAvatarComponents)
         {
             var issues = new List<string>();
-            var deleted = analysis.DeleteTransforms;
+            var deletedTransforms = analysis.DeleteTransforms;
+            var removedComponents = GetComponentsRemovedByExtraction(
+                root,
+                analysis,
+                stripAvatarComponents
+            );
 
             foreach (var component in root.GetComponentsInChildren<Component>(true))
             {
                 if (component == null || component is Transform) continue;
-                if (deleted.Contains(component.transform)) continue;
-
-                // When HCE is configured to strip Avatar-root components, references owned by
-                // those components are irrelevant to the extracted Prefab because the component
-                // itself will not survive execution. Validating them here would reject normal
-                // AvatarDescriptor references such as Body / Eye_L / Eye_R before HCE removes
-                // the descriptor.
-                if (stripAvatarComponents
-                    && IsAvatarRootComponentRemovedByExtraction(component, root))
-                {
-                    continue;
-                }
+                if (deletedTransforms.Contains(component.transform)) continue;
+                if (removedComponents.Contains(component)) continue;
 
                 // HCE owns SkinnedMeshRenderer bone dependency analysis and rewrites the
                 // bones array when it trims unused bones. Treating those references as
@@ -1539,13 +1533,27 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     }
 
                     enterChildren = true;
-                    if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
+                    if (iterator.propertyType != SerializedPropertyType.ObjectReference)
+                        continue;
 
                     var referenced = iterator.objectReferenceValue;
+                    if (referenced == null) continue;
+
+                    var referencedComponent = referenced as Component;
+                    var referencesRemovedComponent =
+                        referencedComponent != null
+                        && removedComponents.Contains(referencedComponent);
+
                     var referencedTransform = ToTransform(referenced);
-                    if (referencedTransform == null) continue;
-                    if (referencedTransform.IsChildOf(root.transform) is false) continue;
-                    if (deleted.Contains(referencedTransform) is false) continue;
+                    var referencesDeletedTransform =
+                        referencedTransform != null
+                        && deletedTransforms.Contains(referencedTransform);
+
+                    if (referencesRemovedComponent is false
+                        && referencesDeletedTransform is false)
+                    {
+                        continue;
+                    }
 
                     if (CanClearAvatarObjectReferenceCache(
                             component,
@@ -1557,6 +1565,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         continue;
                     }
 
+                    var target = referencesRemovedComponent
+                        ? RelativePath(
+                            root.transform,
+                            referencedComponent!.transform
+                        )
+                          + " :: "
+                          + referencedComponent.GetType().Name
+                        : RelativePath(root.transform, referencedTransform!);
+
                     issues.Add(
                         RelativePath(root.transform, component.transform)
                         + " :: "
@@ -1564,7 +1581,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         + "."
                         + iterator.propertyPath
                         + " -> "
-                        + RelativePath(root.transform, referencedTransform)
+                        + target
                     );
                 }
 
@@ -1597,6 +1614,46 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 + detail;
         }
 
+        private static HashSet<Component> GetComponentsRemovedByExtraction(
+            GameObject root,
+            MatsukawaAnalysis analysis,
+            bool stripAvatarComponents)
+        {
+            var removed = analysis.DroppedComponents
+                .Where(component => component != null)
+                .ToHashSet();
+
+            foreach (var renderer in analysis.StrippedRenderers)
+            {
+                if (renderer == null) continue;
+
+                removed.Add(renderer);
+
+                // HceExecutor removes MeshFilter together with every stripped
+                // Renderer when one exists on the same GameObject.
+                var meshFilter = renderer.gameObject.GetComponent<MeshFilter>();
+                if (meshFilter != null)
+                    removed.Add(meshFilter);
+            }
+
+            if (stripAvatarComponents)
+            {
+                foreach (var component in root.GetComponents<Component>())
+                {
+                    if (component != null
+                        && IsAvatarRootComponentRemovedByExtraction(
+                            component,
+                            root
+                        ))
+                    {
+                        removed.Add(component);
+                    }
+                }
+            }
+
+            return removed;
+        }
+
         private static bool IsAvatarRootComponentRemovedByExtraction(
             Component component,
             GameObject root)
@@ -1616,6 +1673,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                    || string.Equals(
                        typeName,
                        "PipelineManager",
+                       StringComparison.Ordinal
+                   )
+                   || string.Equals(
+                       typeName,
+                       "PipelineSaver",
                        StringComparison.Ordinal
                    );
         }
