@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: vpm-publish
+  group: wdt-vpm-publish
   cancel-in-progress: false
 
 jobs:

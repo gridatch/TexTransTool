@@ -20,7 +20,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
     }
     internal class LiltoonShaderInformation
     {
-        // https://github.com/anatawa12/AvatarOptimizer/blob/6a63910a423d5b7d73e726fcccb4940716f5ee0d/Editor/APIInternal/ShaderInformation.Liltoon.cs#L116-L829
+        // Based on Avatar Optimizer 6a63910a423d5b7d73e726fcccb4940716f5ee0d,
+        // with AudioLink fixes 3000aff45f99ca7cb2d073ea01d5f105cd51a4e3 and
+        // 126bfe6a55cbae8a35c96dcbf6d11f3b00d7a342.
         public static void GetMaterialInformation(IMaterialInformationCallbackAbstractionInterface matInfo, bool isOutline)
         {
             var uvMain = UsingUVChannels.UV0;
@@ -391,35 +393,82 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                     UsingUVChannels.UV0, null);
             }
 
-            if (matInfo.GetInt("_UseAudioLink") != 0 && matInfo.GetInt("_AudioLink2Vertex") != 0)
+            if (matInfo.GetInt("_UseAudioLink") != 0 && (
+                    matInfo.GetInt("_AudioLink2Main2nd") != 0
+                    || matInfo.GetInt("_AudioLink2Main3rd") != 0
+                    || matInfo.GetInt("_AudioLink2Emission") != 0
+                    || matInfo.GetInt("_AudioLink2EmissionGrad") != 0
+                    || matInfo.GetInt("_AudioLink2Emission2nd") != 0
+                    || matInfo.GetInt("_AudioLink2Emission2ndGrad") != 0
+                    || matInfo.GetInt("_AudioLink2Vertex") != 0
+                ))
             {
                 var _AudioLinkUVMode = matInfo.GetInt("_AudioLinkUVMode");
+                var _AudioLinkVertexUVMode = matInfo.GetInt("_AudioLinkVertexUVMode");
 
-                if (_AudioLinkUVMode is 3 or 4 or null)
+                if (_AudioLinkUVMode is 3 or 4 or null || _AudioLinkVertexUVMode is 3 or null)
                 {
-                    // TODO: _AudioLinkMask_ScrollRotate
+                    UsingUVChannels audioLinkUVChannel;
+                    Matrix2x3? audioLinkUVMatrix;
+                    // lil_sampler_linear_repeat for _AudioLinkVertexUVMode = 3,
+                    // sampler_AudioLinkMask for _AudioLinkUVMode = 3,4
                     var sampler = "_AudioLinkMask" | SamplerStateInformation.LinearRepeatSampler;
                     switch (matInfo.GetInt("_AudioLinkMask_UVMode"))
                     {
                         case 0:
                         default:
-                            LIL_SAMPLE_2D_ST_WithMat("_AudioLinkMask", sampler, uvMain, uvMainMatrix);
+                            audioLinkUVChannel = uvMain;
+                            audioLinkUVMatrix = uvMainMatrix;
                             break;
                         case 1:
-                            LIL_SAMPLE_2D_ST("_AudioLinkMask", sampler, UsingUVChannels.UV1);
+                            audioLinkUVChannel = UsingUVChannels.UV1;
+                            audioLinkUVMatrix = Matrix2x3.Identity;
                             break;
                         case 2:
-                            LIL_SAMPLE_2D_ST("_AudioLinkMask", sampler, UsingUVChannels.UV2);
+                            audioLinkUVChannel = UsingUVChannels.UV2;
+                            audioLinkUVMatrix = Matrix2x3.Identity;
                             break;
                         case 3:
-                            LIL_SAMPLE_2D_ST("_AudioLinkMask", sampler, UsingUVChannels.UV3);
+                            audioLinkUVChannel = UsingUVChannels.UV3;
+                            audioLinkUVMatrix = Matrix2x3.Identity;
                             break;
                         case null:
-                            LIL_SAMPLE_2D_ST_WithMat("_AudioLinkMask", sampler,
-                                uvMain | UsingUVChannels.UV1 | UsingUVChannels.UV2 | UsingUVChannels.UV3,
-                                Combine(uvMainMatrix, Matrix2x3.Identity));
+                            audioLinkUVChannel =
+                                UsingUVChannels.UV0
+                                | UsingUVChannels.UV1
+                                | UsingUVChannels.UV2
+                                | UsingUVChannels.UV3;
+                            audioLinkUVMatrix = Combine(
+                                uvMainMatrix,
+                                Matrix2x3.Identity
+                            );
                             break;
                     }
+
+                    audioLinkUVMatrix = Multiply(
+                        audioLinkUVMatrix,
+                        STAndScrollRotateToMatrix(
+                            "_AudioLinkMask_ST",
+                            "_AudioLinkMask_ScrollRotate"
+                        )
+                    );
+
+                    LIL_SAMPLE_2D_ST_WithMat(
+                        "_AudioLinkMask",
+                        sampler,
+                        audioLinkUVChannel,
+                        audioLinkUVMatrix
+                    );
+                }
+
+                if (matInfo.GetInt("_AudioLinkAsLocal") != 0)
+                {
+                    LIL_SAMPLE_2D_ST_WithMat(
+                        "_AudioLinkLocalMap",
+                        SamplerStateInformation.LinearRepeatSampler,
+                        UsingUVChannels.NonMesh,
+                        null
+                    );
                 }
             }
 
