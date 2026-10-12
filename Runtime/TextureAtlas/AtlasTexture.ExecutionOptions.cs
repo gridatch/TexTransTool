@@ -18,15 +18,18 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal readonly float TopFreeFraction;
             internal readonly int TotalRelocateCount;
             internal readonly long RelocationTimeMilliseconds;
+            internal readonly long OutputTexturePixelCount;
 
             internal AtlasExecutionMetrics(
                 float topFreeFraction,
                 int totalRelocateCount,
-                long relocationTimeMilliseconds)
+                long relocationTimeMilliseconds,
+                long outputTexturePixelCount)
             {
                 TopFreeFraction = topFreeFraction;
                 TotalRelocateCount = totalRelocateCount;
                 RelocationTimeMilliseconds = relocationTimeMilliseconds;
+                OutputTexturePixelCount = outputTexturePixelCount;
             }
         }
     }

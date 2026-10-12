@@ -290,7 +290,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
         public Dictionary<string, ITTRenderTexture> GenerateAtlasedTextures<TTT4U>(
             TTT4U engine
             , AtlasSetting atlasSetting
-            , Vector2Int atlasedTextureSize
+            , AtlasTextureResolutionPlan resolutionPlan
             , bool IsRectangleMove
             , Dictionary<IslandTransform, IslandTransform> source2MovedVirtualIsland
         ) where TTT4U : ITexTransToolForUnity
@@ -300,16 +300,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var compiledAtlasTextures = new Dictionary<string, ITTRenderTexture>();
 
             using var groupedTextures = GetGroupedDiskOrRenderTextures(engine);
-            var containsProperty = MaterialGroupingCtx.GetContainsAllProperties();
 
             var loadedDiskTextures = new Dictionary<ITTDiskTexture, ITTRenderTexture>();
             try
             {
-                foreach (var propName in containsProperty)
+                foreach (var propertySizePair in resolutionPlan.PropertySizes)
                 {
+                    var propName = propertySizePair.Key;
+                    var propertySize = propertySizePair.Value;
                     pf.Split(propName);
                     using var ppf = new PFScope("init");
-                    var targetRT = engine.CreateRenderTexture(atlasedTextureSize.x, atlasedTextureSize.y);
+                    var targetRT = engine.CreateRenderTexture(propertySize.x, propertySize.y);
                     engine.ColorFill(targetRT, atlasSetting.BackGroundColor.ToTTCore());
 
                     targetRT.Name = "AtlasTex" + propName;
