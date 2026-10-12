@@ -574,6 +574,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     atlasContext,
                     islandSizePriorityTuner,
                     manualSize,
+                    executionOptions?.IslandRelocatorOverride,
                     out var manualTime
                 );
                 return (manualSize, manualIslands, manualResult, manualTime);
@@ -594,6 +595,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     atlasContext,
                     islandSizePriorityTuner,
                     candidateSize,
+                    executionOptions?.IslandRelocatorOverride,
                     out var candidateTime
                 );
 
@@ -638,6 +640,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , AtlasContext atlasContext
             , List<IIslandSizePriorityTuner?> islandSizePriorityTuner
             , Vector2Int atlasTargeSize
+            , IIslandRelocator? islandRelocatorOverride
             , out long relocationTime
         )
         {
@@ -663,7 +666,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 sizePriority[i] = TTMath.Saturate(sizePriority[i]);
 
             if (atlasSetting.AtlasIslandRelocator != null) { throw new NotImplementedException(); }
-            var islandRelocator = new NFDHPlasFC() as IIslandRelocator;
+            var islandRelocator = islandRelocatorOverride ?? new NFDHPlasFC();
 
 
             var relocateManage = new IslandRelocationManager(islandRelocator);
