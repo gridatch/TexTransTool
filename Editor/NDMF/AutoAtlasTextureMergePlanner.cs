@@ -323,6 +323,9 @@ namespace net.rs64.TexTransTool.NDMF
             var usage = AnalyzeRuntimeUsage(animatorServices, groups);
             var byId = groups.ToDictionary(group => group.Id);
             var adoptable = new Dictionary<string, Candidate>();
+            var mergedPlanCache = new Dictionary<
+                string,
+                (AtlasTexture.AtlasExecutionMetrics Metrics, TextureCostPlan Cost)>();
 
             foreach (var host in groups.Where(group =>
                          group.StandaloneMetrics is { } metrics
@@ -345,28 +348,41 @@ namespace net.rs64.TexTransTool.NDMF
                             var key = string.Join(",", ids);
                             if (!seen.Add(key)) continue;
 
-                            var materials = ids.SelectMany(id => byId[id].Materials)
-                                .ToHashSet();
-                            var renderers = ids.SelectMany(id => byId[id].Renderers)
-                                .Distinct().ToArray();
-                            var metrics = AnalyzeAtlas(
-                                domain, engine, settings, materials, renderers);
-                            if (metrics is null) continue;
+                            AtlasTexture.AtlasExecutionMetrics metrics;
+                            TextureCostPlan merged;
+                            if (mergedPlanCache.TryGetValue(key, out var cached))
+                            {
+                                metrics = cached.Metrics;
+                                merged = cached.Cost;
+                            }
+                            else
+                            {
+                                var materials = ids.SelectMany(id => byId[id].Materials)
+                                    .ToHashSet();
+                                var renderers = ids.SelectMany(id => byId[id].Renderers)
+                                    .Distinct().ToArray();
+                                var analyzed = AnalyzeAtlas(
+                                    domain, engine, settings, materials, renderers);
+                                if (analyzed is null) continue;
+
+                                metrics = analyzed.Value;
+                                merged = BuildGeneratedCost(
+                                    domain,
+                                    ids.Select(id => byId[id]).ToArray(),
+                                    propertyTextures,
+                                    metrics.PropertySizes,
+                                    alphaCache);
+                                mergedPlanCache[key] = (metrics, merged);
+                            }
 
                             var baseline = TextureCostPlan.Combine(
                                 ids.Select(id => byId[id].BaselineCost));
-                            var merged = BuildGeneratedCost(
-                                domain,
-                                ids.Select(id => byId[id]).ToArray(),
-                                propertyTextures,
-                                metrics.Value.PropertySizes,
-                                alphaCache);
 
                             var candidate = new Candidate(
                                 ids,
                                 baseline,
                                 merged,
-                                metrics.Value,
+                                metrics,
                                 configuration.MinimumAdditionalMergeSavingsRate,
                                 usage);
                             expanded.Add(candidate);
