@@ -356,17 +356,17 @@
           },
           "zipSHA256": "98169c938a45e1051bd1baa96c887c25fd6ad833701dd43b434089625f770c01"
         },
-        "0.1.17+wdt.ttt.1.0.2.debug.364.auto-atlas-merge-planner.2ebb9c7": {
+        "0.1.17+wdt.ttt.1.0.2.debug.365.auto-atlas-merge-planner.09d770a": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.17+wdt.ttt.1.0.2.debug.364.auto-atlas-merge-planner.2ebb9c7",
+          "version": "0.1.17+wdt.ttt.1.0.2.debug.365.auto-atlas-merge-planner.09d770a",
           "unity": "2022.3",
-          "description": "Debug build 364 for auto-atlas-merge-planner from feat/auto-atlas-merge-planner at 2ebb9c7. Based on WDT 0.1.17+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 365 for auto-atlas-merge-planner from feat/auto-atlas-merge-planner at 09d770a. Based on WDT 0.1.17+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.17+wdt.ttt.1.0.2.debug.364.auto-atlas-merge-planner.2ebb9c7.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.17+wdt.ttt.1.0.2.debug.365.auto-atlas-merge-planner.09d770a.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -379,7 +379,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "6336f6f5f5ef825c52aa699f586bda1feef9a3fbb35c61944f9bc5f9ec7799d2"
+          "zipSHA256": "6fd910b56a46fc1835da544c94106d2157093499c1b8c23cdbddc6b7bd616d8a"
         }
       }
     }
