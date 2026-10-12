@@ -26,6 +26,9 @@ namespace net.rs64.TexTransTool.NDMF
         // highest-value proposals.
         private const int MaxMergeGroupCount = 12;
         private const int MaxFullMergeAnalyses = 32;
+        private const int PairAnalysisQuota = 20;
+        private const int TripleAnalysisQuota = 8;
+        private const int LargerAnalysisQuota = 4;
         private const int MaxRuntimeUsageScenarios = 64;
         private const int MaxScenarioEnumerationGroups = 12;
         private const double UnknownDemandLog2 = -32d;
@@ -85,6 +88,7 @@ namespace net.rs64.TexTransTool.NDMF
 
         private sealed class CheapProposal
         {
+            internal readonly int HostId;
             internal readonly int[] GroupIds;
             internal readonly string Key;
             internal readonly double Score;
@@ -92,11 +96,13 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly double CapacityUseRatio;
 
             internal CheapProposal(
+                int hostId,
                 IEnumerable<int> groupIds,
                 double score,
                 long potentialGuestSavingsBytes,
                 double capacityUseRatio)
             {
+                HostId = hostId;
                 GroupIds = groupIds.OrderBy(id => id).ToArray();
                 Key = string.Join(",", GroupIds);
                 Score = score;
@@ -429,19 +435,16 @@ namespace net.rs64.TexTransTool.NDMF
             // the most promising unique subsets.
             var proposals = BuildCheapMergeProposals(
                 configuration, groups);
-            var selectedProposals = proposals
-                .OrderByDescending(proposal => proposal.Score)
-                .ThenBy(proposal => proposal.GroupIds.Length)
-                .ThenBy(proposal => proposal.Key, StringComparer.Ordinal)
-                .Take(MaxFullMergeAnalyses)
-                .ToArray();
+            var selectedProposals = SelectFullAnalysisProposals(proposals);
 
             diagnosticLines.Add(
-                $"cheap proposals={proposals.Count}, full analyses={selectedProposals.Length}/{MaxFullMergeAnalyses}");
+                $"cheap proposals={proposals.Count}, full analyses={selectedProposals.Count}/{MaxFullMergeAnalyses}, " +
+                $"pairs={selectedProposals.Count(proposal => proposal.GroupIds.Length == 2)}, " +
+                $"triples={selectedProposals.Count(proposal => proposal.GroupIds.Length == 3)}, " +
+                $"larger={selectedProposals.Count(proposal => proposal.GroupIds.Length >= 4)}");
 
             var relocationRejected = 0;
-            foreach (var proposal in selectedProposals
-)
+            foreach (var proposal in selectedProposals)
             {
                 var ids = proposal.GroupIds;
                 var materials = ids.SelectMany(id => byId[id].Materials)
@@ -518,6 +521,93 @@ namespace net.rs64.TexTransTool.NDMF
                     .OrderBy(name => name, StringComparer.Ordinal));
         }
 
+        private static IReadOnlyList<CheapProposal> SelectFullAnalysisProposals(
+            IReadOnlyList<CheapProposal> proposals)
+        {
+            var selected = new List<CheapProposal>();
+            var selectedKeys = new HashSet<string>();
+
+            void AddBucket(IEnumerable<CheapProposal> bucket, int quota)
+            {
+                if (quota <= 0) return;
+
+                var ordered = bucket
+                    .OrderByDescending(proposal => proposal.Score)
+                    .ThenBy(proposal => proposal.Key, StringComparer.Ordinal)
+                    .ToArray();
+                if (ordered.Length == 0) return;
+
+                // First pass: one best proposal per host, so a single large host
+                // cannot consume the whole expensive-analysis budget.
+                foreach (var proposal in ordered
+                             .GroupBy(proposal => proposal.HostId)
+                             .Select(group => group.First())
+                             .OrderByDescending(proposal => proposal.Score)
+                             .ThenBy(proposal => proposal.HostId)
+                             .ThenBy(proposal => proposal.Key, StringComparer.Ordinal))
+                {
+                    if (selected.Count(candidate =>
+                            candidate.GroupIds.Length == proposal.GroupIds.Length)
+                        >= quota)
+                    {
+                        break;
+                    }
+
+                    if (selectedKeys.Add(proposal.Key))
+                        selected.Add(proposal);
+                }
+
+                // Second pass: fill unused quota by score.
+                foreach (var proposal in ordered)
+                {
+                    if (selected.Count(candidate =>
+                            BucketClass(candidate.GroupIds.Length)
+                                == BucketClass(proposal.GroupIds.Length))
+                        >= quota)
+                    {
+                        break;
+                    }
+
+                    if (selectedKeys.Add(proposal.Key))
+                        selected.Add(proposal);
+                }
+            }
+
+            static int BucketClass(int groupCount)
+            {
+                return groupCount switch
+                {
+                    2 => 2,
+                    3 => 3,
+                    _ => 4,
+                };
+            }
+
+            AddBucket(
+                proposals.Where(proposal => proposal.GroupIds.Length == 2),
+                PairAnalysisQuota);
+            AddBucket(
+                proposals.Where(proposal => proposal.GroupIds.Length == 3),
+                TripleAnalysisQuota);
+            AddBucket(
+                proposals.Where(proposal => proposal.GroupIds.Length >= 4),
+                LargerAnalysisQuota);
+
+            // If one bucket did not have enough proposals, use the remaining
+            // global budget for the best not-yet-selected candidates.
+            foreach (var proposal in proposals
+                         .OrderBy(proposal => proposal.GroupIds.Length)
+                         .ThenByDescending(proposal => proposal.Score)
+                         .ThenBy(proposal => proposal.Key, StringComparer.Ordinal))
+            {
+                if (selected.Count >= MaxFullMergeAnalyses) break;
+                if (selectedKeys.Add(proposal.Key))
+                    selected.Add(proposal);
+            }
+
+            return selected.Take(MaxFullMergeAnalyses).ToArray();
+        }
+
         private static IReadOnlyList<CheapProposal> BuildCheapMergeProposals(
             AutoAtlasTexture configuration,
             IReadOnlyList<PreparedGroup> groups)
@@ -589,6 +679,7 @@ namespace net.rs64.TexTransTool.NDMF
                     var score = potentialGuestSavings * fitQuality;
 
                     var proposal = new CheapProposal(
+                        host.Id,
                         ids,
                         score,
                         potentialGuestSavings,
