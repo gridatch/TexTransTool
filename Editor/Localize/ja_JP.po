@@ -147,6 +147,9 @@ msgstr "自動アトラス再配置結果\n{0}\n\n累計再配置計算回数: {
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
 
+msgid "AutoAtlasTexture:info:MergePlannerDiagnostics"
+msgstr "追加統合プランナー診断\n{0}\n\n判定理由: minimum-savings=最小追加削減率未満 / pixel-count=総ピクセル数が減らない / resident-memory=推定常駐メモリが減らない / max-dimension=最大テクスチャ寸法が増える / format-sampling=フォーマット由来のサンプリングコスト悪化 / mip-streaming=Mip・同時使用条件で悪化 / relocation=無劣化再配置を試算できない / accepted=採用可能"
+
 msgid "AutoAtlasTexture:info:AdditionalMergeBlock"
 msgstr "追加統合\n個別最適化後の推定メモリ: {0}\n追加統合後の推定メモリ: {1}\n追加削減率: {2:0.0}%\n個別最適化後の総ピクセル数: {3}\n追加統合後の総ピクセル数: {4}"
 
