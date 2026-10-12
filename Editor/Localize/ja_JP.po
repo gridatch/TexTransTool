@@ -150,6 +150,18 @@ msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2}件"
 
+msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
+msgstr "余白を利用して追加統合"
+
+msgid "AutoAtlasTexture:prop:MinimumMergeHostFreeAreaRatio"
+msgstr "統合先候補の最小余白率"
+
+msgid "AutoAtlasTexture:prop:MinimumAdditionalMergeSavingsRate"
+msgstr "統合による最小追加削減率"
+
+msgid "AutoAtlasTexture:help:AdditionalAtlasMerging"
+msgstr "個別に最適化した場合を基準として、余白を利用した追加統合が一定以上の削減になり、かつ推定メモリ・Mip・フォーマット・最大テクスチャ寸法の性能条件を悪化させない場合だけ統合します。余白率は候補探索の間引きにのみ使用します。"
+
 msgid "AutoAtlasTexture:prop:ExcludedRenderers"
 msgstr "除外レンダラー"
 
