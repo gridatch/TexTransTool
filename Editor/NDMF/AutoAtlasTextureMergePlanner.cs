@@ -105,6 +105,7 @@ namespace net.rs64.TexTransTool.NDMF
                     && merged.PixelCount < baseline.PixelCount
                     && merged.FullResidentBytes < baseline.FullResidentBytes
                     && merged.MaxTextureDimension <= baseline.MaxTextureDimension
+                    && !HasSamplingRegression(baseline, merged, groupIds)
                     && !HasStreamingRegression(baseline, merged, groupIds, usage);
             }
         }
@@ -117,8 +118,11 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long FullResidentBytes;
             internal readonly long PixelCount;
             internal readonly int MaxTextureDimension;
+            internal readonly Dictionary<int, double> SamplingBytesPerTexel;
 
-            internal TextureCostPlan(IEnumerable<TextureCostEntry> entries)
+            internal TextureCostPlan(
+                IEnumerable<TextureCostEntry> entries,
+                IReadOnlyDictionary<int, double>? samplingBytesPerTexel = null)
             {
                 Entries = entries.ToArray();
                 FullResidentBytes = Entries.Sum(entry => entry.FullResidentBytes);
@@ -126,11 +130,25 @@ namespace net.rs64.TexTransTool.NDMF
                 MaxTextureDimension = Entries.Length == 0
                     ? 0
                     : Entries.Max(entry => Math.Max(entry.Width, entry.Height));
+                SamplingBytesPerTexel = samplingBytesPerTexel == null
+                    ? new Dictionary<int, double>()
+                    : samplingBytesPerTexel.ToDictionary(pair => pair.Key, pair => pair.Value);
             }
 
             internal static TextureCostPlan Combine(IEnumerable<TextureCostPlan> plans)
             {
-                return new TextureCostPlan(plans.SelectMany(plan => plan.Entries));
+                var planArray = plans.ToArray();
+                var sampling = new Dictionary<int, double>();
+                foreach (var plan in planArray)
+                {
+                    foreach (var pair in plan.SamplingBytesPerTexel)
+                    {
+                        sampling[pair.Key] = sampling.GetValueOrDefault(pair.Key) + pair.Value;
+                    }
+                }
+                return new TextureCostPlan(
+                    planArray.SelectMany(plan => plan.Entries),
+                    sampling);
             }
         }
 
@@ -433,9 +451,7 @@ namespace net.rs64.TexTransTool.NDMF
             var entries = new List<TextureCostEntry>();
             foreach (var texture in group.SourceTextures)
             {
-                var format = texture is Texture2D tex2D
-                    ? tex2D.format
-                    : TextureFormat.RGBA32;
+                var format = GetSourceFormat(texture);
                 var mipCount = texture is Texture2D mipTexture
                     ? Math.Max(1, mipTexture.mipmapCount)
                     : 1;
@@ -460,7 +476,21 @@ namespace net.rs64.TexTransTool.NDMF
                     demands));
             }
 
-            return new TextureCostPlan(entries);
+            var propertySamplingCosts = group.Materials
+                .Where(propertyTextures.ContainsKey)
+                .SelectMany(material => propertyTextures[material])
+                .Where(pair => pair.Value != null)
+                .GroupBy(pair => pair.Key)
+                .Select(propertyGroup => propertyGroup
+                    .Max(pair => GetBytesPerTexel(GetSourceFormat(pair.Value))))
+                .Sum();
+
+            return new TextureCostPlan(
+                entries,
+                new Dictionary<int, double>
+                {
+                    [group.Id] = propertySamplingCosts,
+                });
         }
 
         private static TextureCostPlan BuildGeneratedCost(
@@ -471,6 +501,7 @@ namespace net.rs64.TexTransTool.NDMF
             Dictionary<Texture, bool> alphaCache)
         {
             var entries = new List<TextureCostEntry>();
+            var sampling = groups.ToDictionary(group => group.Id, _ => 0d);
             var hasMain = propertySizes.ContainsKey("_MainTex");
 
             foreach (var property in propertySizes.OrderBy(pair => pair.Key, StringComparer.Ordinal))
@@ -481,13 +512,18 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
+                var usageProperties = hasMain && property.Key == "_MainTex"
+                    ? new[] { "_MainTex", "_BaseMap", "_BaseColorMap" }
+                    : new[] { property.Key };
+
                 var contributors = new HashSet<int>();
-                var sources = new HashSet<Texture>();
+                var pixelSources = new HashSet<Texture>();
                 var demand = new Dictionary<int, double>();
+                var usedPropertyCount = new Dictionary<int, int>();
 
                 foreach (var group in groups)
                 {
-                    var groupSources = group.Materials
+                    var rootSources = group.Materials
                         .Where(propertyTextures.ContainsKey)
                         .SelectMany(material =>
                             propertyTextures[material].TryGetValue(property.Key, out var texture)
@@ -495,22 +531,56 @@ namespace net.rs64.TexTransTool.NDMF
                                 ? new[] { texture }
                                 : Array.Empty<Texture>())
                         .ToHashSet();
+                    pixelSources.UnionWith(rootSources);
 
-                    if (groupSources.Count == 0) continue;
+                    var groupDemand = double.PositiveInfinity;
+                    var groupUsedProperties = 0;
+                    foreach (var usageProperty in usageProperties)
+                    {
+                        var usageSources = group.Materials
+                            .Where(propertyTextures.ContainsKey)
+                            .SelectMany(material =>
+                                propertyTextures[material].TryGetValue(
+                                    usageProperty, out var texture)
+                                    && texture != null
+                                    ? new[] { texture }
+                                    : Array.Empty<Texture>())
+                            .ToHashSet();
+
+                        if (usageSources.Count == 0) continue;
+                        groupUsedProperties += 1;
+                        groupDemand = Math.Min(
+                            groupDemand,
+                            FindPropertyDemandLog2(
+                                domain,
+                                group,
+                                usageProperty,
+                                usageSources,
+                                propertyTextures));
+                    }
+
+                    if (groupUsedProperties == 0) continue;
+
                     contributors.Add(group.Id);
-                    sources.UnionWith(groupSources);
-                    demand[group.Id] = FindPropertyDemandLog2(
-                        domain, group, property.Key, groupSources, propertyTextures);
+                    usedPropertyCount[group.Id] = groupUsedProperties;
+                    demand[group.Id] = double.IsPositiveInfinity(groupDemand)
+                        ? UnknownDemandLog2
+                        : groupDemand;
                 }
 
                 if (contributors.Count == 0) continue;
 
-                var hasAlpha = sources.Any(texture => HasAlpha(texture, alphaCache));
+                var hasAlpha = pixelSources.Count == 0
+                    || pixelSources.Any(texture => HasAlpha(texture, alphaCache));
                 var quality = property.Key is "_BumpMap" or "_Bump2ndMap"
                     ? FormatQuality.High
                     : FormatQuality.Normal;
                 var format = TextureCompressionData.GetQuality2TextureFormat(
                     quality, hasAlpha);
+                var bytesPerTexel = GetBytesPerTexel(format);
+
+                foreach (var pair in usedPropertyCount)
+                    sampling[pair.Key] += bytesPerTexel * pair.Value;
 
                 entries.Add(new TextureCostEntry(
                     "generated:" + property.Key,
@@ -523,7 +593,7 @@ namespace net.rs64.TexTransTool.NDMF
                     demand));
             }
 
-            return new TextureCostPlan(entries);
+            return new TextureCostPlan(entries, sampling);
         }
 
         private static bool HasAlpha(Texture texture, Dictionary<Texture, bool> cache)
@@ -584,6 +654,46 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             return total;
+        }
+
+        private static TextureFormat GetSourceFormat(Texture texture)
+        {
+            return texture is Texture2D texture2D
+                ? texture2D.format
+                : TextureFormat.RGBA32;
+        }
+
+        private static double GetBytesPerTexel(TextureFormat format)
+        {
+            try
+            {
+                var blockWidth = Math.Max(1u,
+                    GraphicsFormatUtility.GetBlockWidth(format));
+                var blockHeight = Math.Max(1u,
+                    GraphicsFormatUtility.GetBlockHeight(format));
+                var blockSize = Math.Max(1u,
+                    GraphicsFormatUtility.GetBlockSize(format));
+                return (double)blockSize / (blockWidth * blockHeight);
+            }
+            catch
+            {
+                return 4d;
+            }
+        }
+
+        private static bool HasSamplingRegression(
+            TextureCostPlan baseline,
+            TextureCostPlan merged,
+            IEnumerable<int> groupIds)
+        {
+            foreach (var id in groupIds)
+            {
+                var before = baseline.SamplingBytesPerTexel.GetValueOrDefault(id);
+                var after = merged.SamplingBytesPerTexel.GetValueOrDefault(id);
+                if (after > before + 1e-9d)
+                    return true;
+            }
+            return false;
         }
 
         private static bool HasStreamingRegression(
