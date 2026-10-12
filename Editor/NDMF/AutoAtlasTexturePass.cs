@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using nadena.dev.ndmf;
+using nadena.dev.ndmf.animator;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
@@ -38,7 +39,10 @@ namespace net.rs64.TexTransTool.NDMF
                     atlas, context.AvatarRootObject))
                 .ToArray();
             AutoAtlasTextureProcessor.Execute(
-                session.Domain, configurations[0], manualAtlases);
+                session.Domain,
+                configurations[0],
+                manualAtlases,
+                context.Extension<AnimatorServicesContext>());
         }
     }
 
@@ -66,8 +70,11 @@ namespace net.rs64.TexTransTool.NDMF
                 .ToArray();
         }
 
-        internal static void Execute(IDomain domain,
-            AutoAtlasTexture configuration, IReadOnlyCollection<AtlasTexture> manualAtlases)
+        internal static void Execute(
+            IDomain domain,
+            AutoAtlasTexture configuration,
+            IReadOnlyCollection<AtlasTexture> manualAtlases,
+            AnimatorServicesContext animatorServices)
         {
             // Store only the NDMF console summary for this build.
             var completed = new List<(string Block, int Relocations, long Milliseconds)>();
