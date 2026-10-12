@@ -331,17 +331,17 @@
           },
           "zipSHA256": "b3d9d6f3e6e77d9f91e14fd4ba3e67849bc95c65dc3857fabf2f6817681c34d8"
         },
-        "0.1.16+wdt.ttt.1.0.2.debug.314.atlas-resolution-reporting.dedad56": {
+        "0.1.16+wdt.ttt.1.0.2.debug.315.atlas-resolution-reporting.fbe006b": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.16+wdt.ttt.1.0.2.debug.314.atlas-resolution-reporting.dedad56",
+          "version": "0.1.16+wdt.ttt.1.0.2.debug.315.atlas-resolution-reporting.fbe006b",
           "unity": "2022.3",
-          "description": "Debug build 314 for atlas-resolution-reporting from feat/atlas-resolution-reporting at dedad56. Based on WDT 0.1.16+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 315 for atlas-resolution-reporting from feat/atlas-resolution-reporting at fbe006b. Based on WDT 0.1.16+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.16+wdt.ttt.1.0.2.debug.314.atlas-resolution-reporting.dedad56.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.16+wdt.ttt.1.0.2.debug.315.atlas-resolution-reporting.fbe006b.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -354,7 +354,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "3f687ad53c40801b9a5779de853e82205d7f973a0f31e48acef7513413bb43bd"
+          "zipSHA256": "c59b34547cb5e2efc64bec7faff3e1a91c6ecabc04a4a3bfdcd06331f2772938"
         }
       }
     }
