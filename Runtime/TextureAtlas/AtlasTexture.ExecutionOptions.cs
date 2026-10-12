@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using net.rs64.TexTransCore.UVIsland;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas
@@ -11,6 +12,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
         {
             internal bool RequireLossless;
             internal bool ReportProgressInfo = true;
+            internal IIslandRelocator? IslandRelocatorOverride;
             internal Func<AtlasContext, Vector2Int, AtlasExecutionMetrics, bool>? AcceptAtlasSize;
         }
 
