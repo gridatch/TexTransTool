@@ -1,10 +1,5 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
-  "baseVersion": "0.1.16+wdt.ttt.1.0.2",
-  "lastDebugSerial": 332,
-  "currentDebugVersion": "0.1.16+wdt.ttt.1.0.2.debug.332.atlas-resolution-reporting.d0b11ab",
-  "currentDebugChange": "atlas-resolution-reporting",
-  "currentDebugBranch": "feat/atlas-resolution-reporting",
-  "currentDebugCommit": "d0b11ab9afb20f14c9072fe335c8b88345a8fd7d",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.16+wdt.ttt.1.0.2.debug.332.atlas-resolution-reporting.d0b11ab.zip"
+  "baseVersion": "0.1.17+wdt.ttt.1.0.2",
+  "lastDebugSerial": 332
 }
