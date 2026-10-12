@@ -225,7 +225,7 @@ namespace net.rs64.TexTransTool.NDMF
                 var retainedRenderTextures = tuningResult.TextureDescriptors.Keys.ToHashSet();
 
                 var resolutionChanges = AtlasTexture.GetResolutionChanges(
-                        propertyTextures,
+                        group.Select(material => propertyTextures[material]),
                         tuningResult.RenderTextures)
                     .Select(change => string.Format(
                         resolutionLine,
