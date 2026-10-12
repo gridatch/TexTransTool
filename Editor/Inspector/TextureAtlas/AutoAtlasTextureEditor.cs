@@ -9,6 +9,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     internal sealed class AutoAtlasTextureEditor : TexTransMonoBaseEditor
     {
         private SerializedProperty _islandPadding = null!;
+        private SerializedProperty _enableAdditionalAtlasMerging = null!;
+        private SerializedProperty _minimumMergeHostFreeAreaRatio = null!;
+        private SerializedProperty _minimumAdditionalMergeSavingsRate = null!;
         private SerializedProperty _excludedRenderers = null!;
         private SerializedProperty _excludedMaterials = null!;
         private bool _advanced;
@@ -16,6 +19,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private void OnEnable()
         {
             _islandPadding = serializedObject.FindProperty(nameof(AutoAtlasTexture.IslandPadding));
+            _enableAdditionalAtlasMerging = serializedObject.FindProperty(nameof(AutoAtlasTexture.EnableAdditionalAtlasMerging));
+            _minimumMergeHostFreeAreaRatio = serializedObject.FindProperty(nameof(AutoAtlasTexture.MinimumMergeHostFreeAreaRatio));
+            _minimumAdditionalMergeSavingsRate = serializedObject.FindProperty(nameof(AutoAtlasTexture.MinimumAdditionalMergeSavingsRate));
             _excludedRenderers = serializedObject.FindProperty(nameof(AutoAtlasTexture.ExcludedRenderers));
             _excludedMaterials = serializedObject.FindProperty(nameof(AutoAtlasTexture.ExcludedMaterials));
         }
@@ -33,6 +39,26 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 EditorGUILayout.PropertyField(
                     _islandPadding, "AtlasTexture:prop:Padding".GlcV());
+                EditorGUILayout.PropertyField(
+                    _enableAdditionalAtlasMerging,
+                    "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging".GlcV());
+
+                if (_enableAdditionalAtlasMerging.boolValue)
+                {
+                    using (new EditorGUI.IndentLevelScope())
+                    {
+                        EditorGUILayout.PropertyField(
+                            _minimumMergeHostFreeAreaRatio,
+                            "AutoAtlasTexture:prop:MinimumMergeHostFreeAreaRatio".GlcV());
+                        EditorGUILayout.PropertyField(
+                            _minimumAdditionalMergeSavingsRate,
+                            "AutoAtlasTexture:prop:MinimumAdditionalMergeSavingsRate".GlcV());
+                        EditorGUILayout.HelpBox(
+                            "AutoAtlasTexture:help:AdditionalAtlasMerging".Glc(),
+                            MessageType.Info);
+                    }
+                }
+
                 EditorGUILayout.PropertyField(
                     _excludedRenderers, "AutoAtlasTexture:prop:ExcludedRenderers".GlcV(), true);
                 EditorGUILayout.PropertyField(
