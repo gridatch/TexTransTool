@@ -164,6 +164,9 @@ msgstr "Minimum host free-space ratio"
 msgid "AutoAtlasTexture:prop:MinimumAdditionalMergeSavingsRate"
 msgstr "Minimum additional merge savings"
 
+msgid "AutoAtlasTexture:button:CopyMergePlannerDiagnostics"
+msgstr "Copy Additional Merge Diagnostics"
+
 msgid "AutoAtlasTexture:help:AdditionalAtlasMerging"
 msgstr "Compares additional merging against the result of optimizing each group independently. A merge is applied only when it reaches the requested additional savings and does not regress estimated memory, mip, format, or maximum texture-dimension costs. The free-space ratio only prunes merge hosts."
 
