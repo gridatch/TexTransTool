@@ -287,6 +287,9 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         RequireLossless = true,
                         ReportProgressInfo = false,
+                        IslandRelocatorOverride = execution.MergeSelection != null
+                            ? new AutoAtlasMergeIslandRelocator()
+                            : null,
                         AcceptAtlasSize = (atlasContext, size, metrics) =>
                         {
                             executionMetrics = metrics;
