@@ -453,7 +453,12 @@ namespace net.rs64.TexTransTool.NDMF
                     .Distinct().ToArray();
 
                 var metrics = AnalyzeAtlas(
-                    domain, engine, settings, materials, renderers);
+                    domain,
+                    engine,
+                    settings,
+                    materials,
+                    renderers,
+                    useMergeRelocator: true);
                 if (metrics is null)
                 {
                     relocationRejected += 1;
@@ -487,6 +492,7 @@ namespace net.rs64.TexTransTool.NDMF
                     $"host=[{FormatGroupMaterials(new[] { proposal.HostId }, byId)}], " +
                     $"baseline={baseline.FullResidentBytes} B, merged={merged.FullResidentBytes} B, " +
                     $"saving={candidate.SavingRate:P1}, pixels={baseline.PixelCount}->{merged.PixelCount}, " +
+                    $"layout={metrics.Value.LayoutSize.x}x{metrics.Value.LayoutSize.y}, " +
                     $"max={baseline.MaxTextureDimension}->{merged.MaxTextureDimension}, decision={candidate.DecisionReason}");
 
                 if (candidate.IsAdoptable)
@@ -747,7 +753,8 @@ namespace net.rs64.TexTransTool.NDMF
             ITexTransToolForUnity engine,
             AtlasSetting settings,
             HashSet<Material> materials,
-            Renderer[] renderers)
+            Renderer[] renderers,
+            bool useMergeRelocator = false)
         {
             AtlasTexture.AtlasExecutionMetrics? captured = null;
 
@@ -764,6 +771,9 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         RequireLossless = true,
                         ReportProgressInfo = false,
+                        IslandRelocatorOverride = useMergeRelocator
+                            ? new AutoAtlasMergeIslandRelocator()
+                            : null,
                         AcceptAtlasSize = (_, _, metrics) =>
                         {
                             captured = metrics;
