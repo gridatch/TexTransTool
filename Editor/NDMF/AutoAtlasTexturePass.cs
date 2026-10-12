@@ -7,6 +7,7 @@ using nadena.dev.ndmf.animator;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.Editor;
 using net.rs64.TexTransTool.Editor;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using net.rs64.TexTransTool.Utils;
@@ -76,6 +77,8 @@ namespace net.rs64.TexTransTool.NDMF
             IReadOnlyCollection<AtlasTexture> manualAtlases,
             AnimatorServicesContext animatorServices)
         {
+            AutoAtlasTextureDiagnosticsCache.Clear();
+
             // Store only the NDMF console summary for this build.
             var completed = new List<(string Block, int Relocations, long Milliseconds)>();
 
@@ -217,10 +220,15 @@ namespace net.rs64.TexTransTool.NDMF
             if (configuration.EnableAdditionalAtlasMerging
                 && mergePlan.DiagnosticLines.Count != 0)
             {
+                var diagnosticBody = string.Join("\n", mergePlan.DiagnosticLines);
+                AutoAtlasTextureDiagnosticsCache.LastDiagnostics = string.Format(
+                    "AutoAtlasTexture:info:MergePlannerDiagnostics".GetLocalize(),
+                    diagnosticBody);
+
                 TTTLog.ReportingObject(configuration, () =>
                     TTTLog.Info(
                         "AutoAtlasTexture:info:MergePlannerDiagnostics",
-                        string.Join("\n", mergePlan.DiagnosticLines)));
+                        diagnosticBody));
             }
 
             var selectedIds = mergePlan.Selections
