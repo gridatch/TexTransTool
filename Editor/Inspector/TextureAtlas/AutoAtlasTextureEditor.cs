@@ -5,6 +5,23 @@ using net.rs64.TexTransTool.Editor;
 
 namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
+    public static class AutoAtlasTextureDiagnosticsCache
+    {
+        private const string SessionKey =
+            "net.rs64.TexTransTool.AutoAtlasTexture.LastMergePlannerDiagnostics";
+
+        public static string LastDiagnostics
+        {
+            get => SessionState.GetString(SessionKey, string.Empty);
+            set => SessionState.SetString(SessionKey, value ?? string.Empty);
+        }
+
+        public static void Clear()
+        {
+            SessionState.EraseString(SessionKey);
+        }
+    }
+
     [CustomEditor(typeof(AutoAtlasTexture))]
     internal sealed class AutoAtlasTextureEditor : TexTransMonoBaseEditor
     {
@@ -56,6 +73,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         EditorGUILayout.HelpBox(
                             "AutoAtlasTexture:help:AdditionalAtlasMerging".GetLocalize(),
                             MessageType.Info);
+
+                        using (new EditorGUI.DisabledScope(
+                                   string.IsNullOrEmpty(
+                                       AutoAtlasTextureDiagnosticsCache.LastDiagnostics)))
+                        {
+                            if (GUILayout.Button(
+                                    "AutoAtlasTexture:button:CopyMergePlannerDiagnostics".GetLocalize()))
+                            {
+                                GUIUtility.systemCopyBuffer =
+                                    AutoAtlasTextureDiagnosticsCache.LastDiagnostics;
+                            }
+                        }
                     }
                 }
 
