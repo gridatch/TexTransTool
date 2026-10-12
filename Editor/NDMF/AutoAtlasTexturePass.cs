@@ -148,7 +148,7 @@ namespace net.rs64.TexTransTool.NDMF
                 IslandPadding = Mathf.Clamp(configuration.IslandPadding, 0f, 0.05f),
             };
             var groups = MakeTextureConnectedGroups(allMaterials, propertyTextures);
-            var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
+            var preparedGroups = new List<AutoAtlasTextureMergePlanner.PreparedGroup>();
             foreach (var group in groups)
             {
                 if (group.Any(material => excludedMaterials.Contains(material) ||
@@ -195,7 +195,66 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
-                var originalPixels = texturesToReplace.Sum(texture =>
+                preparedGroups.Add(new AutoAtlasTextureMergePlanner.PreparedGroup
+                {
+                    Id = preparedGroups.Count,
+                    Materials = group,
+                    Renderers = atlasRenderers,
+                    SourceTextures = texturesToReplace,
+                    OriginalPixels = texturesToReplace.Sum(texture =>
+                        (long)texture.width * texture.height),
+                });
+            }
+
+            var mergePlan = AutoAtlasTextureMergePlanner.Plan(
+                domain,
+                configuration,
+                animatorServices,
+                settings,
+                propertyTextures,
+                preparedGroups);
+
+            var selectedIds = mergePlan.Selections
+                .SelectMany(selection => selection.GroupIds)
+                .ToHashSet();
+
+            var executionGroups = new List<(
+                HashSet<Material> Materials,
+                Renderer[] Renderers,
+                HashSet<Texture> SourceTextures,
+                AutoAtlasTextureMergePlanner.MergeSelection? MergeSelection)>();
+
+            foreach (var selection in mergePlan.Selections)
+            {
+                var selected = selection.GroupIds
+                    .Select(id => preparedGroups[id])
+                    .ToArray();
+                executionGroups.Add((
+                    selected.SelectMany(group => group.Materials).ToHashSet(),
+                    selected.SelectMany(group => group.Renderers).Distinct().ToArray(),
+                    selected.SelectMany(group => group.SourceTextures).ToHashSet(),
+                    selection));
+            }
+
+            foreach (var prepared in preparedGroups.Where(
+                         group => !selectedIds.Contains(group.Id)))
+            {
+                executionGroups.Add((
+                    prepared.Materials,
+                    prepared.Renderers,
+                    prepared.SourceTextures,
+                    null));
+            }
+
+            var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
+            var additionalMergeBlock =
+                "AutoAtlasTexture:info:AdditionalMergeBlock".GetLocalize();
+
+            foreach (var execution in executionGroups)
+            {
+                var group = execution.Materials;
+                var atlasRenderers = execution.Renderers;
+                var originalPixels = execution.SourceTextures.Sum(texture =>
                     (long)texture.width * texture.height);
 
                 var engine = domain.GetTexTransCoreEngineForUnity();
@@ -240,6 +299,17 @@ namespace net.rs64.TexTransTool.NDMF
                         AtlasResolutionRouteReport.CreateLocalizedLogLines(
                             resolutionRoutes)));
 
+                if (execution.MergeSelection is { } mergeSelection)
+                {
+                    block += "\n" + string.Format(
+                        additionalMergeBlock,
+                        FormatBytes(mergeSelection.BaselineBytes),
+                        FormatBytes(mergeSelection.MergedBytes),
+                        mergeSelection.SavingsRate * 100f,
+                        mergeSelection.BaselinePixels,
+                        mergeSelection.MergedPixels);
+                }
+
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
                 AtlasTexture.ReplaceAtlasedMaterials(
@@ -274,6 +344,14 @@ namespace net.rs64.TexTransTool.NDMF
                     string.Join("\n\n", completed.Select(item => item.Block)),
                     completed.Sum(item => item.Relocations),
                     completed.Sum(item => item.Milliseconds)));
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            if (bytes < 1024) return bytes + " B";
+            if (bytes < 1024L * 1024L)
+                return (bytes / 1024d).ToString("0.0") + " KiB";
+            return (bytes / (1024d * 1024d)).ToString("0.00") + " MiB";
         }
 
         private static bool ReferencesAreExclusive(
