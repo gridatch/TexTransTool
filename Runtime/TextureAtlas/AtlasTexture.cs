@@ -83,6 +83,23 @@ namespace net.rs64.TexTransTool.TextureAtlas
             //Texture Fine Tuning
             var tunedAtlasTextures = DoTextureFinTuning(engine, atlasContext, atlasSetting, compiledAtlasTextures, experimentalOptions);
 
+            if (atlasSetting.AutoAtlasTextureSize)
+            {
+                foreach (var resolutionChange in GetResolutionChanges(
+                             atlasContext.MaterialGroupingCtx.ContainsTextureDictionaries,
+                             tunedAtlasTextures.RenderTextures))
+                {
+                    TTLog.Info(
+                        "AtlasTexture:info:ResolutionChange",
+                        resolutionChange.BeforeWidth,
+                        resolutionChange.BeforeHeight,
+                        resolutionChange.AfterWidth,
+                        resolutionChange.AfterHeight,
+                        resolutionChange.FileCount
+                    );
+                }
+            }
+
             var tunedAtlasUnityTextures = tunedAtlasTextures.RenderTextures.ToDictionary(i => i.Key, i => engine.GetReferenceRenderTexture(i.Value));
             var usedRT = new HashSet<ITTRenderTexture>(tunedAtlasTextures.TextureDescriptors.Keys);
 
@@ -274,6 +291,70 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 PreservedOriginalUVChannel = preservedOriginalUVChannel;
             }
         }
+        internal readonly struct AtlasResolutionChange
+        {
+            internal readonly int BeforeWidth;
+            internal readonly int BeforeHeight;
+            internal readonly int AfterWidth;
+            internal readonly int AfterHeight;
+            internal readonly int FileCount;
+
+            internal AtlasResolutionChange(
+                int beforeWidth,
+                int beforeHeight,
+                int afterWidth,
+                int afterHeight,
+                int fileCount)
+            {
+                BeforeWidth = beforeWidth;
+                BeforeHeight = beforeHeight;
+                AfterWidth = afterWidth;
+                AfterHeight = afterHeight;
+                FileCount = fileCount;
+            }
+        }
+
+        internal static AtlasResolutionChange[] GetResolutionChanges(
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> sourceProperties,
+            IReadOnlyDictionary<string, ITTRenderTexture> outputTextures)
+        {
+            // A source texture may be used by multiple materials or shader properties.
+            // Count it once for the same output resolution, matching AutoAtlasTexture's
+            // existing NDMF summary semantics.
+            return sourceProperties
+                .SelectMany(material => material.Value
+                    .Where(property => outputTextures.ContainsKey(property.Key))
+                    .Select(property => (
+                        Source: property.Value,
+                        Output: outputTextures[property.Key]
+                    )))
+                .Where(entry => entry.Source != null)
+                .GroupBy(entry => (
+                    entry.Source,
+                    entry.Output.Width,
+                    entry.Output.Hight
+                ))
+                .Select(entries => entries.First())
+                .GroupBy(entry => (
+                    BeforeWidth: entry.Source.width,
+                    BeforeHeight: entry.Source.height,
+                    AfterWidth: entry.Output.Width,
+                    AfterHeight: entry.Output.Hight
+                ))
+                .OrderByDescending(entries =>
+                    (long)entries.Key.BeforeWidth * entries.Key.BeforeHeight)
+                .ThenByDescending(entries =>
+                    (long)entries.Key.AfterWidth * entries.Key.AfterHeight)
+                .Select(entries => new AtlasResolutionChange(
+                    entries.Key.BeforeWidth,
+                    entries.Key.BeforeHeight,
+                    entries.Key.AfterWidth,
+                    entries.Key.AfterHeight,
+                    entries.Count()
+                ))
+                .ToArray();
+        }
+
         internal static TexFineTuningResult DoTextureFinTuning(ITexTransToolForUnity engine, AtlasContext atlasContext, AtlasSetting atlasSetting, Dictionary<string, ITTRenderTexture> compiledAtlasTextures, AtlasTextureExperimentalFeature? experimentalOptions)
         {
             var atlasTexFineTuningTargets = TexFineTuningUtility.InitTexFineTuningHolders(compiledAtlasTextures.Keys);
