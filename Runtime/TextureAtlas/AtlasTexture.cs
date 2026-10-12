@@ -86,7 +86,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             if (atlasSetting.AutoAtlasTextureSize)
             {
                 foreach (var resolutionChange in GetResolutionChanges(
-                             atlasContext.MaterialGroupingCtx.ContainsTextureDictionaries,
+                             atlasContext.MaterialGroupingCtx.ContainsTextureDictionaries.Values,
                              tunedAtlasTextures.RenderTextures))
                 {
                     TTLog.Info(
@@ -315,14 +315,14 @@ namespace net.rs64.TexTransTool.TextureAtlas
         }
 
         internal static AtlasResolutionChange[] GetResolutionChanges(
-            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> sourceProperties,
+            IEnumerable<IReadOnlyDictionary<string, Texture>> sourcePropertySets,
             IReadOnlyDictionary<string, ITTRenderTexture> outputTextures)
         {
             // A source texture may be used by multiple materials or shader properties.
             // Count it once for the same output resolution, matching AutoAtlasTexture's
             // existing NDMF summary semantics.
-            return sourceProperties
-                .SelectMany(material => material.Value
+            return sourcePropertySets
+                .SelectMany(properties => properties
                     .Where(property => outputTextures.ContainsKey(property.Key))
                     .Select(property => (
                         Source: property.Value,
