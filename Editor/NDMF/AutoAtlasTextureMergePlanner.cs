@@ -110,7 +110,7 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        private sealed class TextureCostPlan
+        internal sealed class TextureCostPlan
         {
             internal static readonly TextureCostPlan Empty = new(Array.Empty<TextureCostEntry>());
 
@@ -152,7 +152,7 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        private sealed class TextureCostEntry
+        internal sealed class TextureCostEntry
         {
             internal readonly string Key;
             internal readonly int Width;
