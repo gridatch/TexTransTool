@@ -88,12 +88,20 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int[] GroupIds;
             internal readonly string Key;
             internal readonly double Score;
+            internal readonly long PotentialGuestSavingsBytes;
+            internal readonly double CapacityUseRatio;
 
-            internal CheapProposal(IEnumerable<int> groupIds, double score)
+            internal CheapProposal(
+                IEnumerable<int> groupIds,
+                double score,
+                long potentialGuestSavingsBytes,
+                double capacityUseRatio)
             {
                 GroupIds = groupIds.OrderBy(id => id).ToArray();
                 Key = string.Join(",", GroupIds);
                 Score = score;
+                PotentialGuestSavingsBytes = potentialGuestSavingsBytes;
+                CapacityUseRatio = capacityUseRatio;
             }
         }
 
@@ -125,41 +133,24 @@ namespace net.rs64.TexTransTool.NDMF
                     ? 0f
                     : (float)SavingBytes / baseline.FullResidentBytes;
 
+                var failedGates = new List<string>();
                 if (SavingRate < minimumSavingRate)
-                {
-                    IsAdoptable = false;
-                    DecisionReason = "minimum-savings";
-                }
-                else if (merged.PixelCount >= baseline.PixelCount)
-                {
-                    IsAdoptable = false;
-                    DecisionReason = "pixel-count";
-                }
-                else if (merged.FullResidentBytes >= baseline.FullResidentBytes)
-                {
-                    IsAdoptable = false;
-                    DecisionReason = "resident-memory";
-                }
-                else if (merged.MaxTextureDimension > baseline.MaxTextureDimension)
-                {
-                    IsAdoptable = false;
-                    DecisionReason = "max-dimension";
-                }
-                else if (HasSamplingRegression(baseline, merged, groupIds))
-                {
-                    IsAdoptable = false;
-                    DecisionReason = "format-sampling";
-                }
-                else if (HasStreamingRegression(baseline, merged, groupIds, usage))
-                {
-                    IsAdoptable = false;
-                    DecisionReason = "mip-streaming";
-                }
-                else
-                {
-                    IsAdoptable = true;
-                    DecisionReason = "accepted";
-                }
+                    failedGates.Add("minimum-savings");
+                if (merged.PixelCount >= baseline.PixelCount)
+                    failedGates.Add("pixel-count");
+                if (merged.FullResidentBytes >= baseline.FullResidentBytes)
+                    failedGates.Add("resident-memory");
+                if (merged.MaxTextureDimension > baseline.MaxTextureDimension)
+                    failedGates.Add("max-dimension");
+                if (HasSamplingRegression(baseline, merged, groupIds))
+                    failedGates.Add("format-sampling");
+                if (HasStreamingRegression(baseline, merged, groupIds, usage))
+                    failedGates.Add("mip-streaming");
+
+                IsAdoptable = failedGates.Count == 0;
+                DecisionReason = IsAdoptable
+                    ? "accepted"
+                    : string.Join("+", failedGates);
             }
         }
 
@@ -464,7 +455,9 @@ namespace net.rs64.TexTransTool.NDMF
                 {
                     relocationRejected += 1;
                     diagnosticLines.Add(
-                        $"candidate [{FormatGroupMaterials(ids, byId)}]: rejected=relocation, score={proposal.Score:0.##}");
+                        $"candidate [{FormatGroupMaterials(ids, byId)}]: rejected=relocation, " +
+                        $"potential-guest-saving={proposal.PotentialGuestSavingsBytes} B, " +
+                        $"capacity-use={proposal.CapacityUseRatio:P1}, score={proposal.Score:0.##}");
                     continue;
                 }
 
@@ -544,40 +537,62 @@ namespace net.rs64.TexTransTool.NDMF
                     0d, 1d - metrics.FreeAreaFraction);
             }
 
-            void AddPrefixes(
+            static double NoGrowthCapacityPixels(PreparedGroup group)
+            {
+                if (group.StandaloneMetrics is not { } metrics) return 0d;
+
+                // The final hard gate forbids increasing the largest output
+                // texture dimension. A layout may still grow from a cropped
+                // rectangle toward a square without violating that gate. Use the
+                // larger of the current layout dimension and baseline physical
+                // texture dimension as a conservative cheap-search capacity.
+                var allowedDimension = Math.Max(
+                    Math.Max(metrics.LayoutSize.x, metrics.LayoutSize.y),
+                    group.BaselineCost.MaxTextureDimension);
+                return (double)allowedDimension * allowedDimension;
+            }
+
+            void AddGreedyPrefixes(
                 PreparedGroup host,
                 IEnumerable<PreparedGroup> orderedGuests)
             {
                 var ids = new List<int> { host.Id };
+                var hostOccupied = OccupiedPixels(host);
+                var capacity = Math.Max(hostOccupied, NoGrowthCapacityPixels(host));
+                var occupied = hostOccupied;
+                long potentialGuestSavings = 0;
+
                 foreach (var guest in orderedGuests)
                 {
                     if (ids.Count >= MaxMergeGroupCount) break;
+
+                    var guestOccupied = OccupiedPixels(guest);
+                    if (guestOccupied <= 0d) continue;
+
+                    // If even the sum of occupied pixel area cannot fit before
+                    // increasing the host's allowed maximum dimension, this
+                    // proposal can never pass the max-dimension hard gate.
+                    if (occupied + guestOccupied > capacity * 1.0001d)
+                        continue;
+
                     ids.Add(guest.Id);
+                    occupied += guestOccupied;
+                    potentialGuestSavings += guest.BaselineCost.FullResidentBytes;
 
-                    var selected = ids.Select(id => groups[id]).ToArray();
-                    var hostLayout = Math.Max(1d, LayoutPixels(host));
-                    var hostFree = hostLayout * Math.Max(
-                        0d, host.StandaloneMetrics?.FreeAreaFraction ?? 0f);
-                    var guestOccupied = selected
-                        .Where(group => group.Id != host.Id)
-                        .Sum(OccupiedPixels);
-                    var totalOccupied = selected.Sum(OccupiedPixels);
-                    var fill = hostFree <= 1d
-                        ? 0d
-                        : Math.Min(1d, guestOccupied / hostFree);
-                    var overflow = Math.Max(
-                        0d, totalOccupied - hostLayout) / hostLayout;
-                    var baselineBytes = selected.Sum(group =>
-                        (double)group.BaselineCost.FullResidentBytes);
+                    var capacityUse = capacity <= 0d ? 1d : occupied / capacity;
+                    var fitQuality = 1d - Math.Abs(0.85d - capacityUse);
+                    fitQuality = Math.Max(0.1d, fitQuality);
 
-                    // Prefer candidates which make productive use of the host's
-                    // existing empty layout, while penalizing combinations that
-                    // already look likely to require a larger atlas.
-                    var score = baselineBytes
-                        * (0.5d + fill)
-                        / (1d + overflow * 4d);
+                    // Only guest memory is potential *additional* savings.
+                    // Including the host baseline made large hosts dominate the
+                    // global ranking even when every guest caused atlas growth.
+                    var score = potentialGuestSavings * fitQuality;
 
-                    var proposal = new CheapProposal(ids, score);
+                    var proposal = new CheapProposal(
+                        ids,
+                        score,
+                        potentialGuestSavings,
+                        capacityUse);
                     if (!proposals.TryGetValue(proposal.Key, out var prior)
                         || proposal.Score > prior.Score)
                     {
@@ -598,33 +613,30 @@ namespace net.rs64.TexTransTool.NDMF
                     .ToArray();
                 if (guests.Length == 0) continue;
 
-                var hostFreePixels = Math.Max(
+                var remainingCapacity = Math.Max(
                     1d,
-                    LayoutPixels(host)
-                        * (host.StandaloneMetrics?.FreeAreaFraction ?? 0f));
+                    NoGrowthCapacityPixels(host) - OccupiedPixels(host));
 
-                // 1. Best fit into current free area.
-                AddPrefixes(
+                // 1. Best area fit first.
+                AddGreedyPrefixes(
                     host,
                     guests
                         .OrderBy(group =>
-                            Math.Abs(hostFreePixels - OccupiedPixels(group)))
+                            Math.Abs(remainingCapacity - OccupiedPixels(group)))
                         .ThenByDescending(group =>
                             group.BaselineCost.FullResidentBytes)
                         .ThenBy(group => group.Id));
 
-                // 2. Highest memory-value guests first. This catches cases where
-                //    format/property savings matter more than rectangle area.
-                AddPrefixes(
+                // 2. Highest potential additional memory saving first.
+                AddGreedyPrefixes(
                     host,
                     guests
                         .OrderByDescending(group =>
                             group.BaselineCost.FullResidentBytes)
                         .ThenBy(group => group.Id));
 
-                // 3. Small guests first. This explicitly preserves the
-                //    "three-or-more materials fill one host" use case.
-                AddPrefixes(
+                // 3. Small groups first, preserving the 3+ material packing case.
+                AddGreedyPrefixes(
                     host,
                     guests
                         .OrderBy(OccupiedPixels)
