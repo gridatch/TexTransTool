@@ -434,29 +434,53 @@ namespace net.rs64.TexTransTool.NDMF
             Renderer[] renderers)
         {
             AtlasTexture.AtlasExecutionMetrics? captured = null;
-            var result = AtlasTexture.DoAtlasTexture(
-                domain,
-                engine,
-                materials,
-                renderers,
-                new List<IIslandSizePriorityTuner?>(),
-                settings,
-                new AtlasTexture.AtlasExecutionOptions
-                {
-                    RequireLossless = true,
-                    ReportProgressInfo = false,
-                    AcceptAtlasSize = (_, _, metrics) =>
+
+            try
+            {
+                var result = AtlasTexture.DoAtlasTexture(
+                    domain,
+                    engine,
+                    materials,
+                    renderers,
+                    new List<IIslandSizePriorityTuner?>(),
+                    settings,
+                    new AtlasTexture.AtlasExecutionOptions
                     {
-                        captured = metrics;
-                        // Planning stops before mesh/texture generation.
-                        return false;
-                    },
-                });
+                        RequireLossless = true,
+                        ReportProgressInfo = false,
+                        AcceptAtlasSize = (_, _, metrics) =>
+                        {
+                            captured = metrics;
+                            // Planning stops before mesh/texture generation.
+                            return false;
+                        },
+                    });
 
-            if (result.AtlasContext != null)
-                result.AtlasContext.Dispose();
+                if (result.AtlasContext != null)
+                    result.AtlasContext.Dispose();
 
-            return captured;
+                return captured;
+            }
+            catch (ArgumentException exception)
+                when (IsNfdhComparerFailure(exception))
+            {
+                // Additional merging probes material combinations which ordinary
+                // AutoAtlasTexture never asks TexTransCore to relocate. NFDHPlasFC's
+                // height comparer can become inconsistent for a sufficiently large
+                // island-height range. Such a combination is simply not a viable
+                // merge candidate; it must not abort the avatar build.
+                return null;
+            }
+        }
+
+        private static bool IsNfdhComparerFailure(ArgumentException exception)
+        {
+            return exception.Message.IndexOf(
+                       "IComparer.Compare() method returns inconsistent results",
+                       StringComparison.Ordinal) >= 0
+                && (exception.StackTrace?.IndexOf(
+                        "NFDHPlasFC.NextFitDecreasingHeightPlusFloorCeiling",
+                        StringComparison.Ordinal) ?? -1) >= 0;
         }
 
         private static TextureCostPlan BuildOriginalCost(
