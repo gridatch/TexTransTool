@@ -214,6 +214,15 @@ namespace net.rs64.TexTransTool.NDMF
                 propertyTextures,
                 preparedGroups);
 
+            if (configuration.EnableAdditionalAtlasMerging
+                && mergePlan.DiagnosticLines.Count != 0)
+            {
+                TTTLog.ReportingObject(configuration, () =>
+                    TTTLog.Info(
+                        "AutoAtlasTexture:info:MergePlannerDiagnostics",
+                        string.Join("\n", mergePlan.DiagnosticLines)));
+            }
+
             var selectedIds = mergePlan.Selections
                 .SelectMany(selection => selection.GroupIds)
                 .ToHashSet();
