@@ -20,7 +20,12 @@ namespace net.rs64.TexTransTool.NDMF
     /// </summary>
     internal static class AutoAtlasTextureMergePlanner
     {
-        private const int BeamWidth = 24;
+        // Full Atlas relocation is expensive. Generate merge candidates using
+        // standalone metrics first, then run the real relocation only for the
+        // highest-value proposals.
+        private const int MaxMergeGroupCount = 12;
+        private const int MaxFullMergeAnalyses = 32;
+        private const int MaxRuntimeUsageScenarios = 64;
         private const int MaxScenarioEnumerationGroups = 12;
         private const double UnknownDemandLog2 = -32d;
         private const double Epsilon = 1e-8;
@@ -70,6 +75,20 @@ namespace net.rs64.TexTransTool.NDMF
             internal PlanResult(IReadOnlyList<MergeSelection> selections)
             {
                 Selections = selections;
+            }
+        }
+
+        private sealed class CheapProposal
+        {
+            internal readonly int[] GroupIds;
+            internal readonly string Key;
+            internal readonly double Score;
+
+            internal CheapProposal(IEnumerable<int> groupIds, double score)
+            {
+                GroupIds = groupIds.OrderBy(id => id).ToArray();
+                Key = string.Join(",", GroupIds);
+                Score = score;
             }
         }
 
@@ -206,36 +225,72 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 if (groupIds.Length == 0) return Array.Empty<HashSet<int>>();
                 if (groupIds.Length > MaxScenarioEnumerationGroups)
+                    return Array.Empty<HashSet<int>>();
+
+                // Maximal feasible active sets are maximal cliques in the
+                // compatibility graph (an edge means "can overlap"). Enumerating
+                // only maximal cliques avoids generating every one of the 2^N
+                // subsets first. In the common case where nothing is proven
+                // exclusive this returns exactly one scenario: all groups active.
+                var results = new List<HashSet<int>>();
+                var all = groupIds.OrderBy(id => id).ToHashSet();
+
+                HashSet<int> CompatibleWith(int id)
                 {
-                    // Fallback is conservative: assume everything can overlap.
-                    return new[] { groupIds.ToHashSet() };
+                    return all.Where(other =>
+                        other != id && !AreExclusive(id, other)).ToHashSet();
                 }
 
-                var feasible = new List<HashSet<int>>();
-                var count = 1 << groupIds.Length;
-                for (var mask = 1; mask < count; mask += 1)
+                void Search(
+                    HashSet<int> current,
+                    HashSet<int> possible,
+                    HashSet<int> excluded)
                 {
-                    var scenario = new HashSet<int>();
-                    var valid = true;
-                    for (var i = 0; i < groupIds.Length && valid; i += 1)
+                    if (results.Count > MaxRuntimeUsageScenarios) return;
+
+                    if (possible.Count == 0 && excluded.Count == 0)
                     {
-                        if ((mask & (1 << i)) == 0) continue;
-                        var id = groupIds[i];
-                        if (scenario.Any(existing => AreExclusive(existing, id)))
-                        {
-                            valid = false;
-                            break;
-                        }
-                        scenario.Add(id);
+                        results.Add(new HashSet<int>(current));
+                        return;
                     }
-                    if (valid) feasible.Add(scenario);
+
+                    var pivot = possible.Concat(excluded)
+                        .OrderByDescending(id =>
+                            possible.Count(candidate =>
+                                candidate != id && !AreExclusive(id, candidate)))
+                        .ThenBy(id => id)
+                        .FirstOrDefault();
+
+                    var pivotNeighbors = (possible.Count != 0 || excluded.Count != 0)
+                        ? CompatibleWith(pivot)
+                        : new HashSet<int>();
+
+                    foreach (var vertex in possible
+                                 .Where(id => !pivotNeighbors.Contains(id))
+                                 .OrderBy(id => id)
+                                 .ToArray())
+                    {
+                        var neighbors = CompatibleWith(vertex);
+                        var nextCurrent = new HashSet<int>(current) { vertex };
+                        var nextPossible = possible.Where(neighbors.Contains).ToHashSet();
+                        var nextExcluded = excluded.Where(neighbors.Contains).ToHashSet();
+
+                        Search(nextCurrent, nextPossible, nextExcluded);
+                        possible.Remove(vertex);
+                        excluded.Add(vertex);
+
+                        if (results.Count > MaxRuntimeUsageScenarios) return;
+                    }
                 }
 
-                // Only maximal scenarios can produce a larger resident set.
-                return feasible
-                    .Where(candidate => !feasible.Any(other =>
-                        other.Count > candidate.Count && candidate.IsSubsetOf(other)))
-                    .ToArray();
+                Search(new HashSet<int>(), new HashSet<int>(all), new HashSet<int>());
+
+                // Too many distinct runtime scenarios means the cost model is too
+                // uncertain/expensive for automatic merging. Returning no scenario
+                // makes the caller reject the merge conservatively.
+                return results.Count > MaxRuntimeUsageScenarios
+                    ? Array.Empty<HashSet<int>>()
+                    : results;
             }
         }
 
@@ -323,91 +378,49 @@ namespace net.rs64.TexTransTool.NDMF
             var usage = AnalyzeRuntimeUsage(animatorServices, groups);
             var byId = groups.ToDictionary(group => group.Id);
             var adoptable = new Dictionary<string, Candidate>();
-            var mergedPlanCache = new Dictionary<
-                string,
-                (AtlasTexture.AtlasExecutionMetrics Metrics, TextureCostPlan Cost)>();
 
-            foreach (var host in groups.Where(group =>
-                         group.StandaloneMetrics is { } metrics
-                         && metrics.FreeAreaFraction >=
-                         configuration.MinimumMergeHostFreeAreaRatio))
+            // Candidate generation is intentionally cheap: it uses only the
+            // standalone layouts/costs already computed above. We then run the
+            // real TexTransCore relocation for a small, deterministic number of
+            // the most promising unique subsets.
+            var proposals = BuildCheapMergeProposals(
+                configuration, groups);
+
+            foreach (var proposal in proposals
+                         .OrderByDescending(proposal => proposal.Score)
+                         .ThenBy(proposal => proposal.GroupIds.Length)
+                         .ThenBy(proposal => proposal.Key, StringComparer.Ordinal)
+                         .Take(MaxFullMergeAnalyses))
             {
-                var frontier = new List<int[]> { new[] { host.Id } };
-                var seen = new HashSet<string> { host.Id.ToString() };
+                var ids = proposal.GroupIds;
+                var materials = ids.SelectMany(id => byId[id].Materials)
+                    .ToHashSet();
+                var renderers = ids.SelectMany(id => byId[id].Renderers)
+                    .Distinct().ToArray();
 
-                while (frontier.Count != 0)
-                {
-                    var expanded = new List<Candidate>();
-                    foreach (var state in frontier)
-                    {
-                        foreach (var add in groups)
-                        {
-                            if (state.Contains(add.Id)) continue;
+                var metrics = AnalyzeAtlas(
+                    domain, engine, settings, materials, renderers);
+                if (metrics is null) continue;
 
-                            var ids = state.Append(add.Id).OrderBy(id => id).ToArray();
-                            var key = string.Join(",", ids);
-                            if (!seen.Add(key)) continue;
+                var baseline = TextureCostPlan.Combine(
+                    ids.Select(id => byId[id].BaselineCost));
+                var merged = BuildGeneratedCost(
+                    domain,
+                    ids.Select(id => byId[id]).ToArray(),
+                    propertyTextures,
+                    metrics.Value.PropertySizes,
+                    alphaCache);
 
-                            AtlasTexture.AtlasExecutionMetrics metrics;
-                            TextureCostPlan merged;
-                            if (mergedPlanCache.TryGetValue(key, out var cached))
-                            {
-                                metrics = cached.Metrics;
-                                merged = cached.Cost;
-                            }
-                            else
-                            {
-                                var materials = ids.SelectMany(id => byId[id].Materials)
-                                    .ToHashSet();
-                                var renderers = ids.SelectMany(id => byId[id].Renderers)
-                                    .Distinct().ToArray();
-                                var analyzed = AnalyzeAtlas(
-                                    domain, engine, settings, materials, renderers);
-                                if (analyzed is null) continue;
+                var candidate = new Candidate(
+                    ids,
+                    baseline,
+                    merged,
+                    metrics.Value,
+                    configuration.MinimumAdditionalMergeSavingsRate,
+                    usage);
 
-                                metrics = analyzed.Value;
-                                merged = BuildGeneratedCost(
-                                    domain,
-                                    ids.Select(id => byId[id]).ToArray(),
-                                    propertyTextures,
-                                    metrics.PropertySizes,
-                                    alphaCache);
-                                mergedPlanCache[key] = (metrics, merged);
-                            }
-
-                            var baseline = TextureCostPlan.Combine(
-                                ids.Select(id => byId[id].BaselineCost));
-
-                            var candidate = new Candidate(
-                                ids,
-                                baseline,
-                                merged,
-                                metrics,
-                                configuration.MinimumAdditionalMergeSavingsRate,
-                                usage);
-                            expanded.Add(candidate);
-
-                            if (candidate.IsAdoptable)
-                            {
-                                if (!adoptable.TryGetValue(key, out var prior)
-                                    || candidate.SavingBytes > prior.SavingBytes)
-                                {
-                                    adoptable[key] = candidate;
-                                }
-                            }
-                        }
-                    }
-
-                    // Do not prune using the final adoption threshold: a three-or-more
-                    // group merge may be good even when every pair is below threshold.
-                    frontier = expanded
-                        .OrderBy(candidate => candidate.Merged.FullResidentBytes)
-                        .ThenByDescending(candidate => candidate.Metrics.FreeAreaFraction)
-                        .ThenByDescending(candidate => candidate.GroupIds.Length)
-                        .Take(BeamWidth)
-                        .Select(candidate => candidate.GroupIds)
-                        .ToList();
-                }
+                if (candidate.IsAdoptable)
+                    adoptable[proposal.Key] = candidate;
             }
 
             var selected = new List<MergeSelection>();
@@ -743,7 +756,12 @@ namespace net.rs64.TexTransTool.NDMF
             RuntimeUsageModel usage)
         {
             var scenarios = usage.GetMaximalScenarios(groupIds);
-            if (scenarios.Count == 0) return false;
+            if (scenarios.Count == 0)
+            {
+                // The runtime-state space could not be bounded cheaply enough.
+                // Reject automatic merging rather than underestimating mip cost.
+                return true;
+            }
 
             // Camera distance/FOV are intentionally represented as a normalized
             // logarithmic bias. Sweeping the range catches relative mip-demand
