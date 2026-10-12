@@ -146,6 +146,9 @@ msgstr "Auto Atlas Relocate Result\n{0}\n\nTotal relocate count: {1}\nTime taken
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 
+msgid "AutoAtlasTexture:info:AdditionalMergeBlock"
+msgstr "Additional merge\nEstimated memory after individual optimization: {0}\nEstimated memory after additional merge: {1}\nAdditional savings: {2:0.0}%\nPixels after individual optimization: {3}\nPixels after additional merge: {4}"
+
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2} cases"
 
