@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas
@@ -42,17 +43,26 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal readonly int TotalRelocateCount;
             internal readonly long RelocationTimeMilliseconds;
             internal readonly long OutputTexturePixelCount;
+            internal readonly float FreeAreaFraction;
+            internal readonly Vector2Int LayoutSize;
+            internal readonly IReadOnlyDictionary<string, Vector2Int> PropertySizes;
 
             internal AtlasExecutionMetrics(
                 float topFreeFraction,
                 int totalRelocateCount,
                 long relocationTimeMilliseconds,
-                long outputTexturePixelCount)
+                long outputTexturePixelCount,
+                float freeAreaFraction,
+                Vector2Int layoutSize,
+                IReadOnlyDictionary<string, Vector2Int> propertySizes)
             {
                 TopFreeFraction = topFreeFraction;
                 TotalRelocateCount = totalRelocateCount;
                 RelocationTimeMilliseconds = relocationTimeMilliseconds;
                 OutputTexturePixelCount = outputTexturePixelCount;
+                FreeAreaFraction = freeAreaFraction;
+                LayoutSize = layoutSize;
+                PropertySizes = propertySizes;
             }
         }
     }
