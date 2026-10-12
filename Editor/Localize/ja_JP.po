@@ -165,6 +165,9 @@ msgstr "統合先候補の最小余白率"
 msgid "AutoAtlasTexture:prop:MinimumAdditionalMergeSavingsRate"
 msgstr "統合による最小追加削減率"
 
+msgid "AutoAtlasTexture:button:CopyMergePlannerDiagnostics"
+msgstr "追加統合診断をコピー"
+
 msgid "AutoAtlasTexture:help:AdditionalAtlasMerging"
 msgstr "個別に最適化した場合を基準として、余白を利用した追加統合が一定以上の削減になり、かつ推定メモリ・Mip・フォーマット・最大テクスチャ寸法の性能条件を悪化させない場合だけ統合します。余白率は候補探索の間引きにのみ使用します。"
 
