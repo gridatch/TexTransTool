@@ -141,7 +141,7 @@ namespace net.rs64.TexTransTool.NDMF
                 IslandPadding = Mathf.Clamp(configuration.IslandPadding, 0f, 0.05f),
             };
             var groups = MakeTextureConnectedGroups(allMaterials, propertyTextures);
-            var resolutionLine = "AutoAtlasTexture:info:ResolutionChange".GetLocalize();
+            var resolutionLine = "AtlasTexture:info:ResolutionChange".GetLocalize();
             var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
             foreach (var group in groups)
             {
@@ -224,28 +224,17 @@ namespace net.rs64.TexTransTool.NDMF
                     item => engine.GetReferenceRenderTexture(item.Value));
                 var retainedRenderTextures = tuningResult.TextureDescriptors.Keys.ToHashSet();
 
-                // A source texture may be used by multiple shader properties.
-                // Count it only once for each resolution transition.
-                var resolutionChanges = group
-                    .SelectMany(material => propertyTextures[material]
-                        .Where(property => tuningResult.RenderTextures.ContainsKey(property.Key))
-                        .Select(property => new
-                        {
-                            Source = property.Value,
-                            Output = tuningResult.RenderTextures[property.Key],
-                        }))
-                    .GroupBy(entry => (entry.Source, entry.Output.Width, entry.Output.Hight))
-                    .Select(entries => entries.First())
-                    .GroupBy(entry => (
-                        BeforeWidth: entry.Source.width,
-                        BeforeHeight: entry.Source.height,
-                        AfterWidth: entry.Output.Width,
-                        AfterHeight: entry.Output.Hight))
-                    .OrderByDescending(entries => (long)entries.Key.BeforeWidth * entries.Key.BeforeHeight)
-                    .ThenByDescending(entries => (long)entries.Key.AfterWidth * entries.Key.AfterHeight)
-                    .Select(entries => string.Format(resolutionLine,
-                        entries.Key.BeforeWidth, entries.Key.BeforeHeight,
-                        entries.Key.AfterWidth, entries.Key.AfterHeight, entries.Count()));
+                var resolutionChanges = AtlasTexture.GetResolutionChanges(
+                        propertyTextures,
+                        tuningResult.RenderTextures)
+                    .Select(change => string.Format(
+                        resolutionLine,
+                        change.BeforeWidth,
+                        change.BeforeHeight,
+                        change.AfterWidth,
+                        change.AfterHeight,
+                        change.FileCount
+                    ));
                 var block = string.Format(materialBlock,
                     string.Join(", ", group.Select(OriginalMaterialName)
                         .Distinct().OrderBy(name => name, StringComparer.Ordinal)),
