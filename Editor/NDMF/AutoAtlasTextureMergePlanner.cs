@@ -439,6 +439,117 @@ namespace net.rs64.TexTransTool.NDMF
             return new PlanResult(selected);
         }
 
+        private static IReadOnlyList<CheapProposal> BuildCheapMergeProposals(
+            AutoAtlasTexture configuration,
+            IReadOnlyList<PreparedGroup> groups)
+        {
+            var proposals = new Dictionary<string, CheapProposal>();
+
+            static double LayoutPixels(PreparedGroup group)
+            {
+                if (group.StandaloneMetrics is not { } metrics) return 0d;
+                return (double)metrics.LayoutSize.x * metrics.LayoutSize.y;
+            }
+
+            static double OccupiedPixels(PreparedGroup group)
+            {
+                if (group.StandaloneMetrics is not { } metrics) return 0d;
+                return LayoutPixels(group) * Math.Max(
+                    0d, 1d - metrics.FreeAreaFraction);
+            }
+
+            void AddPrefixes(
+                PreparedGroup host,
+                IEnumerable<PreparedGroup> orderedGuests)
+            {
+                var ids = new List<int> { host.Id };
+                foreach (var guest in orderedGuests)
+                {
+                    if (ids.Count >= MaxMergeGroupCount) break;
+                    ids.Add(guest.Id);
+
+                    var selected = ids.Select(id => groups[id]).ToArray();
+                    var hostLayout = Math.Max(1d, LayoutPixels(host));
+                    var hostFree = hostLayout * Math.Max(
+                        0d, host.StandaloneMetrics?.FreeAreaFraction ?? 0f);
+                    var guestOccupied = selected
+                        .Where(group => group.Id != host.Id)
+                        .Sum(OccupiedPixels);
+                    var totalOccupied = selected.Sum(OccupiedPixels);
+                    var fill = hostFree <= 1d
+                        ? 0d
+                        : Math.Min(1d, guestOccupied / hostFree);
+                    var overflow = Math.Max(
+                        0d, totalOccupied - hostLayout) / hostLayout;
+                    var baselineBytes = selected.Sum(group =>
+                        (double)group.BaselineCost.FullResidentBytes);
+
+                    // Prefer candidates which make productive use of the host's
+                    // existing empty layout, while penalizing combinations that
+                    // already look likely to require a larger atlas.
+                    var score = baselineBytes
+                        * (0.5d + fill)
+                        / (1d + overflow * 4d);
+
+                    var proposal = new CheapProposal(ids, score);
+                    if (!proposals.TryGetValue(proposal.Key, out var prior)
+                        || proposal.Score > prior.Score)
+                    {
+                        proposals[proposal.Key] = proposal;
+                    }
+                }
+            }
+
+            foreach (var host in groups.Where(group =>
+                         group.StandaloneMetrics is { } metrics
+                         && metrics.FreeAreaFraction >=
+                         configuration.MinimumMergeHostFreeAreaRatio))
+            {
+                var guests = groups
+                    .Where(group =>
+                        group.Id != host.Id
+                        && group.StandaloneMetrics != null)
+                    .ToArray();
+                if (guests.Length == 0) continue;
+
+                var hostFreePixels = Math.Max(
+                    1d,
+                    LayoutPixels(host)
+                        * (host.StandaloneMetrics?.FreeAreaFraction ?? 0f));
+
+                // 1. Best fit into current free area.
+                AddPrefixes(
+                    host,
+                    guests
+                        .OrderBy(group =>
+                            Math.Abs(hostFreePixels - OccupiedPixels(group)))
+                        .ThenByDescending(group =>
+                            group.BaselineCost.FullResidentBytes)
+                        .ThenBy(group => group.Id));
+
+                // 2. Highest memory-value guests first. This catches cases where
+                //    format/property savings matter more than rectangle area.
+                AddPrefixes(
+                    host,
+                    guests
+                        .OrderByDescending(group =>
+                            group.BaselineCost.FullResidentBytes)
+                        .ThenBy(group => group.Id));
+
+                // 3. Small guests first. This explicitly preserves the
+                //    "three-or-more materials fill one host" use case.
+                AddPrefixes(
+                    host,
+                    guests
+                        .OrderBy(OccupiedPixels)
+                        .ThenByDescending(group =>
+                            group.BaselineCost.FullResidentBytes)
+                        .ThenBy(group => group.Id));
+            }
+
+            return proposals.Values.ToArray();
+        }
+
         private static AtlasTexture.AtlasExecutionMetrics? AnalyzeAtlas(
             IDomain domain,
             ITexTransToolForUnity engine,
