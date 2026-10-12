@@ -54,7 +54,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                             _minimumAdditionalMergeSavingsRate,
                             "AutoAtlasTexture:prop:MinimumAdditionalMergeSavingsRate".GlcV());
                         EditorGUILayout.HelpBox(
-                            "AutoAtlasTexture:help:AdditionalAtlasMerging".Glc(),
+                            "AutoAtlasTexture:help:AdditionalAtlasMerging".GetLocalize(),
                             MessageType.Info);
                     }
                 }
