@@ -331,17 +331,17 @@
           },
           "zipSHA256": "b3d9d6f3e6e77d9f91e14fd4ba3e67849bc95c65dc3857fabf2f6817681c34d8"
         },
-        "0.1.16+wdt.ttt.1.0.2.debug.310.property-aware-auto-atlas-size.61589a8": {
+        "0.1.16+wdt.ttt.1.0.2.debug.311.property-aware-auto-atlas-size.f28e2c5": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.16+wdt.ttt.1.0.2.debug.310.property-aware-auto-atlas-size.61589a8",
+          "version": "0.1.16+wdt.ttt.1.0.2.debug.311.property-aware-auto-atlas-size.f28e2c5",
           "unity": "2022.3",
-          "description": "Debug build 310 for property-aware-auto-atlas-size from feat/property-aware-auto-atlas-size at 61589a8. Based on WDT 0.1.16+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 311 for property-aware-auto-atlas-size from feat/property-aware-auto-atlas-size at f28e2c5. Based on WDT 0.1.16+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.16+wdt.ttt.1.0.2.debug.310.property-aware-auto-atlas-size.61589a8.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.16+wdt.ttt.1.0.2.debug.311.property-aware-auto-atlas-size.f28e2c5.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -354,7 +354,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "2a97705be3c1f715603f622940e75445b4d62bfa5ae159d804e14ed6d13b48c6"
+          "zipSHA256": "d084323d6c90f1af5474a2645a780df40a8e6371349bd89e183c11693702d80b"
         }
       }
     }
