@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using nadena.dev.ndmf.animator;
 using net.rs64.TexTransCore;
@@ -71,10 +72,14 @@ namespace net.rs64.TexTransTool.NDMF
         internal sealed class PlanResult
         {
             internal readonly IReadOnlyList<MergeSelection> Selections;
+            internal readonly IReadOnlyList<string> DiagnosticLines;
 
-            internal PlanResult(IReadOnlyList<MergeSelection> selections)
+            internal PlanResult(
+                IReadOnlyList<MergeSelection> selections,
+                IReadOnlyList<string>? diagnosticLines = null)
             {
                 Selections = selections;
+                DiagnosticLines = diagnosticLines ?? Array.Empty<string>();
             }
         }
 
@@ -101,6 +106,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long SavingBytes;
             internal readonly float SavingRate;
             internal readonly bool IsAdoptable;
+            internal readonly string DecisionReason;
 
             internal Candidate(
                 int[] groupIds,
@@ -119,13 +125,41 @@ namespace net.rs64.TexTransTool.NDMF
                     ? 0f
                     : (float)SavingBytes / baseline.FullResidentBytes;
 
-                IsAdoptable =
-                    SavingRate >= minimumSavingRate
-                    && merged.PixelCount < baseline.PixelCount
-                    && merged.FullResidentBytes < baseline.FullResidentBytes
-                    && merged.MaxTextureDimension <= baseline.MaxTextureDimension
-                    && !HasSamplingRegression(baseline, merged, groupIds)
-                    && !HasStreamingRegression(baseline, merged, groupIds, usage);
+                if (SavingRate < minimumSavingRate)
+                {
+                    IsAdoptable = false;
+                    DecisionReason = "minimum-savings";
+                }
+                else if (merged.PixelCount >= baseline.PixelCount)
+                {
+                    IsAdoptable = false;
+                    DecisionReason = "pixel-count";
+                }
+                else if (merged.FullResidentBytes >= baseline.FullResidentBytes)
+                {
+                    IsAdoptable = false;
+                    DecisionReason = "resident-memory";
+                }
+                else if (merged.MaxTextureDimension > baseline.MaxTextureDimension)
+                {
+                    IsAdoptable = false;
+                    DecisionReason = "max-dimension";
+                }
+                else if (HasSamplingRegression(baseline, merged, groupIds))
+                {
+                    IsAdoptable = false;
+                    DecisionReason = "format-sampling";
+                }
+                else if (HasStreamingRegression(baseline, merged, groupIds, usage))
+                {
+                    IsAdoptable = false;
+                    DecisionReason = "mip-streaming";
+                }
+                else
+                {
+                    IsAdoptable = true;
+                    DecisionReason = "accepted";
+                }
             }
         }
 
@@ -348,6 +382,8 @@ namespace net.rs64.TexTransTool.NDMF
             if (!configuration.EnableAdditionalAtlasMerging || groups.Count < 2)
                 return new PlanResult(Array.Empty<MergeSelection>());
 
+            var plannerWatch = Stopwatch.StartNew();
+            var diagnosticLines = new List<string>();
             var engine = domain.GetTexTransCoreEngineForUnity();
             var alphaCache = new Dictionary<Texture, bool>();
 
@@ -375,6 +411,23 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
+            var hostCount = groups.Count(group =>
+                group.StandaloneMetrics is { } metrics
+                && metrics.FreeAreaFraction >= configuration.MinimumMergeHostFreeAreaRatio);
+            diagnosticLines.Add(
+                $"atomic groups={groups.Count}, merge hosts={hostCount}, host free-area threshold={configuration.MinimumMergeHostFreeAreaRatio:P0}");
+
+            foreach (var group in groups.OrderBy(group => group.Id))
+            {
+                var materialNames = string.Join(", ",
+                    group.Materials.Select(material => material.name)
+                        .Distinct()
+                        .OrderBy(name => name, StringComparer.Ordinal));
+                var freeArea = group.StandaloneMetrics?.FreeAreaFraction;
+                diagnosticLines.Add(
+                    $"group {group.Id}: [{materialNames}], free-area={(freeArea.HasValue ? freeArea.Value.ToString("P1") : "n/a")}, baseline={group.BaselineCost.FullResidentBytes} B");
+            }
+
             var usage = AnalyzeRuntimeUsage(animatorServices, groups);
             var byId = groups.ToDictionary(group => group.Id);
             var adoptable = new Dictionary<string, Candidate>();
@@ -385,12 +438,19 @@ namespace net.rs64.TexTransTool.NDMF
             // the most promising unique subsets.
             var proposals = BuildCheapMergeProposals(
                 configuration, groups);
+            var selectedProposals = proposals
+                .OrderByDescending(proposal => proposal.Score)
+                .ThenBy(proposal => proposal.GroupIds.Length)
+                .ThenBy(proposal => proposal.Key, StringComparer.Ordinal)
+                .Take(MaxFullMergeAnalyses)
+                .ToArray();
 
-            foreach (var proposal in proposals
-                         .OrderByDescending(proposal => proposal.Score)
-                         .ThenBy(proposal => proposal.GroupIds.Length)
-                         .ThenBy(proposal => proposal.Key, StringComparer.Ordinal)
-                         .Take(MaxFullMergeAnalyses))
+            diagnosticLines.Add(
+                $"cheap proposals={proposals.Count}, full analyses={selectedProposals.Length}/{MaxFullMergeAnalyses}");
+
+            var relocationRejected = 0;
+            foreach (var proposal in selectedProposals
+)
             {
                 var ids = proposal.GroupIds;
                 var materials = ids.SelectMany(id => byId[id].Materials)
@@ -400,7 +460,13 @@ namespace net.rs64.TexTransTool.NDMF
 
                 var metrics = AnalyzeAtlas(
                     domain, engine, settings, materials, renderers);
-                if (metrics is null) continue;
+                if (metrics is null)
+                {
+                    relocationRejected += 1;
+                    diagnosticLines.Add(
+                        $"candidate [{FormatGroupMaterials(ids, byId)}]: rejected=relocation, score={proposal.Score:0.##}");
+                    continue;
+                }
 
                 var baseline = TextureCostPlan.Combine(
                     ids.Select(id => byId[id].BaselineCost));
@@ -419,6 +485,12 @@ namespace net.rs64.TexTransTool.NDMF
                     configuration.MinimumAdditionalMergeSavingsRate,
                     usage);
 
+                diagnosticLines.Add(
+                    $"candidate [{FormatGroupMaterials(ids, byId)}]: " +
+                    $"baseline={baseline.FullResidentBytes} B, merged={merged.FullResidentBytes} B, " +
+                    $"saving={candidate.SavingRate:P1}, pixels={baseline.PixelCount}->{merged.PixelCount}, " +
+                    $"max={baseline.MaxTextureDimension}->{merged.MaxTextureDimension}, decision={candidate.DecisionReason}");
+
                 if (candidate.IsAdoptable)
                     adoptable[proposal.Key] = candidate;
             }
@@ -436,7 +508,21 @@ namespace net.rs64.TexTransTool.NDMF
                 consumed.UnionWith(candidate.GroupIds);
             }
 
-            return new PlanResult(selected);
+            plannerWatch.Stop();
+            diagnosticLines.Insert(0,
+                $"planner time={plannerWatch.ElapsedMilliseconds} ms, relocation rejects={relocationRejected}, adopted merges={selected.Count}");
+            return new PlanResult(selected, diagnosticLines);
+        }
+
+        private static string FormatGroupMaterials(
+            IEnumerable<int> groupIds,
+            IReadOnlyDictionary<int, PreparedGroup> byId)
+        {
+            return string.Join(", ",
+                groupIds.SelectMany(id => byId[id].Materials)
+                    .Select(material => material.name)
+                    .Distinct()
+                    .OrderBy(name => name, StringComparer.Ordinal));
         }
 
         private static IReadOnlyList<CheapProposal> BuildCheapMergeProposals(
