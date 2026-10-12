@@ -211,10 +211,18 @@ namespace net.rs64.TexTransTool.TextureAtlas
             if (executionOptions?.ReportProgressInfo != false)
                 TTLog.Info("AtlasTexture:info:RelocateResult", 1 - height, relocateResult.PriorityDownScale, relocateResult.OverallDownScale, relocateResult.TotalRelocateCount, relocationTime);
             var atlasedTextureSize = new Vector2Int(atlasTargeSize.x, atlasTextureHeightSize);
+            var resolutionPlan = AtlasTextureResolutionPlan.Create(
+                atlasContext,
+                atlasSetting,
+                atlasedTextureSize
+            );
             if (executionOptions?.AcceptAtlasSize is { } acceptAtlasSize)
             {
                 var metrics = new AtlasExecutionMetrics(
-                    (float)(1 - height), relocateResult.TotalRelocateCount, relocationTime);
+                    (float)(1 - height),
+                    relocateResult.TotalRelocateCount,
+                    relocationTime,
+                    resolutionPlan.TotalPixelCount);
                 if (acceptAtlasSize(atlasContext, atlasedTextureSize, metrics) is false)
                 {
                     atlasContext.Dispose();
@@ -231,7 +239,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var compiledAtlasTextures = atlasContext.GenerateAtlasedTextures(
                   engine
                   , atlasSetting
-                  , atlasedTextureSize
+                  , resolutionPlan
                   , relocateResult.IslandRelocationResult.IsRectangleMove
                   , source2MovedVirtualIsland
               );

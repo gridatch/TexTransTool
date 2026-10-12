@@ -40,15 +40,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         [SerializeReference, SubclassSelector]
         public List<ITextureFineTuning> TextureFineTuning = new List<ITextureFineTuning> {
-            new FineTuning.Resize(){
-                Size = 512,
-                PropertyNameList = new(){
-                    new("_MainTex"),
-                    new PropertyName("_BumpMap").AsLilToon(),
-                    new PropertyName("_Bump2ndMap").AsLilToon(),
-                },
-                Select = PropertySelect.NotEqual
-            },
             new FineTuning.ReferenceCopy(){
                 SourcePropertyName = new("_MainTex"),
                 TargetPropertyNameList = new(){

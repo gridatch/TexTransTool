@@ -141,10 +141,6 @@ namespace net.rs64.TexTransTool.NDMF
                 AtlasTargetUVChannel = UVChannel.UV0,
                 IslandPadding = Mathf.Clamp(configuration.IslandPadding, 0f, 0.05f),
             };
-            // Lossless placement is separate from FineTuning. Do not apply the
-            // default 512px resize to non-main textures for this component.
-            settings.TextureFineTuning.RemoveAll(tuning => tuning is Resize);
-
             var groups = MakeTextureConnectedGroups(allMaterials, propertyTextures);
             var resolutionLine = "AutoAtlasTexture:info:ResolutionChange".GetLocalize();
             var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
@@ -213,11 +209,8 @@ namespace net.rs64.TexTransTool.NDMF
                         AcceptAtlasSize = (atlasContext, size, metrics) =>
                         {
                             executionMetrics = metrics;
-                            var texturePropertyCount =
-                                atlasContext.MaterialGroupingCtx.GetContainsAllProperties().Count;
-                            if (texturePropertyCount == 0) return false;
-                            var outputPixels = (long)size.x * size.y * texturePropertyCount;
-                            return outputPixels < originalPixels;
+                            return metrics.OutputTexturePixelCount > 0
+                                && metrics.OutputTexturePixelCount < originalPixels;
                         },
                     });
 
