@@ -459,6 +459,7 @@ namespace net.rs64.TexTransTool.NDMF
                     relocationRejected += 1;
                     diagnosticLines.Add(
                         $"candidate [{FormatGroupMaterials(ids, byId)}]: rejected=relocation, " +
+                        $"host=[{FormatGroupMaterials(new[] { proposal.HostId }, byId)}], " +
                         $"potential-guest-saving={proposal.PotentialGuestSavingsBytes} B, " +
                         $"capacity-use={proposal.CapacityUseRatio:P1}, score={proposal.Score:0.##}");
                     continue;
@@ -483,6 +484,7 @@ namespace net.rs64.TexTransTool.NDMF
 
                 diagnosticLines.Add(
                     $"candidate [{FormatGroupMaterials(ids, byId)}]: " +
+                    $"host=[{FormatGroupMaterials(new[] { proposal.HostId }, byId)}], " +
                     $"baseline={baseline.FullResidentBytes} B, merged={merged.FullResidentBytes} B, " +
                     $"saving={candidate.SavingRate:P1}, pixels={baseline.PixelCount}->{merged.PixelCount}, " +
                     $"max={baseline.MaxTextureDimension}->{merged.MaxTextureDimension}, decision={candidate.DecisionReason}");
