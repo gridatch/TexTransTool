@@ -273,6 +273,14 @@ namespace net.rs64.TexTransTool.NDMF
                         AcceptAtlasSize = (atlasContext, size, metrics) =>
                         {
                             executionMetrics = metrics;
+                            if (execution.MergeSelection != null)
+                            {
+                                // The merge planner already compared the post-FineTuning
+                                // physical texture cost against the independent baseline.
+                                return metrics.OutputTexturePixelCount > 0;
+                            }
+
+                            // Preserve the existing individual AutoAtlas acceptance rule.
                             return metrics.OutputTexturePixelCount > 0
                                 && metrics.OutputTexturePixelCount < originalPixels;
                         },
