@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.16+wdt.ttt.1.0.2",
-  "lastDebugSerial": 309,
-  "currentDebugVersion": "0.1.16+wdt.ttt.1.0.2.debug.309.property-aware-auto-atlas-size.710a278",
+  "lastDebugSerial": 310,
+  "currentDebugVersion": "0.1.16+wdt.ttt.1.0.2.debug.310.property-aware-auto-atlas-size.61589a8",
   "currentDebugChange": "property-aware-auto-atlas-size",
   "currentDebugBranch": "feat/property-aware-auto-atlas-size",
-  "currentDebugCommit": "710a2788738f2bf3a00cbd930ac86e0b30f3955a",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.16+wdt.ttt.1.0.2.debug.309.property-aware-auto-atlas-size.710a278.zip"
+  "currentDebugCommit": "61589a8a1a113c31a96aefb63c6df62678713da7",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.16+wdt.ttt.1.0.2.debug.310.property-aware-auto-atlas-size.61589a8.zip"
 }
