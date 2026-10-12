@@ -69,6 +69,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
                     if (thisTuning.RenderTextureProperty == sourceTextureHolder.RenderTextureProperty) { continue; }// 同一だった場合何もできないから何もしない
 
                     thisTuning.RenderTextureProperty = sourceTextureHolder.RenderTextureProperty;
+                    thisTuning.SourceProperties = new HashSet<string>(
+                        sourceTextureHolder.SourceProperties);
                     thisTuning.RTOwned = false;
                 }
             }

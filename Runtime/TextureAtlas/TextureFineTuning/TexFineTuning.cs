@@ -84,11 +84,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
             public bool RTOwned = true;
             public string? RenderTextureProperty;
             public TexTransToolTextureDescriptor TextureDescriptor;
+            public HashSet<string> SourceProperties;
 
             public TextureProcessingHolder(string renderTextureProperty, TexTransToolTextureDescriptor textureDescriptor)
             {
                 RenderTextureProperty = renderTextureProperty;
                 TextureDescriptor = textureDescriptor;
+                SourceProperties = string.IsNullOrEmpty(renderTextureProperty)
+                    ? new HashSet<string>()
+                    : new HashSet<string> { renderTextureProperty };
             }
 
         }
@@ -97,12 +101,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
     {
         public Dictionary<string, ITTRenderTexture> RenderTextures;
         public Dictionary<ITTRenderTexture, TexTransToolTextureDescriptor> TextureDescriptors;
+        public Dictionary<string, IReadOnlyCollection<string>> SourceProperties;
 
-
-        public TexFineTuningResult(Dictionary<string, ITTRenderTexture> renderTextures, Dictionary<ITTRenderTexture, TexTransToolTextureDescriptor> textureDescriptors)
+        public TexFineTuningResult(
+            Dictionary<string, ITTRenderTexture> renderTextures,
+            Dictionary<ITTRenderTexture, TexTransToolTextureDescriptor> textureDescriptors,
+            Dictionary<string, IReadOnlyCollection<string>> sourceProperties)
         {
             RenderTextures = renderTextures;
             TextureDescriptors = textureDescriptors;
+            SourceProperties = sourceProperties;
         }
     }
     internal class TexFineTuningUtility
@@ -135,6 +143,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
 
             var resultTextures = new Dictionary<string, ITTRenderTexture>();
             var resultTextureDescriptor = new Dictionary<ITTRenderTexture, TexTransToolTextureDescriptor>();
+            var resultSourceProperties = new Dictionary<string, IReadOnlyCollection<string>>();
 
             foreach (var pHolder in ctx.ProcessingHolder)
             {
@@ -142,6 +151,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
                 if (rtProperty is null) { continue; }
                 if (ctx.RenderTextures.TryGetValue(rtProperty, out var rt) is false) { continue; }
                 resultTextures[pHolder.Key] = rt;
+                resultSourceProperties[pHolder.Key] = pHolder.Value.SourceProperties.ToArray();
 
                 if (pHolder.Value.RTOwned)
                 {
@@ -168,7 +178,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
             foreach (var unusedRt in ctx.NewRenderTextures.Where(r => resultTextures.ContainsValue(r) is false))
                 unusedRt.Dispose();
 
-            return new(resultTextures, resultTextureDescriptor);
+            return new(resultTextures, resultTextureDescriptor, resultSourceProperties);
         }
     }
 

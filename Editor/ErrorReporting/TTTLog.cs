@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using System.Linq;
 using net.rs64.TexTransCore;
@@ -26,12 +27,33 @@ namespace net.rs64.TexTransTool
 
         public static void Info(string code, params object[] objects)
         {
+            objects = LocalizeStructuredArguments(objects);
 #if CONTAINS_NDMF
             ErrorReport.ReportError(NDMFLocalizer, ErrorSeverity.Information, code, objects);
 #else
             Debug.Log("[info]" + code + ":" + string.Join('-', objects.Select(i => i.ToString())));
 #endif
         }
+        internal static string FormatLocalizedLines(
+            IEnumerable<FormattableString> localizedLines)
+        {
+            return string.Join("\n", localizedLines.Select(line =>
+                string.Format(line.Format.GetLocalize(), line.GetArguments())));
+        }
+
+        private static object[] LocalizeStructuredArguments(object[] objects)
+        {
+            return objects.Select(obj =>
+            {
+                if (obj is IEnumerable<FormattableString> localizedLines)
+                {
+                    return (object)FormatLocalizedLines(localizedLines);
+                }
+
+                return obj;
+            }).ToArray();
+        }
+
         public static void Warning(string code, params object[] objects)
         {
 #if CONTAINS_NDMF

@@ -131,14 +131,14 @@ msgstr "The original UV write target channel is there already has UV."
 msgid "AtlasTexture:warn:OriginalUVWriteTargetForAlreadyUV:description"
 msgstr "If this is intentionally or not a problem, ignore this warning."
 
-msgid "AtlasTexture:info:AutoAtlasTextureSizeSelected"
-msgstr "Auto atlas size selected: {0}"
-
 msgid "AtlasTexture:warn:AutoAtlasTextureSizeLosslessNotFound"
 msgstr "No lossless auto atlas size was found up to {0}. Using {0} with Priority shrink {1}x and Overall shrink {2}x."
 
 msgid "AtlasTexture:info:RelocateResult"
 msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x \nOverall shrink: {2}x \nTotal relocate count: {3} \nTime taken relocate: {4}ms"
+
+msgid "AtlasTexture:info:RelocateResultWithResolution"
+msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOverall shrink: {2}x\n{3}\nTotal relocate count: {4}\nTime taken relocate: {5}ms"
 
 msgid "AutoAtlasTexture:info:RelocateResult"
 msgstr "Auto Atlas Relocate Result\n{0}\n\nTotal relocate count: {1}\nTime taken relocate: {2}ms"
@@ -146,8 +146,8 @@ msgstr "Auto Atlas Relocate Result\n{0}\n\nTotal relocate count: {1}\nTime taken
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 
-msgid "AutoAtlasTexture:info:ResolutionChange"
-msgstr "{0}x{1} → {2}x{3}: {4} files"
+msgid "AtlasTexture:info:ResolutionRoute"
+msgstr "{0} → {1}: {2} cases"
 
 msgid "AutoAtlasTexture:prop:ExcludedRenderers"
 msgstr "Excluded Renderers"

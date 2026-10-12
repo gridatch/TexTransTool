@@ -13,6 +13,29 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal Func<AtlasContext, Vector2Int, AtlasExecutionMetrics, bool>? AcceptAtlasSize;
         }
 
+        internal readonly struct AtlasRelocationMetrics
+        {
+            internal readonly float TopFreeFraction;
+            internal readonly float PriorityDownScale;
+            internal readonly float OverallDownScale;
+            internal readonly int TotalRelocateCount;
+            internal readonly long RelocationTimeMilliseconds;
+
+            internal AtlasRelocationMetrics(
+                float topFreeFraction,
+                float priorityDownScale,
+                float overallDownScale,
+                int totalRelocateCount,
+                long relocationTimeMilliseconds)
+            {
+                TopFreeFraction = topFreeFraction;
+                PriorityDownScale = priorityDownScale;
+                OverallDownScale = overallDownScale;
+                TotalRelocateCount = totalRelocateCount;
+                RelocationTimeMilliseconds = relocationTimeMilliseconds;
+            }
+        }
+
         internal readonly struct AtlasExecutionMetrics
         {
             internal readonly float TopFreeFraction;

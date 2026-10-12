@@ -71,7 +71,15 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             pf.Split("Atlasing!");
             // Do Atlasing!
-            var atlasResult = DoAtlasTexture(domain, engine, targetMaterials, targetRenderers, IslandSizePriorityTuner, atlasSetting);
+            var atlasResult = DoAtlasTexture(
+                domain,
+                engine,
+                targetMaterials,
+                targetRenderers,
+                IslandSizePriorityTuner,
+                atlasSetting,
+                new AtlasExecutionOptions { ReportProgressInfo = false }
+            );
             if (atlasResult.IsSuccess is false) { return; }
             using var atlasContext = atlasResult.AtlasContext!;
             var atlasedMeshes = atlasResult.AtlasedMeshes!;
@@ -82,6 +90,23 @@ namespace net.rs64.TexTransTool.TextureAtlas
             pf.Split("tex fine tuning");
             //Texture Fine Tuning
             var tunedAtlasTextures = DoTextureFinTuning(engine, atlasContext, atlasSetting, compiledAtlasTextures, experimentalOptions);
+
+            if (atlasResult.RelocationMetrics is { } relocationMetrics)
+            {
+                var resolutionRoutes = AtlasResolutionRouteReport.Collect(
+                    atlasContext,
+                    tunedAtlasTextures
+                );
+                TTLog.Info(
+                    "AtlasTexture:info:RelocateResultWithResolution",
+                    relocationMetrics.TopFreeFraction,
+                    relocationMetrics.PriorityDownScale,
+                    relocationMetrics.OverallDownScale,
+                    AtlasResolutionRouteReport.CreateLocalizedLogLines(resolutionRoutes),
+                    relocationMetrics.TotalRelocateCount,
+                    relocationMetrics.RelocationTimeMilliseconds
+                );
+            }
 
             var tunedAtlasUnityTextures = tunedAtlasTextures.RenderTextures.ToDictionary(i => i.Key, i => engine.GetReferenceRenderTexture(i.Value));
             var usedRT = new HashSet<ITTRenderTexture>(tunedAtlasTextures.TextureDescriptors.Keys);
@@ -208,8 +233,22 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var atlasTextureHeightSize = Mathf.Max(GetNormalizedMinHeightSize(atlasTargeSize.y, height), 4);//4以下はちょっと怪しい挙動しそうだからクランプ
             Debug.Assert(Mathf.IsPowerOfTwo(atlasTextureHeightSize));
 
+            var relocationMetrics = new AtlasRelocationMetrics(
+                (float)(1 - height),
+                relocateResult.PriorityDownScale,
+                relocateResult.OverallDownScale,
+                relocateResult.TotalRelocateCount,
+                relocationTime
+            );
             if (executionOptions?.ReportProgressInfo != false)
-                TTLog.Info("AtlasTexture:info:RelocateResult", 1 - height, relocateResult.PriorityDownScale, relocateResult.OverallDownScale, relocateResult.TotalRelocateCount, relocationTime);
+                TTLog.Info(
+                    "AtlasTexture:info:RelocateResult",
+                    relocationMetrics.TopFreeFraction,
+                    relocationMetrics.PriorityDownScale,
+                    relocationMetrics.OverallDownScale,
+                    relocationMetrics.TotalRelocateCount,
+                    relocationMetrics.RelocationTimeMilliseconds
+                );
             var atlasedTextureSize = new Vector2Int(atlasTargeSize.x, atlasTextureHeightSize);
             var resolutionPlan = AtlasTextureResolutionPlan.Create(
                 atlasContext,
@@ -245,7 +284,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
               );
             pf.Split("exit");
             return new(true, atlasContext, atlasedMeshes, compiledAtlasTextures,
-                preserveBump2ndMaterials, preservedOriginalUVChannel);
+                preserveBump2ndMaterials, preservedOriginalUVChannel, relocationMetrics);
         }
         internal record AtlasResult
         {
@@ -257,6 +296,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             public readonly Dictionary<string, ITTRenderTexture>? CompiledAtlasTextures;
             public readonly HashSet<Material> PreserveBump2ndMaterials;
             public readonly int? PreservedOriginalUVChannel;
+            public readonly AtlasRelocationMetrics? RelocationMetrics;
 
             public AtlasResult(
                 bool isSuccess,
@@ -264,7 +304,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 Mesh[]? atlasedMesh,
                 Dictionary<string, ITTRenderTexture>? compiledAtlasTextures,
                 HashSet<Material> preserveBump2ndMaterials,
-                int? preservedOriginalUVChannel)
+                int? preservedOriginalUVChannel,
+                AtlasRelocationMetrics? relocationMetrics = null)
             {
                 IsSuccess = isSuccess;
                 AtlasContext = atlasContext;
@@ -272,6 +313,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 CompiledAtlasTextures = compiledAtlasTextures;
                 PreserveBump2ndMaterials = preserveBump2ndMaterials;
                 PreservedOriginalUVChannel = preservedOriginalUVChannel;
+                RelocationMetrics = relocationMetrics;
             }
         }
         internal static TexFineTuningResult DoTextureFinTuning(ITexTransToolForUnity engine, AtlasContext atlasContext, AtlasSetting atlasSetting, Dictionary<string, ITTRenderTexture> compiledAtlasTextures, AtlasTextureExperimentalFeature? experimentalOptions)
@@ -551,8 +593,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                 if (IsLosslessRelocation(candidateResult))
                 {
-                    if (executionOptions?.ReportProgressInfo != false)
-                        TTLog.Info("AtlasTexture:info:AutoAtlasTextureSizeSelected", size);
                     break;
                 }
             }

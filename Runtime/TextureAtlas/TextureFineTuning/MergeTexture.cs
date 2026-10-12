@@ -83,9 +83,18 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
                     var cRt = ctx.RenderTextures[tfHolder.RenderTextureProperty!];
 
                     MergePixels(ctx.Engine, newRT, cRt);
+                    parentFTHolder.SourceProperties.UnionWith(tfHolder.SourceProperties);
 
                     tfHolder.RTOwned = false;
                     tfHolder.RenderTextureProperty = parentFTHolder.RenderTextureProperty!;
+                }
+
+                // Every property alias that now points at the merged render texture
+                // must expose the complete provenance of that merged output.
+                foreach (var childe in ftMarge.Value)
+                {
+                    ctx.ProcessingHolder[childe].SourceProperties =
+                        new HashSet<string>(parentFTHolder.SourceProperties);
                 }
 
                 ctx.RenderTextures[parentFTHolder.RenderTextureProperty!] = newRT;
