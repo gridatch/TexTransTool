@@ -149,6 +149,18 @@ msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2} cases"
 
+msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
+msgstr "Merge into unused atlas space"
+
+msgid "AutoAtlasTexture:prop:MinimumMergeHostFreeAreaRatio"
+msgstr "Minimum host free-space ratio"
+
+msgid "AutoAtlasTexture:prop:MinimumAdditionalMergeSavingsRate"
+msgstr "Minimum additional merge savings"
+
+msgid "AutoAtlasTexture:help:AdditionalAtlasMerging"
+msgstr "Compares additional merging against the result of optimizing each group independently. A merge is applied only when it reaches the requested additional savings and does not regress estimated memory, mip, format, or maximum texture-dimension costs. The free-space ratio only prunes merge hosts."
+
 msgid "AutoAtlasTexture:prop:ExcludedRenderers"
 msgstr "Excluded Renderers"
 
