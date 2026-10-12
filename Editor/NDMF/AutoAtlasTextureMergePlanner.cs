@@ -547,7 +547,8 @@ namespace net.rs64.TexTransTool.NDMF
                              .ThenBy(proposal => proposal.Key, StringComparer.Ordinal))
                 {
                     if (selected.Count(candidate =>
-                            candidate.GroupIds.Length == proposal.GroupIds.Length)
+                            BucketClass(candidate.GroupIds.Length)
+                                == BucketClass(proposal.GroupIds.Length))
                         >= quota)
                     {
                         break;
