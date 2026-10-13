@@ -598,6 +598,14 @@ namespace net.rs64.TexTransTool.NDMF
             if (cache.TryGetValue(texture, out hasAlpha))
                 return true;
 
+            if (texture is RenderTexture renderTexture)
+            {
+                hasAlpha = GraphicsFormatUtility.HasAlphaChannel(
+                    renderTexture.graphicsFormat);
+                cache[texture] = hasAlpha;
+                return true;
+            }
+
             if (texture is not Texture2D texture2D)
             {
                 hasAlpha = false;
