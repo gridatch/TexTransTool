@@ -235,7 +235,7 @@ namespace net.rs64.TexTransTool.NDMF
                 .SelectMany(selection => selection.GroupIds)
                 .ToHashSet();
 
-            var executionGroups = new List<(
+            var executionGroups = new Queue<(
                 HashSet<Material> Materials,
                 Renderer[] Renderers,
                 HashSet<Texture> SourceTextures,
@@ -246,7 +246,7 @@ namespace net.rs64.TexTransTool.NDMF
                 var selected = selection.GroupIds
                     .Select(id => preparedGroups[id])
                     .ToArray();
-                executionGroups.Add((
+                executionGroups.Enqueue((
                     selected.SelectMany(group => group.Materials).ToHashSet(),
                     selected.SelectMany(group => group.Renderers).Distinct().ToArray(),
                     selected.SelectMany(group => group.SourceTextures).ToHashSet(),
@@ -256,7 +256,7 @@ namespace net.rs64.TexTransTool.NDMF
             foreach (var prepared in preparedGroups.Where(
                          group => !selectedIds.Contains(group.Id)))
             {
-                executionGroups.Add((
+                executionGroups.Enqueue((
                     prepared.Materials,
                     prepared.Renderers,
                     prepared.SourceTextures,
@@ -267,8 +267,9 @@ namespace net.rs64.TexTransTool.NDMF
             var additionalMergeBlock =
                 "AutoAtlasTexture:info:AdditionalMergeBlock".GetLocalize();
 
-            foreach (var execution in executionGroups)
+            while (executionGroups.Count != 0)
             {
+                var execution = executionGroups.Dequeue();
                 var group = execution.Materials;
                 var atlasRenderers = execution.Renderers;
                 var originalPixels = execution.SourceTextures.Sum(texture =>
@@ -323,7 +324,26 @@ namespace net.rs64.TexTransTool.NDMF
                         },
                     });
 
-                if (!atlasResult.IsSuccess) continue;
+                if (!atlasResult.IsSuccess)
+                {
+                    if (execution.MergeSelection is { } failedMerge)
+                    {
+                        // A planned merge is only an optimization. If the exact
+                        // build-time band layout does not satisfy the planner's
+                        // envelope, preserve ordinary AutoAtlas behavior by
+                        // retrying every atomic group independently.
+                        foreach (var id in failedMerge.GroupIds)
+                        {
+                            var prepared = preparedGroups[id];
+                            executionGroups.Enqueue((
+                                prepared.Materials,
+                                prepared.Renderers,
+                                prepared.SourceTextures,
+                                null));
+                        }
+                    }
+                    continue;
+                }
 
                 using var atlasContext = atlasResult.AtlasContext!;
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
