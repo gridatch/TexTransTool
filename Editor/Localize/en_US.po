@@ -159,7 +159,7 @@ msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
 msgstr "Merge into unused atlas space"
 
 msgid "AutoAtlasTexture:prop:MinimumMergeHostTopFreeRatio"
-msgstr "Minimum host free-space ratio"
+msgstr "Minimum host top-free ratio"
 
 msgid "AutoAtlasTexture:prop:MinimumAdditionalMergeSavingsRate"
 msgstr "Minimum additional merge savings"
@@ -168,7 +168,7 @@ msgid "AutoAtlasTexture:button:CopyMergePlannerDiagnostics"
 msgstr "Copy Additional Merge Diagnostics"
 
 msgid "AutoAtlasTexture:help:AdditionalAtlasMerging"
-msgstr "Compares additional merging against the result of optimizing each group independently. A merge is applied only when it reaches the requested additional savings and does not regress estimated memory, mip, format, or maximum texture-dimension costs. The free-space ratio only prunes merge hosts."
+msgstr "Compares additional merging against the result of optimizing each group independently. Other independently valid atlas bands are stacked into the continuous free area above a host atlas. A merge is applied only when it reaches the requested additional savings and does not regress estimated memory, mip, format, or maximum texture-dimension costs. The top-free ratio selects eligible hosts."
 
 msgid "AutoAtlasTexture:prop:ExcludedRenderers"
 msgstr "Excluded Renderers"
