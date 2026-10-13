@@ -13,6 +13,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal bool RequireLossless;
             internal bool ReportProgressInfo = true;
             internal IIslandRelocator? IslandRelocatorOverride;
+            internal Func<AtlasContext, IIslandRelocator>? IslandRelocatorFactory;
             internal Func<AtlasContext, Vector2Int, AtlasExecutionMetrics, bool>? AcceptAtlasSize;
         }
 
