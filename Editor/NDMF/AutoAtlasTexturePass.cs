@@ -305,11 +305,16 @@ namespace net.rs64.TexTransTool.NDMF
                         AcceptAtlasSize = (atlasContext, size, metrics) =>
                         {
                             executionMetrics = metrics;
-                            if (execution.MergeSelection != null)
+                            if (execution.MergeSelection is { } mergeSelection)
                             {
-                                // The merge planner already compared the post-FineTuning
-                                // physical texture cost against the independent baseline.
-                                return metrics.OutputTexturePixelCount > 0;
+                                // The planner models atomic groups as independently
+                                // valid horizontal bands. Accept only if execution
+                                // stays within that predicted layout envelope.
+                                return metrics.OutputTexturePixelCount > 0
+                                    && metrics.LayoutSize.x
+                                        <= mergeSelection.PlannedLayoutSize.x
+                                    && metrics.LayoutSize.y
+                                        <= mergeSelection.PlannedLayoutSize.y;
                             }
 
                             // Preserve the existing individual AutoAtlas acceptance rule.
