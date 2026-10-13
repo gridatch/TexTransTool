@@ -264,9 +264,6 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
-            var additionalMergeBlock =
-                "AutoAtlasTexture:info:AdditionalMergeBlock".GetLocalize();
-
             while (executionGroups.Count != 0)
             {
                 var execution = executionGroups.Dequeue();
@@ -359,21 +356,10 @@ namespace net.rs64.TexTransTool.NDMF
                 var block = string.Format(materialBlock,
                     string.Join(", ", group.Select(OriginalMaterialName)
                         .Distinct().OrderBy(name => name, StringComparer.Ordinal)),
-                    executionMetrics.TopFreeFraction,
+                    executionMetrics.TopFreeFraction.ToString("P1"),
                     TTTLog.FormatLocalizedLines(
                         AtlasResolutionRouteReport.CreateLocalizedLogLines(
                             resolutionRoutes)));
-
-                if (execution.MergeSelection is { } mergeSelection)
-                {
-                    block += "\n" + string.Format(
-                        additionalMergeBlock,
-                        FormatBytes(mergeSelection.BaselineBytes),
-                        FormatBytes(mergeSelection.MergedBytes),
-                        mergeSelection.SavingsRate * 100f,
-                        mergeSelection.BaselinePixels,
-                        mergeSelection.MergedPixels);
-                }
 
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
@@ -409,14 +395,6 @@ namespace net.rs64.TexTransTool.NDMF
                     string.Join("\n\n", completed.Select(item => item.Block)),
                     completed.Sum(item => item.Relocations),
                     completed.Sum(item => item.Milliseconds)));
-        }
-
-        private static string FormatBytes(long bytes)
-        {
-            if (bytes < 1024) return bytes + " B";
-            if (bytes < 1024L * 1024L)
-                return (bytes / 1024d).ToString("0.0") + " KiB";
-            return (bytes / (1024d * 1024d)).ToString("0.00") + " MiB";
         }
 
         private static bool ReferencesAreExclusive(
