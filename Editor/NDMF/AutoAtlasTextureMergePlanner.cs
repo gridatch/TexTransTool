@@ -55,15 +55,22 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int[] GroupIds;
             internal readonly long BaselineBytes;
             internal readonly Vector2Int PlannedLayoutSize;
+            internal readonly IReadOnlyDictionary<string, Vector2Int>
+                PlannedPropertySizes;
 
             internal MergeSelection(
                 IEnumerable<int> groupIds,
                 TextureCostPlan baseline,
-                Vector2Int plannedLayoutSize)
+                Vector2Int plannedLayoutSize,
+                IReadOnlyDictionary<string, Vector2Int> plannedPropertySizes)
             {
                 GroupIds = groupIds.OrderBy(id => id).ToArray();
                 BaselineBytes = baseline.FullResidentBytes;
                 PlannedLayoutSize = plannedLayoutSize;
+                PlannedPropertySizes = plannedPropertySizes.ToDictionary(
+                    pair => pair.Key,
+                    pair => pair.Value,
+                    StringComparer.Ordinal);
             }
         }
 
@@ -107,6 +114,8 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int[] GroupIds;
             internal readonly TextureCostPlan Baseline;
             internal readonly Vector2Int LayoutSize;
+            internal readonly IReadOnlyDictionary<string, Vector2Int>
+                PropertySizes;
             internal readonly long SavingBytes;
             internal readonly float SavingRate;
             internal readonly bool IsAdoptable;
@@ -116,11 +125,13 @@ namespace net.rs64.TexTransTool.NDMF
                 TextureCostPlan baseline,
                 TextureCostPlan merged,
                 Vector2Int layoutSize,
+                IReadOnlyDictionary<string, Vector2Int> propertySizes,
                 RuntimeUsageModel usage)
             {
                 GroupIds = groupIds;
                 Baseline = baseline;
                 LayoutSize = layoutSize;
+                PropertySizes = propertySizes;
                 SavingBytes = baseline.FullResidentBytes - merged.FullResidentBytes;
                 SavingRate = baseline.FullResidentBytes <= 0
                     ? 0f
@@ -614,6 +625,7 @@ namespace net.rs64.TexTransTool.NDMF
                         baseline,
                         merged,
                         layoutSize,
+                        propertySizes,
                         usage);
 
                     if (!candidate.IsAdoptable)
@@ -640,7 +652,8 @@ namespace net.rs64.TexTransTool.NDMF
                 selected.Add(new MergeSelection(
                     candidate.GroupIds,
                     candidate.Baseline,
-                    candidate.LayoutSize));
+                    candidate.LayoutSize,
+                    candidate.PropertySizes));
                 consumed.UnionWith(candidate.GroupIds);
             }
 
