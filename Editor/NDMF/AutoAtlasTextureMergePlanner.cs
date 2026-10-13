@@ -635,7 +635,8 @@ namespace net.rs64.TexTransTool.NDMF
                 return captured;
             }
             catch (ArgumentException exception)
-                when (IsNfdhComparerFailure(exception))
+                when (AutoAtlasMergeIslandRelocator.IsNfdhComparerFailure(
+                    exception))
             {
                 // Additional merging probes material combinations which ordinary
                 // AutoAtlasTexture never asks TexTransCore to relocate. NFDHPlasFC's
@@ -644,16 +645,6 @@ namespace net.rs64.TexTransTool.NDMF
                 // merge candidate; it must not abort the avatar build.
                 return null;
             }
-        }
-
-        private static bool IsNfdhComparerFailure(ArgumentException exception)
-        {
-            return exception.Message.IndexOf(
-                       "IComparer.Compare() method returns inconsistent results",
-                       StringComparison.Ordinal) >= 0
-                && (exception.StackTrace?.IndexOf(
-                        "NFDHPlasFC.NextFitDecreasingHeightPlusFloorCeiling",
-                        StringComparison.Ordinal) ?? -1) >= 0;
         }
 
         private static TextureCostPlan? TryBuildOriginalCost(
