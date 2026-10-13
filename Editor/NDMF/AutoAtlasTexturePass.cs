@@ -356,7 +356,7 @@ namespace net.rs64.TexTransTool.NDMF
                 var block = string.Format(materialBlock,
                     string.Join(", ", group.Select(OriginalMaterialName)
                         .Distinct().OrderBy(name => name, StringComparer.Ordinal)),
-                    executionMetrics.TopFreeFraction.ToString("P1"),
+                    executionMetrics.TopFreeFraction,
                     TTTLog.FormatLocalizedLines(
                         AtlasResolutionRouteReport.CreateLocalizedLogLines(
                             resolutionRoutes)));
