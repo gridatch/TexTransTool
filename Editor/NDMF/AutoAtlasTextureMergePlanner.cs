@@ -561,7 +561,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .SelectMany(group => group.Materials)
                         .ToHashSet();
                     var propertySizes = BuildPredictedPropertySizes(
-                        materials, layoutSize);
+                        materials, layoutSize, settings);
 
                     var baseline = TextureCostPlan.Combine(
                         selectedGroups.Select(group => group.BaselineCost));
@@ -701,10 +701,11 @@ namespace net.rs64.TexTransTool.NDMF
         private static IReadOnlyDictionary<string, Vector2Int>
             BuildPredictedPropertySizes(
                 HashSet<Material> materials,
-                Vector2Int layoutSize)
+                Vector2Int layoutSize,
+                AtlasSetting settings)
         {
             var grouping = new MaterialGroupingContext(
-                materials, UVChannel.UV0, null);
+                materials, settings.AtlasTargetUVChannel, null);
             var properties = grouping.GroupMaterials
                 .SelectMany(group => group.GroupedTexture.Keys)
                 .Distinct()
