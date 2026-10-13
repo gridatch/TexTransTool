@@ -161,9 +161,6 @@ msgstr "Merge textures into unused atlas space"
 
 
 
-msgid "AutoAtlasTexture:button:CopyMergePlannerDiagnostics"
-msgstr "Copy Texture Merge Diagnostics"
-
 msgid "AutoAtlasTexture:help:AdditionalAtlasMerging"
 msgstr "Automatically merges another independently valid atlas band when it fits in the continuous free area above an atlas. Merges that regress total pixel count, estimated texture memory, mip behavior, format cost, or maximum texture dimension are not applied."
 

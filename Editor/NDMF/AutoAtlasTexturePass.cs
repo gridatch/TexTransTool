@@ -8,7 +8,6 @@ using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
-using net.rs64.TexTransTool.TextureAtlas.Editor;
 using net.rs64.TexTransTool.Editor;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using net.rs64.TexTransTool.Utils;
@@ -79,15 +78,12 @@ namespace net.rs64.TexTransTool.NDMF
             IReadOnlyCollection<AtlasTexture> manualAtlases,
             AnimatorServicesContext animatorServices)
         {
-            AutoAtlasTextureDiagnosticsCache.Clear();
-
             // Store only the NDMF console summary for this build.
             var completed = new List<(string Block, int Relocations, long Milliseconds)>();
             var successfulSourceTextures = new HashSet<Texture>();
             var sourceAlphaCache = new Dictionary<Texture, bool>();
             var finalTextureMemoryBytes = 0L;
             var textureMemoryKnown = true;
-            string? textureMemoryFailureReason = null;
 
             string OriginalMaterialName(Material material)
             {
@@ -228,10 +224,6 @@ namespace net.rs64.TexTransTool.NDMF
                 && mergePlan.DiagnosticLines.Count != 0)
             {
                 var diagnosticBody = string.Join("\n", mergePlan.DiagnosticLines);
-                AutoAtlasTextureDiagnosticsCache.LastDiagnostics = string.Format(
-                    "AutoAtlasTexture:info:MergePlannerDiagnostics".GetLocalize(),
-                    diagnosticBody);
-
                 TTTLog.ReportingObject(configuration, () =>
                     TTTLog.Info(
                         "AutoAtlasTexture:info:MergePlannerDiagnostics",
@@ -365,15 +357,13 @@ namespace net.rs64.TexTransTool.NDMF
                             atlasContext,
                             tuningResult,
                             sourceAlphaCache,
-                            out var executionTextureMemoryBytes,
-                            out var failureReason))
+                            out var executionTextureMemoryBytes))
                     {
                         finalTextureMemoryBytes += executionTextureMemoryBytes;
                     }
                     else
                     {
                         textureMemoryKnown = false;
-                        textureMemoryFailureReason = failureReason;
                     }
                 }
 
@@ -423,12 +413,10 @@ namespace net.rs64.TexTransTool.NDMF
 
             TTTLog.ReportingObject(configuration, () =>
             {
-                string? sourceFailureReason = null;
                 if (textureMemoryKnown
                     && TryCalculateSourceTextureMemory(
                         successfulSourceTextures,
-                        out var sourceTextureMemoryBytes,
-                        out sourceFailureReason))
+                        out var sourceTextureMemoryBytes))
                 {
                     TTTLog.Info(
                         "AutoAtlasTexture:info:RelocateResultWithTextureMemory",
@@ -438,22 +426,6 @@ namespace net.rs64.TexTransTool.NDMF
                         totalRelocations,
                         totalMilliseconds);
                     return;
-                }
-
-                if (textureMemoryKnown)
-                    textureMemoryFailureReason = sourceFailureReason;
-
-                if (!string.IsNullOrEmpty(textureMemoryFailureReason))
-                {
-                    var existingDiagnostics =
-                        AutoAtlasTextureDiagnosticsCache.LastDiagnostics;
-                    var memoryDiagnostic =
-                        "texture memory report unavailable: "
-                        + textureMemoryFailureReason;
-                    AutoAtlasTextureDiagnosticsCache.LastDiagnostics =
-                        string.IsNullOrEmpty(existingDiagnostics)
-                            ? memoryDiagnostic
-                            : existingDiagnostics + "\n\n" + memoryDiagnostic;
                 }
 
                 TTTLog.Info(
@@ -466,11 +438,9 @@ namespace net.rs64.TexTransTool.NDMF
 
         private static bool TryCalculateSourceTextureMemory(
             IEnumerable<Texture> textures,
-            out long bytes,
-            out string? failureReason)
+            out long bytes)
         {
             bytes = 0;
-            failureReason = null;
             foreach (var texture in textures)
             {
                 long textureBytes;
@@ -484,8 +454,6 @@ namespace net.rs64.TexTransTool.NDMF
                                 Math.Max(1, texture2D.mipmapCount),
                                 out textureBytes))
                         {
-                            failureReason =
-                                $"source texture '{texture2D.name}' format {texture2D.format} could not be measured";
                             return false;
                         }
                         break;
@@ -502,15 +470,11 @@ namespace net.rs64.TexTransTool.NDMF
                                 mipCount,
                                 out textureBytes))
                         {
-                            failureReason =
-                                $"source RenderTexture '{renderTexture.name}' format {renderTexture.graphicsFormat} could not be measured";
                             return false;
                         }
                         break;
 
                     default:
-                        failureReason =
-                            $"source texture '{texture.name}' has unsupported type {texture.GetType().Name}";
                         return false;
                 }
 
@@ -524,11 +488,9 @@ namespace net.rs64.TexTransTool.NDMF
             AtlasContext atlasContext,
             TexFineTuningResult tuningResult,
             Dictionary<Texture, bool> alphaCache,
-            out long bytes,
-            out string? failureReason)
+            out long bytes)
         {
             bytes = 0;
-            failureReason = null;
             var activeGroupIds = atlasContext.AtlasSubMeshIndexSetCtx
                 .AtlasSubMeshIndexIDHash
                 .Select(subMesh => subMesh.MaterialGroupID)
@@ -541,9 +503,6 @@ namespace net.rs64.TexTransTool.NDMF
                 if (output.Value.TextureFormat
                     is not TextureCompressionData compression)
                 {
-                    failureReason =
-                        $"output '{output.Key.Name}' uses unsupported descriptor format "
-                        + output.Value.TextureFormat.GetType().Name;
                     return false;
                 }
 
@@ -577,10 +536,8 @@ namespace net.rs64.TexTransTool.NDMF
                 {
                     if (!TryHasAlpha(
                             sourceTexture, alphaCache,
-                            out var sourceHasAlpha,
-                            out var alphaFailureReason))
+                            out var sourceHasAlpha))
                     {
-                        failureReason = alphaFailureReason;
                         return false;
                     }
 
@@ -604,8 +561,6 @@ namespace net.rs64.TexTransTool.NDMF
                         mipCount,
                         out var outputBytes))
                 {
-                    failureReason =
-                        $"output '{output.Key.Name}' format {format} could not be measured";
                     return false;
                 }
 
@@ -618,18 +573,14 @@ namespace net.rs64.TexTransTool.NDMF
         private static bool TryHasAlpha(
             Texture texture,
             Dictionary<Texture, bool> cache,
-            out bool hasAlpha,
-            out string? failureReason)
+            out bool hasAlpha)
         {
-            failureReason = null;
             if (cache.TryGetValue(texture, out hasAlpha))
                 return true;
 
             if (texture is not Texture2D texture2D)
             {
                 hasAlpha = false;
-                failureReason =
-                    $"alpha source '{texture.name}' is {texture.GetType().Name}, not Texture2D";
                 return false;
             }
 
@@ -641,12 +592,9 @@ namespace net.rs64.TexTransTool.NDMF
                 cache[texture] = hasAlpha;
                 return true;
             }
-            catch (Exception exception)
+            catch
             {
                 hasAlpha = false;
-                failureReason =
-                    $"alpha detection failed for '{texture2D.name}': "
-                    + exception.GetType().Name;
                 return false;
             }
         }
