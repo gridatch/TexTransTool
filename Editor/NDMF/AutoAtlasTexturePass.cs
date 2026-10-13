@@ -7,11 +7,13 @@ using nadena.dev.ndmf.animator;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.TextureAtlas.Editor;
 using net.rs64.TexTransTool.Editor;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using net.rs64.TexTransTool.Utils;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 
 namespace net.rs64.TexTransTool.NDMF
 {
@@ -81,6 +83,10 @@ namespace net.rs64.TexTransTool.NDMF
 
             // Store only the NDMF console summary for this build.
             var completed = new List<(string Block, int Relocations, long Milliseconds)>();
+            var successfulSourceTextures = new HashSet<Texture>();
+            var sourceAlphaCache = new Dictionary<Texture, bool>();
+            var finalTextureMemoryBytes = 0L;
+            var textureMemoryKnown = true;
 
             string OriginalMaterialName(Material material)
             {
@@ -351,6 +357,23 @@ namespace net.rs64.TexTransTool.NDMF
                     item => engine.GetReferenceRenderTexture(item.Value));
                 var retainedRenderTextures = tuningResult.TextureDescriptors.Keys.ToHashSet();
 
+                successfulSourceTextures.UnionWith(execution.SourceTextures);
+                if (textureMemoryKnown)
+                {
+                    if (TryCalculateFinalTextureMemory(
+                            atlasContext,
+                            tuningResult,
+                            sourceAlphaCache,
+                            out var executionTextureMemoryBytes))
+                    {
+                        finalTextureMemoryBytes += executionTextureMemoryBytes;
+                    }
+                    else
+                    {
+                        textureMemoryKnown = false;
+                    }
+                }
+
                 var resolutionRoutes = AtlasResolutionRouteReport
                     .Collect(atlasContext, tuningResult);
                 var block = string.Format(materialBlock,
@@ -390,11 +413,241 @@ namespace net.rs64.TexTransTool.NDMF
                 return;
             }
 
+            var completedBlocks = string.Join(
+                "\n\n", completed.Select(item => item.Block));
+            var totalRelocations = completed.Sum(item => item.Relocations);
+            var totalMilliseconds = completed.Sum(item => item.Milliseconds);
+
             TTTLog.ReportingObject(configuration, () =>
-                TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
-                    string.Join("\n\n", completed.Select(item => item.Block)),
-                    completed.Sum(item => item.Relocations),
-                    completed.Sum(item => item.Milliseconds)));
+            {
+                if (textureMemoryKnown
+                    && TryCalculateSourceTextureMemory(
+                        successfulSourceTextures,
+                        out var sourceTextureMemoryBytes))
+                {
+                    TTTLog.Info(
+                        "AutoAtlasTexture:info:RelocateResultWithTextureMemory",
+                        completedBlocks,
+                        FormatBytes(sourceTextureMemoryBytes),
+                        FormatBytes(finalTextureMemoryBytes),
+                        totalRelocations,
+                        totalMilliseconds);
+                    return;
+                }
+
+                TTTLog.Info(
+                    "AutoAtlasTexture:info:RelocateResult",
+                    completedBlocks,
+                    totalRelocations,
+                    totalMilliseconds);
+            });
+        }
+
+        private static bool TryCalculateSourceTextureMemory(
+            IEnumerable<Texture> textures,
+            out long bytes)
+        {
+            bytes = 0;
+            foreach (var texture in textures)
+            {
+                if (texture is not Texture2D texture2D)
+                    return false;
+
+                if (!TryCalculateTextureMemory(
+                        texture2D.width,
+                        texture2D.height,
+                        texture2D.format,
+                        Math.Max(1, texture2D.mipmapCount),
+                        out var textureBytes))
+                {
+                    return false;
+                }
+
+                bytes += textureBytes;
+            }
+
+            return true;
+        }
+
+        private static bool TryCalculateFinalTextureMemory(
+            AtlasContext atlasContext,
+            TexFineTuningResult tuningResult,
+            Dictionary<Texture, bool> alphaCache,
+            out long bytes)
+        {
+            bytes = 0;
+            var activeGroupIds = atlasContext.AtlasSubMeshIndexSetCtx
+                .AtlasSubMeshIndexIDHash
+                .Select(subMesh => subMesh.MaterialGroupID)
+                .Distinct()
+                .ToArray();
+            var materialGroups = atlasContext.MaterialGroupingCtx.GroupMaterials;
+
+            foreach (var output in tuningResult.TextureDescriptors)
+            {
+                if (output.Value.TextureFormat
+                    is not TextureCompressionData compression)
+                {
+                    return false;
+                }
+
+                var sourceProperties = tuningResult.RenderTextures
+                    .Where(pair => ReferenceEquals(pair.Value, output.Key))
+                    .SelectMany(pair =>
+                        tuningResult.SourceProperties.TryGetValue(
+                            pair.Key, out var properties)
+                            ? properties
+                            : Array.Empty<string>())
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+
+                var sourceTextures = new HashSet<Texture>();
+                foreach (var property in sourceProperties)
+                {
+                    foreach (var groupId in activeGroupIds)
+                    {
+                        var materialGroup = materialGroups[groupId];
+                        if (materialGroup.GroupedTexture.TryGetValue(
+                                property, out var sourceTexture)
+                            && sourceTexture != null)
+                        {
+                            sourceTextures.Add(sourceTexture);
+                        }
+                    }
+                }
+
+                var hasAlpha = sourceTextures.Count == 0;
+                foreach (var sourceTexture in sourceTextures)
+                {
+                    if (!TryHasAlpha(
+                            sourceTexture, alphaCache,
+                            out var sourceHasAlpha))
+                    {
+                        return false;
+                    }
+
+                    if (!sourceHasAlpha) continue;
+                    hasAlpha = true;
+                    break;
+                }
+
+                var format = compression.UseOverride
+                    ? compression.OverrideTextureFormat
+                    : TextureCompressionData.GetQuality2TextureFormat(
+                        compression.FormatQualityValue, hasAlpha);
+                var mipCount = output.Value.UseMipMap
+                    ? CalculateMipCount(output.Key.Width, output.Key.Hight)
+                    : 1;
+
+                if (!TryCalculateTextureMemory(
+                        output.Key.Width,
+                        output.Key.Hight,
+                        format,
+                        mipCount,
+                        out var outputBytes))
+                {
+                    return false;
+                }
+
+                bytes += outputBytes;
+            }
+
+            return true;
+        }
+
+        private static bool TryHasAlpha(
+            Texture texture,
+            Dictionary<Texture, bool> cache,
+            out bool hasAlpha)
+        {
+            if (cache.TryGetValue(texture, out hasAlpha))
+                return true;
+
+            if (texture is not Texture2D texture2D)
+            {
+                hasAlpha = false;
+                return false;
+            }
+
+            try
+            {
+                using var result =
+                    TextureCompressionData.HasAlphaChannel(texture2D);
+                hasAlpha = result.GetResult();
+                cache[texture] = hasAlpha;
+                return true;
+            }
+            catch
+            {
+                hasAlpha = false;
+                return false;
+            }
+        }
+
+        private static int CalculateMipCount(int width, int height)
+        {
+            var count = 1;
+            while (width > 1 || height > 1)
+            {
+                width = Math.Max(1, width >> 1);
+                height = Math.Max(1, height >> 1);
+                count += 1;
+            }
+
+            return count;
+        }
+
+        private static bool TryCalculateTextureMemory(
+            int width,
+            int height,
+            TextureFormat format,
+            int mipCount,
+            out long bytes)
+        {
+            bytes = 0;
+            width = Math.Max(1, width);
+            height = Math.Max(1, height);
+            mipCount = Math.Max(1, mipCount);
+
+            try
+            {
+                var blockWidth = Math.Max(
+                    1u, GraphicsFormatUtility.GetBlockWidth(format));
+                var blockHeight = Math.Max(
+                    1u, GraphicsFormatUtility.GetBlockHeight(format));
+                var blockSize = Math.Max(
+                    1u, GraphicsFormatUtility.GetBlockSize(format));
+
+                for (var mip = 0; mip < mipCount; mip += 1)
+                {
+                    var blocksX =
+                        ((long)width + blockWidth - 1) / blockWidth;
+                    var blocksY =
+                        ((long)height + blockHeight - 1) / blockHeight;
+                    bytes += blocksX * blocksY * blockSize;
+
+                    width = Math.Max(1, width >> 1);
+                    height = Math.Max(1, height >> 1);
+                }
+
+                return true;
+            }
+            catch
+            {
+                bytes = 0;
+                return false;
+            }
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            if (bytes < 1024)
+                return bytes + " B";
+            if (bytes < 1024L * 1024L)
+                return (bytes / 1024d).ToString("0.0") + " KiB";
+            if (bytes < 1024L * 1024L * 1024L)
+                return (bytes / (1024d * 1024d)).ToString("0.0") + " MiB";
+            return (bytes / (1024d * 1024d * 1024d)).ToString("0.0") + " GiB";
         }
 
         private static bool ReferencesAreExclusive(

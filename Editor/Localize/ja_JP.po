@@ -144,6 +144,9 @@ msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応
 msgid "AutoAtlasTexture:info:RelocateResult"
 msgstr "自動アトラス再配置結果\n{0}\n\n累計再配置計算回数: {1}回\n再配置実行時間: {2}ms"
 
+msgid "AutoAtlasTexture:info:RelocateResultWithTextureMemory"
+msgstr "自動アトラス再配置結果\n{0}\n\nテクスチャメモリ: {1} → {2}\n\n累計再配置計算回数: {3}回\n再配置実行時間: {4}ms"
+
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
 

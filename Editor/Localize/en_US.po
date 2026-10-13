@@ -143,6 +143,9 @@ msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOvera
 msgid "AutoAtlasTexture:info:RelocateResult"
 msgstr "Auto Atlas Relocate Result\n{0}\n\nTotal relocate count: {1}\nTime taken relocate: {2}ms"
 
+msgid "AutoAtlasTexture:info:RelocateResultWithTextureMemory"
+msgstr "Auto Atlas Relocate Result\n{0}\n\nTexture memory: {1} → {2}\n\nTotal relocate count: {3}\nTime taken relocate: {4}ms"
+
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 
