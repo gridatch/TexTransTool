@@ -54,17 +54,20 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long BaselinePixels;
             internal readonly long MergedPixels;
             internal readonly float SavingsRate;
+            internal readonly Vector2Int PlannedLayoutSize;
 
             internal MergeSelection(
                 IEnumerable<int> groupIds,
                 TextureCostPlan baseline,
-                TextureCostPlan merged)
+                TextureCostPlan merged,
+                Vector2Int plannedLayoutSize)
             {
                 GroupIds = groupIds.OrderBy(id => id).ToArray();
                 BaselineBytes = baseline.FullResidentBytes;
                 MergedBytes = merged.FullResidentBytes;
                 BaselinePixels = baseline.PixelCount;
                 MergedPixels = merged.PixelCount;
+                PlannedLayoutSize = plannedLayoutSize;
                 SavingsRate = BaselineBytes <= 0
                     ? 0f
                     : (float)(BaselineBytes - MergedBytes) / BaselineBytes;
@@ -608,7 +611,10 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 if (candidate.GroupIds.Any(consumed.Contains)) continue;
                 selected.Add(new MergeSelection(
-                    candidate.GroupIds, candidate.Baseline, candidate.Merged));
+                    candidate.GroupIds,
+                    candidate.Baseline,
+                    candidate.Merged,
+                    candidate.LayoutSize));
                 consumed.UnionWith(candidate.GroupIds);
             }
 
