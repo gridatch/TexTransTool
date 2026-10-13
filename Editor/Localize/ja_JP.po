@@ -142,13 +142,13 @@ msgid "AtlasTexture:info:RelocateResultWithResolution"
 msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応じた縮小: {1}倍\n全体的な縮小: {2}倍\n{3}\n累計再配置計算回数: {4}回\n再配置実行時間: {5}ms"
 
 msgid "AutoAtlasTexture:info:RelocateResult"
-msgstr "自動アトラス再配置結果\n{0}\n\n累計再配置計算回数: {1}回\n再配置実行時間: {2}ms"
-
-msgid "AutoAtlasTexture:info:RelocateResultWithTextureMemory"
-msgstr "自動アトラス再配置結果\n{0}\n\nテクスチャメモリ: {1} → {2}\n\n累計再配置計算回数: {3}回\n再配置実行時間: {4}ms"
+msgstr "自動アトラス再配置結果\n{0}"
 
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
+
+msgid "AutoAtlasTexture:info:TargetTextureMemory"
+msgstr "対象テクスチャメモリ: {0} → {1}"
 
 
 msgid "AtlasTexture:info:ResolutionRoute"
@@ -158,9 +158,6 @@ msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
 msgstr "余白を利用してテクスチャを統合"
 
 
-
-msgid "AutoAtlasTexture:help:AdditionalAtlasMerging"
-msgstr "単体アトラス化後に連続して残る上部余白へ、実際に収まる別のアトラスを自動的に統合します。総ピクセル数・推定テクスチャメモリ・Mip・フォーマット・最大テクスチャ寸法が悪化する統合は行いません。"
 
 msgid "AutoAtlasTexture:prop:ExcludedRenderers"
 msgstr "除外レンダラー"

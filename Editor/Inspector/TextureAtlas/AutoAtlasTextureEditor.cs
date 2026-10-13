@@ -39,16 +39,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     _enableAdditionalAtlasMerging,
                     "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging".GlcV());
 
-                if (_enableAdditionalAtlasMerging.boolValue)
-                {
-                    using (new EditorGUI.IndentLevelScope())
-                    {
-                        EditorGUILayout.HelpBox(
-                            "AutoAtlasTexture:help:AdditionalAtlasMerging".GetLocalize(),
-                            MessageType.Info);
-                    }
-                }
-
                 EditorGUILayout.PropertyField(
                     _excludedRenderers, "AutoAtlasTexture:prop:ExcludedRenderers".GlcV(), true);
                 EditorGUILayout.PropertyField(

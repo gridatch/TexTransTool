@@ -79,11 +79,8 @@ namespace net.rs64.TexTransTool.NDMF
             AnimatorServicesContext animatorServices)
         {
             // Store only the NDMF console summary for this build.
-            var completed = new List<(string Block, int Relocations, long Milliseconds)>();
-            var successfulSourceTextures = new HashSet<Texture>();
+            var completed = new List<string>();
             var sourceAlphaCache = new Dictionary<Texture, bool>();
-            var finalTextureMemoryBytes = 0L;
-            var textureMemoryKnown = true;
 
             string OriginalMaterialName(Material material)
             {
@@ -374,19 +371,6 @@ namespace net.rs64.TexTransTool.NDMF
                     item => engine.GetReferenceRenderTexture(item.Value));
                 var retainedRenderTextures = tuningResult.TextureDescriptors.Keys.ToHashSet();
 
-                successfulSourceTextures.UnionWith(execution.SourceTextures);
-                if (textureMemoryKnown)
-                {
-                    if (hasExecutionTextureMemory)
-                    {
-                        finalTextureMemoryBytes += executionTextureMemoryBytes;
-                    }
-                    else
-                    {
-                        textureMemoryKnown = false;
-                    }
-                }
-
                 var resolutionRoutes = AtlasResolutionRouteReport
                     .Collect(atlasContext, tuningResult);
                 var block = string.Format(materialBlock,
@@ -396,6 +380,17 @@ namespace net.rs64.TexTransTool.NDMF
                     TTTLog.FormatLocalizedLines(
                         AtlasResolutionRouteReport.CreateLocalizedLogLines(
                             resolutionRoutes)));
+
+                if (hasExecutionTextureMemory
+                    && TryCalculateSourceTextureMemory(
+                        execution.SourceTextures,
+                        out var sourceTextureMemoryBytes))
+                {
+                    block += "\n" + string.Format(
+                        "AutoAtlasTexture:info:TargetTextureMemory".GetLocalize(),
+                        FormatBytes(sourceTextureMemoryBytes),
+                        FormatBytes(executionTextureMemoryBytes));
+                }
 
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
@@ -415,8 +410,7 @@ namespace net.rs64.TexTransTool.NDMF
                     domain.RegisterPostProcessingAndLazyGPUReadBack(
                         descriptor.Key, descriptor.Value);
 
-                completed.Add((block, executionMetrics.TotalRelocateCount,
-                    executionMetrics.RelocationTimeMilliseconds));
+                completed.Add(block);
             }
 
             if (completed.Count == 0)
@@ -426,34 +420,10 @@ namespace net.rs64.TexTransTool.NDMF
                 return;
             }
 
-            var completedBlocks = string.Join(
-                "\n\n", completed.Select(item => item.Block));
-            var totalRelocations = completed.Sum(item => item.Relocations);
-            var totalMilliseconds = completed.Sum(item => item.Milliseconds);
-
             TTTLog.ReportingObject(configuration, () =>
-            {
-                if (textureMemoryKnown
-                    && TryCalculateSourceTextureMemory(
-                        successfulSourceTextures,
-                        out var sourceTextureMemoryBytes))
-                {
-                    TTTLog.Info(
-                        "AutoAtlasTexture:info:RelocateResultWithTextureMemory",
-                        completedBlocks,
-                        FormatBytes(sourceTextureMemoryBytes),
-                        FormatBytes(finalTextureMemoryBytes),
-                        totalRelocations,
-                        totalMilliseconds);
-                    return;
-                }
-
                 TTTLog.Info(
                     "AutoAtlasTexture:info:RelocateResult",
-                    completedBlocks,
-                    totalRelocations,
-                    totalMilliseconds);
-            });
+                    string.Join("\n\n", completed)));
         }
 
         private static bool TryCalculateSourceTextureMemory(
