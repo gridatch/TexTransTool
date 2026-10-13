@@ -147,6 +147,9 @@ msgstr "自動アトラス再配置結果\n{0}\n\n累計再配置計算回数: {
 msgid "AutoAtlasTexture:info:RelocateResultWithTextureMemory"
 msgstr "自動アトラス再配置結果\n{0}\n\nテクスチャメモリ: {1} → {2}\n\n累計再配置計算回数: {3}回\n再配置実行時間: {4}ms"
 
+msgid "AutoAtlasTexture:info:MergeRegressionDiagnostic"
+msgstr "一時診断: 候補={0}, 基本条件棄却={1}, サンプリング棄却={2}, Mip棄却={3}, 選択={4}, レイアウトフォールバック={5}, メモリフォールバック={6}, 統合成功={7}"
+
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
 

@@ -146,6 +146,9 @@ msgstr "Auto Atlas Relocate Result\n{0}\n\nTotal relocate count: {1}\nTime taken
 msgid "AutoAtlasTexture:info:RelocateResultWithTextureMemory"
 msgstr "Auto Atlas Relocate Result\n{0}\n\nTexture memory: {1} → {2}\n\nTotal relocate count: {3}\nTime taken relocate: {4}ms"
 
+msgid "AutoAtlasTexture:info:MergeRegressionDiagnostic"
+msgstr "Temporary diagnostic: candidates={0}, basic rejected={1}, sampling rejected={2}, mip rejected={3}, selected={4}, layout fallbacks={5}, memory fallbacks={6}, merged successfully={7}"
+
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 
