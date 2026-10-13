@@ -21,14 +21,11 @@ namespace net.rs64.TexTransTool.NDMF
     /// </summary>
     internal static class AutoAtlasTextureMergePlanner
     {
-        // Full Atlas relocation is expensive. Generate merge candidates using
-        // standalone metrics first, then run the real relocation only for the
-        // highest-value proposals.
         private const int MaxMergeGroupCount = 12;
-        private const int MaxFullMergeAnalyses = 32;
-        private const int PairAnalysisQuota = 20;
-        private const int TripleAnalysisQuota = 8;
-        private const int LargerAnalysisQuota = 4;
+        // Candidate exploration below never calls DoAtlasTexture. These limits
+        // only bound cheap integer-DP state retention, not expensive atlas probes.
+        private const int BandStatesPerHeight = 8;
+        private const int BandCandidatesPerHost = 512;
         private const int MaxRuntimeUsageScenarios = 64;
         private const int MaxScenarioEnumerationGroups = 12;
         private const double UnknownDemandLog2 = -32d;
@@ -43,6 +40,8 @@ namespace net.rs64.TexTransTool.NDMF
             internal long OriginalPixels;
 
             internal AtlasTexture.AtlasExecutionMetrics? StandaloneMetrics;
+            internal int BandWidthPixels;
+            internal int BandUsedHeightPixels;
             internal TextureCostPlan OriginalCost = TextureCostPlan.Empty;
             internal TextureCostPlan BaselineCost = TextureCostPlan.Empty;
         }
@@ -86,29 +85,23 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        private sealed class CheapProposal
+        private sealed class BandState
         {
-            internal readonly int HostId;
-            internal readonly int[] GroupIds;
-            internal readonly string Key;
-            internal readonly double Score;
-            internal readonly long PotentialGuestSavingsBytes;
-            internal readonly double CapacityUseRatio;
+            internal readonly int UsedHeightPixels;
+            internal readonly int[] GuestIds;
+            internal readonly long GuestBaselineBytes;
 
-            internal CheapProposal(
-                int hostId,
-                IEnumerable<int> groupIds,
-                double score,
-                long potentialGuestSavingsBytes,
-                double capacityUseRatio)
+            internal BandState(
+                int usedHeightPixels,
+                IEnumerable<int> guestIds,
+                long guestBaselineBytes)
             {
-                HostId = hostId;
-                GroupIds = groupIds.OrderBy(id => id).ToArray();
-                Key = string.Join(",", GroupIds);
-                Score = score;
-                PotentialGuestSavingsBytes = potentialGuestSavingsBytes;
-                CapacityUseRatio = capacityUseRatio;
+                UsedHeightPixels = usedHeightPixels;
+                GuestIds = guestIds.OrderBy(id => id).ToArray();
+                GuestBaselineBytes = guestBaselineBytes;
             }
+
+            internal string Key => string.Join(",", GuestIds);
         }
 
         private sealed class Candidate
@@ -116,7 +109,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int[] GroupIds;
             internal readonly TextureCostPlan Baseline;
             internal readonly TextureCostPlan Merged;
-            internal readonly AtlasTexture.AtlasExecutionMetrics Metrics;
+            internal readonly Vector2Int LayoutSize;
             internal readonly long SavingBytes;
             internal readonly float SavingRate;
             internal readonly bool IsAdoptable;
@@ -126,14 +119,14 @@ namespace net.rs64.TexTransTool.NDMF
                 int[] groupIds,
                 TextureCostPlan baseline,
                 TextureCostPlan merged,
-                AtlasTexture.AtlasExecutionMetrics metrics,
+                Vector2Int layoutSize,
                 float minimumSavingRate,
                 RuntimeUsageModel usage)
             {
                 GroupIds = groupIds;
                 Baseline = baseline;
                 Merged = merged;
-                Metrics = metrics;
+                LayoutSize = layoutSize;
                 SavingBytes = baseline.FullResidentBytes - merged.FullResidentBytes;
                 SavingRate = baseline.FullResidentBytes <= 0
                     ? 0f
@@ -148,10 +141,14 @@ namespace net.rs64.TexTransTool.NDMF
                     failedGates.Add("resident-memory");
                 if (merged.MaxTextureDimension > baseline.MaxTextureDimension)
                     failedGates.Add("max-dimension");
-                if (HasSamplingRegression(baseline, merged, groupIds))
-                    failedGates.Add("format-sampling");
-                if (HasStreamingRegression(baseline, merged, groupIds, usage))
-                    failedGates.Add("mip-streaming");
+
+                if (failedGates.Count == 0)
+                {
+                    if (HasSamplingRegression(baseline, merged, groupIds))
+                        failedGates.Add("format-sampling");
+                    if (HasStreamingRegression(baseline, merged, groupIds, usage))
+                        failedGates.Add("mip-streaming");
+                }
 
                 IsAdoptable = failedGates.Count == 0;
                 DecisionReason = IsAdoptable
@@ -408,11 +405,20 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
+            foreach (var group in groups)
+            {
+                if (group.StandaloneMetrics is not { } metrics) continue;
+                group.BandWidthPixels = Math.Max(1, metrics.LayoutSize.x);
+                group.BandUsedHeightPixels = GetBandUsedHeightPixels(metrics);
+            }
+
             var hostCount = groups.Count(group =>
                 group.StandaloneMetrics is { } metrics
-                && metrics.FreeAreaFraction >= configuration.MinimumMergeHostFreeAreaRatio);
+                && metrics.TopFreeFraction >= configuration.MinimumMergeHostFreeAreaRatio);
+
             diagnosticLines.Add(
-                $"atomic groups={groups.Count}, merge hosts={hostCount}, host free-area threshold={configuration.MinimumMergeHostFreeAreaRatio:P0}");
+                $"atomic groups={groups.Count}, merge hosts={hostCount}, " +
+                $"host top-free threshold={configuration.MinimumMergeHostFreeAreaRatio:P0}");
 
             foreach (var group in groups.OrderBy(group => group.Id))
             {
@@ -420,83 +426,177 @@ namespace net.rs64.TexTransTool.NDMF
                     group.Materials.Select(material => material.name)
                         .Distinct()
                         .OrderBy(name => name, StringComparer.Ordinal));
-                var freeArea = group.StandaloneMetrics?.FreeAreaFraction;
+                var topFree = group.StandaloneMetrics?.TopFreeFraction;
                 diagnosticLines.Add(
-                    $"group {group.Id}: [{materialNames}], free-area={(freeArea.HasValue ? freeArea.Value.ToString("P1") : "n/a")}, baseline={group.BaselineCost.FullResidentBytes} B");
+                    $"group {group.Id}: [{materialNames}], " +
+                    $"top-free={(topFree.HasValue ? topFree.Value.ToString("P1") : "n/a")}, " +
+                    $"band={group.BandWidthPixels}x{group.BandUsedHeightPixels}, " +
+                    $"baseline={group.BaselineCost.FullResidentBytes} B");
             }
 
             var usage = AnalyzeRuntimeUsage(animatorServices, groups);
             var byId = groups.ToDictionary(group => group.Id);
             var adoptable = new Dictionary<string, Candidate>();
+            var rejectionCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            var diagnosticCandidates = new List<Candidate>();
+            var exploredBandStates = 0;
 
-            // Candidate generation is intentionally cheap: it uses only the
-            // standalone layouts/costs already computed above. We then run the
-            // real TexTransCore relocation for a small, deterministic number of
-            // the most promising unique subsets.
-            var proposals = BuildCheapMergeProposals(
-                configuration, groups);
-            var selectedProposals = SelectFullAnalysisProposals(proposals);
-
-            diagnosticLines.Add(
-                $"cheap proposals={proposals.Count}, full analyses={selectedProposals.Count}/{MaxFullMergeAnalyses}, " +
-                $"pairs={selectedProposals.Count(proposal => proposal.GroupIds.Length == 2)}, " +
-                $"triples={selectedProposals.Count(proposal => proposal.GroupIds.Length == 3)}, " +
-                $"larger={selectedProposals.Count(proposal => proposal.GroupIds.Length >= 4)}");
-
-            var relocationRejected = 0;
-            foreach (var proposal in selectedProposals)
+            foreach (var host in groups.Where(group =>
+                         group.StandaloneMetrics is { } metrics
+                         && metrics.TopFreeFraction >=
+                         configuration.MinimumMergeHostFreeAreaRatio
+                         && group.BandWidthPixels > 0
+                         && group.BandUsedHeightPixels > 0))
             {
-                var ids = proposal.GroupIds;
-                var materials = ids.SelectMany(id => byId[id].Materials)
-                    .ToHashSet();
-                var renderers = ids.SelectMany(id => byId[id].Renderers)
-                    .Distinct().ToArray();
+                var hostWidth = host.BandWidthPixels;
+                var capacity = Math.Max(
+                    0, hostWidth - host.BandUsedHeightPixels);
+                if (capacity <= 0) continue;
 
-                var metrics = AnalyzeAtlas(
-                    domain,
-                    engine,
-                    settings,
-                    materials,
-                    renderers,
-                    useMergeRelocator: true);
-                if (metrics is null)
+                var guests = groups
+                    .Where(group =>
+                        group.Id != host.Id
+                        && group.StandaloneMetrics != null
+                        && group.BandWidthPixels > 0
+                        && group.BandWidthPixels <= hostWidth
+                        && group.BandUsedHeightPixels > 0
+                        && group.BandUsedHeightPixels <= capacity)
+                    .OrderBy(group => group.Id)
+                    .ToArray();
+                if (guests.Length == 0) continue;
+
+                var statesByHeight = new Dictionary<int, List<BandState>>
                 {
-                    relocationRejected += 1;
-                    diagnosticLines.Add(
-                        $"candidate [{FormatGroupMaterials(ids, byId)}]: rejected=relocation, " +
-                        $"host=[{FormatGroupMaterials(new[] { proposal.HostId }, byId)}], " +
-                        $"potential-guest-saving={proposal.PotentialGuestSavingsBytes} B, " +
-                        $"capacity-use={proposal.CapacityUseRatio:P1}, score={proposal.Score:0.##}");
-                    continue;
+                    [0] = new List<BandState>
+                    {
+                        new BandState(0, Array.Empty<int>(), 0),
+                    },
+                };
+
+                foreach (var guest in guests)
+                {
+                    var snapshot = statesByHeight.Values
+                        .SelectMany(states => states)
+                        .Where(state =>
+                            state.GuestIds.Length + 1 < MaxMergeGroupCount)
+                        .ToArray();
+
+                    foreach (var state in snapshot)
+                    {
+                        if (state.GuestIds.Contains(guest.Id)) continue;
+                        var nextHeight =
+                            state.UsedHeightPixels + guest.BandUsedHeightPixels;
+                        if (nextHeight > capacity) continue;
+
+                        var next = new BandState(
+                            nextHeight,
+                            state.GuestIds.Append(guest.Id),
+                            state.GuestBaselineBytes
+                                + guest.BaselineCost.FullResidentBytes);
+
+                        if (!statesByHeight.TryGetValue(
+                                nextHeight, out var bucket))
+                        {
+                            bucket = statesByHeight[nextHeight] =
+                                new List<BandState>();
+                        }
+
+                        if (bucket.Any(existing =>
+                                existing.Key == next.Key))
+                            continue;
+
+                        bucket.Add(next);
+                        bucket.Sort((left, right) =>
+                        {
+                            var cmp = right.GuestBaselineBytes.CompareTo(
+                                left.GuestBaselineBytes);
+                            if (cmp != 0) return cmp;
+                            cmp = right.GuestIds.Length.CompareTo(
+                                left.GuestIds.Length);
+                            if (cmp != 0) return cmp;
+                            return string.CompareOrdinal(
+                                left.Key, right.Key);
+                        });
+
+                        if (bucket.Count > BandStatesPerHeight)
+                            bucket.RemoveRange(
+                                BandStatesPerHeight,
+                                bucket.Count - BandStatesPerHeight);
+                    }
                 }
 
-                var baseline = TextureCostPlan.Combine(
-                    ids.Select(id => byId[id].BaselineCost));
-                var merged = BuildGeneratedCost(
-                    domain,
-                    ids.Select(id => byId[id]).ToArray(),
-                    propertyTextures,
-                    metrics.Value.PropertySizes,
-                    alphaCache);
+                var hostStates = statesByHeight.Values
+                    .SelectMany(states => states)
+                    .Where(state => state.GuestIds.Length != 0)
+                    .OrderByDescending(state => state.GuestBaselineBytes)
+                    .ThenByDescending(state => state.UsedHeightPixels)
+                    .ThenByDescending(state => state.GuestIds.Length)
+                    .ThenBy(state => state.Key, StringComparer.Ordinal)
+                    .Take(BandCandidatesPerHost)
+                    .ToArray();
 
-                var candidate = new Candidate(
-                    ids,
-                    baseline,
-                    merged,
-                    metrics.Value,
-                    configuration.MinimumAdditionalMergeSavingsRate,
-                    usage);
+                exploredBandStates += hostStates.Length;
 
-                diagnosticLines.Add(
-                    $"candidate [{FormatGroupMaterials(ids, byId)}]: " +
-                    $"host=[{FormatGroupMaterials(new[] { proposal.HostId }, byId)}], " +
-                    $"baseline={baseline.FullResidentBytes} B, merged={merged.FullResidentBytes} B, " +
-                    $"saving={candidate.SavingRate:P1}, pixels={baseline.PixelCount}->{merged.PixelCount}, " +
-                    $"layout={metrics.Value.LayoutSize.x}x{metrics.Value.LayoutSize.y}, " +
-                    $"max={baseline.MaxTextureDimension}->{merged.MaxTextureDimension}, decision={candidate.DecisionReason}");
+                foreach (var state in hostStates)
+                {
+                    var ids = new[] { host.Id }
+                        .Concat(state.GuestIds)
+                        .OrderBy(id => id)
+                        .ToArray();
+                    var key = string.Join(",", ids);
+                    var usedHeight =
+                        host.BandUsedHeightPixels + state.UsedHeightPixels;
+                    var layoutSize = new Vector2Int(
+                        hostWidth,
+                        GetCroppedHeight(hostWidth, usedHeight));
 
-                if (candidate.IsAdoptable)
-                    adoptable[proposal.Key] = candidate;
+                    var selectedGroups = ids
+                        .Select(id => byId[id])
+                        .ToArray();
+                    var materials = selectedGroups
+                        .SelectMany(group => group.Materials)
+                        .ToHashSet();
+                    var propertySizes = BuildPredictedPropertySizes(
+                        materials, layoutSize);
+
+                    var baseline = TextureCostPlan.Combine(
+                        selectedGroups.Select(group => group.BaselineCost));
+                    var merged = BuildGeneratedCost(
+                        domain,
+                        selectedGroups,
+                        propertyTextures,
+                        propertySizes,
+                        alphaCache);
+
+                    var candidate = new Candidate(
+                        ids,
+                        baseline,
+                        merged,
+                        layoutSize,
+                        configuration.MinimumAdditionalMergeSavingsRate,
+                        usage);
+
+                    diagnosticCandidates.Add(candidate);
+
+                    if (!candidate.IsAdoptable)
+                    {
+                        foreach (var reason in candidate.DecisionReason
+                                     .Split('+'))
+                        {
+                            rejectionCounts[reason] =
+                                rejectionCounts.GetValueOrDefault(reason) + 1;
+                        }
+                        continue;
+                    }
+
+                    if (!adoptable.TryGetValue(key, out var prior)
+                        || candidate.SavingBytes > prior.SavingBytes
+                        || (candidate.SavingBytes == prior.SavingBytes
+                            && candidate.LayoutSize.y < prior.LayoutSize.y))
+                    {
+                        adoptable[key] = candidate;
+                    }
+                }
             }
 
             var selected = new List<MergeSelection>();
@@ -514,7 +614,36 @@ namespace net.rs64.TexTransTool.NDMF
 
             plannerWatch.Stop();
             diagnosticLines.Insert(0,
-                $"planner time={plannerWatch.ElapsedMilliseconds} ms, relocation rejects={relocationRejected}, adopted merges={selected.Count}");
+                $"planner time={plannerWatch.ElapsedMilliseconds} ms, " +
+                $"band candidates evaluated={exploredBandStates}, " +
+                $"predicted viable={adoptable.Count}, adopted merges={selected.Count}");
+
+            if (rejectionCounts.Count != 0)
+            {
+                diagnosticLines.Add(
+                    "rejections: " + string.Join(", ",
+                        rejectionCounts
+                            .OrderByDescending(pair => pair.Value)
+                            .ThenBy(pair => pair.Key, StringComparer.Ordinal)
+                            .Select(pair => $"{pair.Key}={pair.Value}")));
+            }
+
+            foreach (var candidate in diagnosticCandidates
+                         .OrderByDescending(candidate => candidate.SavingBytes)
+                         .ThenByDescending(candidate => candidate.SavingRate)
+                         .Take(32))
+            {
+                diagnosticLines.Add(
+                    $"candidate [{FormatGroupMaterials(candidate.GroupIds, byId)}]: " +
+                    $"baseline={candidate.Baseline.FullResidentBytes} B, " +
+                    $"merged={candidate.Merged.FullResidentBytes} B, " +
+                    $"saving={candidate.SavingRate:P1}, " +
+                    $"pixels={candidate.Baseline.PixelCount}->{candidate.Merged.PixelCount}, " +
+                    $"layout={candidate.LayoutSize.x}x{candidate.LayoutSize.y}, " +
+                    $"max={candidate.Baseline.MaxTextureDimension}->{candidate.Merged.MaxTextureDimension}, " +
+                    $"decision={candidate.DecisionReason}");
+            }
+
             return new PlanResult(selected, diagnosticLines);
         }
 
@@ -529,223 +658,83 @@ namespace net.rs64.TexTransTool.NDMF
                     .OrderBy(name => name, StringComparer.Ordinal));
         }
 
-        private static IReadOnlyList<CheapProposal> SelectFullAnalysisProposals(
-            IReadOnlyList<CheapProposal> proposals)
+        private static int GetBandUsedHeightPixels(
+            AtlasTexture.AtlasExecutionMetrics metrics)
         {
-            var selected = new List<CheapProposal>();
-            var selectedKeys = new HashSet<string>();
-
-            void AddBucket(IEnumerable<CheapProposal> bucket, int quota)
-            {
-                if (quota <= 0) return;
-
-                var ordered = bucket
-                    .OrderByDescending(proposal => proposal.Score)
-                    .ThenBy(proposal => proposal.Key, StringComparer.Ordinal)
-                    .ToArray();
-                if (ordered.Length == 0) return;
-
-                // First pass: one best proposal per host, so a single large host
-                // cannot consume the whole expensive-analysis budget.
-                foreach (var proposal in ordered
-                             .GroupBy(proposal => proposal.HostId)
-                             .Select(group => group.First())
-                             .OrderByDescending(proposal => proposal.Score)
-                             .ThenBy(proposal => proposal.HostId)
-                             .ThenBy(proposal => proposal.Key, StringComparer.Ordinal))
-                {
-                    if (selected.Count(candidate =>
-                            BucketClass(candidate.GroupIds.Length)
-                                == BucketClass(proposal.GroupIds.Length))
-                        >= quota)
-                    {
-                        break;
-                    }
-
-                    if (selectedKeys.Add(proposal.Key))
-                        selected.Add(proposal);
-                }
-
-                // Second pass: fill unused quota by score.
-                foreach (var proposal in ordered)
-                {
-                    if (selected.Count(candidate =>
-                            BucketClass(candidate.GroupIds.Length)
-                                == BucketClass(proposal.GroupIds.Length))
-                        >= quota)
-                    {
-                        break;
-                    }
-
-                    if (selectedKeys.Add(proposal.Key))
-                        selected.Add(proposal);
-                }
-            }
-
-            static int BucketClass(int groupCount)
-            {
-                return groupCount switch
-                {
-                    2 => 2,
-                    3 => 3,
-                    _ => 4,
-                };
-            }
-
-            AddBucket(
-                proposals.Where(proposal => proposal.GroupIds.Length == 2),
-                PairAnalysisQuota);
-            AddBucket(
-                proposals.Where(proposal => proposal.GroupIds.Length == 3),
-                TripleAnalysisQuota);
-            AddBucket(
-                proposals.Where(proposal => proposal.GroupIds.Length >= 4),
-                LargerAnalysisQuota);
-
-            // If one bucket did not have enough proposals, use the remaining
-            // global budget for the best not-yet-selected candidates.
-            foreach (var proposal in proposals
-                         .OrderBy(proposal => proposal.GroupIds.Length)
-                         .ThenByDescending(proposal => proposal.Score)
-                         .ThenBy(proposal => proposal.Key, StringComparer.Ordinal))
-            {
-                if (selected.Count >= MaxFullMergeAnalyses) break;
-                if (selectedKeys.Add(proposal.Key))
-                    selected.Add(proposal);
-            }
-
-            return selected.Take(MaxFullMergeAnalyses).ToArray();
+            var width = Math.Max(1, metrics.LayoutSize.x);
+            var usedFraction = Math.Max(
+                0d, Math.Min(1d, 1d - metrics.TopFreeFraction));
+            return Math.Max(
+                1,
+                Math.Min(
+                    width,
+                    (int)Math.Ceiling(width * usedFraction - 1e-6d)));
         }
 
-        private static IReadOnlyList<CheapProposal> BuildCheapMergeProposals(
-            AutoAtlasTexture configuration,
-            IReadOnlyList<PreparedGroup> groups)
+        private static int GetCroppedHeight(
+            int atlasWidth,
+            int usedHeightPixels)
         {
-            var proposals = new Dictionary<string, CheapProposal>();
+            var ratio = Math.Max(
+                0d,
+                Math.Min(1d, (double)usedHeightPixels / atlasWidth));
 
-            static double LayoutPixels(PreparedGroup group)
+            var height = ratio switch
             {
-                if (group.StandaloneMetrics is not { } metrics) return 0d;
-                return (double)metrics.LayoutSize.x * metrics.LayoutSize.y;
-            }
+                < (1d / 32d) => atlasWidth / 32,
+                < (1d / 16d) => atlasWidth / 16,
+                < (1d / 8d) => atlasWidth / 8,
+                < (1d / 4d) => atlasWidth / 4,
+                < (1d / 2d) => atlasWidth / 2,
+                _ => atlasWidth,
+            };
+            return Math.Max(4, height);
+        }
 
-            static double OccupiedPixels(PreparedGroup group)
+        private static IReadOnlyDictionary<string, Vector2Int>
+            BuildPredictedPropertySizes(
+                HashSet<Material> materials,
+                Vector2Int layoutSize)
+        {
+            var grouping = new MaterialGroupingContext(
+                materials, UVChannel.UV0, null);
+            var properties = grouping.GroupMaterials
+                .SelectMany(group => group.GroupedTexture.Keys)
+                .Distinct()
+                .OrderBy(property => property, StringComparer.Ordinal);
+
+            var result = new Dictionary<string, Vector2Int>();
+            foreach (var property in properties)
             {
-                if (group.StandaloneMetrics is not { } metrics) return 0d;
-                return LayoutPixels(group) * Math.Max(
-                    0d, 1d - metrics.FreeAreaFraction);
-            }
+                var primarySizes = new List<Vector2Int?>();
+                var sourceSizes = new List<Vector2Int>();
 
-            static double NoGrowthCapacityPixels(PreparedGroup group)
-            {
-                if (group.StandaloneMetrics is not { } metrics) return 0d;
-
-                // The final hard gate forbids increasing the largest output
-                // texture dimension. A layout may still grow from a cropped
-                // rectangle toward a square without violating that gate. Use the
-                // larger of the current layout dimension and baseline physical
-                // texture dimension as a conservative cheap-search capacity.
-                var allowedDimension = Math.Max(
-                    Math.Max(metrics.LayoutSize.x, metrics.LayoutSize.y),
-                    group.BaselineCost.MaxTextureDimension);
-                return (double)allowedDimension * allowedDimension;
-            }
-
-            void AddGreedyPrefixes(
-                PreparedGroup host,
-                IEnumerable<PreparedGroup> orderedGuests)
-            {
-                var ids = new List<int> { host.Id };
-                var hostOccupied = OccupiedPixels(host);
-                var capacity = Math.Max(hostOccupied, NoGrowthCapacityPixels(host));
-                var occupied = hostOccupied;
-                long potentialGuestSavings = 0;
-
-                foreach (var guest in orderedGuests)
+                foreach (var group in grouping.GroupMaterials)
                 {
-                    if (ids.Count >= MaxMergeGroupCount) break;
-
-                    var guestOccupied = OccupiedPixels(guest);
-                    if (guestOccupied <= 0d) continue;
-
-                    // If even the sum of occupied pixel area cannot fit before
-                    // increasing the host's allowed maximum dimension, this
-                    // proposal can never pass the max-dimension hard gate.
-                    if (occupied + guestOccupied > capacity * 1.0001d)
-                        continue;
-
-                    ids.Add(guest.Id);
-                    occupied += guestOccupied;
-                    potentialGuestSavings += guest.BaselineCost.FullResidentBytes;
-
-                    var capacityUse = capacity <= 0d ? 1d : occupied / capacity;
-                    var fitQuality = 1d - Math.Abs(0.85d - capacityUse);
-                    fitQuality = Math.Max(0.1d, fitQuality);
-
-                    // Only guest memory is potential *additional* savings.
-                    // Including the host baseline made large hosts dominate the
-                    // global ranking even when every guest caused atlas growth.
-                    var score = potentialGuestSavings * fitQuality;
-
-                    var proposal = new CheapProposal(
-                        host.Id,
-                        ids,
-                        score,
-                        potentialGuestSavings,
-                        capacityUse);
-                    if (!proposals.TryGetValue(proposal.Key, out var prior)
-                        || proposal.Score > prior.Score)
+                    if (!group.GroupedTexture.TryGetValue(
+                            property, out var source)
+                        || source == null)
                     {
-                        proposals[proposal.Key] = proposal;
+                        continue;
                     }
+
+                    var primary = group.GetPrimaryTexture(null);
+                    primarySizes.Add(primary == null
+                        ? null
+                        : new Vector2Int(primary.width, primary.height));
+                    sourceSizes.Add(
+                        new Vector2Int(source.width, source.height));
                 }
+
+                result[property] =
+                    AtlasTextureResolutionPlan.CalculatePropertySize(
+                        layoutSize,
+                        autoSize: true,
+                        primarySizes,
+                        sourceSizes);
             }
 
-            foreach (var host in groups.Where(group =>
-                         group.StandaloneMetrics is { } metrics
-                         && metrics.FreeAreaFraction >=
-                         configuration.MinimumMergeHostFreeAreaRatio))
-            {
-                var guests = groups
-                    .Where(group =>
-                        group.Id != host.Id
-                        && group.StandaloneMetrics != null)
-                    .ToArray();
-                if (guests.Length == 0) continue;
-
-                var remainingCapacity = Math.Max(
-                    1d,
-                    NoGrowthCapacityPixels(host) - OccupiedPixels(host));
-
-                // 1. Best area fit first.
-                AddGreedyPrefixes(
-                    host,
-                    guests
-                        .OrderBy(group =>
-                            Math.Abs(remainingCapacity - OccupiedPixels(group)))
-                        .ThenByDescending(group =>
-                            group.BaselineCost.FullResidentBytes)
-                        .ThenBy(group => group.Id));
-
-                // 2. Highest potential additional memory saving first.
-                AddGreedyPrefixes(
-                    host,
-                    guests
-                        .OrderByDescending(group =>
-                            group.BaselineCost.FullResidentBytes)
-                        .ThenBy(group => group.Id));
-
-                // 3. Small groups first, preserving the 3+ material packing case.
-                AddGreedyPrefixes(
-                    host,
-                    guests
-                        .OrderBy(OccupiedPixels)
-                        .ThenByDescending(group =>
-                            group.BaselineCost.FullResidentBytes)
-                        .ThenBy(group => group.Id));
-            }
-
-            return proposals.Values.ToArray();
+            return result;
         }
 
         private static AtlasTexture.AtlasExecutionMetrics? AnalyzeAtlas(
@@ -753,8 +742,7 @@ namespace net.rs64.TexTransTool.NDMF
             ITexTransToolForUnity engine,
             AtlasSetting settings,
             HashSet<Material> materials,
-            Renderer[] renderers,
-            bool useMergeRelocator = false)
+            Renderer[] renderers)
         {
             AtlasTexture.AtlasExecutionMetrics? captured = null;
 
@@ -771,9 +759,6 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         RequireLossless = true,
                         ReportProgressInfo = false,
-                        IslandRelocatorOverride = useMergeRelocator
-                            ? new AutoAtlasMergeIslandRelocator()
-                            : null,
                         AcceptAtlasSize = (_, _, metrics) =>
                         {
                             captured = metrics;
