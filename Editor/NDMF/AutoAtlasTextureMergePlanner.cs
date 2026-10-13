@@ -2,12 +2,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using nadena.dev.ndmf.animator;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 
@@ -26,8 +24,6 @@ namespace net.rs64.TexTransTool.NDMF
         // only bound cheap integer-DP state retention, not expensive atlas probes.
         private const int BandStatesPerHeight = 8;
         private const int BandCandidatesPerHost = 512;
-        private const int MaxRuntimeUsageScenarios = 64;
-        private const int MaxScenarioEnumerationGroups = 12;
         private const double UnknownDemandLog2 = -32d;
         private const double Epsilon = 1e-8;
 
@@ -125,8 +121,7 @@ namespace net.rs64.TexTransTool.NDMF
                 TextureCostPlan baseline,
                 TextureCostPlan merged,
                 Vector2Int layoutSize,
-                IReadOnlyDictionary<string, Vector2Int> propertySizes,
-                RuntimeUsageModel usage)
+                IReadOnlyDictionary<string, Vector2Int> propertySizes)
             {
                 GroupIds = groupIds;
                 Baseline = baseline;
@@ -150,7 +145,7 @@ namespace net.rs64.TexTransTool.NDMF
                 }
 
                 if (IsAdoptable
-                    && HasStreamingRegression(baseline, merged, groupIds, usage))
+                    && HasStreamingRegression(baseline, merged, groupIds))
                 {
                     IsAdoptable = false;
                 }
@@ -253,148 +248,14 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        private sealed class RuntimeUsageModel
-        {
-            private readonly HashSet<(int A, int B)> _exclusivePairs = new();
-
-            internal void AddExclusive(int a, int b)
-            {
-                if (a == b) return;
-                _exclusivePairs.Add(a < b ? (a, b) : (b, a));
-            }
-
-            internal bool AreExclusive(int a, int b)
-            {
-                if (a == b) return false;
-                return _exclusivePairs.Contains(a < b ? (a, b) : (b, a));
-            }
-
-            internal IReadOnlyList<HashSet<int>> GetMaximalScenarios(int[] groupIds)
-            {
-                if (groupIds.Length == 0) return Array.Empty<HashSet<int>>();
-                if (groupIds.Length > MaxScenarioEnumerationGroups)
-                    return Array.Empty<HashSet<int>>();
-
-                // Maximal feasible active sets are maximal cliques in the
-                // compatibility graph (an edge means "can overlap"). Enumerating
-                // only maximal cliques avoids generating every one of the 2^N
-                // subsets first. In the common case where nothing is proven
-                // exclusive this returns exactly one scenario: all groups active.
-                var results = new List<HashSet<int>>();
-                var all = groupIds.OrderBy(id => id).ToHashSet();
-
-                HashSet<int> CompatibleWith(int id)
-                {
-                    return all.Where(other =>
-                        other != id && !AreExclusive(id, other)).ToHashSet();
-                }
-
-                void Search(
-                    HashSet<int> current,
-                    HashSet<int> possible,
-                    HashSet<int> excluded)
-                {
-                    if (results.Count > MaxRuntimeUsageScenarios) return;
-
-                    if (possible.Count == 0 && excluded.Count == 0)
-                    {
-                        results.Add(new HashSet<int>(current));
-                        return;
-                    }
-
-                    var pivot = possible.Concat(excluded)
-                        .OrderByDescending(id =>
-                            possible.Count(candidate =>
-                                candidate != id && !AreExclusive(id, candidate)))
-                        .ThenBy(id => id)
-                        .FirstOrDefault();
-
-                    var pivotNeighbors = (possible.Count != 0 || excluded.Count != 0)
-                        ? CompatibleWith(pivot)
-                        : new HashSet<int>();
-
-                    foreach (var vertex in possible
-                                 .Where(id => !pivotNeighbors.Contains(id))
-                                 .OrderBy(id => id)
-                                 .ToArray())
-                    {
-                        var neighbors = CompatibleWith(vertex);
-                        var nextCurrent = new HashSet<int>(current) { vertex };
-                        var nextPossible = possible.Where(neighbors.Contains).ToHashSet();
-                        var nextExcluded = excluded.Where(neighbors.Contains).ToHashSet();
-
-                        Search(nextCurrent, nextPossible, nextExcluded);
-                        possible.Remove(vertex);
-                        excluded.Add(vertex);
-
-                        if (results.Count > MaxRuntimeUsageScenarios) return;
-                    }
-                }
-
-                Search(new HashSet<int>(), new HashSet<int>(all), new HashSet<int>());
-
-                // Too many distinct runtime scenarios means the cost model is too
-                // uncertain/expensive for automatic merging. Returning no scenario
-                // makes the caller reject the merge conservatively.
-                return results.Count > MaxRuntimeUsageScenarios
-                    ? Array.Empty<HashSet<int>>()
-                    : results;
-            }
-        }
-
-        private readonly struct UsageGate : IEquatable<UsageGate>
-        {
-            internal readonly string Path;
-            internal readonly Type Type;
-            internal readonly string Property;
-
-            internal UsageGate(string path, Type type, string property)
-            {
-                Path = path;
-                Type = type;
-                Property = property;
-            }
-
-            internal bool Matches(EditorCurveBinding binding)
-            {
-                return binding.path == Path
-                    && binding.type == Type
-                    && binding.propertyName == Property;
-            }
-
-            public bool Equals(UsageGate other)
-            {
-                return Path == other.Path && Type == other.Type && Property == other.Property;
-            }
-
-            public override bool Equals(object? obj)
-            {
-                return obj is UsageGate other && Equals(other);
-            }
-
-            public override int GetHashCode()
-            {
-                unchecked
-                {
-                    var hash = 17;
-                    hash = hash * 31 + Path.GetHashCode();
-                    hash = hash * 31 + Type.GetHashCode();
-                    hash = hash * 31 + Property.GetHashCode();
-                    return hash;
-                }
-            }
-        }
-
         internal static PlanResult Plan(
             IDomain domain,
             AutoAtlasTexture configuration,
-            AnimatorServicesContext? animatorServices,
             AtlasSetting settings,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
             IReadOnlyList<PreparedGroup> groups)
         {
             if (!configuration.EnableAdditionalAtlasMerging
-                || animatorServices == null
                 || groups.Count < 2)
             {
                 return new PlanResult(Array.Empty<MergeSelection>());
@@ -490,7 +351,6 @@ namespace net.rs64.TexTransTool.NDMF
                     && guest.BandUsedHeightPixels <= capacity);
             }
 
-            var usage = AnalyzeRuntimeUsage(animatorServices, groups);
             var byId = groups.ToDictionary(group => group.Id);
             var adoptable = new Dictionary<string, Candidate>();
             var evaluatedLayouts = new HashSet<string>(StringComparer.Ordinal);
@@ -625,8 +485,7 @@ namespace net.rs64.TexTransTool.NDMF
                         baseline,
                         merged,
                         layoutSize,
-                        propertySizes,
-                        usage);
+                        propertySizes);
 
                     if (!candidate.IsAdoptable)
                         continue;
@@ -1139,16 +998,12 @@ namespace net.rs64.TexTransTool.NDMF
         private static bool HasStreamingRegression(
             TextureCostPlan baseline,
             TextureCostPlan merged,
-            int[] groupIds,
-            RuntimeUsageModel usage)
+            int[] groupIds)
         {
-            var scenarios = usage.GetMaximalScenarios(groupIds);
-            if (scenarios.Count == 0)
-            {
-                // The runtime-state space could not be bounded cheaply enough.
-                // Reject automatic merging rather than underestimating mip cost.
-                return true;
-            }
+            // Runtime visibility cannot be proven from animation curves alone:
+            // layer/playable weights may also change at runtime. Evaluate the
+            // conservative worst case where every merged group is active.
+            var activeGroups = groupIds.ToHashSet();
 
             // Camera distance/FOV are intentionally represented as a normalized
             // logarithmic bias. Sweeping the range catches relative mip-demand
@@ -1156,15 +1011,12 @@ namespace net.rs64.TexTransTool.NDMF
             for (var biasStep = -32; biasStep <= 40; biasStep += 1)
             {
                 var bias = biasStep * 0.5d;
-                foreach (var scenario in scenarios)
-                {
-                    var baselineBytes = CalculateScenarioBytes(
-                        baseline, scenario, bias);
-                    var mergedBytes = CalculateScenarioBytes(
-                        merged, scenario, bias);
-                    if (mergedBytes > baselineBytes)
-                        return true;
-                }
+                var baselineBytes = CalculateScenarioBytes(
+                    baseline, activeGroups, bias);
+                var mergedBytes = CalculateScenarioBytes(
+                    merged, activeGroups, bias);
+                if (mergedBytes > baselineBytes)
+                    return true;
             }
 
             return false;
@@ -1352,274 +1204,6 @@ namespace net.rs64.TexTransTool.NDMF
             return (worldArea / uvArea) / uvTransformArea;
         }
 
-        private static RuntimeUsageModel AnalyzeRuntimeUsage(
-            AnimatorServicesContext animatorServices,
-            IReadOnlyList<PreparedGroup> groups)
-        {
-            var model = new RuntimeUsageModel();
-            var gateByGroup = groups.ToDictionary(
-                group => group.Id,
-                group => FindCommonUsageGate(animatorServices, group));
 
-            var layers = animatorServices.ControllerContext.Controllers.Values
-                .Distinct()
-                .SelectMany(controller => controller.Layers)
-                .Where(layer => layer.StateMachine != null)
-                .ToArray();
-
-            for (var leftIndex = 0; leftIndex < groups.Count; leftIndex += 1)
-            {
-                var left = groups[leftIndex];
-                if (gateByGroup[left.Id] is not UsageGate leftGate) continue;
-
-                for (var rightIndex = leftIndex + 1;
-                     rightIndex < groups.Count;
-                     rightIndex += 1)
-                {
-                    var right = groups[rightIndex];
-                    if (gateByGroup[right.Id] is not UsageGate rightGate
-                        || leftGate.Equals(rightGate))
-                    {
-                        continue;
-                    }
-
-                    var leftLayers = layers
-                        .Where(layer => LayerContainsBinding(layer, leftGate))
-                        .ToArray();
-                    var rightLayers = layers
-                        .Where(layer => LayerContainsBinding(layer, rightGate))
-                        .ToArray();
-
-                    if (leftLayers.Length != 1
-                        || rightLayers.Length != 1
-                        || !ReferenceEquals(leftLayers[0], rightLayers[0]))
-                    {
-                        continue;
-                    }
-
-                    if (LayerProvesMutualExclusion(
-                            leftLayers[0], leftGate, rightGate))
-                    {
-                        model.AddExclusive(left.Id, right.Id);
-                    }
-                }
-            }
-
-            return model;
-        }
-
-        private static UsageGate? FindCommonUsageGate(
-            AnimatorServicesContext animatorServices,
-            PreparedGroup group)
-        {
-            UsageGate? common = null;
-            foreach (var renderer in group.Renderers)
-            {
-                var gate = FindNearestUsageGate(animatorServices, renderer);
-                if (gate is null) return null;
-                if (common is null) common = gate;
-                else if (!common.Value.Equals(gate.Value)) return null;
-            }
-            return common;
-        }
-
-        private static UsageGate? FindNearestUsageGate(
-            AnimatorServicesContext animatorServices,
-            Renderer renderer)
-        {
-            var index = animatorServices.AnimationIndex;
-            var remapper = animatorServices.ObjectPathRemapper;
-
-            // If the renderer's material slots are animated, visibility alone
-            // cannot prove which texture-connected group is active at runtime.
-            // Treat the group as potentially simultaneous instead.
-            if (HasAnimatedMaterialSlots(index, remapper, renderer))
-                return null;
-
-            // Renderer.enabled is the most local gate.
-            var rendererPath = remapper.GetVirtualPathForObject(renderer.gameObject);
-            var rendererGate = new UsageGate(
-                rendererPath, renderer.GetType(), "m_Enabled");
-            if (BindingIsAnimated(index, rendererGate))
-                return rendererGate;
-
-            for (var transform = renderer.transform;
-                 transform != null;
-                 transform = transform.parent)
-            {
-                var path = remapper.GetVirtualPathForObject(transform.gameObject);
-                var gate = new UsageGate(path, typeof(GameObject), "m_IsActive");
-                if (BindingIsAnimated(index, gate))
-                    return gate;
-            }
-
-            return null;
-        }
-
-        private static bool HasAnimatedMaterialSlots(
-            AnimationIndex index,
-            ObjectPathRemapper remapper,
-            Renderer renderer)
-        {
-            var rendererPath =
-                remapper.GetVirtualPathForObject(renderer.gameObject);
-
-            return index.ClipsWithObjectCurves.Any(clip =>
-                clip.GetObjectCurveBindings().Any(binding =>
-                    binding.path == rendererPath
-                    && typeof(Renderer).IsAssignableFrom(binding.type)
-                    && binding.propertyName.StartsWith(
-                        "m_Materials.Array.data[",
-                        StringComparison.Ordinal)));
-        }
-
-        private static bool BindingIsAnimated(
-            AnimationIndex index,
-            UsageGate gate)
-        {
-            return index.GetClipsForObjectPath(gate.Path)
-                .Any(clip => clip.GetFloatCurveBindings().Any(gate.Matches));
-        }
-
-        private static bool LayerContainsBinding(
-            VirtualLayer layer,
-            UsageGate gate)
-        {
-            return layer.StateMachine?.AllStates()
-                .Any(state => MotionContainsBinding(state.Motion, gate))
-                ?? false;
-        }
-
-        private static bool MotionContainsBinding(
-            VirtualMotion? motion,
-            UsageGate gate)
-        {
-            switch (motion)
-            {
-                case null:
-                    return false;
-                case VirtualClip clip:
-                    return clip.GetFloatCurveBindings().Any(gate.Matches);
-                case VirtualBlendTree tree:
-                    return tree.Children.Any(child =>
-                        MotionContainsBinding(child.Motion, gate));
-                default:
-                    return false;
-            }
-        }
-
-        private static bool LayerProvesMutualExclusion(
-            VirtualLayer layer,
-            UsageGate left,
-            UsageGate right)
-        {
-            if (layer.SyncedLayerIndex >= 0 || layer.StateMachine is null)
-                return false;
-
-            if (!AllTransitionsAreInstant(layer.StateMachine))
-                return false;
-
-            var states = layer.StateMachine.AllStates().ToArray();
-            if (states.Length == 0) return false;
-
-            var sawLeft = false;
-            var sawRight = false;
-            foreach (var state in states)
-            {
-                if (!TryGetConstantBoolean(state.Motion, left, out var leftValue)
-                    || !TryGetConstantBoolean(state.Motion, right, out var rightValue))
-                {
-                    return false;
-                }
-
-                sawLeft |= leftValue;
-                sawRight |= rightValue;
-                if (leftValue && rightValue) return false;
-            }
-
-            return sawLeft && sawRight;
-        }
-
-        private static bool AllTransitionsAreInstant(VirtualStateMachine root)
-        {
-            foreach (var stateMachine in EnumerateStateMachines(root))
-            {
-                if (stateMachine.AnyStateTransitions.Any(
-                        transition => transition.Duration > 1e-5f))
-                {
-                    return false;
-                }
-
-                foreach (var state in stateMachine.States)
-                {
-                    if (state.State != null
-                        && state.State.Transitions.Any(
-                            transition => transition.Duration > 1e-5f))
-                    {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        }
-
-        private static IEnumerable<VirtualStateMachine> EnumerateStateMachines(
-            VirtualStateMachine root)
-        {
-            yield return root;
-            foreach (var child in root.StateMachines)
-            {
-                foreach (var nested in EnumerateStateMachines(child.StateMachine))
-                    yield return nested;
-            }
-        }
-
-        private static bool TryGetConstantBoolean(
-            VirtualMotion? motion,
-            UsageGate gate,
-            out bool value)
-        {
-            value = false;
-            switch (motion)
-            {
-                case VirtualClip clip:
-                {
-                    var binding = clip.GetFloatCurveBindings()
-                        .FirstOrDefault(gate.Matches);
-                    if (string.IsNullOrEmpty(binding.propertyName))
-                        return false;
-
-                    var curve = clip.GetFloatCurve(binding);
-                    if (curve == null || curve.length == 0) return false;
-
-                    var first = curve.keys[0].value > 0.5f;
-                    if (curve.keys.Any(key => (key.value > 0.5f) != first))
-                        return false;
-
-                    value = first;
-                    return true;
-                }
-                case VirtualBlendTree tree:
-                {
-                    bool? common = null;
-                    foreach (var child in tree.Children)
-                    {
-                        if (!TryGetConstantBoolean(
-                                child.Motion, gate, out var childValue))
-                            return false;
-
-                        if (common.HasValue && common.Value != childValue)
-                            return false;
-                        common = childValue;
-                    }
-
-                    if (!common.HasValue) return false;
-                    value = common.Value;
-                    return true;
-                }
-                default:
-                    return false;
-            }
-        }
     }
 }
