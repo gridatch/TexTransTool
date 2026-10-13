@@ -399,7 +399,12 @@ namespace net.rs64.TexTransTool.NDMF
 
             foreach (var group in groups)
             {
-                if (group.StandaloneMetrics is not { } metrics) continue;
+                if (group.StandaloneMetrics is not { } metrics)
+                {
+                    group.BaselineCost = group.OriginalCost;
+                    continue;
+                }
+
                 group.BandWidthPixels = Math.Max(1, metrics.LayoutSize.x);
                 group.BandUsedHeightPixels = GetBandUsedHeightPixels(metrics);
 
