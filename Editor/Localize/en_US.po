@@ -147,7 +147,7 @@ msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 
 msgid "AutoAtlasTexture:info:MergePlannerDiagnostics"
-msgstr "Additional merge planner diagnostics\n{0}\n\nDecision reasons: minimum-savings=below minimum additional savings / pixel-count=pixel count did not decrease / resident-memory=estimated resident memory did not decrease / max-dimension=maximum texture dimension increased / format-sampling=format sampling cost regressed / mip-streaming=mip or runtime-usage cost regressed / relocation=lossless relocation could not be analyzed / accepted=eligible"
+msgstr "Additional merge planner diagnostics\n{0}\n\nDecision reasons: minimum-savings=below minimum additional savings / pixel-count=pixel count did not decrease / resident-memory=estimated resident memory did not decrease / max-dimension=maximum texture dimension increased / format-sampling=format sampling cost regressed / mip-streaming=mip or runtime-usage cost regressed / accepted=eligible"
 
 msgid "AutoAtlasTexture:info:AdditionalMergeBlock"
 msgstr "Additional merge\nEstimated memory after individual optimization: {0}\nEstimated memory after additional merge: {1}\nAdditional savings: {2:0.0}%\nPixels after individual optimization: {3}\nPixels after additional merge: {4}"
@@ -158,7 +158,7 @@ msgstr "{0} → {1}: {2} cases"
 msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
 msgstr "Merge into unused atlas space"
 
-msgid "AutoAtlasTexture:prop:MinimumMergeHostFreeAreaRatio"
+msgid "AutoAtlasTexture:prop:MinimumMergeHostTopFreeRatio"
 msgstr "Minimum host free-space ratio"
 
 msgid "AutoAtlasTexture:prop:MinimumAdditionalMergeSavingsRate"
