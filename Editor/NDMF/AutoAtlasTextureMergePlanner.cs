@@ -47,7 +47,9 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Dictionary<string, int> PropertyUseCount =
                 new(StringComparer.Ordinal);
             internal TextureCostPlan OriginalCost = TextureCostPlan.Empty;
+            internal bool OriginalCostKnown;
             internal TextureCostPlan BaselineCost = TextureCostPlan.Empty;
+            internal bool BaselineCostKnown;
         }
 
         internal sealed class MergeSelection
@@ -96,11 +98,16 @@ namespace net.rs64.TexTransTool.NDMF
             internal string Key => string.Join(",", GuestIds);
         }
 
+        private enum UnknownAlphaAssumption
+        {
+            AssumeAbsent,
+            AssumePresent,
+        }
+
         private sealed class Candidate
         {
             internal readonly int[] GroupIds;
             internal readonly TextureCostPlan Baseline;
-            internal readonly TextureCostPlan Merged;
             internal readonly Vector2Int LayoutSize;
             internal readonly long SavingBytes;
             internal readonly float SavingRate;
@@ -115,7 +122,6 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 GroupIds = groupIds;
                 Baseline = baseline;
-                Merged = merged;
                 LayoutSize = layoutSize;
                 SavingBytes = baseline.FullResidentBytes - merged.FullResidentBytes;
                 SavingRate = baseline.FullResidentBytes <= 0
@@ -186,7 +192,6 @@ namespace net.rs64.TexTransTool.NDMF
 
         internal sealed class TextureCostEntry
         {
-            internal readonly string Key;
             internal readonly int Width;
             internal readonly int Height;
             internal readonly uint BlockWidth;
@@ -199,7 +204,6 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long FullResidentBytes;
 
             internal TextureCostEntry(
-                string key,
                 int width,
                 int height,
                 TextureFormat format,
@@ -208,7 +212,6 @@ namespace net.rs64.TexTransTool.NDMF
                 IEnumerable<int> contributors,
                 Dictionary<int, double> demandLog2)
                 : this(
-                    key,
                     width,
                     height,
                     GetBlockLayout(format),
@@ -241,7 +244,6 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             private TextureCostEntry(
-                string key,
                 int width,
                 int height,
                 (uint Width, uint Height, uint Size) block,
@@ -250,7 +252,6 @@ namespace net.rs64.TexTransTool.NDMF
                 IEnumerable<int> contributors,
                 Dictionary<int, double> demandLog2)
             {
-                Key = key;
                 Width = width;
                 Height = height;
                 BlockWidth = block.Width;
@@ -412,8 +413,14 @@ namespace net.rs64.TexTransTool.NDMF
 
             foreach (var group in groups)
             {
-                group.OriginalCost = BuildOriginalCost(
-                    domain, group, propertyTextures);
+                var originalCost = TryBuildOriginalCost(
+                    domain, group, propertyTextures, alphaCache);
+                if (originalCost != null)
+                {
+                    group.OriginalCost = originalCost;
+                    group.OriginalCostKnown = true;
+                }
+
                 group.StandaloneMetrics = AnalyzeAtlas(
                     domain, engine, settings, group.Materials, group.Renderers);
             }
@@ -422,7 +429,11 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 if (group.StandaloneMetrics is not { } metrics)
                 {
-                    group.BaselineCost = group.OriginalCost;
+                    if (group.OriginalCostKnown)
+                    {
+                        group.BaselineCost = group.OriginalCost;
+                        group.BaselineCostKnown = true;
+                    }
                     continue;
                 }
 
@@ -463,17 +474,21 @@ namespace net.rs64.TexTransTool.NDMF
                         new[] { group },
                         propertyTextures,
                         metrics.PropertySizes,
-                        alphaCache);
+                        alphaCache,
+                        UnknownAlphaAssumption.AssumeAbsent);
+                    group.BaselineCostKnown = true;
                 }
-                else
+                else if (group.OriginalCostKnown)
                 {
                     group.BaselineCost = group.OriginalCost;
+                    group.BaselineCostKnown = true;
                 }
             }
 
             bool CanHostAnyGuest(PreparedGroup host)
             {
                 if (host.StandaloneMetrics == null
+                    || !host.BaselineCostKnown
                     || host.BandWidthPixels <= 0
                     || host.BandUsedHeightPixels <= 0)
                 {
@@ -486,6 +501,7 @@ namespace net.rs64.TexTransTool.NDMF
                 return groups.Any(guest =>
                     guest.Id != host.Id
                     && guest.StandaloneMetrics != null
+                    && guest.BaselineCostKnown
                     && guest.BandWidthPixels > 0
                     && guest.BandWidthPixels <= host.BandWidthPixels
                     && guest.BandUsedHeightPixels > 0
@@ -508,6 +524,7 @@ namespace net.rs64.TexTransTool.NDMF
                     .Where(group =>
                         group.Id != host.Id
                         && group.StandaloneMetrics != null
+                        && group.BaselineCostKnown
                         && group.BandWidthPixels > 0
                         && group.BandWidthPixels <= hostWidth
                         && group.BandUsedHeightPixels > 0
@@ -618,7 +635,8 @@ namespace net.rs64.TexTransTool.NDMF
                         selectedGroups,
                         propertyTextures,
                         propertySizes,
-                        alphaCache);
+                        alphaCache,
+                        UnknownAlphaAssumption.AssumePresent);
 
                     var candidate = new Candidate(
                         ids,
@@ -795,65 +813,43 @@ namespace net.rs64.TexTransTool.NDMF
                         StringComparison.Ordinal) ?? -1) >= 0;
         }
 
-        private static TextureCostPlan BuildOriginalCost(
+        private static TextureCostPlan? TryBuildOriginalCost(
             IDomain domain,
             PreparedGroup group,
-            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures)
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
+            Dictionary<Texture, bool> alphaCache)
         {
             var entries = new List<TextureCostEntry>();
+            var bytesPerTexel = new Dictionary<Texture, double>();
+
             foreach (var texture in group.SourceTextures)
             {
+                if (!TryGetOriginalTextureCostInfo(
+                        domain,
+                        texture,
+                        alphaCache,
+                        out var format,
+                        out var mipCount,
+                        out var streaming))
+                {
+                    return null;
+                }
+
                 var demands = new Dictionary<int, double>
                 {
                     [group.Id] = FindTextureDemandLog2(
                         domain, group, texture, propertyTextures),
                 };
 
-                switch (texture)
-                {
-                    case Texture2D texture2D:
-                    {
-                        var mipCount = Math.Max(1, texture2D.mipmapCount);
-                        entries.Add(new TextureCostEntry(
-                            "source:" + texture.GetInstanceID(),
-                            texture.width,
-                            texture.height,
-                            texture2D.format,
-                            mipCount,
-                            texture2D.streamingMipmaps && mipCount > 1,
-                            new[] { group.Id },
-                            demands));
-                        break;
-                    }
-                    case RenderTexture renderTexture:
-                    {
-                        var mipCount = renderTexture.useMipMap
-                            ? CalculateMipCount(
-                                renderTexture.width, renderTexture.height)
-                            : 1;
-                        entries.Add(new TextureCostEntry(
-                            "source:" + texture.GetInstanceID(),
-                            texture.width,
-                            texture.height,
-                            renderTexture.graphicsFormat,
-                            mipCount,
-                            streaming: false,
-                            new[] { group.Id },
-                            demands));
-                        break;
-                    }
-                    default:
-                        entries.Add(new TextureCostEntry(
-                            "source:" + texture.GetInstanceID(),
-                            texture.width,
-                            texture.height,
-                            TextureFormat.RGBA32,
-                            1,
-                            streaming: false,
-                            new[] { group.Id },
-                            demands));
-                        break;
-                }
+                entries.Add(new TextureCostEntry(
+                    texture.width,
+                    texture.height,
+                    format,
+                    mipCount,
+                    streaming,
+                    new[] { group.Id },
+                    demands));
+                bytesPerTexel[texture] = GetBytesPerTexel(format);
             }
 
             var propertySamplingCosts = group.Materials
@@ -862,7 +858,7 @@ namespace net.rs64.TexTransTool.NDMF
                 .Where(pair => pair.Value != null)
                 .GroupBy(pair => pair.Key)
                 .Select(propertyGroup => propertyGroup
-                    .Max(pair => GetSourceBytesPerTexel(pair.Value)))
+                    .Max(pair => bytesPerTexel[pair.Value]))
                 .Sum();
 
             return new TextureCostPlan(
@@ -873,11 +869,79 @@ namespace net.rs64.TexTransTool.NDMF
                 });
         }
 
+        private static bool TryGetOriginalTextureCostInfo(
+            IDomain domain,
+            Texture texture,
+            Dictionary<Texture, bool> alphaCache,
+            out TextureFormat format,
+            out int mipCount,
+            out bool streaming)
+        {
+            format = default;
+            mipCount = 1;
+            streaming = false;
+
+            TexTransToolTextureDescriptor descriptor;
+            try
+            {
+                descriptor = domain.GetTextureDescriptor(texture);
+            }
+            catch
+            {
+                return false;
+            }
+
+            mipCount = descriptor.UseMipMap
+                ? CalculateMipCount(texture.width, texture.height)
+                : 1;
+
+            switch (texture)
+            {
+                case Texture2D texture2D:
+                    try
+                    {
+                        format = descriptor.TextureFormat.Get(texture2D).CompressFormat;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+
+                    streaming = texture2D.streamingMipmaps && mipCount > 1;
+                    return true;
+
+                case RenderTexture renderTexture:
+                    if (descriptor.TextureFormat
+                        is not TextureCompressionData compression)
+                    {
+                        return false;
+                    }
+
+                    var hasAlpha = HasAlpha(
+                        renderTexture,
+                        alphaCache,
+                        UnknownAlphaAssumption.AssumeAbsent);
+                    format = compression.UseOverride
+                        ? compression.OverrideTextureFormat
+                        : TextureCompressionData.GetQuality2TextureFormat(
+                            compression.FormatQualityValue, hasAlpha);
+
+                    // Registered TTT RenderTextures are downloaded to Texture2D
+                    // and CompressDeferred enables Streaming Mipmaps on them.
+                    streaming = mipCount > 1;
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
         private static TextureCostPlan BuildGeneratedCost(
             IReadOnlyList<PreparedGroup> groups,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
             IReadOnlyDictionary<string, Vector2Int> propertySizes,
-            Dictionary<Texture, bool> alphaCache)
+            Dictionary<Texture, bool> alphaCache,
+            UnknownAlphaAssumption unknownAlphaAssumption)
         {
             var entries = new List<TextureCostEntry>();
             var sampling = groups.ToDictionary(group => group.Id, _ => 0d);
@@ -943,7 +1007,11 @@ namespace net.rs64.TexTransTool.NDMF
                 if (contributors.Count == 0) continue;
 
                 var hasAlpha = pixelSources.Count == 0
-                    || pixelSources.Any(texture => HasAlpha(texture, alphaCache));
+                    || pixelSources.Any(texture =>
+                        HasAlpha(
+                            texture,
+                            alphaCache,
+                            unknownAlphaAssumption));
                 var quality = property.Key is "_BumpMap" or "_Bump2ndMap"
                     ? FormatQuality.High
                     : FormatQuality.Normal;
@@ -955,7 +1023,6 @@ namespace net.rs64.TexTransTool.NDMF
                     sampling[pair.Key] += bytesPerTexel * pair.Value;
 
                 entries.Add(new TextureCostEntry(
-                    "generated:" + property.Key,
                     property.Value.x,
                     property.Value.y,
                     format,
@@ -970,12 +1037,33 @@ namespace net.rs64.TexTransTool.NDMF
             return new TextureCostPlan(entries, sampling);
         }
 
-        private static bool HasAlpha(Texture texture, Dictionary<Texture, bool> cache)
+        private static bool HasAlpha(
+            Texture texture,
+            Dictionary<Texture, bool> cache,
+            UnknownAlphaAssumption unknownAlphaAssumption)
         {
-            if (cache.TryGetValue(texture, out var cached)) return cached;
+            if (texture is RenderTexture renderTexture)
+            {
+                if (!GraphicsFormatUtility.HasAlphaChannel(
+                        renderTexture.graphicsFormat))
+                {
+                    return false;
+                }
+
+                // RenderTexture content would require a GPU readback to prove
+                // whether alpha is actually used. For a baseline we assume the
+                // cheaper no-alpha format; for a merge candidate we assume alpha.
+                return unknownAlphaAssumption
+                    == UnknownAlphaAssumption.AssumePresent;
+            }
 
             if (texture is not Texture2D texture2D)
-                return cache[texture] = true;
+            {
+                return unknownAlphaAssumption
+                    == UnknownAlphaAssumption.AssumePresent;
+            }
+
+            if (cache.TryGetValue(texture, out var cached)) return cached;
 
             using var alpha = TextureCompressionData.HasAlphaChannel(texture2D);
             return cache[texture] = alpha.GetResult();
