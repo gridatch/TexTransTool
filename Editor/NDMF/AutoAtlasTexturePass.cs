@@ -464,7 +464,7 @@ namespace net.rs64.TexTransTool.NDMF
                         }
                         break;
 
-                    case RenderTexture renderTexture:
+                    case RenderTexture:
                         if (descriptor.TextureFormat
                             is not TextureCompressionData compression)
                         {
@@ -475,17 +475,10 @@ namespace net.rs64.TexTransTool.NDMF
                         // without a GPU readback. Use the cheaper no-alpha format
                         // for the "before" side so displayed savings are not
                         // overstated.
-                        var hasAlpha = false;
-                        if (!GraphicsFormatUtility.HasAlphaChannel(
-                                renderTexture.graphicsFormat))
-                        {
-                            hasAlpha = false;
-                        }
-
                         format = compression.UseOverride
                             ? compression.OverrideTextureFormat
                             : TextureCompressionData.GetQuality2TextureFormat(
-                                compression.FormatQualityValue, hasAlpha);
+                                compression.FormatQualityValue, hasAlpha: false);
                         break;
 
                     default:
