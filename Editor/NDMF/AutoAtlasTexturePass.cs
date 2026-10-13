@@ -264,7 +264,26 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 var execution = executionGroups.Dequeue();
                 var group = execution.Materials;
-                var atlasRenderers = execution.Renderers;
+
+                // Renderer/material/mesh state can change between planning and
+                // execution (for example when earlier NDMF processing removes
+                // EditorOnly objects or a prior AutoAtlas execution replaces
+                // meshes/materials). Revalidate the cached renderer set against
+                // the current domain before constructing AtlasContext.
+                var atlasRenderers = execution.Renderers
+                    .Where(renderer => renderer != null
+                        && domain.GetMesh(renderer) != null
+                        && domain.GetMaterials(renderer)
+                            .UOfType<Material>()
+                            .Any(group.Contains))
+                    .ToArray();
+                atlasRenderers = AtlasTexture.FilterExistUVChannel(
+                    domain, atlasRenderers, UVChannel.UV0);
+                if (atlasRenderers.Length == 0)
+                {
+                    continue;
+                }
+
                 var originalPixels = execution.SourceTextures.Sum(texture =>
                     (long)texture.width * texture.height);
 
