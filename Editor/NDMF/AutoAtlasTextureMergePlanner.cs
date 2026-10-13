@@ -379,13 +379,17 @@ namespace net.rs64.TexTransTool.NDMF
         internal static PlanResult Plan(
             IDomain domain,
             AutoAtlasTexture configuration,
-            AnimatorServicesContext animatorServices,
+            AnimatorServicesContext? animatorServices,
             AtlasSetting settings,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
             IReadOnlyList<PreparedGroup> groups)
         {
-            if (!configuration.EnableAdditionalAtlasMerging || groups.Count < 2)
+            if (!configuration.EnableAdditionalAtlasMerging
+                || animatorServices == null
+                || groups.Count < 2)
+            {
                 return new PlanResult(Array.Empty<MergeSelection>());
+            }
 
             var engine = domain.GetTexTransCoreEngineForUnity();
             var alphaCache = new Dictionary<Texture, bool>();
