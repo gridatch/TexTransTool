@@ -149,14 +149,11 @@ msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 msgid "AutoAtlasTexture:info:TargetTextureMemory"
 msgstr "Target texture memory: {0} → {1}"
 
-
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2} cases"
 
 msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
 msgstr "Merge textures into unused atlas space"
-
-
 
 msgid "AutoAtlasTexture:prop:ExcludedRenderers"
 msgstr "Excluded Renderers"
