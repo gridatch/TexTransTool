@@ -414,11 +414,11 @@ namespace net.rs64.TexTransTool.NDMF
 
             var hostCount = groups.Count(group =>
                 group.StandaloneMetrics is { } metrics
-                && metrics.TopFreeFraction >= configuration.MinimumMergeHostFreeAreaRatio);
+                && metrics.TopFreeFraction >= configuration.MinimumMergeHostTopFreeRatio);
 
             diagnosticLines.Add(
                 $"atomic groups={groups.Count}, merge hosts={hostCount}, " +
-                $"host top-free threshold={configuration.MinimumMergeHostFreeAreaRatio:P0}");
+                $"host top-free threshold={configuration.MinimumMergeHostTopFreeRatio:P0}");
 
             foreach (var group in groups.OrderBy(group => group.Id))
             {
@@ -444,7 +444,7 @@ namespace net.rs64.TexTransTool.NDMF
             foreach (var host in groups.Where(group =>
                          group.StandaloneMetrics is { } metrics
                          && metrics.TopFreeFraction >=
-                         configuration.MinimumMergeHostFreeAreaRatio
+                         configuration.MinimumMergeHostTopFreeRatio
                          && group.BandWidthPixels > 0
                          && group.BandUsedHeightPixels > 0))
             {
