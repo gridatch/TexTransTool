@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using nadena.dev.ndmf;
-using nadena.dev.ndmf.animator;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
@@ -40,15 +39,10 @@ namespace net.rs64.TexTransTool.NDMF
                 .Where(atlas => TexTransBehaviorSearch.CheckIsActiveBehavior(
                     atlas, context.AvatarRootObject))
                 .ToArray();
-            var configuration = configurations[0];
-            var animatorServices = configuration.EnableAdditionalAtlasMerging
-                ? context.Extension<AnimatorServicesContext>()
-                : null;
             AutoAtlasTextureProcessor.Execute(
                 session.Domain,
-                configuration,
-                manualAtlases,
-                animatorServices);
+                configurations[0],
+                manualAtlases);
         }
     }
 
@@ -79,8 +73,7 @@ namespace net.rs64.TexTransTool.NDMF
         internal static void Execute(
             IDomain domain,
             AutoAtlasTexture configuration,
-            IReadOnlyCollection<AtlasTexture> manualAtlases,
-            AnimatorServicesContext? animatorServices)
+            IReadOnlyCollection<AtlasTexture> manualAtlases)
         {
             // Store only the NDMF console summary for this build.
             var completed = new List<string>();
@@ -216,7 +209,6 @@ namespace net.rs64.TexTransTool.NDMF
             var mergePlan = AutoAtlasTextureMergePlanner.Plan(
                 domain,
                 configuration,
-                animatorServices,
                 settings,
                 propertyTextures,
                 preparedGroups);
