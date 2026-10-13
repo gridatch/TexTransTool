@@ -1,7 +1,6 @@
 #nullable enable
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 namespace net.rs64.TexTransTool.TextureAtlas
 {
@@ -22,17 +21,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
         // Optional second-stage optimization. Existing AutoAtlasTexture behavior is
         // unchanged while this is false.
         public bool EnableAdditionalAtlasMerging = false;
-
-        // Minimum continuous free band above a standalone atlas required for it to
-        // act as a merge host. Groups below this threshold may still be guests.
-        [FormerlySerializedAs("MinimumMergeHostFreeAreaRatio")]
-        [Range(0f, 1f)]
-        public float MinimumMergeHostTopFreeRatio = 0.25f;
-
-        // Additional savings required relative to the result of optimizing each
-        // atomic texture-connected group independently.
-        [Range(0f, 1f)]
-        public float MinimumAdditionalMergeSavingsRate = 0.10f;
 
         public List<Renderer> ExcludedRenderers = new();
         public List<Material> ExcludedMaterials = new();
