@@ -263,20 +263,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
             );
             if (executionOptions?.AcceptAtlasSize is { } acceptAtlasSize)
             {
-                var layoutArea = Math.Max(
-                    1e-8,
-                    (double)resolutionPlan.LayoutSize.y / resolutionPlan.LayoutSize.x);
-                var occupiedArea = movedVirtualIslandArray.Sum(island =>
-                    Math.Max(0d, island.Size.X) * Math.Max(0d, island.Size.Y));
-                var freeAreaFraction = (float)Mathf.Clamp01(
-                    (float)(1d - (occupiedArea / layoutArea)));
-
                 var metrics = new AtlasExecutionMetrics(
                     (float)(1 - height),
                     relocateResult.TotalRelocateCount,
                     relocationTime,
                     resolutionPlan.TotalPixelCount,
-                    freeAreaFraction,
                     resolutionPlan.LayoutSize,
                     resolutionPlan.PropertySizes);
                 if (acceptAtlasSize(atlasContext, atlasedTextureSize, metrics) is false)

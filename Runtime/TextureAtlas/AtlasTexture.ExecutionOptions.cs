@@ -46,7 +46,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal readonly int TotalRelocateCount;
             internal readonly long RelocationTimeMilliseconds;
             internal readonly long OutputTexturePixelCount;
-            internal readonly float FreeAreaFraction;
             internal readonly Vector2Int LayoutSize;
             internal readonly IReadOnlyDictionary<string, Vector2Int> PropertySizes;
 
@@ -55,7 +54,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 int totalRelocateCount,
                 long relocationTimeMilliseconds,
                 long outputTexturePixelCount,
-                float freeAreaFraction,
                 Vector2Int layoutSize,
                 IReadOnlyDictionary<string, Vector2Int> propertySizes)
             {
@@ -63,7 +61,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 TotalRelocateCount = totalRelocateCount;
                 RelocationTimeMilliseconds = relocationTimeMilliseconds;
                 OutputTexturePixelCount = outputTexturePixelCount;
-                FreeAreaFraction = freeAreaFraction;
                 LayoutSize = layoutSize;
                 PropertySizes = propertySizes;
             }

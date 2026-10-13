@@ -46,7 +46,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         EditorGUILayout.HelpBox(
                             "AutoAtlasTexture:help:AdditionalAtlasMerging".GetLocalize(),
                             MessageType.Info);
-
                     }
                 }
 
