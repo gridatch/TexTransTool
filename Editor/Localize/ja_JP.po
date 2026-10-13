@@ -150,14 +150,11 @@ msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
 msgid "AutoAtlasTexture:info:TargetTextureMemory"
 msgstr "対象テクスチャメモリ: {0} → {1}"
 
-
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2}件"
 
 msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
 msgstr "余白を利用してテクスチャを統合"
-
-
 
 msgid "AutoAtlasTexture:prop:ExcludedRenderers"
 msgstr "除外レンダラー"
