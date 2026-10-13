@@ -128,7 +128,6 @@ namespace net.rs64.TexTransTool.NDMF
                 TextureCostPlan baseline,
                 TextureCostPlan merged,
                 Vector2Int layoutSize,
-                float minimumSavingRate,
                 RuntimeUsageModel usage)
             {
                 GroupIds = groupIds;
@@ -141,8 +140,6 @@ namespace net.rs64.TexTransTool.NDMF
                     : (float)SavingBytes / baseline.FullResidentBytes;
 
                 var failedGates = new List<string>();
-                if (SavingRate < minimumSavingRate)
-                    failedGates.Add("minimum-savings");
                 if (merged.PixelCount >= baseline.PixelCount)
                     failedGates.Add("pixel-count");
                 if (merged.FullResidentBytes >= baseline.FullResidentBytes)
@@ -450,13 +447,31 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
-            var hostCount = groups.Count(group =>
-                group.StandaloneMetrics is { } metrics
-                && metrics.TopFreeFraction >= configuration.MinimumMergeHostTopFreeRatio);
+            bool CanHostAnyGuest(PreparedGroup host)
+            {
+                if (host.StandaloneMetrics == null
+                    || host.BandWidthPixels <= 0
+                    || host.BandUsedHeightPixels <= 0)
+                {
+                    return false;
+                }
+
+                var capacity = host.BandWidthPixels - host.BandUsedHeightPixels;
+                if (capacity <= 0) return false;
+
+                return groups.Any(guest =>
+                    guest.Id != host.Id
+                    && guest.StandaloneMetrics != null
+                    && guest.BandWidthPixels > 0
+                    && guest.BandWidthPixels <= host.BandWidthPixels
+                    && guest.BandUsedHeightPixels > 0
+                    && guest.BandUsedHeightPixels <= capacity);
+            }
+
+            var hostCount = groups.Count(CanHostAnyGuest);
 
             diagnosticLines.Add(
-                $"atomic groups={groups.Count}, merge hosts={hostCount}, " +
-                $"host top-free threshold={configuration.MinimumMergeHostTopFreeRatio:P0}");
+                $"atomic groups={groups.Count}, merge hosts={hostCount}");
 
             foreach (var group in groups.OrderBy(group => group.Id))
             {
@@ -481,12 +496,7 @@ namespace net.rs64.TexTransTool.NDMF
             var duplicateLayoutsSkipped = 0;
             var exploredBandStates = 0;
 
-            foreach (var host in groups.Where(group =>
-                         group.StandaloneMetrics is { } metrics
-                         && metrics.TopFreeFraction >=
-                         configuration.MinimumMergeHostTopFreeRatio
-                         && group.BandWidthPixels > 0
-                         && group.BandUsedHeightPixels > 0))
+            foreach (var host in groups.Where(CanHostAnyGuest))
             {
                 var hostWidth = host.BandWidthPixels;
                 var capacity = Math.Max(
@@ -619,7 +629,6 @@ namespace net.rs64.TexTransTool.NDMF
                         baseline,
                         merged,
                         layoutSize,
-                        configuration.MinimumAdditionalMergeSavingsRate,
                         usage);
 
                     diagnosticCandidates.Add(candidate);
