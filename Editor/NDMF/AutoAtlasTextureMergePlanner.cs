@@ -222,27 +222,6 @@ namespace net.rs64.TexTransTool.NDMF
             {
             }
 
-            internal TextureCostEntry(
-                string key,
-                int width,
-                int height,
-                GraphicsFormat format,
-                int mipCount,
-                bool streaming,
-                IEnumerable<int> contributors,
-                Dictionary<int, double> demandLog2)
-                : this(
-                    key,
-                    width,
-                    height,
-                    GetBlockLayout(format),
-                    mipCount,
-                    streaming,
-                    contributors,
-                    demandLog2)
-            {
-            }
-
             private TextureCostEntry(
                 int width,
                 int height,
@@ -1027,8 +1006,8 @@ namespace net.rs64.TexTransTool.NDMF
                     property.Value.y,
                     format,
                     CalculateMipCount(property.Value.x, property.Value.y),
-                    // VRChat streams avatar textures that have mipmaps,
-                    // regardless of the Unity editor-side importer streaming flag.
+                    // Generated atlas textures are downloaded through TTT's
+                    // deferred compressor, which enables Streaming Mipmaps.
                     streaming: true,
                     contributors,
                     demand));
@@ -1122,41 +1101,7 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        private static (uint Width, uint Height, uint Size) GetBlockLayout(
-            GraphicsFormat format)
-        {
-            try
-            {
-                return (
-                    Math.Max(1u, GraphicsFormatUtility.GetBlockWidth(format)),
-                    Math.Max(1u, GraphicsFormatUtility.GetBlockHeight(format)),
-                    Math.Max(1u, GraphicsFormatUtility.GetBlockSize(format)));
-            }
-            catch
-            {
-                return (1u, 1u, 4u);
-            }
-        }
-
-        private static double GetSourceBytesPerTexel(Texture texture)
-        {
-            return texture switch
-            {
-                Texture2D texture2D =>
-                    GetBytesPerTexel(texture2D.format),
-                RenderTexture renderTexture =>
-                    GetBytesPerTexel(renderTexture.graphicsFormat),
-                _ => 4d,
-            };
-        }
-
         private static double GetBytesPerTexel(TextureFormat format)
-        {
-            var block = GetBlockLayout(format);
-            return (double)block.Size / (block.Width * block.Height);
-        }
-
-        private static double GetBytesPerTexel(GraphicsFormat format)
         {
             var block = GetBlockLayout(format);
             return (double)block.Size / (block.Width * block.Height);
