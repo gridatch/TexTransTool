@@ -271,14 +271,38 @@ namespace net.rs64.TexTransTool.NDMF
                 // meshes/materials). Revalidate the cached renderer set against
                 // the current domain before constructing AtlasContext.
                 var atlasRenderers = execution.Renderers
-                    .Where(renderer => renderer != null
-                        && domain.GetMesh(renderer) != null
-                        && domain.GetMaterials(renderer)
-                            .UOfType<Material>()
-                            .Any(group.Contains))
+                    .Where(renderer =>
+                    {
+                        if (renderer == null
+                            || !AtlasTexture.IsAtlasAllowedRenderer(renderer))
+                        {
+                            return false;
+                        }
+
+                        var mesh = domain.GetMesh(renderer);
+                        if (mesh == null
+                            || mesh.subMeshCount <= 0
+                            || !mesh.HasUV((int)UVChannel.UV0))
+                        {
+                            return false;
+                        }
+
+                        var materials = domain.GetMaterials(renderer);
+                        for (var slot = 0; slot < materials.Count; slot += 1)
+                        {
+                            var material = materials[slot];
+                            if (material == null || !group.Contains(material))
+                                continue;
+
+                            var subMeshIndex = Math.Clamp(
+                                slot, 0, mesh.subMeshCount - 1);
+                            if (mesh.GetSubMesh(subMeshIndex).indexCount != 0)
+                                return true;
+                        }
+
+                        return false;
+                    })
                     .ToArray();
-                atlasRenderers = AtlasTexture.FilterExistUVChannel(
-                    domain, atlasRenderers, UVChannel.UV0);
                 if (atlasRenderers.Length == 0)
                 {
                     continue;
