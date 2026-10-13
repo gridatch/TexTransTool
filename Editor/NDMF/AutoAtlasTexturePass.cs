@@ -311,12 +311,31 @@ namespace net.rs64.TexTransTool.NDMF
                             {
                                 // The planner models atomic groups as independently
                                 // valid horizontal bands. Accept only if execution
-                                // stays within that predicted layout envelope.
-                                return metrics.OutputTexturePixelCount > 0
-                                    && metrics.LayoutSize.x
-                                        <= mergeSelection.PlannedLayoutSize.x
-                                    && metrics.LayoutSize.y
-                                        <= mergeSelection.PlannedLayoutSize.y;
+                                // stays within both the predicted layout and every
+                                // predicted property-resolution envelope.
+                                if (metrics.OutputTexturePixelCount <= 0
+                                    || metrics.LayoutSize.x
+                                        > mergeSelection.PlannedLayoutSize.x
+                                    || metrics.LayoutSize.y
+                                        > mergeSelection.PlannedLayoutSize.y)
+                                {
+                                    return false;
+                                }
+
+                                foreach (var property in metrics.PropertySizes)
+                                {
+                                    if (!mergeSelection.PlannedPropertySizes
+                                            .TryGetValue(
+                                                property.Key,
+                                                out var plannedSize)
+                                        || property.Value.x > plannedSize.x
+                                        || property.Value.y > plannedSize.y)
+                                    {
+                                        return false;
+                                    }
+                                }
+
+                                return true;
                             }
 
                             // Preserve the existing individual AutoAtlas acceptance rule.
