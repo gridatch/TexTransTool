@@ -219,9 +219,6 @@ namespace net.rs64.TexTransTool.NDMF
                 settings,
                 propertyTextures,
                 preparedGroups);
-            var mergeLayoutFallbackCount = 0;
-            var mergeMemoryFallbackCount = 0;
-            var successfulMergeCount = 0;
 
             var selectedIds = mergePlan.Selections
                 .SelectMany(selection => selection.GroupIds)
@@ -335,7 +332,6 @@ namespace net.rs64.TexTransTool.NDMF
                         // build-time band layout does not satisfy the planner's
                         // envelope, preserve ordinary AutoAtlas behavior by
                         // retrying every atomic group independently.
-                        mergeLayoutFallbackCount += 1;
                         EnqueueStandaloneFallback(failedMerge);
                     }
                     continue;
@@ -369,7 +365,6 @@ namespace net.rs64.TexTransTool.NDMF
                         rt.Dispose();
                     }
 
-                    mergeMemoryFallbackCount += 1;
                     EnqueueStandaloneFallback(memoryCheckedMerge);
                     continue;
                 }
@@ -420,9 +415,6 @@ namespace net.rs64.TexTransTool.NDMF
                     domain.RegisterPostProcessingAndLazyGPUReadBack(
                         descriptor.Key, descriptor.Value);
 
-                if (execution.MergeSelection != null)
-                    successfulMergeCount += 1;
-
                 completed.Add((block, executionMetrics.TotalRelocateCount,
                     executionMetrics.RelocationTimeMilliseconds));
             }
@@ -438,21 +430,6 @@ namespace net.rs64.TexTransTool.NDMF
                 "\n\n", completed.Select(item => item.Block));
             var totalRelocations = completed.Sum(item => item.Relocations);
             var totalMilliseconds = completed.Sum(item => item.Milliseconds);
-
-            if (configuration.EnableAdditionalAtlasMerging)
-            {
-                TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info(
-                        "AutoAtlasTexture:info:MergeRegressionDiagnostic",
-                        mergePlan.CandidateCount,
-                        mergePlan.BasicGateRejected,
-                        mergePlan.SamplingRejected,
-                        mergePlan.StreamingRejected,
-                        mergePlan.Selections.Count,
-                        mergeLayoutFallbackCount,
-                        mergeMemoryFallbackCount,
-                        successfulMergeCount));
-            }
 
             TTTLog.ReportingObject(configuration, () =>
             {
