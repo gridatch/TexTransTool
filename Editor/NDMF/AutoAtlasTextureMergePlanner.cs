@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using nadena.dev.ndmf.animator;
 using net.rs64.TexTransCore;
+using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using UnityEditor;
