@@ -962,7 +962,7 @@ namespace net.rs64.TexTransTool.NDMF
                     property.Value.y,
                     format,
                     CalculateMipCount(property.Value.x, property.Value.y),
-                    streaming: true,
+                    streaming: false,
                     contributors,
                     demand));
             }
