@@ -1275,23 +1275,33 @@ namespace net.rs64.TexTransTool.NDMF
             TextureCostPlan merged,
             int[] groupIds)
         {
-            // Runtime visibility cannot be proven from animation curves alone:
-            // layer/playable weights may also change at runtime. Evaluate the
-            // conservative worst case where every merged group is active.
-            var activeGroups = groupIds.ToHashSet();
-
-            // Camera distance/FOV are intentionally represented as a normalized
-            // logarithmic bias. Sweeping the range catches relative mip-demand
-            // regressions without assuming one particular viewing distance.
-            for (var biasStep = -32; biasStep <= 40; biasStep += 1)
+            // Cross-group atlasing can make a texture shared by groups that are
+            // not visible at the same time. Checking only the all-active case can
+            // hide that regression because the standalone baseline then includes
+            // every group's independent texture cost.
+            //
+            // Check every atomic group in isolation instead. For a shared atlas
+            // entry, any multi-group scenario needs the most detailed mip required
+            // by one of its active contributors, while the standalone baseline is
+            // the sum of those groups' independent costs. Therefore, if the merge
+            // does not regress any singleton scenario, adding more active groups
+            // cannot create a worse aggregate mip-memory case.
+            foreach (var groupId in groupIds)
             {
-                var bias = biasStep * 0.5d;
-                var baselineBytes = CalculateScenarioBytes(
-                    baseline, activeGroups, bias);
-                var mergedBytes = CalculateScenarioBytes(
-                    merged, activeGroups, bias);
-                if (mergedBytes > baselineBytes)
-                    return true;
+                var activeGroups = new HashSet<int> { groupId };
+
+                // Camera distance/FOV are represented as a normalized logarithmic
+                // bias. Sweep the range instead of assuming one viewing distance.
+                for (var biasStep = -32; biasStep <= 40; biasStep += 1)
+                {
+                    var bias = biasStep * 0.5d;
+                    var baselineBytes = CalculateScenarioBytes(
+                        baseline, activeGroups, bias);
+                    var mergedBytes = CalculateScenarioBytes(
+                        merged, activeGroups, bias);
+                    if (mergedBytes > baselineBytes)
+                        return true;
+                }
             }
 
             return false;
