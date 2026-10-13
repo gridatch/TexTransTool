@@ -43,6 +43,10 @@ namespace net.rs64.TexTransTool.NDMF
             internal AtlasTexture.AtlasExecutionMetrics? StandaloneMetrics;
             internal int BandWidthPixels;
             internal int BandUsedHeightPixels;
+            internal readonly Dictionary<string, double> PropertyDemandLog2 =
+                new(StringComparer.Ordinal);
+            internal readonly Dictionary<string, int> PropertyUseCount =
+                new(StringComparer.Ordinal);
             internal TextureCostPlan OriginalCost = TextureCostPlan.Empty;
             internal TextureCostPlan BaselineCost = TextureCostPlan.Empty;
         }
@@ -397,7 +401,6 @@ namespace net.rs64.TexTransTool.NDMF
                     && standalone.OutputTexturePixelCount < group.OriginalPixels)
                 {
                     group.BaselineCost = BuildGeneratedCost(
-                        domain,
                         new[] { group },
                         propertyTextures,
                         standalone.PropertySizes,
@@ -414,6 +417,33 @@ namespace net.rs64.TexTransTool.NDMF
                 if (group.StandaloneMetrics is not { } metrics) continue;
                 group.BandWidthPixels = Math.Max(1, metrics.LayoutSize.x);
                 group.BandUsedHeightPixels = GetBandUsedHeightPixels(metrics);
+
+                foreach (var property in group.Materials
+                             .Where(propertyTextures.ContainsKey)
+                             .SelectMany(material => propertyTextures[material].Keys)
+                             .Distinct(StringComparer.Ordinal))
+                {
+                    var usageSources = group.Materials
+                        .Where(propertyTextures.ContainsKey)
+                        .SelectMany(material =>
+                            propertyTextures[material].TryGetValue(
+                                property, out var texture)
+                                && texture != null
+                                ? new[] { texture }
+                                : Array.Empty<Texture>())
+                        .ToHashSet();
+
+                    if (usageSources.Count == 0) continue;
+
+                    group.PropertyUseCount[property] = 1;
+                    group.PropertyDemandLog2[property] =
+                        FindPropertyDemandLog2(
+                            domain,
+                            group,
+                            property,
+                            usageSources,
+                            propertyTextures);
+                }
             }
 
             var hostCount = groups.Count(group =>
@@ -443,6 +473,8 @@ namespace net.rs64.TexTransTool.NDMF
             var adoptable = new Dictionary<string, Candidate>();
             var rejectionCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             var diagnosticCandidates = new List<Candidate>();
+            var evaluatedLayouts = new HashSet<string>(StringComparer.Ordinal);
+            var duplicateLayoutsSkipped = 0;
             var exploredBandStates = 0;
 
             foreach (var host in groups.Where(group =>
@@ -553,6 +585,13 @@ namespace net.rs64.TexTransTool.NDMF
                     var layoutSize = new Vector2Int(
                         hostWidth,
                         GetCroppedHeight(hostWidth, usedHeight));
+                    var layoutKey =
+                        key + "@" + layoutSize.x + "x" + layoutSize.y;
+                    if (!evaluatedLayouts.Add(layoutKey))
+                    {
+                        duplicateLayoutsSkipped += 1;
+                        continue;
+                    }
 
                     var selectedGroups = ids
                         .Select(id => byId[id])
@@ -566,7 +605,6 @@ namespace net.rs64.TexTransTool.NDMF
                     var baseline = TextureCostPlan.Combine(
                         selectedGroups.Select(group => group.BaselineCost));
                     var merged = BuildGeneratedCost(
-                        domain,
                         selectedGroups,
                         propertyTextures,
                         propertySizes,
@@ -622,7 +660,9 @@ namespace net.rs64.TexTransTool.NDMF
             plannerWatch.Stop();
             diagnosticLines.Insert(0,
                 $"planner time={plannerWatch.ElapsedMilliseconds} ms, " +
-                $"band candidates evaluated={exploredBandStates}, " +
+                $"band candidates enumerated={exploredBandStates}, " +
+                $"unique layouts evaluated={evaluatedLayouts.Count}, " +
+                $"duplicate layouts skipped={duplicateLayoutsSkipped}, " +
                 $"predicted viable={adoptable.Count}, adopted merges={selected.Count}");
 
             if (rejectionCounts.Count != 0)
@@ -853,7 +893,6 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         private static TextureCostPlan BuildGeneratedCost(
-            IDomain domain,
             IReadOnlyList<PreparedGroup> groups,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
             IReadOnlyDictionary<string, Vector2Int> propertySizes,
@@ -896,26 +935,19 @@ namespace net.rs64.TexTransTool.NDMF
                     var groupUsedProperties = 0;
                     foreach (var usageProperty in usageProperties)
                     {
-                        var usageSources = group.Materials
-                            .Where(propertyTextures.ContainsKey)
-                            .SelectMany(material =>
-                                propertyTextures[material].TryGetValue(
-                                    usageProperty, out var texture)
-                                    && texture != null
-                                    ? new[] { texture }
-                                    : Array.Empty<Texture>())
-                            .ToHashSet();
+                        if (!group.PropertyUseCount.TryGetValue(
+                                usageProperty, out var useCount)
+                            || useCount <= 0)
+                        {
+                            continue;
+                        }
 
-                        if (usageSources.Count == 0) continue;
-                        groupUsedProperties += 1;
+                        groupUsedProperties += useCount;
+                        var propertyDemand =
+                            group.PropertyDemandLog2.GetValueOrDefault(
+                                usageProperty, UnknownDemandLog2);
                         groupDemand = Math.Min(
-                            groupDemand,
-                            FindPropertyDemandLog2(
-                                domain,
-                                group,
-                                usageProperty,
-                                usageSources,
-                                propertyTextures));
+                            groupDemand, propertyDemand);
                     }
 
                     if (groupUsedProperties == 0) continue;
