@@ -275,6 +275,17 @@ namespace net.rs64.TexTransTool.NDMF
                     (long)texture.width * texture.height);
 
                 var engine = domain.GetTexTransCoreEngineForUnity();
+
+                IReadOnlyDictionary<Material, int>? mergeAtomicGroupByMaterial = null;
+                if (execution.MergeSelection is { } selectedMerge)
+                {
+                    mergeAtomicGroupByMaterial = selectedMerge.GroupIds
+                        .Select(id => preparedGroups[id])
+                        .SelectMany(group => group.Materials.Select(
+                            material => (material, group.Id)))
+                        .ToDictionary(pair => pair.material, pair => pair.Id);
+                }
+
                 var executionMetrics = default(AtlasTexture.AtlasExecutionMetrics);
                 var atlasResult = AtlasTexture.DoAtlasTexture(
                     domain,
@@ -287,8 +298,9 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         RequireLossless = true,
                         ReportProgressInfo = false,
-                        IslandRelocatorOverride = execution.MergeSelection != null
-                            ? new AutoAtlasMergeIslandRelocator()
+                        IslandRelocatorFactory = mergeAtomicGroupByMaterial != null
+                            ? atlasContext => new AutoAtlasMergeIslandRelocator(
+                                atlasContext, mergeAtomicGroupByMaterial)
                             : null,
                         AcceptAtlasSize = (atlasContext, size, metrics) =>
                         {
