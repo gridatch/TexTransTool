@@ -40,11 +40,15 @@ namespace net.rs64.TexTransTool.NDMF
                 .Where(atlas => TexTransBehaviorSearch.CheckIsActiveBehavior(
                     atlas, context.AvatarRootObject))
                 .ToArray();
+            var configuration = configurations[0];
+            var animatorServices = configuration.EnableAdditionalAtlasMerging
+                ? context.Extension<AnimatorServicesContext>()
+                : null;
             AutoAtlasTextureProcessor.Execute(
                 session.Domain,
-                configurations[0],
+                configuration,
                 manualAtlases,
-                context.Extension<AnimatorServicesContext>());
+                animatorServices);
         }
     }
 
@@ -76,7 +80,7 @@ namespace net.rs64.TexTransTool.NDMF
             IDomain domain,
             AutoAtlasTexture configuration,
             IReadOnlyCollection<AtlasTexture> manualAtlases,
-            AnimatorServicesContext animatorServices)
+            AnimatorServicesContext? animatorServices)
         {
             // Store only the NDMF console summary for this build.
             var completed = new List<string>();
@@ -383,6 +387,7 @@ namespace net.rs64.TexTransTool.NDMF
 
                 if (hasExecutionTextureMemory
                     && TryCalculateSourceTextureMemory(
+                        domain,
                         execution.SourceTextures,
                         out var sourceTextureMemoryBytes))
                 {
@@ -427,45 +432,77 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         private static bool TryCalculateSourceTextureMemory(
+            IDomain domain,
             IEnumerable<Texture> textures,
             out long bytes)
         {
             bytes = 0;
             foreach (var texture in textures)
             {
-                long textureBytes;
+                TexTransToolTextureDescriptor descriptor;
+                try
+                {
+                    descriptor = domain.GetTextureDescriptor(texture);
+                }
+                catch
+                {
+                    return false;
+                }
+
+                TextureFormat format;
                 switch (texture)
                 {
                     case Texture2D texture2D:
-                        if (!TryCalculateTextureMemory(
-                                texture2D.width,
-                                texture2D.height,
-                                texture2D.format,
-                                Math.Max(1, texture2D.mipmapCount),
-                                out textureBytes))
+                        try
+                        {
+                            format = descriptor.TextureFormat
+                                .Get(texture2D).CompressFormat;
+                        }
+                        catch
                         {
                             return false;
                         }
                         break;
 
                     case RenderTexture renderTexture:
-                        var mipCount = renderTexture.useMipMap
-                            ? CalculateMipCount(
-                                renderTexture.width, renderTexture.height)
-                            : 1;
-                        if (!TryCalculateTextureMemory(
-                                renderTexture.width,
-                                renderTexture.height,
-                                renderTexture.graphicsFormat,
-                                mipCount,
-                                out textureBytes))
+                        if (descriptor.TextureFormat
+                            is not TextureCompressionData compression)
                         {
                             return false;
                         }
+
+                        // Alpha content in a RenderTexture cannot be proven
+                        // without a GPU readback. Use the cheaper no-alpha format
+                        // for the "before" side so displayed savings are not
+                        // overstated.
+                        var hasAlpha = false;
+                        if (!GraphicsFormatUtility.HasAlphaChannel(
+                                renderTexture.graphicsFormat))
+                        {
+                            hasAlpha = false;
+                        }
+
+                        format = compression.UseOverride
+                            ? compression.OverrideTextureFormat
+                            : TextureCompressionData.GetQuality2TextureFormat(
+                                compression.FormatQualityValue, hasAlpha);
                         break;
 
                     default:
                         return false;
+                }
+
+                var mipCount = descriptor.UseMipMap
+                    ? CalculateMipCount(texture.width, texture.height)
+                    : 1;
+                if (!TryCalculateTextureMemory(
+                        texture.width,
+                        texture.height,
+                        format,
+                        mipCount,
+                        out var textureBytes))
+                {
+                    return false;
                 }
 
                 bytes += textureBytes;
@@ -614,48 +651,6 @@ namespace net.rs64.TexTransTool.NDMF
             int width,
             int height,
             TextureFormat format,
-            int mipCount,
-            out long bytes)
-        {
-            bytes = 0;
-            width = Math.Max(1, width);
-            height = Math.Max(1, height);
-            mipCount = Math.Max(1, mipCount);
-
-            try
-            {
-                var blockWidth = Math.Max(
-                    1u, GraphicsFormatUtility.GetBlockWidth(format));
-                var blockHeight = Math.Max(
-                    1u, GraphicsFormatUtility.GetBlockHeight(format));
-                var blockSize = Math.Max(
-                    1u, GraphicsFormatUtility.GetBlockSize(format));
-
-                for (var mip = 0; mip < mipCount; mip += 1)
-                {
-                    var blocksX =
-                        ((long)width + blockWidth - 1) / blockWidth;
-                    var blocksY =
-                        ((long)height + blockHeight - 1) / blockHeight;
-                    bytes += blocksX * blocksY * blockSize;
-
-                    width = Math.Max(1, width >> 1);
-                    height = Math.Max(1, height >> 1);
-                }
-
-                return true;
-            }
-            catch
-            {
-                bytes = 0;
-                return false;
-            }
-        }
-
-        private static bool TryCalculateTextureMemory(
-            int width,
-            int height,
-            GraphicsFormat format,
             int mipCount,
             out long bytes)
         {
