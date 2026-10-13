@@ -209,7 +209,9 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly string Key;
             internal readonly int Width;
             internal readonly int Height;
-            internal readonly TextureFormat Format;
+            internal readonly uint BlockWidth;
+            internal readonly uint BlockHeight;
+            internal readonly uint BlockSize;
             internal readonly int MipCount;
             internal readonly bool Streaming;
             internal readonly HashSet<int> Contributors;
@@ -225,11 +227,55 @@ namespace net.rs64.TexTransTool.NDMF
                 bool streaming,
                 IEnumerable<int> contributors,
                 Dictionary<int, double> demandLog2)
+                : this(
+                    key,
+                    width,
+                    height,
+                    GetBlockLayout(format),
+                    mipCount,
+                    streaming,
+                    contributors,
+                    demandLog2)
+            {
+            }
+
+            internal TextureCostEntry(
+                string key,
+                int width,
+                int height,
+                GraphicsFormat format,
+                int mipCount,
+                bool streaming,
+                IEnumerable<int> contributors,
+                Dictionary<int, double> demandLog2)
+                : this(
+                    key,
+                    width,
+                    height,
+                    GetBlockLayout(format),
+                    mipCount,
+                    streaming,
+                    contributors,
+                    demandLog2)
+            {
+            }
+
+            private TextureCostEntry(
+                string key,
+                int width,
+                int height,
+                (uint Width, uint Height, uint Size) block,
+                int mipCount,
+                bool streaming,
+                IEnumerable<int> contributors,
+                Dictionary<int, double> demandLog2)
             {
                 Key = key;
                 Width = width;
                 Height = height;
-                Format = format;
+                BlockWidth = block.Width;
+                BlockHeight = block.Height;
+                BlockSize = block.Size;
                 MipCount = Math.Max(1, mipCount);
                 Streaming = streaming;
                 Contributors = contributors.ToHashSet();
@@ -863,29 +909,57 @@ namespace net.rs64.TexTransTool.NDMF
             var entries = new List<TextureCostEntry>();
             foreach (var texture in group.SourceTextures)
             {
-                var format = GetSourceFormat(texture);
-                var mipCount = texture is Texture2D mipTexture
-                    ? Math.Max(1, mipTexture.mipmapCount)
-                    : 1;
-                var streaming = texture is Texture2D streamTexture
-                    && streamTexture.streamingMipmaps
-                    && mipCount > 1;
-
                 var demands = new Dictionary<int, double>
                 {
                     [group.Id] = FindTextureDemandLog2(
                         domain, group, texture, propertyTextures),
                 };
 
-                entries.Add(new TextureCostEntry(
-                    "source:" + texture.GetInstanceID(),
-                    texture.width,
-                    texture.height,
-                    format,
-                    mipCount,
-                    streaming,
-                    new[] { group.Id },
-                    demands));
+                switch (texture)
+                {
+                    case Texture2D texture2D:
+                    {
+                        var mipCount = Math.Max(1, texture2D.mipmapCount);
+                        entries.Add(new TextureCostEntry(
+                            "source:" + texture.GetInstanceID(),
+                            texture.width,
+                            texture.height,
+                            texture2D.format,
+                            mipCount,
+                            texture2D.streamingMipmaps && mipCount > 1,
+                            new[] { group.Id },
+                            demands));
+                        break;
+                    }
+                    case RenderTexture renderTexture:
+                    {
+                        var mipCount = renderTexture.useMipMap
+                            ? CalculateMipCount(
+                                renderTexture.width, renderTexture.height)
+                            : 1;
+                        entries.Add(new TextureCostEntry(
+                            "source:" + texture.GetInstanceID(),
+                            texture.width,
+                            texture.height,
+                            renderTexture.graphicsFormat,
+                            mipCount,
+                            streaming: false,
+                            new[] { group.Id },
+                            demands));
+                        break;
+                    }
+                    default:
+                        entries.Add(new TextureCostEntry(
+                            "source:" + texture.GetInstanceID(),
+                            texture.width,
+                            texture.height,
+                            TextureFormat.RGBA32,
+                            1,
+                            streaming: false,
+                            new[] { group.Id },
+                            demands));
+                        break;
+                }
             }
 
             var propertySamplingCosts = group.Materials
@@ -894,7 +968,7 @@ namespace net.rs64.TexTransTool.NDMF
                 .Where(pair => pair.Value != null)
                 .GroupBy(pair => pair.Key)
                 .Select(propertyGroup => propertyGroup
-                    .Max(pair => GetBytesPerTexel(GetSourceFormat(pair.Value))))
+                    .Max(pair => GetSourceBytesPerTexel(pair.Value)))
                 .Sum();
 
             return new TextureCostPlan(
@@ -1034,23 +1108,11 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 if (mip >= firstMip)
                 {
-                    try
-                    {
-                        var blockWidth = Math.Max(1u,
-                            GraphicsFormatUtility.GetBlockWidth(entry.Format));
-                        var blockHeight = Math.Max(1u,
-                            GraphicsFormatUtility.GetBlockHeight(entry.Format));
-                        var blockSize = Math.Max(1u,
-                            GraphicsFormatUtility.GetBlockSize(entry.Format));
-                        var blocksX = ((long)width + blockWidth - 1) / blockWidth;
-                        var blocksY = ((long)height + blockHeight - 1) / blockHeight;
-                        total += blocksX * blocksY * blockSize;
-                    }
-                    catch
-                    {
-                        // Conservative fallback for unusual source formats.
-                        total += (long)width * height * 4;
-                    }
+                    var blocksX =
+                        ((long)width + entry.BlockWidth - 1) / entry.BlockWidth;
+                    var blocksY =
+                        ((long)height + entry.BlockHeight - 1) / entry.BlockHeight;
+                    total += blocksX * blocksY * entry.BlockSize;
                 }
 
                 width = Math.Max(1, width >> 1);
@@ -1060,29 +1122,60 @@ namespace net.rs64.TexTransTool.NDMF
             return total;
         }
 
-        private static TextureFormat GetSourceFormat(Texture texture)
+        private static (uint Width, uint Height, uint Size) GetBlockLayout(
+            TextureFormat format)
         {
-            return texture is Texture2D texture2D
-                ? texture2D.format
-                : TextureFormat.RGBA32;
+            try
+            {
+                return (
+                    Math.Max(1u, GraphicsFormatUtility.GetBlockWidth(format)),
+                    Math.Max(1u, GraphicsFormatUtility.GetBlockHeight(format)),
+                    Math.Max(1u, GraphicsFormatUtility.GetBlockSize(format)));
+            }
+            catch
+            {
+                return (1u, 1u, 4u);
+            }
+        }
+
+        private static (uint Width, uint Height, uint Size) GetBlockLayout(
+            GraphicsFormat format)
+        {
+            try
+            {
+                return (
+                    Math.Max(1u, GraphicsFormatUtility.GetBlockWidth(format)),
+                    Math.Max(1u, GraphicsFormatUtility.GetBlockHeight(format)),
+                    Math.Max(1u, GraphicsFormatUtility.GetBlockSize(format)));
+            }
+            catch
+            {
+                return (1u, 1u, 4u);
+            }
+        }
+
+        private static double GetSourceBytesPerTexel(Texture texture)
+        {
+            return texture switch
+            {
+                Texture2D texture2D =>
+                    GetBytesPerTexel(texture2D.format),
+                RenderTexture renderTexture =>
+                    GetBytesPerTexel(renderTexture.graphicsFormat),
+                _ => 4d,
+            };
         }
 
         private static double GetBytesPerTexel(TextureFormat format)
         {
-            try
-            {
-                var blockWidth = Math.Max(1u,
-                    GraphicsFormatUtility.GetBlockWidth(format));
-                var blockHeight = Math.Max(1u,
-                    GraphicsFormatUtility.GetBlockHeight(format));
-                var blockSize = Math.Max(1u,
-                    GraphicsFormatUtility.GetBlockSize(format));
-                return (double)blockSize / (blockWidth * blockHeight);
-            }
-            catch
-            {
-                return 4d;
-            }
+            var block = GetBlockLayout(format);
+            return (double)block.Size / (block.Width * block.Height);
+        }
+
+        private static double GetBytesPerTexel(GraphicsFormat format)
+        {
+            var block = GetBlockLayout(format);
+            return (double)block.Size / (block.Width * block.Height);
         }
 
         private static bool HasSamplingRegression(
