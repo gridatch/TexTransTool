@@ -1,6 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace net.rs64.TexTransTool.TextureAtlas
 {
@@ -24,8 +25,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         // Used only to prune hosts from the merge search. Low-free-space groups may
         // still be merged into another host.
+        [FormerlySerializedAs("MinimumMergeHostFreeAreaRatio")]
         [Range(0f, 1f)]
-        public float MinimumMergeHostFreeAreaRatio = 0.25f;
+        public float MinimumMergeHostTopFreeRatio = 0.25f;
 
         // Additional savings required relative to the result of optimizing each
         // atomic texture-connected group independently.
