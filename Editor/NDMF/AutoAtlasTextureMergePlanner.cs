@@ -73,14 +73,10 @@ namespace net.rs64.TexTransTool.NDMF
         internal sealed class PlanResult
         {
             internal readonly IReadOnlyList<MergeSelection> Selections;
-            internal readonly string Diagnostic;
 
-            internal PlanResult(
-                IReadOnlyList<MergeSelection> selections,
-                string diagnostic = "")
+            internal PlanResult(IReadOnlyList<MergeSelection> selections)
             {
                 Selections = selections;
-                Diagnostic = diagnostic;
             }
         }
 
@@ -109,17 +105,6 @@ namespace net.rs64.TexTransTool.NDMF
             AssumePresent,
         }
 
-        [Flags]
-        private enum CandidateRejectionReason
-        {
-            None = 0,
-            PixelCount = 1 << 0,
-            ResidentMemory = 1 << 1,
-            MaxDimension = 1 << 2,
-            Sampling = 1 << 3,
-            Mip = 1 << 4,
-        }
-
         private sealed class Candidate
         {
             internal readonly int[] GroupIds;
@@ -128,9 +113,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly IReadOnlyDictionary<string, Vector2Int>
                 PropertySizes;
             internal readonly long SavingBytes;
-            internal readonly long MergedBytes;
             internal readonly float SavingRate;
-            internal readonly CandidateRejectionReason RejectionReason;
             internal readonly bool IsAdoptable;
 
             internal Candidate(
@@ -144,34 +127,28 @@ namespace net.rs64.TexTransTool.NDMF
                 Baseline = baseline;
                 LayoutSize = layoutSize;
                 PropertySizes = propertySizes;
-                MergedBytes = merged.FullResidentBytes;
                 SavingBytes = baseline.FullResidentBytes - merged.FullResidentBytes;
                 SavingRate = baseline.FullResidentBytes <= 0
                     ? 0f
                     : (float)SavingBytes / baseline.FullResidentBytes;
 
-                var rejection = CandidateRejectionReason.None;
-                if (merged.PixelCount >= baseline.PixelCount)
-                    rejection |= CandidateRejectionReason.PixelCount;
-                if (merged.FullResidentBytes >= baseline.FullResidentBytes)
-                    rejection |= CandidateRejectionReason.ResidentMemory;
-                if (merged.MaxTextureDimension > baseline.MaxTextureDimension)
-                    rejection |= CandidateRejectionReason.MaxDimension;
+                IsAdoptable =
+                    merged.PixelCount < baseline.PixelCount
+                    && merged.FullResidentBytes < baseline.FullResidentBytes
+                    && merged.MaxTextureDimension
+                        <= baseline.MaxTextureDimension;
 
-                if (rejection == CandidateRejectionReason.None
+                if (IsAdoptable
                     && HasSamplingRegression(baseline, merged, groupIds))
                 {
-                    rejection |= CandidateRejectionReason.Sampling;
+                    IsAdoptable = false;
                 }
 
-                if (rejection == CandidateRejectionReason.None
+                if (IsAdoptable
                     && HasStreamingRegression(baseline, merged, groupIds))
                 {
-                    rejection |= CandidateRejectionReason.Mip;
+                    IsAdoptable = false;
                 }
-
-                RejectionReason = rejection;
-                IsAdoptable = rejection == CandidateRejectionReason.None;
             }
         }
 
@@ -376,7 +353,6 @@ namespace net.rs64.TexTransTool.NDMF
 
             var byId = groups.ToDictionary(group => group.Id);
             var adoptable = new Dictionary<string, Candidate>();
-            var rejected = new List<Candidate>();
             var evaluatedLayouts = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var host in groups.Where(CanHostAnyGuest))
@@ -512,10 +488,7 @@ namespace net.rs64.TexTransTool.NDMF
                         propertySizes);
 
                     if (!candidate.IsAdoptable)
-                    {
-                        rejected.Add(candidate);
                         continue;
-                    }
 
                     if (!adoptable.TryGetValue(key, out var prior)
                         || candidate.SavingBytes > prior.SavingBytes
@@ -543,140 +516,7 @@ namespace net.rs64.TexTransTool.NDMF
                 consumed.UnionWith(candidate.GroupIds);
             }
 
-            var diagnostic = BuildExtensionDiagnostic(
-                selected, adoptable.Values, rejected, byId);
-            return new PlanResult(selected, diagnostic);
-        }
-
-        private static string BuildExtensionDiagnostic(
-            IReadOnlyList<MergeSelection> selected,
-            IEnumerable<Candidate> adoptable,
-            IReadOnlyList<Candidate> rejected,
-            IReadOnlyDictionary<int, PreparedGroup> byId)
-        {
-            if (selected.Count == 0)
-                return "";
-
-            var segments = new List<string>();
-            var adoptableArray = adoptable.ToArray();
-
-            foreach (var selection in selected)
-            {
-                var selectedIds = selection.GroupIds.ToHashSet();
-
-                var viableExtensions = adoptableArray
-                    .Where(candidate =>
-                        candidate.GroupIds.Length > selectedIds.Count
-                        && selectedIds.All(candidate.GroupIds.Contains))
-                    .OrderByDescending(candidate => candidate.SavingBytes)
-                    .ThenByDescending(candidate => candidate.GroupIds.Length)
-                    .Take(4);
-
-                foreach (var candidate in viableExtensions)
-                {
-                    segments.Add(DescribeCandidate(
-                        "Adoptable", candidate, byId));
-                }
-
-                var rejectedExtensions = rejected
-                    .Where(candidate =>
-                        candidate.GroupIds.Length > selectedIds.Count
-                        && selectedIds.All(candidate.GroupIds.Contains))
-                    .ToArray();
-
-                var evaluatedExtensions = viableExtensions
-                    .Concat(rejectedExtensions)
-                    .ToArray();
-                var geometricallyExtendable = byId.Values
-                    .Where(group => !selectedIds.Contains(group.Id))
-                    .Where(group => CanGeometricallyExtendSelection(
-                        selection, group, byId))
-                    .Where(group => !evaluatedExtensions.Any(candidate =>
-                        candidate.GroupIds.Contains(group.Id)))
-                    .OrderBy(group => group.Id)
-                    .ToArray();
-
-                foreach (var group in geometricallyExtendable)
-                {
-                    var materials = group.Materials
-                        .Select(material => material.name)
-                        .Distinct()
-                        .OrderBy(name => name, StringComparer.Ordinal);
-
-                    segments.Add(
-                        $"NotEvaluated: {string.Join(", ", materials)} " +
-                        $"(standalone={(group.StandaloneMetrics != null ? 1 : 0)}, " +
-                        $"baseline={(group.BaselineCostKnown ? 1 : 0)}, " +
-                        $"band={group.BandWidthPixels}x{group.BandUsedHeightPixels})");
-                }
-
-                foreach (var reasonGroup in rejectedExtensions
-                             .GroupBy(candidate => candidate.RejectionReason)
-                             .OrderBy(group => group.Key))
-                {
-                    var best = reasonGroup
-                        .OrderByDescending(candidate => candidate.SavingBytes)
-                        .ThenByDescending(candidate => candidate.GroupIds.Length)
-                        .First();
-
-                    segments.Add(DescribeCandidate(
-                        reasonGroup.Key.ToString(), best, byId));
-                }
-            }
-
-            return string.Join(" | ", segments);
-        }
-
-        private static bool CanGeometricallyExtendSelection(
-            MergeSelection selection,
-            PreparedGroup guest,
-            IReadOnlyDictionary<int, PreparedGroup> byId)
-        {
-            if (guest.StandaloneMetrics == null
-                || guest.BandWidthPixels <= 0
-                || guest.BandUsedHeightPixels <= 0)
-            {
-                return false;
-            }
-
-            var selectedGroups = selection.GroupIds
-                .Select(id => byId[id])
-                .ToArray();
-            var totalUsedHeight = selectedGroups.Sum(
-                group => group.BandUsedHeightPixels);
-
-            foreach (var host in selectedGroups)
-            {
-                if (host.BandWidthPixels <= 0
-                    || host.BandWidthPixels != selection.PlannedLayoutSize.x
-                    || guest.BandWidthPixels > host.BandWidthPixels)
-                {
-                    continue;
-                }
-
-                var remaining = host.BandWidthPixels - totalUsedHeight;
-                if (guest.BandUsedHeightPixels <= remaining)
-                    return true;
-            }
-
-            return false;
-        }
-
-        private static string DescribeCandidate(
-            string label,
-            Candidate candidate,
-            IReadOnlyDictionary<int, PreparedGroup> byId)
-        {
-            var materials = candidate.GroupIds
-                .SelectMany(id => byId[id].Materials)
-                .Select(material => material.name)
-                .Distinct()
-                .OrderBy(name => name, StringComparer.Ordinal);
-
-            return
-                $"{label}: {string.Join(", ", materials)} " +
-                $"(baseline={candidate.Baseline.FullResidentBytes}, " +
-                $"merged={candidate.MergedBytes}, saving={candidate.SavingBytes})";
+            return new PlanResult(selected);
         }
 
         private static int GetBandUsedHeightPixels(
