@@ -149,9 +149,6 @@ msgstr "Auto Atlas Relocate Result\n{0}\n\nTexture memory: {1} → {2}\n\nTotal 
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 
-msgid "AutoAtlasTexture:info:MergePlannerDiagnostics"
-msgstr "Texture merge planner diagnostics\n{0}\n\nDecision reasons: pixel-count=pixel count did not decrease / resident-memory=estimated resident memory did not decrease / max-dimension=maximum texture dimension increased / format-sampling=format sampling cost regressed / mip-streaming=mip or runtime-usage cost regressed / accepted=eligible"
-
 
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2} cases"

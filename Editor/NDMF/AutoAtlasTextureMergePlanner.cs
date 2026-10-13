@@ -1,7 +1,6 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using nadena.dev.ndmf.animator;
 using net.rs64.TexTransCore;
@@ -82,14 +81,10 @@ namespace net.rs64.TexTransTool.NDMF
         internal sealed class PlanResult
         {
             internal readonly IReadOnlyList<MergeSelection> Selections;
-            internal readonly IReadOnlyList<string> DiagnosticLines;
 
-            internal PlanResult(
-                IReadOnlyList<MergeSelection> selections,
-                IReadOnlyList<string>? diagnosticLines = null)
+            internal PlanResult(IReadOnlyList<MergeSelection> selections)
             {
                 Selections = selections;
-                DiagnosticLines = diagnosticLines ?? Array.Empty<string>();
             }
         }
 
@@ -121,7 +116,6 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long SavingBytes;
             internal readonly float SavingRate;
             internal readonly bool IsAdoptable;
-            internal readonly string DecisionReason;
 
             internal Candidate(
                 int[] groupIds,
@@ -139,26 +133,23 @@ namespace net.rs64.TexTransTool.NDMF
                     ? 0f
                     : (float)SavingBytes / baseline.FullResidentBytes;
 
-                var failedGates = new List<string>();
-                if (merged.PixelCount >= baseline.PixelCount)
-                    failedGates.Add("pixel-count");
-                if (merged.FullResidentBytes >= baseline.FullResidentBytes)
-                    failedGates.Add("resident-memory");
-                if (merged.MaxTextureDimension > baseline.MaxTextureDimension)
-                    failedGates.Add("max-dimension");
+                IsAdoptable =
+                    merged.PixelCount < baseline.PixelCount
+                    && merged.FullResidentBytes < baseline.FullResidentBytes
+                    && merged.MaxTextureDimension
+                        <= baseline.MaxTextureDimension;
 
-                if (failedGates.Count == 0)
+                if (IsAdoptable
+                    && HasSamplingRegression(baseline, merged, groupIds))
                 {
-                    if (HasSamplingRegression(baseline, merged, groupIds))
-                        failedGates.Add("format-sampling");
-                    if (HasStreamingRegression(baseline, merged, groupIds, usage))
-                        failedGates.Add("mip-streaming");
+                    IsAdoptable = false;
                 }
 
-                IsAdoptable = failedGates.Count == 0;
-                DecisionReason = IsAdoptable
-                    ? "accepted"
-                    : string.Join("+", failedGates);
+                if (IsAdoptable
+                    && HasStreamingRegression(baseline, merged, groupIds, usage))
+                {
+                    IsAdoptable = false;
+                }
             }
         }
 
@@ -427,8 +418,6 @@ namespace net.rs64.TexTransTool.NDMF
             if (!configuration.EnableAdditionalAtlasMerging || groups.Count < 2)
                 return new PlanResult(Array.Empty<MergeSelection>());
 
-            var plannerWatch = Stopwatch.StartNew();
-            var diagnosticLines = new List<string>();
             var engine = domain.GetTexTransCoreEngineForUnity();
             var alphaCache = new Dictionary<Texture, bool>();
 
@@ -514,33 +503,10 @@ namespace net.rs64.TexTransTool.NDMF
                     && guest.BandUsedHeightPixels <= capacity);
             }
 
-            var hostCount = groups.Count(CanHostAnyGuest);
-
-            diagnosticLines.Add(
-                $"atomic groups={groups.Count}, merge hosts={hostCount}");
-
-            foreach (var group in groups.OrderBy(group => group.Id))
-            {
-                var materialNames = string.Join(", ",
-                    group.Materials.Select(material => material.name)
-                        .Distinct()
-                        .OrderBy(name => name, StringComparer.Ordinal));
-                var topFree = group.StandaloneMetrics?.TopFreeFraction;
-                diagnosticLines.Add(
-                    $"group {group.Id}: [{materialNames}], " +
-                    $"top-free={(topFree.HasValue ? topFree.Value.ToString("P1") : "n/a")}, " +
-                    $"band={group.BandWidthPixels}x{group.BandUsedHeightPixels}, " +
-                    $"baseline={group.BaselineCost.FullResidentBytes} B");
-            }
-
             var usage = AnalyzeRuntimeUsage(animatorServices, groups);
             var byId = groups.ToDictionary(group => group.Id);
             var adoptable = new Dictionary<string, Candidate>();
-            var rejectionCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-            var diagnosticCandidates = new List<Candidate>();
             var evaluatedLayouts = new HashSet<string>(StringComparer.Ordinal);
-            var duplicateLayoutsSkipped = 0;
-            var exploredBandStates = 0;
 
             foreach (var host in groups.Where(CanHostAnyGuest))
             {
@@ -631,8 +597,6 @@ namespace net.rs64.TexTransTool.NDMF
                     .Take(BandCandidatesPerHost)
                     .ToArray();
 
-                exploredBandStates += hostStates.Length;
-
                 foreach (var state in hostStates)
                 {
                     var ids = new[] { host.Id }
@@ -648,10 +612,7 @@ namespace net.rs64.TexTransTool.NDMF
                     var layoutKey =
                         key + "@" + layoutSize.x + "x" + layoutSize.y;
                     if (!evaluatedLayouts.Add(layoutKey))
-                    {
-                        duplicateLayoutsSkipped += 1;
                         continue;
-                    }
 
                     var selectedGroups = ids
                         .Select(id => byId[id])
@@ -677,18 +638,8 @@ namespace net.rs64.TexTransTool.NDMF
                         layoutSize,
                         usage);
 
-                    diagnosticCandidates.Add(candidate);
-
                     if (!candidate.IsAdoptable)
-                    {
-                        foreach (var reason in candidate.DecisionReason
-                                     .Split('+'))
-                        {
-                            rejectionCounts[reason] =
-                                rejectionCounts.GetValueOrDefault(reason) + 1;
-                        }
                         continue;
-                    }
 
                     if (!adoptable.TryGetValue(key, out var prior)
                         || candidate.SavingBytes > prior.SavingBytes
@@ -716,52 +667,7 @@ namespace net.rs64.TexTransTool.NDMF
                 consumed.UnionWith(candidate.GroupIds);
             }
 
-            plannerWatch.Stop();
-            diagnosticLines.Insert(0,
-                $"planner time={plannerWatch.ElapsedMilliseconds} ms, " +
-                $"band candidates enumerated={exploredBandStates}, " +
-                $"unique layouts evaluated={evaluatedLayouts.Count}, " +
-                $"duplicate layouts skipped={duplicateLayoutsSkipped}, " +
-                $"predicted viable={adoptable.Count}, adopted merges={selected.Count}");
-
-            if (rejectionCounts.Count != 0)
-            {
-                diagnosticLines.Add(
-                    "rejections: " + string.Join(", ",
-                        rejectionCounts
-                            .OrderByDescending(pair => pair.Value)
-                            .ThenBy(pair => pair.Key, StringComparer.Ordinal)
-                            .Select(pair => $"{pair.Key}={pair.Value}")));
-            }
-
-            foreach (var candidate in diagnosticCandidates
-                         .OrderByDescending(candidate => candidate.SavingBytes)
-                         .ThenByDescending(candidate => candidate.SavingRate)
-                         .Take(32))
-            {
-                diagnosticLines.Add(
-                    $"candidate [{FormatGroupMaterials(candidate.GroupIds, byId)}]: " +
-                    $"baseline={candidate.Baseline.FullResidentBytes} B, " +
-                    $"merged={candidate.Merged.FullResidentBytes} B, " +
-                    $"saving={candidate.SavingRate:P1}, " +
-                    $"pixels={candidate.Baseline.PixelCount}->{candidate.Merged.PixelCount}, " +
-                    $"layout={candidate.LayoutSize.x}x{candidate.LayoutSize.y}, " +
-                    $"max={candidate.Baseline.MaxTextureDimension}->{candidate.Merged.MaxTextureDimension}, " +
-                    $"decision={candidate.DecisionReason}");
-            }
-
-            return new PlanResult(selected, diagnosticLines);
-        }
-
-        private static string FormatGroupMaterials(
-            IEnumerable<int> groupIds,
-            IReadOnlyDictionary<int, PreparedGroup> byId)
-        {
-            return string.Join(", ",
-                groupIds.SelectMany(id => byId[id].Materials)
-                    .Select(material => material.name)
-                    .Distinct()
-                    .OrderBy(name => name, StringComparer.Ordinal));
+            return new PlanResult(selected);
         }
 
         private static int GetBandUsedHeightPixels(

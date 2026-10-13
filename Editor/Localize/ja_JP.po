@@ -150,9 +150,6 @@ msgstr "自動アトラス再配置結果\n{0}\n\nテクスチャメモリ: {1} 
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
 
-msgid "AutoAtlasTexture:info:MergePlannerDiagnostics"
-msgstr "テクスチャ統合プランナー診断\n{0}\n\n判定理由: pixel-count=総ピクセル数が減らない / resident-memory=推定常駐メモリが減らない / max-dimension=最大テクスチャ寸法が増える / format-sampling=フォーマット由来のサンプリングコスト悪化 / mip-streaming=Mip・同時使用条件で悪化 / accepted=採用可能"
-
 
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2}件"
