@@ -23,8 +23,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
         // unchanged while this is false.
         public bool EnableAdditionalAtlasMerging = false;
 
-        // Used only to prune hosts from the merge search. Low-free-space groups may
-        // still be merged into another host.
+        // Minimum continuous free band above a standalone atlas required for it to
+        // act as a merge host. Groups below this threshold may still be guests.
         [FormerlySerializedAs("MinimumMergeHostFreeAreaRatio")]
         [Range(0f, 1f)]
         public float MinimumMergeHostTopFreeRatio = 0.25f;
