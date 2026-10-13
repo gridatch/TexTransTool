@@ -46,8 +46,6 @@ namespace net.rs64.TexTransTool.NDMF
                 new(StringComparer.Ordinal);
             internal readonly Dictionary<string, int> PropertyUseCount =
                 new(StringComparer.Ordinal);
-            internal TextureCostPlan OriginalCost = TextureCostPlan.Empty;
-            internal bool OriginalCostKnown;
             internal TextureCostPlan BaselineCost = TextureCostPlan.Empty;
             internal bool BaselineCostKnown;
         }
@@ -396,14 +394,6 @@ namespace net.rs64.TexTransTool.NDMF
 
             foreach (var group in groups)
             {
-                var originalCost = TryBuildOriginalCost(
-                    domain, group, propertyTextures, alphaCache);
-                if (originalCost != null)
-                {
-                    group.OriginalCost = originalCost;
-                    group.OriginalCostKnown = true;
-                }
-
                 group.StandaloneMetrics = AnalyzeAtlas(
                     domain, engine, settings, group.Materials, group.Renderers);
             }
@@ -411,14 +401,7 @@ namespace net.rs64.TexTransTool.NDMF
             foreach (var group in groups)
             {
                 if (group.StandaloneMetrics is not { } metrics)
-                {
-                    if (group.OriginalCostKnown)
-                    {
-                        group.BaselineCost = group.OriginalCost;
-                        group.BaselineCostKnown = true;
-                    }
                     continue;
-                }
 
                 group.BandWidthPixels = Math.Max(1, metrics.LayoutSize.x);
                 group.BandUsedHeightPixels = GetBandUsedHeightPixels(metrics);
@@ -461,10 +444,15 @@ namespace net.rs64.TexTransTool.NDMF
                         UnknownAlphaAssumption.AssumeAbsent);
                     group.BaselineCostKnown = true;
                 }
-                else if (group.OriginalCostKnown)
+                else
                 {
-                    group.BaselineCost = group.OriginalCost;
-                    group.BaselineCostKnown = true;
+                    var originalCost = TryBuildOriginalCost(
+                        domain, group, propertyTextures, alphaCache);
+                    if (originalCost != null)
+                    {
+                        group.BaselineCost = originalCost;
+                        group.BaselineCostKnown = true;
+                    }
                 }
             }
 
@@ -821,7 +809,7 @@ namespace net.rs64.TexTransTool.NDMF
                 var demands = new Dictionary<int, double>
                 {
                     [group.Id] = FindTextureDemandLog2(
-                        domain, group, texture, propertyTextures),
+                        group, texture, propertyTextures),
                 };
 
                 entries.Add(new TextureCostEntry(
@@ -1048,8 +1036,17 @@ namespace net.rs64.TexTransTool.NDMF
 
             if (cache.TryGetValue(texture, out var cached)) return cached;
 
-            using var alpha = TextureCompressionData.HasAlphaChannel(texture2D);
-            return cache[texture] = alpha.GetResult();
+            try
+            {
+                using var alpha =
+                    TextureCompressionData.HasAlphaChannel(texture2D);
+                return cache[texture] = alpha.GetResult();
+            }
+            catch
+            {
+                return unknownAlphaAssumption
+                    == UnknownAlphaAssumption.AssumePresent;
+            }
         }
 
         private static int CalculateMipCount(int width, int height)
@@ -1198,7 +1195,6 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         private static double FindTextureDemandLog2(
-            IDomain domain,
             PreparedGroup group,
             Texture texture,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures)
@@ -1208,14 +1204,15 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 if (!propertyTextures.TryGetValue(material, out var properties))
                     continue;
+
                 foreach (var property in properties)
                 {
                     if (!ReferenceEquals(property.Value, texture)) continue;
-                    values.Add(FindPropertyDemandLog2(
-                        domain, group, property.Key,
-                        new HashSet<Texture> { texture }, propertyTextures));
+                    values.Add(group.PropertyDemandLog2.GetValueOrDefault(
+                        property.Key, UnknownDemandLog2));
                 }
             }
+
             return values.Count == 0 ? UnknownDemandLog2 : values.Min();
         }
 
