@@ -543,31 +543,48 @@ namespace net.rs64.TexTransTool.NDMF
                 consumed.UnionWith(candidate.GroupIds);
             }
 
-            var diagnostic = BuildRejectedExtensionDiagnostic(
-                selected, rejected, byId);
+            var diagnostic = BuildExtensionDiagnostic(
+                selected, adoptable.Values, rejected, byId);
             return new PlanResult(selected, diagnostic);
         }
 
-        private static string BuildRejectedExtensionDiagnostic(
+        private static string BuildExtensionDiagnostic(
             IReadOnlyList<MergeSelection> selected,
+            IEnumerable<Candidate> adoptable,
             IReadOnlyList<Candidate> rejected,
             IReadOnlyDictionary<int, PreparedGroup> byId)
         {
-            if (selected.Count == 0 || rejected.Count == 0)
+            if (selected.Count == 0)
                 return "";
 
             var segments = new List<string>();
+            var adoptableArray = adoptable.ToArray();
+
             foreach (var selection in selected)
             {
                 var selectedIds = selection.GroupIds.ToHashSet();
-                var extensions = rejected
+
+                var viableExtensions = adoptableArray
+                    .Where(candidate =>
+                        candidate.GroupIds.Length > selectedIds.Count
+                        && selectedIds.All(candidate.GroupIds.Contains))
+                    .OrderByDescending(candidate => candidate.SavingBytes)
+                    .ThenByDescending(candidate => candidate.GroupIds.Length)
+                    .Take(4);
+
+                foreach (var candidate in viableExtensions)
+                {
+                    segments.Add(DescribeCandidate(
+                        "Adoptable", candidate, byId));
+                }
+
+                var rejectedExtensions = rejected
                     .Where(candidate =>
                         candidate.GroupIds.Length > selectedIds.Count
                         && selectedIds.All(candidate.GroupIds.Contains))
                     .ToArray();
-                if (extensions.Length == 0) continue;
 
-                foreach (var reasonGroup in extensions
+                foreach (var reasonGroup in rejectedExtensions
                              .GroupBy(candidate => candidate.RejectionReason)
                              .OrderBy(group => group.Key))
                 {
@@ -576,20 +593,29 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenByDescending(candidate => candidate.GroupIds.Length)
                         .First();
 
-                    var materials = best.GroupIds
-                        .SelectMany(id => byId[id].Materials)
-                        .Select(material => material.name)
-                        .Distinct()
-                        .OrderBy(name => name, StringComparer.Ordinal);
-
-                    segments.Add(
-                        $"{reasonGroup.Key}: {string.Join(", ", materials)} " +
-                        $"(baseline={best.Baseline.FullResidentBytes}, " +
-                        $"merged={best.MergedBytes}, saving={best.SavingBytes})");
+                    segments.Add(DescribeCandidate(
+                        reasonGroup.Key.ToString(), best, byId));
                 }
             }
 
             return string.Join(" | ", segments);
+        }
+
+        private static string DescribeCandidate(
+            string label,
+            Candidate candidate,
+            IReadOnlyDictionary<int, PreparedGroup> byId)
+        {
+            var materials = candidate.GroupIds
+                .SelectMany(id => byId[id].Materials)
+                .Select(material => material.name)
+                .Distinct()
+                .OrderBy(name => name, StringComparer.Ordinal);
+
+            return
+                $"{label}: {string.Join(", ", materials)} " +
+                $"(baseline={candidate.Baseline.FullResidentBytes}, " +
+                $"merged={candidate.MergedBytes}, saving={candidate.SavingBytes})";
         }
 
         private static int GetBandUsedHeightPixels(
