@@ -1200,6 +1200,8 @@ namespace net.rs64.TexTransTool.NDMF
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures)
         {
             var best = double.PositiveInfinity;
+            var uvUsageCache =
+                new Dictionary<Material, IReadOnlyDictionary<string, TextureUVUsage>>();
 
             foreach (var renderer in group.Renderers)
             {
@@ -1221,9 +1223,27 @@ namespace net.rs64.TexTransTool.NDMF
                         continue;
                     }
 
+                    if (!uvUsageCache.TryGetValue(material, out var uvUsages))
+                    {
+                        uvUsages =
+                            TTShaderTextureUsageInformationUtil
+                                .GetContainsUVTransformUsage(material);
+                        uvUsageCache[material] = uvUsages;
+                    }
+
+                    if (!uvUsages.TryGetValue(property, out var uvUsage)
+                        || uvUsage.UVMatrix is not { } uvMatrix)
+                    {
+                        // Unknown shader-side UV transforms can increase the
+                        // required mip arbitrarily. Keep the conservative
+                        // full-resolution demand instead of guessing from _ST.
+                        best = Math.Min(best, UnknownDemandLog2);
+                        continue;
+                    }
+
                     var metric = CalculateUvDistributionMetric(
                         mesh, subMesh, renderer.transform.lossyScale,
-                        material.GetTextureScale(property));
+                        uvMatrix);
                     if (!(metric > Epsilon) || double.IsNaN(metric)
                         || double.IsInfinity(metric))
                     {
@@ -1243,7 +1263,7 @@ namespace net.rs64.TexTransTool.NDMF
             Mesh mesh,
             int subMesh,
             Vector3 lossyScale,
-            Vector2 textureScale)
+            TextureAtlas.AAOCode.Matrix2x3 uvMatrix)
         {
             var vertices = mesh.vertices;
             var uv = mesh.uv;
@@ -1286,13 +1306,13 @@ namespace net.rs64.TexTransTool.NDMF
 
             if (worldArea <= Epsilon || uvArea <= Epsilon) return 0d;
 
-            var metric = worldArea / uvArea;
-            var textureScaleArea = Math.Abs(
-                (double)textureScale.x * textureScale.y);
-            if (textureScaleArea > Epsilon)
-                metric /= textureScaleArea;
+            var uvTransformArea = Math.Abs(
+                (double)uvMatrix.M00 * uvMatrix.M11
+                - (double)uvMatrix.M01 * uvMatrix.M10);
+            if (uvTransformArea <= Epsilon)
+                return 0d;
 
-            return metric;
+            return (worldArea / uvArea) / uvTransformArea;
         }
 
         private static RuntimeUsageModel AnalyzeRuntimeUsage(
