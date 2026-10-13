@@ -147,28 +147,22 @@ msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 
 msgid "AutoAtlasTexture:info:MergePlannerDiagnostics"
-msgstr "Additional merge planner diagnostics\n{0}\n\nDecision reasons: minimum-savings=below minimum additional savings / pixel-count=pixel count did not decrease / resident-memory=estimated resident memory did not decrease / max-dimension=maximum texture dimension increased / format-sampling=format sampling cost regressed / mip-streaming=mip or runtime-usage cost regressed / accepted=eligible"
+msgstr "Texture merge planner diagnostics\n{0}\n\nDecision reasons: pixel-count=pixel count did not decrease / resident-memory=estimated resident memory did not decrease / max-dimension=maximum texture dimension increased / format-sampling=format sampling cost regressed / mip-streaming=mip or runtime-usage cost regressed / accepted=eligible"
 
-msgid "AutoAtlasTexture:info:AdditionalMergeBlock"
-msgstr "Additional merge\nEstimated memory after individual optimization: {0}\nEstimated memory after additional merge: {1}\nAdditional savings: {2:0.0}%\nPixels after individual optimization: {3}\nPixels after additional merge: {4}"
 
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2} cases"
 
 msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
-msgstr "Merge into unused atlas space"
+msgstr "Merge textures into unused atlas space"
 
-msgid "AutoAtlasTexture:prop:MinimumMergeHostTopFreeRatio"
-msgstr "Minimum host top-free ratio"
 
-msgid "AutoAtlasTexture:prop:MinimumAdditionalMergeSavingsRate"
-msgstr "Minimum additional merge savings"
 
 msgid "AutoAtlasTexture:button:CopyMergePlannerDiagnostics"
-msgstr "Copy Additional Merge Diagnostics"
+msgstr "Copy Texture Merge Diagnostics"
 
 msgid "AutoAtlasTexture:help:AdditionalAtlasMerging"
-msgstr "Compares additional merging against the result of optimizing each group independently. Other independently valid atlas bands are stacked into the continuous free area above a host atlas. A merge is applied only when it reaches the requested additional savings and does not regress estimated memory, mip, format, or maximum texture-dimension costs. The top-free ratio selects eligible hosts."
+msgstr "Automatically merges another independently valid atlas band when it fits in the continuous free area above an atlas. Merges that regress total pixel count, estimated texture memory, mip behavior, format cost, or maximum texture dimension are not applied."
 
 msgid "AutoAtlasTexture:prop:ExcludedRenderers"
 msgstr "Excluded Renderers"
