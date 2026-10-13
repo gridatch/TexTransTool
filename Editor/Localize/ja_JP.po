@@ -148,28 +148,22 @@ msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
 
 msgid "AutoAtlasTexture:info:MergePlannerDiagnostics"
-msgstr "追加統合プランナー診断\n{0}\n\n判定理由: minimum-savings=最小追加削減率未満 / pixel-count=総ピクセル数が減らない / resident-memory=推定常駐メモリが減らない / max-dimension=最大テクスチャ寸法が増える / format-sampling=フォーマット由来のサンプリングコスト悪化 / mip-streaming=Mip・同時使用条件で悪化 / accepted=採用可能"
+msgstr "テクスチャ統合プランナー診断\n{0}\n\n判定理由: pixel-count=総ピクセル数が減らない / resident-memory=推定常駐メモリが減らない / max-dimension=最大テクスチャ寸法が増える / format-sampling=フォーマット由来のサンプリングコスト悪化 / mip-streaming=Mip・同時使用条件で悪化 / accepted=採用可能"
 
-msgid "AutoAtlasTexture:info:AdditionalMergeBlock"
-msgstr "追加統合\n個別最適化後の推定メモリ: {0}\n追加統合後の推定メモリ: {1}\n追加削減率: {2:0.0}%\n個別最適化後の総ピクセル数: {3}\n追加統合後の総ピクセル数: {4}"
 
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2}件"
 
 msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
-msgstr "余白を利用して追加統合"
+msgstr "余白を利用してテクスチャを統合"
 
-msgid "AutoAtlasTexture:prop:MinimumMergeHostTopFreeRatio"
-msgstr "統合先候補の最小上部余白率"
 
-msgid "AutoAtlasTexture:prop:MinimumAdditionalMergeSavingsRate"
-msgstr "統合による最小追加削減率"
 
 msgid "AutoAtlasTexture:button:CopyMergePlannerDiagnostics"
-msgstr "追加統合診断をコピー"
+msgstr "テクスチャ統合診断をコピー"
 
 msgid "AutoAtlasTexture:help:AdditionalAtlasMerging"
-msgstr "個別に最適化した場合を基準として、単体アトラス化後に連続して残る上部余白へ他のアトラスを積み、一定以上の追加削減になり、かつ推定メモリ・Mip・フォーマット・最大テクスチャ寸法の性能条件を悪化させない場合だけ統合します。上部余白率は統合先候補の選定に使用します。"
+msgstr "単体アトラス化後に連続して残る上部余白へ、実際に収まる別のアトラスを自動的に統合します。総ピクセル数・推定テクスチャメモリ・Mip・フォーマット・最大テクスチャ寸法が悪化する統合は行いません。"
 
 msgid "AutoAtlasTexture:prop:ExcludedRenderers"
 msgstr "除外レンダラー"
