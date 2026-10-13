@@ -405,7 +405,7 @@ namespace net.rs64.TexTransTool.NDMF
                             resolutionRoutes)));
 
                 if (hasExecutionTextureMemory
-                    && TryCalculateSourceTextureMemory(
+                    && AutoAtlasTextureMergePlanner.TryCalculateSourceTextureMemory(
                         domain,
                         execution.SourceTextures,
                         out var sourceTextureMemoryBytes))
@@ -448,79 +448,6 @@ namespace net.rs64.TexTransTool.NDMF
                 TTTLog.Info(
                     "AutoAtlasTexture:info:RelocateResult",
                     string.Join("\n\n", completed)));
-        }
-
-        private static bool TryCalculateSourceTextureMemory(
-            IDomain domain,
-            IEnumerable<Texture> textures,
-            out long bytes)
-        {
-            bytes = 0;
-            foreach (var texture in textures)
-            {
-                TexTransToolTextureDescriptor descriptor;
-                try
-                {
-                    descriptor = domain.GetTextureDescriptor(texture);
-                }
-                catch
-                {
-                    return false;
-                }
-
-                TextureFormat format;
-                switch (texture)
-                {
-                    case Texture2D texture2D:
-                        try
-                        {
-                            format = descriptor.TextureFormat
-                                .Get(texture2D).CompressFormat;
-                        }
-                        catch
-                        {
-                            return false;
-                        }
-                        break;
-
-                    case RenderTexture:
-                        if (descriptor.TextureFormat
-                            is not TextureCompressionData compression)
-                        {
-                            return false;
-                        }
-
-                        // Alpha content in a RenderTexture cannot be proven
-                        // without a GPU readback. Use the cheaper no-alpha format
-                        // for the "before" side so displayed savings are not
-                        // overstated.
-                        format = compression.UseOverride
-                            ? compression.OverrideTextureFormat
-                            : TextureCompressionData.GetQuality2TextureFormat(
-                                compression.FormatQualityValue, hasAlpha: false);
-                        break;
-
-                    default:
-                        return false;
-                }
-
-                var mipCount = descriptor.UseMipMap
-                    ? CalculateMipCount(texture.width, texture.height)
-                    : 1;
-                if (!TryCalculateTextureMemory(
-                        texture.width,
-                        texture.height,
-                        format,
-                        mipCount,
-                        out var textureBytes))
-                {
-                    return false;
-                }
-
-                bytes += textureBytes;
-            }
-
-            return true;
         }
 
         private static bool TryCalculateFinalTextureMemory(
