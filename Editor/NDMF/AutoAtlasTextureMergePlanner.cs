@@ -395,21 +395,6 @@ namespace net.rs64.TexTransTool.NDMF
                     domain, group, propertyTextures);
                 group.StandaloneMetrics = AnalyzeAtlas(
                     domain, engine, settings, group.Materials, group.Renderers);
-
-                if (group.StandaloneMetrics is { } standalone
-                    && standalone.OutputTexturePixelCount > 0
-                    && standalone.OutputTexturePixelCount < group.OriginalPixels)
-                {
-                    group.BaselineCost = BuildGeneratedCost(
-                        new[] { group },
-                        propertyTextures,
-                        standalone.PropertySizes,
-                        alphaCache);
-                }
-                else
-                {
-                    group.BaselineCost = group.OriginalCost;
-                }
             }
 
             foreach (var group in groups)
@@ -443,6 +428,20 @@ namespace net.rs64.TexTransTool.NDMF
                             property,
                             usageSources,
                             propertyTextures);
+                }
+
+                if (metrics.OutputTexturePixelCount > 0
+                    && metrics.OutputTexturePixelCount < group.OriginalPixels)
+                {
+                    group.BaselineCost = BuildGeneratedCost(
+                        new[] { group },
+                        propertyTextures,
+                        metrics.PropertySizes,
+                        alphaCache);
+                }
+                else
+                {
+                    group.BaselineCost = group.OriginalCost;
                 }
             }
 
