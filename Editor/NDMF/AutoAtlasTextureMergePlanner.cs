@@ -945,10 +945,10 @@ namespace net.rs64.TexTransTool.NDMF
                         ? CalculateMipCount(texture2D.width, texture2D.height)
                         : 1;
 
-                    // TTT's deferred compressor enables streaming on textures it
-                    // post-processes. Existing asset textures otherwise retain
-                    // their current streaming flag.
-                    streaming = texture2D.streamingMipmaps && mipCount > 1;
+                    // Model mipmapped avatar textures as streamable. This is
+                    // conservative for merge acceptance because it does not
+                    // overstate the standalone runtime mip cost.
+                    streaming = mipCount > 1;
                     return true;
                 }
 
