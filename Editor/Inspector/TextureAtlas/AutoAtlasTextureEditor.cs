@@ -27,8 +27,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     {
         private SerializedProperty _islandPadding = null!;
         private SerializedProperty _enableAdditionalAtlasMerging = null!;
-        private SerializedProperty _minimumMergeHostTopFreeRatio = null!;
-        private SerializedProperty _minimumAdditionalMergeSavingsRate = null!;
         private SerializedProperty _excludedRenderers = null!;
         private SerializedProperty _excludedMaterials = null!;
         private bool _advanced;
@@ -37,8 +35,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             _islandPadding = serializedObject.FindProperty(nameof(AutoAtlasTexture.IslandPadding));
             _enableAdditionalAtlasMerging = serializedObject.FindProperty(nameof(AutoAtlasTexture.EnableAdditionalAtlasMerging));
-            _minimumMergeHostTopFreeRatio = serializedObject.FindProperty(nameof(AutoAtlasTexture.MinimumMergeHostTopFreeRatio));
-            _minimumAdditionalMergeSavingsRate = serializedObject.FindProperty(nameof(AutoAtlasTexture.MinimumAdditionalMergeSavingsRate));
             _excludedRenderers = serializedObject.FindProperty(nameof(AutoAtlasTexture.ExcludedRenderers));
             _excludedMaterials = serializedObject.FindProperty(nameof(AutoAtlasTexture.ExcludedMaterials));
         }
@@ -64,12 +60,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 {
                     using (new EditorGUI.IndentLevelScope())
                     {
-                        EditorGUILayout.PropertyField(
-                            _minimumMergeHostTopFreeRatio,
-                            "AutoAtlasTexture:prop:MinimumMergeHostTopFreeRatio".GlcV());
-                        EditorGUILayout.PropertyField(
-                            _minimumAdditionalMergeSavingsRate,
-                            "AutoAtlasTexture:prop:MinimumAdditionalMergeSavingsRate".GlcV());
                         EditorGUILayout.HelpBox(
                             "AutoAtlasTexture:help:AdditionalAtlasMerging".GetLocalize(),
                             MessageType.Info);
