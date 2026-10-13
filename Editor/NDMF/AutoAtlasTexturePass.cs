@@ -473,23 +473,45 @@ namespace net.rs64.TexTransTool.NDMF
             failureReason = null;
             foreach (var texture in textures)
             {
-                if (texture is not Texture2D texture2D)
+                long textureBytes;
+                switch (texture)
                 {
-                    failureReason =
-                        $"source texture '{texture.name}' is {texture.GetType().Name}, not Texture2D";
-                    return false;
-                }
+                    case Texture2D texture2D:
+                        if (!TryCalculateTextureMemory(
+                                texture2D.width,
+                                texture2D.height,
+                                texture2D.format,
+                                Math.Max(1, texture2D.mipmapCount),
+                                out textureBytes))
+                        {
+                            failureReason =
+                                $"source texture '{texture2D.name}' format {texture2D.format} could not be measured";
+                            return false;
+                        }
+                        break;
 
-                if (!TryCalculateTextureMemory(
-                        texture2D.width,
-                        texture2D.height,
-                        texture2D.format,
-                        Math.Max(1, texture2D.mipmapCount),
-                        out var textureBytes))
-                {
-                    failureReason =
-                        $"source texture '{texture2D.name}' format {texture2D.format} could not be measured";
-                    return false;
+                    case RenderTexture renderTexture:
+                        var mipCount = renderTexture.useMipMap
+                            ? CalculateMipCount(
+                                renderTexture.width, renderTexture.height)
+                            : 1;
+                        if (!TryCalculateTextureMemory(
+                                renderTexture.width,
+                                renderTexture.height,
+                                renderTexture.graphicsFormat,
+                                mipCount,
+                                out textureBytes))
+                        {
+                            failureReason =
+                                $"source RenderTexture '{renderTexture.name}' format {renderTexture.graphicsFormat} could not be measured";
+                            return false;
+                        }
+                        break;
+
+                    default:
+                        failureReason =
+                            $"source texture '{texture.name}' has unsupported type {texture.GetType().Name}";
+                        return false;
                 }
 
                 bytes += textureBytes;
@@ -646,6 +668,48 @@ namespace net.rs64.TexTransTool.NDMF
             int width,
             int height,
             TextureFormat format,
+            int mipCount,
+            out long bytes)
+        {
+            bytes = 0;
+            width = Math.Max(1, width);
+            height = Math.Max(1, height);
+            mipCount = Math.Max(1, mipCount);
+
+            try
+            {
+                var blockWidth = Math.Max(
+                    1u, GraphicsFormatUtility.GetBlockWidth(format));
+                var blockHeight = Math.Max(
+                    1u, GraphicsFormatUtility.GetBlockHeight(format));
+                var blockSize = Math.Max(
+                    1u, GraphicsFormatUtility.GetBlockSize(format));
+
+                for (var mip = 0; mip < mipCount; mip += 1)
+                {
+                    var blocksX =
+                        ((long)width + blockWidth - 1) / blockWidth;
+                    var blocksY =
+                        ((long)height + blockHeight - 1) / blockHeight;
+                    bytes += blocksX * blocksY * blockSize;
+
+                    width = Math.Max(1, width >> 1);
+                    height = Math.Max(1, height >> 1);
+                }
+
+                return true;
+            }
+            catch
+            {
+                bytes = 0;
+                return false;
+            }
+        }
+
+        private static bool TryCalculateTextureMemory(
+            int width,
+            int height,
+            GraphicsFormat format,
             int mipCount,
             out long bytes)
         {
