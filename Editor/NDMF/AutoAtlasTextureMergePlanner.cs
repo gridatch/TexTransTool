@@ -249,7 +249,7 @@ namespace net.rs64.TexTransTool.NDMF
             {
             }
 
-            private TextureCostEntry(
+            internal TextureCostEntry(
                 int width,
                 int height,
                 (uint Width, uint Height, uint Size) block,
@@ -822,7 +822,7 @@ namespace net.rs64.TexTransTool.NDMF
                         domain,
                         texture,
                         alphaCache,
-                        out var format,
+                        out var block,
                         out var mipCount,
                         out var streaming))
                 {
@@ -838,12 +838,13 @@ namespace net.rs64.TexTransTool.NDMF
                 entries.Add(new TextureCostEntry(
                     texture.width,
                     texture.height,
-                    format,
+                    block,
                     mipCount,
                     streaming,
                     new[] { group.Id },
                     demands));
-                bytesPerTexel[texture] = GetBytesPerTexel(format);
+                bytesPerTexel[texture] =
+                    (double)block.Size / (block.Width * block.Height);
             }
 
             var propertySamplingCosts = group.Materials
@@ -863,54 +864,155 @@ namespace net.rs64.TexTransTool.NDMF
                 });
         }
 
+        internal static bool TryCalculateSourceTextureMemory(
+            IDomain domain,
+            IEnumerable<Texture> textures,
+            out long bytes)
+        {
+            bytes = 0;
+            var alphaCache = new Dictionary<Texture, bool>();
+
+            foreach (var texture in textures)
+            {
+                if (!TryGetOriginalTextureCostInfo(
+                        domain,
+                        texture,
+                        alphaCache,
+                        out var block,
+                        out var mipCount,
+                        out _))
+                {
+                    return false;
+                }
+
+                var width = Math.Max(1, texture.width);
+                var height = Math.Max(1, texture.height);
+                for (var mip = 0; mip < Math.Max(1, mipCount); mip += 1)
+                {
+                    var blocksX =
+                        ((long)width + block.Width - 1) / block.Width;
+                    var blocksY =
+                        ((long)height + block.Height - 1) / block.Height;
+                    bytes += blocksX * blocksY * block.Size;
+
+                    width = Math.Max(1, width >> 1);
+                    height = Math.Max(1, height >> 1);
+                }
+            }
+
+            return true;
+        }
+
         private static bool TryGetOriginalTextureCostInfo(
             IDomain domain,
             Texture texture,
             Dictionary<Texture, bool> alphaCache,
-            out TextureFormat format,
+            out (uint Width, uint Height, uint Size) block,
             out int mipCount,
             out bool streaming)
         {
-            format = default;
+            block = default;
             mipCount = 1;
             streaming = false;
-
-            TexTransToolTextureDescriptor descriptor;
-            try
-            {
-                descriptor = domain.GetTextureDescriptor(texture);
-            }
-            catch
-            {
-                return false;
-            }
-
-            mipCount = descriptor.UseMipMap
-                ? CalculateMipCount(texture.width, texture.height)
-                : 1;
 
             switch (texture)
             {
                 case Texture2D texture2D:
+                {
+                    TexTransToolTextureDescriptor descriptor;
                     try
                     {
-                        format = descriptor.TextureFormat.Get(texture2D).CompressFormat;
+                        descriptor = domain.GetTextureDescriptor(texture2D);
                     }
                     catch
                     {
                         return false;
                     }
 
-                    streaming = texture2D.streamingMipmaps && mipCount > 1;
-                    return true;
-
-                case RenderTexture renderTexture:
-                    if (descriptor.TextureFormat
-                        is not TextureCompressionData compression)
+                    TextureFormat format;
+                    try
+                    {
+                        format = descriptor.TextureFormat
+                            .Get(texture2D).CompressFormat;
+                    }
+                    catch
                     {
                         return false;
                     }
 
+                    block = GetBlockLayout(format);
+                    mipCount = descriptor.UseMipMap
+                        ? CalculateMipCount(texture2D.width, texture2D.height)
+                        : 1;
+
+                    // TTT's deferred compressor enables streaming on textures it
+                    // post-processes. Existing asset textures otherwise retain
+                    // their current streaming flag.
+                    streaming = texture2D.streamingMipmaps && mipCount > 1;
+                    return true;
+                }
+
+                case RenderTexture renderTexture:
+                {
+                    TexTransToolTextureDescriptor? descriptor = null;
+                    try
+                    {
+                        descriptor = domain.GetTextureDescriptor(renderTexture);
+                    }
+                    catch
+                    {
+                        // A RenderTexture not registered in TTT's descriptor
+                        // manager is an external/current runtime texture. Its
+                        // graphics format is the baseline cost representation.
+                    }
+
+                    if (descriptor == null)
+                    {
+                        block = GetBlockLayout(renderTexture.graphicsFormat);
+                        mipCount = renderTexture.useMipMap
+                            ? CalculateMipCount(
+                                renderTexture.width, renderTexture.height)
+                            : 1;
+                        streaming = false;
+                        return true;
+                    }
+
+                    if (!TryResolveDescriptorFormat(
+                            descriptor.TextureFormat,
+                            renderTexture,
+                            alphaCache,
+                            out var format))
+                    {
+                        return false;
+                    }
+
+                    block = GetBlockLayout(format);
+                    mipCount = descriptor.UseMipMap
+                        ? CalculateMipCount(
+                            renderTexture.width, renderTexture.height)
+                        : 1;
+
+                    // Registered TTT RenderTextures are downloaded to Texture2D
+                    // and CompressDeferred enables Streaming Mipmaps.
+                    streaming = mipCount > 1;
+                    return true;
+                }
+
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryResolveDescriptorFormat(
+            ITexTransToolTextureFormat textureFormat,
+            RenderTexture renderTexture,
+            Dictionary<Texture, bool> alphaCache,
+            out TextureFormat format)
+        {
+            switch (textureFormat)
+            {
+                case TextureCompressionData compression:
+                {
                     var hasAlpha = HasAlpha(
                         renderTexture,
                         alphaCache,
@@ -919,13 +1021,19 @@ namespace net.rs64.TexTransTool.NDMF
                         ? compression.OverrideTextureFormat
                         : TextureCompressionData.GetQuality2TextureFormat(
                             compression.FormatQualityValue, hasAlpha);
+                    return true;
+                }
 
-                    // Registered TTT RenderTextures are downloaded to Texture2D
-                    // and CompressDeferred enables Streaming Mipmaps on them.
-                    streaming = mipCount > 1;
+                case TextureManagerUtility.DirectFormat direct:
+                    format = direct.format.CompressFormat;
+                    return true;
+
+                case TextureManagerUtility.RefAtImporterFormat importer:
+                    format = importer.TextureFormat;
                     return true;
 
                 default:
+                    format = default;
                     return false;
             }
         }
@@ -1111,6 +1219,22 @@ namespace net.rs64.TexTransTool.NDMF
 
         private static (uint Width, uint Height, uint Size) GetBlockLayout(
             TextureFormat format)
+        {
+            try
+            {
+                return (
+                    Math.Max(1u, GraphicsFormatUtility.GetBlockWidth(format)),
+                    Math.Max(1u, GraphicsFormatUtility.GetBlockHeight(format)),
+                    Math.Max(1u, GraphicsFormatUtility.GetBlockSize(format)));
+            }
+            catch
+            {
+                return (1u, 1u, 4u);
+            }
+        }
+
+        private static (uint Width, uint Height, uint Size) GetBlockLayout(
+            GraphicsFormat format)
         {
             try
             {
