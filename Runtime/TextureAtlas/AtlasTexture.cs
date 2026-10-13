@@ -205,14 +205,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 TTLog.Warning("AtlasTexture:warn:IslandPaddingIsZeroAndPixelNormalizeUsed");
 
             pf.Split("IslandProcessing");
-            var relocatorOverride = executionOptions?.IslandRelocatorFactory?.Invoke(atlasContext)
-                ?? executionOptions?.IslandRelocatorOverride;
-            var effectiveExecutionOptions = executionOptions;
-            if (effectiveExecutionOptions != null)
-                effectiveExecutionOptions.IslandRelocatorOverride = relocatorOverride;
+            var relocatorOverride =
+                executionOptions?.IslandRelocatorFactory?.Invoke(atlasContext);
 
             var (atlasTargeSize, movedVirtualIslandArray, relocateResult, relocationTime) =
-                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner, effectiveExecutionOptions);
+                SelectAtlasSizeAndRelocate(
+                    domain,
+                    atlasSetting,
+                    atlasContext,
+                    islandSizePriorityTuner,
+                    executionOptions,
+                    relocatorOverride);
             if (executionOptions?.RequireLossless == true &&
                 IsLosslessRelocation(relocateResult) is false)
             {
@@ -560,7 +563,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             AtlasSetting atlasSetting,
             AtlasContext atlasContext,
             List<IIslandSizePriorityTuner?> islandSizePriorityTuner,
-            AtlasExecutionOptions? executionOptions)
+            AtlasExecutionOptions? executionOptions,
+            IIslandRelocator? islandRelocatorOverride)
         {
             if (atlasSetting.AutoAtlasTextureSize is false)
             {
@@ -571,7 +575,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     atlasContext,
                     islandSizePriorityTuner,
                     manualSize,
-                    executionOptions?.IslandRelocatorOverride,
+                    islandRelocatorOverride,
                     out var manualTime
                 );
                 return (manualSize, manualIslands, manualResult, manualTime);
@@ -592,7 +596,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     atlasContext,
                     islandSizePriorityTuner,
                     candidateSize,
-                    executionOptions?.IslandRelocatorOverride,
+                    islandRelocatorOverride,
                     out var candidateTime
                 );
 

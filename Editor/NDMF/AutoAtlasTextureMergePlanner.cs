@@ -59,7 +59,6 @@ namespace net.rs64.TexTransTool.NDMF
             internal MergeSelection(
                 IEnumerable<int> groupIds,
                 TextureCostPlan baseline,
-                TextureCostPlan merged,
                 Vector2Int plannedLayoutSize)
             {
                 GroupIds = groupIds.OrderBy(id => id).ToArray();
@@ -652,7 +651,6 @@ namespace net.rs64.TexTransTool.NDMF
                 selected.Add(new MergeSelection(
                     candidate.GroupIds,
                     candidate.Baseline,
-                    candidate.Merged,
                     candidate.LayoutSize));
                 consumed.UnionWith(candidate.GroupIds);
             }
