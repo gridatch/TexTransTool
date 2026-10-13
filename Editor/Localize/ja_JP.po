@@ -151,7 +151,7 @@ msgid "AutoAtlasTexture:info:TargetTextureMemory"
 msgstr "対象テクスチャメモリ: {0} → {1}"
 
 msgid "AutoAtlasTexture:info:TemporaryMergeDiagnostic"
-msgstr "一時診断（採用候補の拡張棄却）: {0}"
+msgstr "一時診断（採用候補の拡張）: {0}"
 
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2}件"
