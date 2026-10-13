@@ -205,8 +205,14 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 TTLog.Warning("AtlasTexture:warn:IslandPaddingIsZeroAndPixelNormalizeUsed");
 
             pf.Split("IslandProcessing");
+            var relocatorOverride = executionOptions?.IslandRelocatorFactory?.Invoke(atlasContext)
+                ?? executionOptions?.IslandRelocatorOverride;
+            var effectiveExecutionOptions = executionOptions;
+            if (effectiveExecutionOptions != null)
+                effectiveExecutionOptions.IslandRelocatorOverride = relocatorOverride;
+
             var (atlasTargeSize, movedVirtualIslandArray, relocateResult, relocationTime) =
-                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner, executionOptions);
+                SelectAtlasSizeAndRelocate(domain, atlasSetting, atlasContext, islandSizePriorityTuner, effectiveExecutionOptions);
             if (executionOptions?.RequireLossless == true &&
                 IsLosslessRelocation(relocateResult) is false)
             {
