@@ -423,11 +423,12 @@ namespace net.rs64.TexTransTool.NDMF
 
             TTTLog.ReportingObject(configuration, () =>
             {
+                string? sourceFailureReason = null;
                 if (textureMemoryKnown
                     && TryCalculateSourceTextureMemory(
                         successfulSourceTextures,
                         out var sourceTextureMemoryBytes,
-                        out var sourceFailureReason))
+                        out sourceFailureReason))
                 {
                     TTTLog.Info(
                         "AutoAtlasTexture:info:RelocateResultWithTextureMemory",
