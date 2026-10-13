@@ -584,6 +584,32 @@ namespace net.rs64.TexTransTool.NDMF
                         && selectedIds.All(candidate.GroupIds.Contains))
                     .ToArray();
 
+                var evaluatedExtensions = viableExtensions
+                    .Concat(rejectedExtensions)
+                    .ToArray();
+                var geometricallyExtendable = byId.Values
+                    .Where(group => !selectedIds.Contains(group.Id))
+                    .Where(group => CanGeometricallyExtendSelection(
+                        selection, group, byId))
+                    .Where(group => !evaluatedExtensions.Any(candidate =>
+                        candidate.GroupIds.Contains(group.Id)))
+                    .OrderBy(group => group.Id)
+                    .ToArray();
+
+                foreach (var group in geometricallyExtendable)
+                {
+                    var materials = group.Materials
+                        .Select(material => material.name)
+                        .Distinct()
+                        .OrderBy(name => name, StringComparer.Ordinal);
+
+                    segments.Add(
+                        $"NotEvaluated: {string.Join(", ", materials)} " +
+                        $"(standalone={(group.StandaloneMetrics != null ? 1 : 0)}, " +
+                        $"baseline={(group.BaselineCostKnown ? 1 : 0)}, " +
+                        $"band={group.BandWidthPixels}x{group.BandUsedHeightPixels})");
+                }
+
                 foreach (var reasonGroup in rejectedExtensions
                              .GroupBy(candidate => candidate.RejectionReason)
                              .OrderBy(group => group.Key))
@@ -599,6 +625,41 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             return string.Join(" | ", segments);
+        }
+
+        private static bool CanGeometricallyExtendSelection(
+            MergeSelection selection,
+            PreparedGroup guest,
+            IReadOnlyDictionary<int, PreparedGroup> byId)
+        {
+            if (guest.StandaloneMetrics == null
+                || guest.BandWidthPixels <= 0
+                || guest.BandUsedHeightPixels <= 0)
+            {
+                return false;
+            }
+
+            var selectedGroups = selection.GroupIds
+                .Select(id => byId[id])
+                .ToArray();
+            var totalUsedHeight = selectedGroups.Sum(
+                group => group.BandUsedHeightPixels);
+
+            foreach (var host in selectedGroups)
+            {
+                if (host.BandWidthPixels <= 0
+                    || host.BandWidthPixels != selection.PlannedLayoutSize.x
+                    || guest.BandWidthPixels > host.BandWidthPixels)
+                {
+                    continue;
+                }
+
+                var remaining = host.BandWidthPixels - totalUsedHeight;
+                if (guest.BandUsedHeightPixels <= remaining)
+                    return true;
+            }
+
+            return false;
         }
 
         private static string DescribeCandidate(
