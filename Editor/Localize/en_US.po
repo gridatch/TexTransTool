@@ -149,9 +149,6 @@ msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 msgid "AutoAtlasTexture:info:TargetTextureMemory"
 msgstr "Target texture memory: {0} → {1}"
 
-msgid "AutoAtlasTexture:info:TemporaryMergeDiagnostic"
-msgstr "Temporary diagnostic (extensions of selected merges): {0}"
-
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2} cases"
 
