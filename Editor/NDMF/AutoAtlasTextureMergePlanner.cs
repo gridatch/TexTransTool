@@ -1467,6 +1467,12 @@ namespace net.rs64.TexTransTool.NDMF
             var index = animatorServices.AnimationIndex;
             var remapper = animatorServices.ObjectPathRemapper;
 
+            // If the renderer's material slots are animated, visibility alone
+            // cannot prove which texture-connected group is active at runtime.
+            // Treat the group as potentially simultaneous instead.
+            if (HasAnimatedMaterialSlots(index, remapper, renderer))
+                return null;
+
             // Renderer.enabled is the most local gate.
             var rendererPath = remapper.GetVirtualPathForObject(renderer.gameObject);
             var rendererGate = new UsageGate(
@@ -1485,6 +1491,23 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             return null;
+        }
+
+        private static bool HasAnimatedMaterialSlots(
+            AnimationIndex index,
+            ObjectPathRemapper remapper,
+            Renderer renderer)
+        {
+            var rendererPath =
+                remapper.GetVirtualPathForObject(renderer.gameObject);
+
+            return index.ClipsWithObjectCurves.Any(clip =>
+                clip.GetObjectCurveBindings().Any(binding =>
+                    binding.path == rendererPath
+                    && typeof(Renderer).IsAssignableFrom(binding.type)
+                    && binding.propertyName.StartsWith(
+                        "m_Materials.Array.data[",
+                        StringComparison.Ordinal)));
         }
 
         private static bool BindingIsAnimated(
