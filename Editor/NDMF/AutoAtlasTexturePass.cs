@@ -288,7 +288,7 @@ namespace net.rs64.TexTransTool.NDMF
                         }
 
                         var materials = domain.GetMaterials(renderer);
-                        for (var slot = 0; slot < materials.Count; slot += 1)
+                        for (var slot = 0; slot < materials.Length; slot += 1)
                         {
                             var material = materials[slot];
                             if (material == null || !group.Contains(material))
