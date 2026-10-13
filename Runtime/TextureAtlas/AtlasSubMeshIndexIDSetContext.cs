@@ -100,7 +100,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var minCount = Math.Min(fSubSet.Length, tSubSet.Length);
             for (var i = 0; minCount > i; i += 1)
             {
-                if (fSubSet[i].HasValue != fSubSet[i].HasValue) { return false; }
+                if (fSubSet[i].HasValue != tSubSet[i].HasValue) { return false; }
                 if (fSubSet[i] != tSubSet[i]) { return false; }
             }
             return true;
