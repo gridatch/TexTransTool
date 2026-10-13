@@ -70,23 +70,10 @@ namespace net.rs64.TexTransTool.NDMF
         internal sealed class PlanResult
         {
             internal readonly IReadOnlyList<MergeSelection> Selections;
-            internal readonly int CandidateCount;
-            internal readonly int BasicGateRejected;
-            internal readonly int SamplingRejected;
-            internal readonly int StreamingRejected;
 
-            internal PlanResult(
-                IReadOnlyList<MergeSelection> selections,
-                int candidateCount = 0,
-                int basicGateRejected = 0,
-                int samplingRejected = 0,
-                int streamingRejected = 0)
+            internal PlanResult(IReadOnlyList<MergeSelection> selections)
             {
                 Selections = selections;
-                CandidateCount = candidateCount;
-                BasicGateRejected = basicGateRejected;
-                SamplingRejected = samplingRejected;
-                StreamingRejected = streamingRejected;
             }
         }
 
@@ -118,9 +105,6 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long SavingBytes;
             internal readonly float SavingRate;
             internal readonly bool IsAdoptable;
-            internal readonly bool BasicGateRejected;
-            internal readonly bool SamplingRejected;
-            internal readonly bool StreamingRejected;
 
             internal Candidate(
                 int[] groupIds,
@@ -138,23 +122,23 @@ namespace net.rs64.TexTransTool.NDMF
                     ? 0f
                     : (float)SavingBytes / baseline.FullResidentBytes;
 
-                BasicGateRejected =
-                    merged.PixelCount >= baseline.PixelCount
-                    || merged.FullResidentBytes >= baseline.FullResidentBytes
-                    || merged.MaxTextureDimension
-                        > baseline.MaxTextureDimension;
-
-                SamplingRejected = !BasicGateRejected
-                    && HasSamplingRegression(baseline, merged, groupIds);
-                StreamingRejected = !BasicGateRejected
-                    && !SamplingRejected
-                    && HasStreamingRegression(
-                        baseline, merged, groupIds, usage);
-
                 IsAdoptable =
-                    !BasicGateRejected
-                    && !SamplingRejected
-                    && !StreamingRejected;
+                    merged.PixelCount < baseline.PixelCount
+                    && merged.FullResidentBytes < baseline.FullResidentBytes
+                    && merged.MaxTextureDimension
+                        <= baseline.MaxTextureDimension;
+
+                if (IsAdoptable
+                    && HasSamplingRegression(baseline, merged, groupIds))
+                {
+                    IsAdoptable = false;
+                }
+
+                if (IsAdoptable
+                    && HasStreamingRegression(baseline, merged, groupIds, usage))
+                {
+                    IsAdoptable = false;
+                }
             }
         }
 
@@ -512,10 +496,6 @@ namespace net.rs64.TexTransTool.NDMF
             var byId = groups.ToDictionary(group => group.Id);
             var adoptable = new Dictionary<string, Candidate>();
             var evaluatedLayouts = new HashSet<string>(StringComparer.Ordinal);
-            var candidateCount = 0;
-            var basicGateRejected = 0;
-            var samplingRejected = 0;
-            var streamingRejected = 0;
 
             foreach (var host in groups.Where(CanHostAnyGuest))
             {
@@ -646,10 +626,6 @@ namespace net.rs64.TexTransTool.NDMF
                         merged,
                         layoutSize,
                         usage);
-                    candidateCount += 1;
-                    if (candidate.BasicGateRejected) basicGateRejected += 1;
-                    else if (candidate.SamplingRejected) samplingRejected += 1;
-                    else if (candidate.StreamingRejected) streamingRejected += 1;
 
                     if (!candidate.IsAdoptable)
                         continue;
@@ -679,12 +655,7 @@ namespace net.rs64.TexTransTool.NDMF
                 consumed.UnionWith(candidate.GroupIds);
             }
 
-            return new PlanResult(
-                selected,
-                candidateCount,
-                basicGateRejected,
-                samplingRejected,
-                streamingRejected);
+            return new PlanResult(selected);
         }
 
         private static int GetBandUsedHeightPixels(
