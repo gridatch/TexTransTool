@@ -213,6 +213,14 @@ namespace net.rs64.TexTransTool.NDMF
                 propertyTextures,
                 preparedGroups);
 
+            if (!string.IsNullOrEmpty(mergePlan.Diagnostic))
+            {
+                TTTLog.ReportingObject(configuration, () =>
+                    TTTLog.Info(
+                        "AutoAtlasTexture:info:TemporaryMergeDiagnostic",
+                        mergePlan.Diagnostic));
+            }
+
             var selectedIds = mergePlan.Selections
                 .SelectMany(selection => selection.GroupIds)
                 .ToHashSet();
