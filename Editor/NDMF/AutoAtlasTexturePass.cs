@@ -262,6 +262,20 @@ namespace net.rs64.TexTransTool.NDMF
                     null));
             }
 
+            void EnqueueStandaloneFallback(
+                AutoAtlasTextureMergePlanner.MergeSelection failedMerge)
+            {
+                foreach (var id in failedMerge.GroupIds)
+                {
+                    var prepared = preparedGroups[id];
+                    executionGroups.Enqueue((
+                        prepared.Materials,
+                        prepared.Renderers,
+                        prepared.SourceTextures,
+                        null));
+                }
+            }
+
             var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
             while (executionGroups.Count != 0)
             {
@@ -328,15 +342,7 @@ namespace net.rs64.TexTransTool.NDMF
                         // build-time band layout does not satisfy the planner's
                         // envelope, preserve ordinary AutoAtlas behavior by
                         // retrying every atomic group independently.
-                        foreach (var id in failedMerge.GroupIds)
-                        {
-                            var prepared = preparedGroups[id];
-                            executionGroups.Enqueue((
-                                prepared.Materials,
-                                prepared.Renderers,
-                                prepared.SourceTextures,
-                                null));
-                        }
+                        EnqueueStandaloneFallback(failedMerge);
                     }
                     continue;
                 }
@@ -345,6 +351,34 @@ namespace net.rs64.TexTransTool.NDMF
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
                 var tuningResult = AtlasTexture.DoTextureFinTuning(
                     engine, atlasContext, settings, compiledTextures, null);
+
+                var hasExecutionTextureMemory =
+                    TryCalculateFinalTextureMemory(
+                        atlasContext,
+                        tuningResult,
+                        sourceAlphaCache,
+                        out var executionTextureMemoryBytes);
+
+                if (execution.MergeSelection is { } memoryCheckedMerge
+                    && (!hasExecutionTextureMemory
+                        || executionTextureMemoryBytes
+                            >= memoryCheckedMerge.BaselineBytes))
+                {
+                    // The planner only predicts texture cost. The final
+                    // FineTuning descriptors are authoritative enough to reject a
+                    // merge before it mutates meshes/materials. If the final cost
+                    // cannot be determined, fall back conservatively as well.
+                    foreach (var rt in compiledTextures.Values
+                                 .Concat(tuningResult.TextureDescriptors.Keys)
+                                 .Distinct())
+                    {
+                        rt.Dispose();
+                    }
+
+                    EnqueueStandaloneFallback(memoryCheckedMerge);
+                    continue;
+                }
+
                 var resultingTextures = tuningResult.RenderTextures.ToDictionary(
                     item => item.Key,
                     item => engine.GetReferenceRenderTexture(item.Value));
@@ -353,11 +387,7 @@ namespace net.rs64.TexTransTool.NDMF
                 successfulSourceTextures.UnionWith(execution.SourceTextures);
                 if (textureMemoryKnown)
                 {
-                    if (TryCalculateFinalTextureMemory(
-                            atlasContext,
-                            tuningResult,
-                            sourceAlphaCache,
-                            out var executionTextureMemoryBytes))
+                    if (hasExecutionTextureMemory)
                     {
                         finalTextureMemoryBytes += executionTextureMemoryBytes;
                     }
