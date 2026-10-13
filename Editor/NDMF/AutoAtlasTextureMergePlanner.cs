@@ -989,7 +989,9 @@ namespace net.rs64.TexTransTool.NDMF
                     property.Value.y,
                     format,
                     CalculateMipCount(property.Value.x, property.Value.y),
-                    streaming: false,
+                    // VRChat streams avatar textures that have mipmaps,
+                    // regardless of the Unity editor-side importer streaming flag.
+                    streaming: true,
                     contributors,
                     demand));
             }
