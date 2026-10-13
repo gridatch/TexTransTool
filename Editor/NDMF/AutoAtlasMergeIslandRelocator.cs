@@ -131,11 +131,20 @@ namespace net.rs64.TexTransTool.NDMF
                     .Select(index => islandTransforms[index])
                     .ToArray();
 
-                var localResult = new NFDHPlasFC().Relocation(
-                    new RelocationContext(
-                        relocationContext.TargetHeight,
-                        relocationContext.Padding),
-                    localIslands);
+                RelocationResult localResult;
+                try
+                {
+                    localResult = new NFDHPlasFC().Relocation(
+                        new RelocationContext(
+                            relocationContext.TargetHeight,
+                            relocationContext.Padding),
+                        localIslands);
+                }
+                catch (ArgumentException exception)
+                    when (IsNfdhComparerFailure(exception))
+                {
+                    return new RelocationResult(false, true);
+                }
 
                 if (!localResult.IsSuccess)
                     return new RelocationResult(false, true);
@@ -169,6 +178,16 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             return new RelocationResult(true, true);
+        }
+
+        internal static bool IsNfdhComparerFailure(ArgumentException exception)
+        {
+            return exception.Message.IndexOf(
+                       "IComparer.Compare() method returns inconsistent results",
+                       StringComparison.Ordinal) >= 0
+                && (exception.StackTrace?.IndexOf(
+                        "NFDHPlasFC.NextFitDecreasingHeightPlusFloorCeiling",
+                        StringComparison.Ordinal) ?? -1) >= 0;
         }
     }
 }
