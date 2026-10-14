@@ -97,7 +97,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     atlasContext,
                     tunedAtlasTextures
                 );
-                var resolutionLines =
+                var localizedResolutionRoutes =
                     AtlasResolutionRouteReport.CreateLocalizedLogLines(
                         resolutionRoutes);
 
@@ -111,21 +111,30 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         tunedAtlasTextures,
                         out var outputTextureMemoryBytes))
                 {
-                    resolutionLines += "\n" + string.Format(
-                        "AtlasTexture:info:TargetTextureMemory".GetLocalize(),
+                    TTLog.Info(
+                        "AtlasTexture:info:RelocateResultWithResolutionAndMemory",
+                        relocationMetrics.TopFreeFraction,
+                        relocationMetrics.PriorityDownScale,
+                        relocationMetrics.OverallDownScale,
+                        localizedResolutionRoutes,
                         FormatTextureMemory(sourceTextureMemoryBytes),
-                        FormatTextureMemory(outputTextureMemoryBytes));
+                        FormatTextureMemory(outputTextureMemoryBytes),
+                        relocationMetrics.TotalRelocateCount,
+                        relocationMetrics.RelocationTimeMilliseconds
+                    );
                 }
-
-                TTLog.Info(
-                    "AtlasTexture:info:RelocateResultWithResolution",
-                    relocationMetrics.TopFreeFraction,
-                    relocationMetrics.PriorityDownScale,
-                    relocationMetrics.OverallDownScale,
-                    resolutionLines,
-                    relocationMetrics.TotalRelocateCount,
-                    relocationMetrics.RelocationTimeMilliseconds
-                );
+                else
+                {
+                    TTLog.Info(
+                        "AtlasTexture:info:RelocateResultWithResolution",
+                        relocationMetrics.TopFreeFraction,
+                        relocationMetrics.PriorityDownScale,
+                        relocationMetrics.OverallDownScale,
+                        localizedResolutionRoutes,
+                        relocationMetrics.TotalRelocateCount,
+                        relocationMetrics.RelocationTimeMilliseconds
+                    );
+                }
             }
 
             var tunedAtlasUnityTextures = tunedAtlasTextures.RenderTextures.ToDictionary(i => i.Key, i => engine.GetReferenceRenderTexture(i.Value));
