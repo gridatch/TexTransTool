@@ -56,13 +56,19 @@ namespace net.rs64.TexTransTool
 
             return new RefAtImporterFormat(texture2D.format, textureImporter);
         }
-        internal class DirectFormat : ITexTransToolTextureFormat
+        internal class DirectFormat : ITexTransToolTextureFormat, ITexTransToolTextureFormatMemoryEstimate
         {
             public (TextureFormat CompressFormat, int Quality) format;
             public DirectFormat(TextureFormat compressFormat, int quality) { format = (compressFormat, quality); }
             public (TextureFormat CompressFormat, int Quality) Get(Texture2D texture2D) { return format; }
+            bool ITexTransToolTextureFormatMemoryEstimate.TryGetMemoryEstimateFormat(
+                Texture texture, bool hasAlpha, out TextureFormat memoryFormat)
+            {
+                memoryFormat = format.CompressFormat;
+                return true;
+            }
         }
-        internal class RefAtImporterFormat : ITexTransToolTextureFormat
+        internal class RefAtImporterFormat : ITexTransToolTextureFormat, ITexTransToolTextureFormatMemoryEstimate
         {
             public TextureImporter TextureImporter;
             public TextureFormat TextureFormat;
@@ -74,6 +80,12 @@ namespace net.rs64.TexTransTool
             public (TextureFormat CompressFormat, int Quality) Get(Texture2D texture2D)
             {
                 return (TextureFormat, TextureImporter.compressionQuality);
+            }
+            bool ITexTransToolTextureFormatMemoryEstimate.TryGetMemoryEstimateFormat(
+                Texture texture, bool hasAlpha, out TextureFormat memoryFormat)
+            {
+                memoryFormat = TextureFormat;
+                return true;
             }
         }
     }
