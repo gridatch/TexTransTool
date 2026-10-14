@@ -149,6 +149,15 @@ msgstr "Auto Atlas Relocate Result\n{0}\nTotal Auto Atlas processing time: {1}ms
 msgid "AutoAtlasTexture:info:TargetNotFound"
 msgstr "Atlas target not found!\nTotal Auto Atlas processing time: {0}ms"
 
+msgid "AutoAtlasTexture:info:RelocateResultWithTemporaryTiming"
+msgstr "Auto Atlas Relocate Result\n{0}\nTotal Auto Atlas processing time: {1}ms\n{2}"
+
+msgid "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming"
+msgstr "Atlas target not found!\nTotal Auto Atlas processing time: {0}ms\n{1}"
+
+msgid "AutoAtlasTexture:info:TemporaryTimingDiagnostic"
+msgstr "Temporary timing diagnostic\nPlanner total: {0}ms\nStandalone analysis total: {1}ms ({3} runs)\nStandalone relocation total: {2}ms\nPlanner other: {7}ms\nExecution DoAtlasTexture total: {4}ms ({6} runs)\nExecution relocation total: {5}ms"
+
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 
