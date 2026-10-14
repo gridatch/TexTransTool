@@ -39,6 +39,32 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal Action<AtlasExecutionTimingDiagnostic>? TimingDiagnostic;
         }
 
+        internal readonly struct AtlasIslandProcessingTimingDiagnostic
+        {
+            internal readonly long CloneAndScaleMilliseconds;
+            internal readonly long ReferenceIslandMilliseconds;
+            internal readonly long IslandDescriptionMilliseconds;
+            internal readonly long SizePriorityMilliseconds;
+            internal readonly long RelocatorMilliseconds;
+            internal readonly long PostProcessMilliseconds;
+
+            internal AtlasIslandProcessingTimingDiagnostic(
+                long cloneAndScaleMilliseconds,
+                long referenceIslandMilliseconds,
+                long islandDescriptionMilliseconds,
+                long sizePriorityMilliseconds,
+                long relocatorMilliseconds,
+                long postProcessMilliseconds)
+            {
+                CloneAndScaleMilliseconds = cloneAndScaleMilliseconds;
+                ReferenceIslandMilliseconds = referenceIslandMilliseconds;
+                IslandDescriptionMilliseconds = islandDescriptionMilliseconds;
+                SizePriorityMilliseconds = sizePriorityMilliseconds;
+                RelocatorMilliseconds = relocatorMilliseconds;
+                PostProcessMilliseconds = postProcessMilliseconds;
+            }
+        }
+
         internal readonly struct AtlasExecutionTimingDiagnostic
         {
             internal readonly long PreserveSetupMilliseconds;
