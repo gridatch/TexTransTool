@@ -88,6 +88,11 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long StandaloneIslandNormalizeMilliseconds;
             internal readonly long StandaloneRelocationStageMilliseconds;
             internal readonly long StandaloneAllProfileRelocatorMilliseconds;
+            internal readonly long StandaloneCloneAndScaleMilliseconds;
+            internal readonly long StandaloneReferenceIslandMilliseconds;
+            internal readonly long StandaloneIslandDescriptionMilliseconds;
+            internal readonly long StandaloneSizePriorityMilliseconds;
+            internal readonly long StandalonePostProcessMilliseconds;
             internal readonly long StandaloneResolutionPlanMilliseconds;
 
             // Temporary diagnostics for evaluating whether the standalone
@@ -136,6 +141,11 @@ namespace net.rs64.TexTransTool.NDMF
                 long standaloneIslandNormalizeMilliseconds = 0,
                 long standaloneRelocationStageMilliseconds = 0,
                 long standaloneAllProfileRelocatorMilliseconds = 0,
+                long standaloneCloneAndScaleMilliseconds = 0,
+                long standaloneReferenceIslandMilliseconds = 0,
+                long standaloneIslandDescriptionMilliseconds = 0,
+                long standaloneSizePriorityMilliseconds = 0,
+                long standalonePostProcessMilliseconds = 0,
                 long standaloneResolutionPlanMilliseconds = 0,
                 int preparedGroupCount = 0,
                 int sharedRendererCount = 0,
@@ -181,6 +191,16 @@ namespace net.rs64.TexTransTool.NDMF
                     standaloneRelocationStageMilliseconds;
                 StandaloneAllProfileRelocatorMilliseconds =
                     standaloneAllProfileRelocatorMilliseconds;
+                StandaloneCloneAndScaleMilliseconds =
+                    standaloneCloneAndScaleMilliseconds;
+                StandaloneReferenceIslandMilliseconds =
+                    standaloneReferenceIslandMilliseconds;
+                StandaloneIslandDescriptionMilliseconds =
+                    standaloneIslandDescriptionMilliseconds;
+                StandaloneSizePriorityMilliseconds =
+                    standaloneSizePriorityMilliseconds;
+                StandalonePostProcessMilliseconds =
+                    standalonePostProcessMilliseconds;
                 StandaloneResolutionPlanMilliseconds =
                     standaloneResolutionPlanMilliseconds;
                 PreparedGroupCount = preparedGroupCount;
@@ -487,6 +507,11 @@ namespace net.rs64.TexTransTool.NDMF
             long standaloneIslandNormalizeMilliseconds = 0;
             long standaloneRelocationStageMilliseconds = 0;
             long standaloneAllProfileRelocatorMilliseconds = 0;
+            long standaloneCloneAndScaleMilliseconds = 0;
+            long standaloneReferenceIslandMilliseconds = 0;
+            long standaloneIslandDescriptionMilliseconds = 0;
+            long standaloneSizePriorityMilliseconds = 0;
+            long standalonePostProcessMilliseconds = 0;
             long standaloneResolutionPlanMilliseconds = 0;
 
             var sharedRenderers = groups
@@ -549,7 +574,8 @@ namespace net.rs64.TexTransTool.NDMF
                     settings,
                     group,
                     out var phaseTiming,
-                    out var allProfileRelocatorMilliseconds);
+                    out var allProfileRelocatorMilliseconds,
+                    out var islandProcessingTiming);
                 analysisTimer.Stop();
 
                 standaloneAnalysisCount += 1;
@@ -563,6 +589,16 @@ namespace net.rs64.TexTransTool.NDMF
                     phaseTiming.RelocationStageMilliseconds;
                 standaloneAllProfileRelocatorMilliseconds +=
                     allProfileRelocatorMilliseconds;
+                standaloneCloneAndScaleMilliseconds +=
+                    islandProcessingTiming.CloneAndScaleMilliseconds;
+                standaloneReferenceIslandMilliseconds +=
+                    islandProcessingTiming.ReferenceIslandMilliseconds;
+                standaloneIslandDescriptionMilliseconds +=
+                    islandProcessingTiming.IslandDescriptionMilliseconds;
+                standaloneSizePriorityMilliseconds +=
+                    islandProcessingTiming.SizePriorityMilliseconds;
+                standalonePostProcessMilliseconds +=
+                    islandProcessingTiming.PostProcessMilliseconds;
                 standaloneResolutionPlanMilliseconds +=
                     phaseTiming.ResolutionPlanMilliseconds;
                 standaloneAnalysisTimeMilliseconds +=
@@ -905,6 +941,11 @@ namespace net.rs64.TexTransTool.NDMF
                 standaloneIslandNormalizeMilliseconds,
                 standaloneRelocationStageMilliseconds,
                 standaloneAllProfileRelocatorMilliseconds,
+                standaloneCloneAndScaleMilliseconds,
+                standaloneReferenceIslandMilliseconds,
+                standaloneIslandDescriptionMilliseconds,
+                standaloneSizePriorityMilliseconds,
+                standalonePostProcessMilliseconds,
                 standaloneResolutionPlanMilliseconds,
                 groups.Count,
                 sharedRenderers.Count,
@@ -1333,10 +1374,13 @@ namespace net.rs64.TexTransTool.NDMF
             AtlasSetting settings,
             PreparedGroup group,
             out AtlasTexture.AtlasExecutionTimingDiagnostic timing,
-            out long allProfileRelocatorMilliseconds)
+            out long allProfileRelocatorMilliseconds,
+            out AtlasTexture.AtlasIslandProcessingTimingDiagnostic
+                islandProcessingTiming)
         {
             timing = default;
             allProfileRelocatorMilliseconds = 0;
+            islandProcessingTiming = default;
             group.LayoutProfiles.Clear();
 
             var prepared = AtlasTexture.PrepareAtlasContext(
@@ -1354,6 +1398,11 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 long relocationStageMilliseconds = 0;
                 long resolutionPlanMilliseconds = 0;
+                long cloneAndScaleMilliseconds = 0;
+                long referenceIslandMilliseconds = 0;
+                long islandDescriptionMilliseconds = 0;
+                long sizePriorityMilliseconds = 0;
+                long postProcessMilliseconds = 0;
                 AtlasTexture.AtlasExecutionMetrics? standalone = null;
 
                 foreach (var size in AtlasTexture.AutoAtlasTextureSizeCandidates)
@@ -1369,17 +1418,38 @@ namespace net.rs64.TexTransTool.NDMF
                                 out var metrics,
                                 out var relocationStage,
                                 out var relocatorMilliseconds,
+                                out var profileTiming,
                                 out var resolutionPlan))
                         {
                             relocationStageMilliseconds += relocationStage;
                             allProfileRelocatorMilliseconds +=
                                 relocatorMilliseconds;
+                            cloneAndScaleMilliseconds +=
+                                profileTiming.CloneAndScaleMilliseconds;
+                            referenceIslandMilliseconds +=
+                                profileTiming.ReferenceIslandMilliseconds;
+                            islandDescriptionMilliseconds +=
+                                profileTiming.IslandDescriptionMilliseconds;
+                            sizePriorityMilliseconds +=
+                                profileTiming.SizePriorityMilliseconds;
+                            postProcessMilliseconds +=
+                                profileTiming.PostProcessMilliseconds;
                             continue;
                         }
 
                         relocationStageMilliseconds += relocationStage;
                         allProfileRelocatorMilliseconds +=
                             relocatorMilliseconds;
+                        cloneAndScaleMilliseconds +=
+                            profileTiming.CloneAndScaleMilliseconds;
+                        referenceIslandMilliseconds +=
+                            profileTiming.ReferenceIslandMilliseconds;
+                        islandDescriptionMilliseconds +=
+                            profileTiming.IslandDescriptionMilliseconds;
+                        sizePriorityMilliseconds +=
+                            profileTiming.SizePriorityMilliseconds;
+                        postProcessMilliseconds +=
+                            profileTiming.PostProcessMilliseconds;
                         resolutionPlanMilliseconds += resolutionPlan;
                         group.LayoutProfiles[size] = metrics;
                         standalone ??= metrics;
@@ -1402,6 +1472,14 @@ namespace net.rs64.TexTransTool.NDMF
                     resolutionPlanMilliseconds,
                     0,
                     0);
+                islandProcessingTiming =
+                    new AtlasTexture.AtlasIslandProcessingTimingDiagnostic(
+                        cloneAndScaleMilliseconds,
+                        referenceIslandMilliseconds,
+                        islandDescriptionMilliseconds,
+                        sizePriorityMilliseconds,
+                        allProfileRelocatorMilliseconds,
+                        postProcessMilliseconds);
                 return standalone;
             }
         }
