@@ -14,6 +14,37 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal bool ReportProgressInfo = true;
             internal Func<AtlasContext, IIslandRelocator>? IslandRelocatorFactory;
             internal Func<AtlasContext, Vector2Int, AtlasExecutionMetrics, bool>? AcceptAtlasSize;
+            internal Action<AtlasExecutionTimingDiagnostic>? TimingDiagnostic;
+        }
+
+        internal readonly struct AtlasExecutionTimingDiagnostic
+        {
+            internal readonly long PreserveSetupMilliseconds;
+            internal readonly long AtlasContextConstructionMilliseconds;
+            internal readonly long IslandNormalizeMilliseconds;
+            internal readonly long RelocationStageMilliseconds;
+            internal readonly long ResolutionPlanMilliseconds;
+            internal readonly long MeshGenerationMilliseconds;
+            internal readonly long TextureGenerationMilliseconds;
+
+            internal AtlasExecutionTimingDiagnostic(
+                long preserveSetupMilliseconds,
+                long atlasContextConstructionMilliseconds,
+                long islandNormalizeMilliseconds,
+                long relocationStageMilliseconds,
+                long resolutionPlanMilliseconds,
+                long meshGenerationMilliseconds,
+                long textureGenerationMilliseconds)
+            {
+                PreserveSetupMilliseconds = preserveSetupMilliseconds;
+                AtlasContextConstructionMilliseconds =
+                    atlasContextConstructionMilliseconds;
+                IslandNormalizeMilliseconds = islandNormalizeMilliseconds;
+                RelocationStageMilliseconds = relocationStageMilliseconds;
+                ResolutionPlanMilliseconds = resolutionPlanMilliseconds;
+                MeshGenerationMilliseconds = meshGenerationMilliseconds;
+                TextureGenerationMilliseconds = textureGenerationMilliseconds;
+            }
         }
 
         internal readonly struct AtlasRelocationMetrics
