@@ -105,7 +105,7 @@ namespace net.rs64.TexTransTool.NDMF
             AssumePresent,
         }
 
-        private sealed class Candidate
+        internal sealed class Candidate
         {
             internal readonly int[] GroupIds;
             internal readonly TextureCostPlan Baseline;
