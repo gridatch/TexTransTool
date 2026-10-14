@@ -45,6 +45,7 @@ namespace net.rs64.TexTransTool.NDMF
                 ? ndmfDomain.GetAllMaterials()
                 : ((IRendererTargeting)session.Domain).GetAllMaterials();
             isolationDiagnostic.Begin(
+                context,
                 configurations[0],
                 session.Domain.EnumerateRenderer(),
                 referencedMaterials);
