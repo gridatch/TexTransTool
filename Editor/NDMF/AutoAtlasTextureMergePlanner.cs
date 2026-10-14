@@ -305,15 +305,17 @@ namespace net.rs64.TexTransTool.NDMF
                             propertyTextures);
                 }
 
-                if (metrics.OutputTexturePixelCount > 0
-                    && metrics.OutputTexturePixelCount < group.OriginalPixels)
+                var standaloneGeneratedCost = BuildGeneratedCost(
+                    new[] { group },
+                    propertyTextures,
+                    metrics.PropertySizes,
+                    alphaCache,
+                    UnknownAlphaAssumption.AssumeAbsent);
+
+                if (standaloneGeneratedCost.PixelCount > 0
+                    && standaloneGeneratedCost.PixelCount < group.OriginalPixels)
                 {
-                    group.BaselineCost = BuildGeneratedCost(
-                        new[] { group },
-                        propertyTextures,
-                        metrics.PropertySizes,
-                        alphaCache,
-                        UnknownAlphaAssumption.AssumeAbsent);
+                    group.BaselineCost = standaloneGeneratedCost;
                     group.BaselineCostKnown = true;
                 }
                 else
