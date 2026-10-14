@@ -145,7 +145,10 @@ msgid "AtlasTexture:info:RelocateResultWithResolutionAndMemory"
 msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応じた縮小: {1}倍\n全体的な縮小: {2}倍\n{3}\n対象テクスチャメモリ: {4} → {5}\n累計再配置計算回数: {6}回\n再配置実行時間: {7}ms"
 
 msgid "AutoAtlasTexture:info:RelocateResult"
-msgstr "自動アトラス再配置結果\n{0}"
+msgstr "自動アトラス再配置結果\n{0}\n自動アトラス総処理時間: {1}ms"
+
+msgid "AutoAtlasTexture:info:TargetNotFound"
+msgstr "アトラス化対象が存在しません！\n自動アトラス総処理時間: {0}ms"
 
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
