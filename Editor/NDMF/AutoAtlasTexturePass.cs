@@ -396,7 +396,6 @@ namespace net.rs64.TexTransTool.NDMF
 
                 var executionMetrics = default(AtlasTexture.AtlasExecutionMetrics);
                 var standaloneSizeEvaluated = false;
-                long standaloneOutputPixels = 0;
                 var atlasResult = AtlasTexture.DoAtlasTexture(
                     domain,
                     engine,
@@ -446,11 +445,14 @@ namespace net.rs64.TexTransTool.NDMF
                                 return true;
                             }
 
-                            // Preserve the existing individual AutoAtlas acceptance rule.
+                            // For standalone AutoAtlas, the pre-FineTuning
+                            // property count is not authoritative. Default
+                            // ReferenceCopy (and other FineTuning) can remove or
+                            // merge outputs. Defer the benefit check until after
+                            // DoTextureFinTuning(), before any mesh/material
+                            // mutation.
                             standaloneSizeEvaluated = true;
-                            standaloneOutputPixels = metrics.OutputTexturePixelCount;
-                            return metrics.OutputTexturePixelCount > 0
-                                && metrics.OutputTexturePixelCount < originalPixels;
+                            return metrics.OutputTexturePixelCount > 0;
                         },
                     });
 
@@ -459,8 +461,7 @@ namespace net.rs64.TexTransTool.NDMF
                     if (execution.MergeSelection == null)
                     {
                         selectionDiagnostics.Add(standaloneSizeEvaluated
-                            ? $"{DescribeGroup(group)} => StandalonePixelCount " +
-                              $"[original={originalPixels}, output={standaloneOutputPixels}]"
+                            ? $"{DescribeGroup(group)} => StandaloneAtlasFailedAfterSize"
                             : $"{DescribeGroup(group)} => StandaloneAtlasFailedBeforeSize");
                     }
 
@@ -479,6 +480,27 @@ namespace net.rs64.TexTransTool.NDMF
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
                 var tuningResult = AtlasTexture.DoTextureFinTuning(
                     engine, atlasContext, settings, compiledTextures, null);
+
+                var finalOutputPixels = tuningResult.TextureDescriptors.Keys
+                    .Distinct()
+                    .Sum(texture => (long)texture.Width * texture.Hight);
+
+                if (execution.MergeSelection == null
+                    && (finalOutputPixels <= 0
+                        || finalOutputPixels >= originalPixels))
+                {
+                    selectionDiagnostics.Add(
+                        $"{DescribeGroup(group)} => StandaloneFinalPixelCount " +
+                        $"[original={originalPixels}, output={finalOutputPixels}]");
+
+                    foreach (var rt in compiledTextures.Values
+                                 .Concat(tuningResult.TextureDescriptors.Keys)
+                                 .Distinct())
+                    {
+                        rt.Dispose();
+                    }
+                    continue;
+                }
 
                 var hasExecutionTextureMemory =
                     TryCalculateFinalTextureMemory(
