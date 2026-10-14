@@ -75,6 +75,8 @@ namespace net.rs64.TexTransTool.NDMF
             AutoAtlasTexture configuration,
             IReadOnlyCollection<AtlasTexture> manualAtlases)
         {
+            var processingTimer = System.Diagnostics.Stopwatch.StartNew();
+
             // Store only the NDMF console summary for this build.
             var completed = new List<string>();
 
@@ -99,8 +101,11 @@ namespace net.rs64.TexTransTool.NDMF
             var allReferencedMaterials = domain.GetAllMaterials();
             if (allMaterials.Count == 0)
             {
+                processingTimer.Stop();
                 TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info("AtlasTexture:info:TargetNotFound"));
+                    TTTLog.Info(
+                        "AutoAtlasTexture:info:TargetNotFound",
+                        processingTimer.ElapsedMilliseconds));
                 return;
             }
 
@@ -495,17 +500,21 @@ namespace net.rs64.TexTransTool.NDMF
                 completed.Add(block);
             }
 
+            processingTimer.Stop();
             if (completed.Count == 0)
             {
                 TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info("AtlasTexture:info:TargetNotFound"));
+                    TTTLog.Info(
+                        "AutoAtlasTexture:info:TargetNotFound",
+                        processingTimer.ElapsedMilliseconds));
                 return;
             }
 
             TTTLog.ReportingObject(configuration, () =>
                 TTTLog.Info(
                     "AutoAtlasTexture:info:RelocateResult",
-                    string.Join("\n\n", completed)));
+                    string.Join("\n\n", completed),
+                    processingTimer.ElapsedMilliseconds));
         }
 
         private static bool ReferencesAreExclusive(
