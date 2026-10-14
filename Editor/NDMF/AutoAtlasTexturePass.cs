@@ -590,7 +590,12 @@ namespace net.rs64.TexTransTool.NDMF
                 mergePlan.ShadowAdoptableBeyondBandCount,
                 mergePlan.ShadowAdoptableUsingWiderProfileCount,
                 mergePlan.ShadowSelectedCount,
-                mergePlan.ShadowSelectedBeyondBandCount);
+                mergePlan.ShadowSelectedBeyondBandCount,
+                mergePlan.StandaloneCloneAndScaleMilliseconds,
+                mergePlan.StandaloneReferenceIslandMilliseconds,
+                mergePlan.StandaloneIslandDescriptionMilliseconds,
+                mergePlan.StandaloneSizePriorityMilliseconds,
+                mergePlan.StandalonePostProcessMilliseconds);
 
             if (completed.Count == 0)
             {
