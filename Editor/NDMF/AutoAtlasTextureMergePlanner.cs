@@ -942,7 +942,7 @@ namespace net.rs64.TexTransTool.NDMF
             AtlasSetting settings,
             Dictionary<Texture, bool> alphaCache,
             IReadOnlyDictionary<string, Candidate> bandAdoptable,
-            IReadOnlySet<string> bandEvaluatedLayouts)
+            HashSet<string> bandEvaluatedLayouts)
         {
             var profileCount = groups.Sum(group => group.LayoutProfiles.Count);
             var groupsWithMultipleProfiles = groups.Count(
