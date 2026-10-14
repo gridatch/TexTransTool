@@ -367,6 +367,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             if (prepared is null)
             {
+                ReportTemporaryTiming();
                 return new(
                     false,
                     null,
@@ -400,6 +401,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             if (executionOptions?.RequireLossless == true &&
                 IsLosslessRelocation(relocateResult) is false)
             {
+                ReportTemporaryTiming();
                 prepared.Dispose();
                 return new(false, null, null, null, preserveBump2ndMaterials, preservedOriginalUVChannel);
             }
@@ -407,6 +409,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             {
                 // Abort!!!
                 TTLog.Error("AtlasTexture:error:RelocationFailed");
+                ReportTemporaryTiming();
                 prepared.Dispose();
                 return new(false, null, null, null, preserveBump2ndMaterials, preservedOriginalUVChannel);
             }
