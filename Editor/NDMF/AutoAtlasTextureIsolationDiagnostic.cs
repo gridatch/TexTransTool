@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using nadena.dev.ndmf;
 using nadena.dev.ndmf.localization;
+using nadena.dev.ndmf.animator;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.Utils;
 using UnityEditor;
@@ -28,6 +29,26 @@ namespace net.rs64.TexTransTool.NDMF
                 Mesh = renderer.GetMesh();
                 Materials = renderer.sharedMaterials.ToArray();
                 SlotUv0 = CaptureSlotUv0(Mesh, Materials.Length);
+            }
+        }
+
+        private sealed class AnimatedMaterialBindingSnapshot
+        {
+            internal readonly EditorCurveBinding Binding;
+            internal readonly Renderer? Renderer;
+            internal readonly int? Slot;
+            internal readonly HashSet<Material> Materials;
+
+            internal AnimatedMaterialBindingSnapshot(
+                EditorCurveBinding binding,
+                Renderer? renderer,
+                int? slot,
+                HashSet<Material> materials)
+            {
+                Binding = binding;
+                Renderer = renderer;
+                Slot = slot;
+                Materials = materials;
             }
         }
 
@@ -95,11 +116,16 @@ namespace net.rs64.TexTransTool.NDMF
         private readonly Dictionary<Renderer, HashSet<Material>> _targetedByRenderer = new();
         private readonly Dictionary<Renderer, (bool UvEvacuation, bool MeshChanged)>
             _autoAaoNegotiation = new();
+        private readonly List<AnimatedMaterialBindingSnapshot>
+            _animatedMaterialBindings = new();
+        private readonly Dictionary<(Renderer Renderer, int Slot), HashSet<Material>>
+            _appliedTargetMaterialsBySlot = new();
 
         internal bool Enabled { get; private set; }
         internal AutoAtlasTexture? Configuration { get; private set; }
 
         internal void Begin(
+            BuildContext context,
             AutoAtlasTexture configuration,
             IEnumerable<Renderer> renderers,
             IEnumerable<Material> referencedMaterials)
@@ -110,6 +136,10 @@ namespace net.rs64.TexTransTool.NDMF
             _materials.Clear();
             _targetedMaterials.Clear();
             _targetedByRenderer.Clear();
+            _animatedMaterialBindings.Clear();
+            _appliedTargetMaterialsBySlot.Clear();
+
+            CaptureAnimatedMaterialBindings(context);
 
             foreach (var renderer in renderers.Where(renderer => renderer != null))
             {
@@ -151,6 +181,26 @@ namespace net.rs64.TexTransTool.NDMF
                 if (!_targetedByRenderer.TryGetValue(renderer, out var targeted))
                     _targetedByRenderer[renderer] = targeted = new HashSet<Material>();
                 targeted.UnionWith(materialSet);
+
+                if (!_renderers.TryGetValue(renderer, out var rendererSnapshot))
+                    continue;
+
+                for (var slot = 0; slot < rendererSnapshot.Materials.Length; slot++)
+                {
+                    var material = rendererSnapshot.Materials[slot];
+                    if (material == null || !materialSet.Contains(material))
+                        continue;
+
+                    var key = (renderer, slot);
+                    if (!_appliedTargetMaterialsBySlot.TryGetValue(
+                            key, out var slotMaterials))
+                    {
+                        _appliedTargetMaterialsBySlot[key] =
+                            slotMaterials = new HashSet<Material>();
+                    }
+
+                    slotMaterials.Add(material);
+                }
             }
         }
 
@@ -159,6 +209,10 @@ namespace net.rs64.TexTransTool.NDMF
             if (!Enabled) return;
 
             var lines = new List<string>();
+
+            if (stage == "after AutoAtlasTexture")
+                AppendAnimatedMaterialBoundaryChanges(lines, stage);
+
             var comparedReplacementMaterials =
                 new HashSet<(Material Before, Material After)>();
 
@@ -408,6 +462,107 @@ namespace net.rs64.TexTransTool.NDMF
                     $"{DescribeProperty(oldValue)} -> " +
                     $"{DescribeProperty(newValue)}");
             }
+        }
+
+        private void CaptureAnimatedMaterialBindings(BuildContext context)
+        {
+            var animationIndex =
+                context.Extension<AnimatorServicesContext>().AnimationIndex;
+            var root = context.AvatarRootObject.transform;
+
+            foreach (var group in animationIndex
+                         .GetPPtrReferencedObjectsWithBinding
+                         .Where(pair => pair.obj is Material)
+                         .GroupBy(pair => pair.binding))
+            {
+                var materials = group
+                    .Select(pair => pair.obj)
+                    .OfType<Material>()
+                    .Where(material => material != null)
+                    .ToHashSet();
+                if (materials.Count == 0) continue;
+
+                var binding = group.Key;
+                Transform? targetTransform;
+                if (string.IsNullOrEmpty(binding.path))
+                    targetTransform = root;
+                else
+                    targetTransform = root.Find(binding.path);
+
+                Renderer? renderer = null;
+                if (targetTransform != null
+                    && typeof(Renderer).IsAssignableFrom(binding.type))
+                {
+                    renderer = targetTransform.GetComponent(binding.type) as Renderer;
+                }
+
+                _animatedMaterialBindings.Add(
+                    new AnimatedMaterialBindingSnapshot(
+                        binding,
+                        renderer,
+                        ParseMaterialSlot(binding.propertyName),
+                        materials));
+            }
+        }
+
+        private void AppendAnimatedMaterialBoundaryChanges(
+            List<string> lines,
+            string stage)
+        {
+            foreach (var animated in _animatedMaterialBindings)
+            {
+                if (animated.Renderer == null || !animated.Slot.HasValue)
+                    continue;
+
+                var renderer = animated.Renderer;
+                var slot = animated.Slot.Value;
+                _appliedTargetMaterialsBySlot.TryGetValue(
+                    (renderer, slot), out var appliedTargets);
+                appliedTargets ??= new HashSet<Material>();
+
+                var animatedTargets = animated.Materials
+                    .Where(_targetedMaterials.Contains)
+                    .ToArray();
+                var animatedNonTargets = animated.Materials
+                    .Where(material => !_targetedMaterials.Contains(material))
+                    .ToArray();
+
+                var targetOutsideAppliedSlot = animatedTargets
+                    .Any(material => !appliedTargets.Contains(material));
+                var nonTargetIntoAppliedSlot =
+                    appliedTargets.Count != 0 && animatedNonTargets.Length != 0;
+
+                if (!targetOutsideAppliedSlot && !nonTargetIntoAppliedSlot)
+                    continue;
+
+                var staticMaterial =
+                    _renderers.TryGetValue(renderer, out var snapshot)
+                    && slot >= 0
+                    && slot < snapshot.Materials.Length
+                        ? snapshot.Materials[slot]
+                        : null;
+
+                lines.Add(
+                    $"[{stage}] Animated material slot crosses AutoAtlas boundary: " +
+                    $"{DescribeRenderer(renderer)} slot={slot} " +
+                    $"binding={animated.Binding.path}:{animated.Binding.propertyName} " +
+                    $"static={DescribeMaterial(staticMaterial)} " +
+                    $"appliedTargets=[{string.Join(", ", appliedTargets.Select(DescribeMaterial))}] " +
+                    $"curveValues=[{string.Join(", ", animated.Materials.Select(DescribeMaterial))}]");
+            }
+        }
+
+        private static int? ParseMaterialSlot(string propertyName)
+        {
+            const string prefix = "m_Materials.Array.data[";
+            if (!propertyName.StartsWith(prefix, StringComparison.Ordinal)
+                || !propertyName.EndsWith("]", StringComparison.Ordinal))
+                return null;
+
+            var slotText = propertyName.Substring(
+                prefix.Length,
+                propertyName.Length - prefix.Length - 1);
+            return int.TryParse(slotText, out var slot) ? slot : null;
         }
 
         private static SlotUvSnapshot[] CaptureSlotUv0(
