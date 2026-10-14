@@ -117,6 +117,8 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int ShadowGroupsWithMultipleProfiles;
             internal readonly int ShadowHostCount;
             internal readonly int ShadowEvaluatedCandidateCount;
+            internal readonly int ShadowEvaluatedBeyondBandLayoutCount;
+            internal readonly int ShadowEvaluatedUsingWiderProfileCount;
             internal readonly int ShadowAdoptableCandidateCount;
             internal readonly int ShadowAdoptableBeyondBandCount;
             internal readonly int ShadowAdoptableUsingWiderProfileCount;
@@ -154,6 +156,8 @@ namespace net.rs64.TexTransTool.NDMF
                 int shadowGroupsWithMultipleProfiles = 0,
                 int shadowHostCount = 0,
                 int shadowEvaluatedCandidateCount = 0,
+                int shadowEvaluatedBeyondBandLayoutCount = 0,
+                int shadowEvaluatedUsingWiderProfileCount = 0,
                 int shadowAdoptableCandidateCount = 0,
                 int shadowAdoptableBeyondBandCount = 0,
                 int shadowAdoptableUsingWiderProfileCount = 0,
@@ -202,6 +206,10 @@ namespace net.rs64.TexTransTool.NDMF
                 ShadowHostCount = shadowHostCount;
                 ShadowEvaluatedCandidateCount =
                     shadowEvaluatedCandidateCount;
+                ShadowEvaluatedBeyondBandLayoutCount =
+                    shadowEvaluatedBeyondBandLayoutCount;
+                ShadowEvaluatedUsingWiderProfileCount =
+                    shadowEvaluatedUsingWiderProfileCount;
                 ShadowAdoptableCandidateCount =
                     shadowAdoptableCandidateCount;
                 ShadowAdoptableBeyondBandCount =
@@ -245,6 +253,8 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int GroupsWithMultipleProfiles;
             internal readonly int HostCount;
             internal readonly int EvaluatedCandidateCount;
+            internal readonly int EvaluatedBeyondBandLayoutCount;
+            internal readonly int EvaluatedUsingWiderProfileCount;
             internal readonly int AdoptableCandidateCount;
             internal readonly int AdoptableBeyondBandCount;
             internal readonly int AdoptableUsingWiderProfileCount;
@@ -256,6 +266,8 @@ namespace net.rs64.TexTransTool.NDMF
                 int groupsWithMultipleProfiles,
                 int hostCount,
                 int evaluatedCandidateCount,
+                int evaluatedBeyondBandLayoutCount,
+                int evaluatedUsingWiderProfileCount,
                 int adoptableCandidateCount,
                 int adoptableBeyondBandCount,
                 int adoptableUsingWiderProfileCount,
@@ -266,6 +278,10 @@ namespace net.rs64.TexTransTool.NDMF
                 GroupsWithMultipleProfiles = groupsWithMultipleProfiles;
                 HostCount = hostCount;
                 EvaluatedCandidateCount = evaluatedCandidateCount;
+                EvaluatedBeyondBandLayoutCount =
+                    evaluatedBeyondBandLayoutCount;
+                EvaluatedUsingWiderProfileCount =
+                    evaluatedUsingWiderProfileCount;
                 AdoptableCandidateCount = adoptableCandidateCount;
                 AdoptableBeyondBandCount = adoptableBeyondBandCount;
                 AdoptableUsingWiderProfileCount =
@@ -874,7 +890,8 @@ namespace net.rs64.TexTransTool.NDMF
                 propertyTextures,
                 settings,
                 alphaCache,
-                adoptable);
+                adoptable,
+                evaluatedLayouts);
 
             planningTimer.Stop();
             return new PlanResult(
@@ -908,6 +925,8 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.GroupsWithMultipleProfiles,
                 shadow2D.HostCount,
                 shadow2D.EvaluatedCandidateCount,
+                shadow2D.EvaluatedBeyondBandLayoutCount,
+                shadow2D.EvaluatedUsingWiderProfileCount,
                 shadow2D.AdoptableCandidateCount,
                 shadow2D.AdoptableBeyondBandCount,
                 shadow2D.AdoptableUsingWiderProfileCount,
@@ -922,13 +941,16 @@ namespace net.rs64.TexTransTool.NDMF
                 propertyTextures,
             AtlasSetting settings,
             Dictionary<Texture, bool> alphaCache,
-            IReadOnlyDictionary<string, Candidate> bandAdoptable)
+            IReadOnlyDictionary<string, Candidate> bandAdoptable,
+            IReadOnlySet<string> bandEvaluatedLayouts)
         {
             var profileCount = groups.Sum(group => group.LayoutProfiles.Count);
             var groupsWithMultipleProfiles = groups.Count(
                 group => group.LayoutProfiles.Count > 1);
             var hostCount = 0;
             var evaluatedCandidateCount = 0;
+            var evaluatedBeyondBandLayoutCount = 0;
+            var evaluatedUsingWiderProfileCount = 0;
 
             var shadowAdoptable =
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
@@ -1143,6 +1165,11 @@ namespace net.rs64.TexTransTool.NDMF
                         propertySizes);
 
                     evaluatedCandidateCount += 1;
+                    if (!bandEvaluatedLayouts.Contains(layoutKey))
+                        evaluatedBeyondBandLayoutCount += 1;
+                    if (state.UsesWiderProfile)
+                        evaluatedUsingWiderProfileCount += 1;
+
                     if (!candidate.IsAdoptable)
                         continue;
 
@@ -1212,6 +1239,8 @@ namespace net.rs64.TexTransTool.NDMF
                 groupsWithMultipleProfiles,
                 hostCount,
                 evaluatedCandidateCount,
+                evaluatedBeyondBandLayoutCount,
+                evaluatedUsingWiderProfileCount,
                 shadowAdoptable.Count,
                 adoptableBeyondBandCount,
                 adoptableUsingWiderProfileCount,
