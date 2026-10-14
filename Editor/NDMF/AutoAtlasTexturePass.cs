@@ -6,6 +6,7 @@ using nadena.dev.ndmf;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.Editor;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.Editor;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
@@ -75,6 +76,7 @@ namespace net.rs64.TexTransTool.NDMF
             AutoAtlasTexture configuration,
             IReadOnlyCollection<AtlasTexture> manualAtlases)
         {
+            AutoAtlasTextureDiagnosticsCache.Clear();
             var processingTimer = System.Diagnostics.Stopwatch.StartNew();
 
             // Store only the NDMF console summary for this build.
@@ -620,6 +622,13 @@ namespace net.rs64.TexTransTool.NDMF
 
             if (completed.Count == 0)
             {
+                AutoAtlasTextureDiagnosticsCache.LastDiagnostics =
+                    string.Format(
+                        "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming"
+                            .GetLocalize(),
+                        processingTimer.ElapsedMilliseconds,
+                        temporaryTimingDiagnostic);
+
                 TTTLog.ReportingObject(configuration, () =>
                     TTTLog.Info(
                         "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming",
@@ -628,10 +637,19 @@ namespace net.rs64.TexTransTool.NDMF
                 return;
             }
 
+            var completedBlocks = string.Join("\n\n", completed);
+            AutoAtlasTextureDiagnosticsCache.LastDiagnostics =
+                string.Format(
+                    "AutoAtlasTexture:info:RelocateResultWithTemporaryTiming"
+                        .GetLocalize(),
+                    completedBlocks,
+                    processingTimer.ElapsedMilliseconds,
+                    temporaryTimingDiagnostic);
+
             TTTLog.ReportingObject(configuration, () =>
                 TTTLog.Info(
                     "AutoAtlasTexture:info:RelocateResultWithTemporaryTiming",
-                    string.Join("\n\n", completed),
+                    completedBlocks,
                     processingTimer.ElapsedMilliseconds,
                     temporaryTimingDiagnostic));
         }
