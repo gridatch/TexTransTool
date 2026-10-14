@@ -77,7 +77,6 @@ namespace net.rs64.TexTransTool.NDMF
         {
             // Store only the NDMF console summary for this build.
             var completed = new List<string>();
-            var sourceAlphaCache = new Dictionary<Texture, bool>();
 
             string OriginalMaterialName(Material material)
             {
@@ -423,10 +422,9 @@ namespace net.rs64.TexTransTool.NDMF
                 }
 
                 var hasExecutionTextureMemory =
-                    TryCalculateFinalTextureMemory(
+                    AtlasTexture.TryCalculateFinalTextureMemory(
                         atlasContext,
                         tuningResult,
-                        sourceAlphaCache,
                         out var executionTextureMemoryBytes);
 
                 if (execution.MergeSelection is { } memoryCheckedMerge
@@ -465,15 +463,15 @@ namespace net.rs64.TexTransTool.NDMF
                             resolutionRoutes)));
 
                 if (hasExecutionTextureMemory
-                    && AutoAtlasTextureMergePlanner.TryCalculateSourceTextureMemory(
+                    && AtlasTexture.TryCalculateSourceTextureMemory(
                         domain,
                         execution.SourceTextures,
                         out var sourceTextureMemoryBytes))
                 {
                     block += "\n" + string.Format(
                         "AutoAtlasTexture:info:TargetTextureMemory".GetLocalize(),
-                        FormatBytes(sourceTextureMemoryBytes),
-                        FormatBytes(executionTextureMemoryBytes));
+                        AtlasTexture.FormatTextureMemory(sourceTextureMemoryBytes),
+                        AtlasTexture.FormatTextureMemory(executionTextureMemoryBytes));
                 }
 
                 AtlasTexture.ReplaceMesh(
@@ -508,195 +506,6 @@ namespace net.rs64.TexTransTool.NDMF
                 TTTLog.Info(
                     "AutoAtlasTexture:info:RelocateResult",
                     string.Join("\n\n", completed)));
-        }
-
-        private static bool TryCalculateFinalTextureMemory(
-            AtlasContext atlasContext,
-            TexFineTuningResult tuningResult,
-            Dictionary<Texture, bool> alphaCache,
-            out long bytes)
-        {
-            bytes = 0;
-            var activeGroupIds = atlasContext.AtlasSubMeshIndexSetCtx
-                .AtlasSubMeshIndexIDHash
-                .Select(subMesh => subMesh.MaterialGroupID)
-                .Distinct()
-                .ToArray();
-            var materialGroups = atlasContext.MaterialGroupingCtx.GroupMaterials;
-
-            foreach (var output in tuningResult.TextureDescriptors)
-            {
-                if (output.Value.TextureFormat
-                    is not TextureCompressionData compression)
-                {
-                    return false;
-                }
-
-                var sourceProperties = tuningResult.RenderTextures
-                    .Where(pair => ReferenceEquals(pair.Value, output.Key))
-                    .SelectMany(pair =>
-                        tuningResult.SourceProperties.TryGetValue(
-                            pair.Key, out var properties)
-                            ? properties
-                            : Array.Empty<string>())
-                    .Distinct(StringComparer.Ordinal)
-                    .ToArray();
-
-                var sourceTextures = new HashSet<Texture>();
-                foreach (var property in sourceProperties)
-                {
-                    foreach (var groupId in activeGroupIds)
-                    {
-                        var materialGroup = materialGroups[groupId];
-                        if (materialGroup.GroupedTexture.TryGetValue(
-                                property, out var sourceTexture)
-                            && sourceTexture != null)
-                        {
-                            sourceTextures.Add(sourceTexture);
-                        }
-                    }
-                }
-
-                var hasAlpha = sourceTextures.Count == 0;
-                foreach (var sourceTexture in sourceTextures)
-                {
-                    if (!TryHasAlpha(
-                            sourceTexture, alphaCache,
-                            out var sourceHasAlpha))
-                    {
-                        return false;
-                    }
-
-                    if (!sourceHasAlpha) continue;
-                    hasAlpha = true;
-                    break;
-                }
-
-                var format = compression.UseOverride
-                    ? compression.OverrideTextureFormat
-                    : TextureCompressionData.GetQuality2TextureFormat(
-                        compression.FormatQualityValue, hasAlpha);
-                var mipCount = output.Value.UseMipMap
-                    ? CalculateMipCount(output.Key.Width, output.Key.Hight)
-                    : 1;
-
-                if (!TryCalculateTextureMemory(
-                        output.Key.Width,
-                        output.Key.Hight,
-                        format,
-                        mipCount,
-                        out var outputBytes))
-                {
-                    return false;
-                }
-
-                bytes += outputBytes;
-            }
-
-            return true;
-        }
-
-        private static bool TryHasAlpha(
-            Texture texture,
-            Dictionary<Texture, bool> cache,
-            out bool hasAlpha)
-        {
-            if (cache.TryGetValue(texture, out hasAlpha))
-                return true;
-
-            if (texture is RenderTexture renderTexture)
-            {
-                hasAlpha = GraphicsFormatUtility.HasAlphaChannel(
-                    renderTexture.graphicsFormat);
-                cache[texture] = hasAlpha;
-                return true;
-            }
-
-            if (texture is not Texture2D texture2D)
-            {
-                hasAlpha = false;
-                return false;
-            }
-
-            try
-            {
-                using var result =
-                    TextureCompressionData.HasAlphaChannel(texture2D);
-                hasAlpha = result.GetResult();
-                cache[texture] = hasAlpha;
-                return true;
-            }
-            catch
-            {
-                hasAlpha = false;
-                return false;
-            }
-        }
-
-        private static int CalculateMipCount(int width, int height)
-        {
-            var count = 1;
-            while (width > 1 || height > 1)
-            {
-                width = Math.Max(1, width >> 1);
-                height = Math.Max(1, height >> 1);
-                count += 1;
-            }
-
-            return count;
-        }
-
-        private static bool TryCalculateTextureMemory(
-            int width,
-            int height,
-            TextureFormat format,
-            int mipCount,
-            out long bytes)
-        {
-            bytes = 0;
-            width = Math.Max(1, width);
-            height = Math.Max(1, height);
-            mipCount = Math.Max(1, mipCount);
-
-            try
-            {
-                var blockWidth = Math.Max(
-                    1u, GraphicsFormatUtility.GetBlockWidth(format));
-                var blockHeight = Math.Max(
-                    1u, GraphicsFormatUtility.GetBlockHeight(format));
-                var blockSize = Math.Max(
-                    1u, GraphicsFormatUtility.GetBlockSize(format));
-
-                for (var mip = 0; mip < mipCount; mip += 1)
-                {
-                    var blocksX =
-                        ((long)width + blockWidth - 1) / blockWidth;
-                    var blocksY =
-                        ((long)height + blockHeight - 1) / blockHeight;
-                    bytes += blocksX * blocksY * blockSize;
-
-                    width = Math.Max(1, width >> 1);
-                    height = Math.Max(1, height >> 1);
-                }
-
-                return true;
-            }
-            catch
-            {
-                bytes = 0;
-                return false;
-            }
-        }
-
-        private static string FormatBytes(long bytes)
-        {
-            if (bytes < 1024)
-                return bytes + " B";
-            if (bytes < 1024L * 1024L)
-                return (bytes / 1024d).ToString("0.0") + " KiB";
-            if (bytes < 1024L * 1024L * 1024L)
-                return (bytes / (1024d * 1024d)).ToString("0.0") + " MiB";
-            return (bytes / (1024d * 1024d * 1024d)).ToString("0.0") + " GiB";
         }
 
         private static bool ReferencesAreExclusive(
