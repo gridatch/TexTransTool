@@ -117,8 +117,6 @@ namespace net.rs64.TexTransTool.NDMF
         protected override void Execute(BuildContext context)
         {
             TTTContext(context).TTTSessionEnd();
-            AutoAtlasTextureIsolationDiagnostic.State(context)
-                .Report("after TTTSessionEnd");
         }
     }
     internal class TTTComponentPurgePass : TTTPass<TTTComponentPurgePass>

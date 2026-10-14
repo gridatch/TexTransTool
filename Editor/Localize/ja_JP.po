@@ -144,12 +144,6 @@ msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応
 msgid "AtlasTexture:info:RelocateResultWithResolutionAndMemory"
 msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応じた縮小: {1}倍\n全体的な縮小: {2}倍\n{3}\n対象テクスチャメモリ: {4} → {5}\n累計再配置計算回数: {6}回\n再配置実行時間: {7}ms"
 
-msgid "AutoAtlasTexture:info:TemporaryIsolationDiagnostic"
-msgstr "一時診断（AutoAtlasTexture 対象外影響）\n{0}"
-
-msgid "AutoAtlasTexture:info:TemporaryIsolationDiagnosticCopy"
-msgstr "コピー"
-
 msgid "AutoAtlasTexture:info:RelocateResult"
 msgstr "自動アトラス再配置結果\n{0}"
 

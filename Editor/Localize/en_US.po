@@ -143,12 +143,6 @@ msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOvera
 msgid "AtlasTexture:info:RelocateResultWithResolutionAndMemory"
 msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOverall shrink: {2}x\n{3}\nTarget texture memory: {4} → {5}\nTotal relocate count: {6}\nTime taken relocate: {7}ms"
 
-msgid "AutoAtlasTexture:info:TemporaryIsolationDiagnostic"
-msgstr "Temporary diagnostic (AutoAtlasTexture non-target effects)\n{0}"
-
-msgid "AutoAtlasTexture:info:TemporaryIsolationDiagnosticCopy"
-msgstr "Copy"
-
 msgid "AutoAtlasTexture:info:RelocateResult"
 msgstr "Auto Atlas Relocate Result\n{0}"
 
