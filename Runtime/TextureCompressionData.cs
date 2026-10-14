@@ -8,7 +8,7 @@ using UnityEngine.Experimental.Rendering;
 namespace net.rs64.TexTransTool
 {
     [Serializable]
-    public class TextureCompressionData : ITexTransToolTextureFormat
+    public class TextureCompressionData : ITexTransToolTextureFormat, ITexTransToolTextureFormatMemoryEstimate
     {
         public FormatQuality FormatQualityValue = FormatQuality.Normal;
 
@@ -28,6 +28,17 @@ namespace net.rs64.TexTransTool
 #endif
             TextureFormat textureFormat = GetQuality2TextureFormat(FormatQualityValue, hasAlpha);
             return (textureFormat, CompressionQuality);
+        }
+
+        bool ITexTransToolTextureFormatMemoryEstimate.TryGetMemoryEstimateFormat(
+            Texture texture,
+            bool hasAlpha,
+            out TextureFormat format)
+        {
+            format = UseOverride
+                ? OverrideTextureFormat
+                : GetQuality2TextureFormat(FormatQualityValue, hasAlpha);
+            return true;
         }
 
         public static TextureFormat GetQuality2TextureFormat(FormatQuality formatQualityValue, bool hasAlpha)
