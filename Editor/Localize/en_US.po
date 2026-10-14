@@ -156,7 +156,7 @@ msgid "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming"
 msgstr "Atlas target not found!\nTotal Auto Atlas processing time: {0}ms\n{1}"
 
 msgid "AutoAtlasTexture:info:TemporaryTimingDiagnostic"
-msgstr "Temporary timing diagnostic\nPlanner total: {0}ms\nStandalone analysis total: {1}ms ({3} runs)\nStandalone relocation total: {2}ms\nPlanner other: {7}ms\nExecution DoAtlasTexture total: {4}ms ({6} runs)\nExecution relocation total: {5}ms"
+msgstr "Temporary timing diagnostic\nPlanner total: {0}ms\nStandalone analysis total: {1}ms ({3} runs)\nStandalone phases: Preserve={8}ms / AtlasContext={9}ms / Island normalize={10}ms / Relocation stage={11}ms / Resolution plan={12}ms\nStandalone relocator total: {2}ms\nPlanner other: {7}ms\nExecution DoAtlasTexture total: {4}ms ({6} runs)\nExecution phases: Preserve={13}ms / AtlasContext={14}ms / Island normalize={15}ms / Relocation stage={16}ms / Resolution plan={17}ms / Mesh generation={18}ms / Texture generation={19}ms\nExecution relocator total: {5}ms\nTemporary preprocessing reuse diagnostic\nAtomic groups: {20}\nRenderers shared by multiple groups: {21}\nGroups containing shared renderers: {22}\nGroup pairs sharing a renderer: {23}\nGroup pairs sharing a source mesh: {24}\nSelected merges: {25}\nCross-atomic material groups in selected merges: {26}"
 
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
