@@ -25,7 +25,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.IslandRelocator
 
 
 
-        public void RelocateLoop(AtlasContext atlasContext, IslandTransform[] targetVirtualIslands, float[] sizePriority, out RelocateResult relocateResult)
+        public void RelocateLoop(
+            AtlasContext atlasContext,
+            IslandTransform[] targetVirtualIslands,
+            float[] sizePriority,
+            out RelocateResult relocateResult,
+            bool losslessOnly = false)
         {
             relocateResult = new();
 
@@ -55,9 +60,19 @@ namespace net.rs64.TexTransTool.TextureAtlas.IslandRelocator
 
             if (ForceSizePriority is false)
             {
-                relocateResult.IslandRelocationResult = _islandRelocator.Relocation(relocationContext, workVirtualIslands);
+                relocateResult.IslandRelocationResult =
+                    _islandRelocator.Relocation(
+                        relocationContext, workVirtualIslands);
                 RestoreWorkVirtualIslandOrder();
-                if (relocateResult.IslandRelocationResult.IsSuccess) { return; }
+                if (relocateResult.IslandRelocationResult.IsSuccess)
+                    return;
+
+                // Every path below this point changes either priority scale or
+                // overall scale. A caller that will accept only a lossless
+                // result can therefore stop after the original-size attempt
+                // fails instead of running the expensive scale-search loops.
+                if (losslessOnly)
+                    return;
             }
 
             var originOrPrioryMinimizedIslands = virtualIslandBackUp;
