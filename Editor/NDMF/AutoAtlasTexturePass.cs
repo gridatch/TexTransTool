@@ -109,9 +109,8 @@ namespace net.rs64.TexTransTool.NDMF
                 processingTimer.Stop();
                 TTTLog.ReportingObject(configuration, () =>
                     TTTLog.Info(
-                        "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming",
-                        processingTimer.ElapsedMilliseconds,
-                        temporaryTimingDiagnostic));
+                        "AutoAtlasTexture:info:TargetNotFound",
+                        processingTimer.ElapsedMilliseconds));
                 return;
             }
 
@@ -533,8 +532,9 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 TTTLog.ReportingObject(configuration, () =>
                     TTTLog.Info(
-                        "AutoAtlasTexture:info:TargetNotFound",
-                        processingTimer.ElapsedMilliseconds));
+                        "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming",
+                        processingTimer.ElapsedMilliseconds,
+                        temporaryTimingDiagnostic));
                 return;
             }
 
