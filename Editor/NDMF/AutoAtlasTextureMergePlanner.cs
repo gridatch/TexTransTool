@@ -1272,13 +1272,30 @@ namespace net.rs64.TexTransTool.NDMF
                 var selected =
                     new Dictionary<string, ShadowPackingState>(
                         StringComparer.Ordinal);
+                var empty = unique.FirstOrDefault(
+                    state => state.GroupIds.Length == 0);
+                if (empty != null)
+                    selected[empty.Key] = empty;
 
                 void Retain(
                     IEnumerable<ShadowPackingState> ordered,
                     int count)
                 {
-                    foreach (var state in ordered.Take(count))
-                        selected.TryAdd(state.Key, state);
+                    var added = 0;
+                    foreach (var state in ordered)
+                    {
+                        if (selected.Count >= ShadowPackingStatesPerHost
+                            || added >= count)
+                        {
+                            break;
+                        }
+
+                        if (selected.ContainsKey(state.Key))
+                            continue;
+
+                        selected[state.Key] = state;
+                        added += 1;
+                    }
                 }
 
                 // Current property cost is useful, but it is not monotonic:
@@ -1327,11 +1344,6 @@ namespace net.rs64.TexTransTool.NDMF
                         ShadowPackingStatesPerHost);
                 }
 
-                var empty = unique.FirstOrDefault(
-                    state => state.GroupIds.Length == 0);
-                if (empty != null)
-                    selected[empty.Key] = empty;
-
                 return selected.Values
                     .OrderBy(state => state.GroupIds.Length == 0 ? 0 : 1)
                     .ThenBy(state => state.ProjectedPixelDelta)
@@ -1339,7 +1351,6 @@ namespace net.rs64.TexTransTool.NDMF
                     .ThenBy(state => state.MaxHeight)
                     .ThenBy(state => state.SkylineArea)
                     .ThenBy(state => state.Key, StringComparer.Ordinal)
-                    .Take(ShadowPackingStatesPerHost)
                     .ToList();
             }
 
