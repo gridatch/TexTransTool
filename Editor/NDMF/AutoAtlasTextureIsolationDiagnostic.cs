@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using nadena.dev.ndmf;
+using net.rs64.TexTransTool.Utils;
 using UnityEngine;
 using UnityEngine.Rendering;
 
