@@ -168,6 +168,9 @@ msgstr "対象テクスチャメモリ: {0} → {1}"
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2}件"
 
+msgid "AutoAtlasTexture:info:TemporaryDiagnosticMessage"
+msgstr "{0}"
+
 msgid "AutoAtlasTexture:button:CopyDiagnostics"
 msgstr "診断ログをコピー"
 
