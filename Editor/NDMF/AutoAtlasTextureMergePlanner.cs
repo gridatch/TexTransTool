@@ -24,6 +24,8 @@ namespace net.rs64.TexTransTool.NDMF
         // only bound cheap integer-DP state retention, not expensive atlas probes.
         private const int BandStatesPerHeight = 8;
         private const int BandCandidatesPerHost = 512;
+        private const int ShadowPackingStatesPerHost = 512;
+        private const int PackingGridUnit = 256;
         private const double UnknownDemandLog2 = -32d;
         private const double Epsilon = 1e-8;
 
@@ -108,6 +110,18 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int RejectedSamplingCount;
             internal readonly int RejectedStreamingCount;
 
+            // Temporary shadow 2D-packing diagnostics. These do not affect the
+            // currently selected band-based merge plan.
+            internal readonly int ShadowProfileCount;
+            internal readonly int ShadowGroupsWithMultipleProfiles;
+            internal readonly int ShadowHostCount;
+            internal readonly int ShadowEvaluatedCandidateCount;
+            internal readonly int ShadowAdoptableCandidateCount;
+            internal readonly int ShadowAdoptableBeyondBandCount;
+            internal readonly int ShadowAdoptableUsingWiderProfileCount;
+            internal readonly int ShadowSelectedCount;
+            internal readonly int ShadowSelectedBeyondBandCount;
+
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
                 long planningTimeMilliseconds = 0,
@@ -133,7 +147,16 @@ namespace net.rs64.TexTransTool.NDMF
                 int rejectedMemoryCount = 0,
                 int rejectedMaxDimensionCount = 0,
                 int rejectedSamplingCount = 0,
-                int rejectedStreamingCount = 0)
+                int rejectedStreamingCount = 0,
+                int shadowProfileCount = 0,
+                int shadowGroupsWithMultipleProfiles = 0,
+                int shadowHostCount = 0,
+                int shadowEvaluatedCandidateCount = 0,
+                int shadowAdoptableCandidateCount = 0,
+                int shadowAdoptableBeyondBandCount = 0,
+                int shadowAdoptableUsingWiderProfileCount = 0,
+                int shadowSelectedCount = 0,
+                int shadowSelectedBeyondBandCount = 0)
             {
                 Selections = selections;
                 PlanningTimeMilliseconds = planningTimeMilliseconds;
@@ -169,6 +192,82 @@ namespace net.rs64.TexTransTool.NDMF
                 RejectedMaxDimensionCount = rejectedMaxDimensionCount;
                 RejectedSamplingCount = rejectedSamplingCount;
                 RejectedStreamingCount = rejectedStreamingCount;
+                ShadowProfileCount = shadowProfileCount;
+                ShadowGroupsWithMultipleProfiles =
+                    shadowGroupsWithMultipleProfiles;
+                ShadowHostCount = shadowHostCount;
+                ShadowEvaluatedCandidateCount =
+                    shadowEvaluatedCandidateCount;
+                ShadowAdoptableCandidateCount =
+                    shadowAdoptableCandidateCount;
+                ShadowAdoptableBeyondBandCount =
+                    shadowAdoptableBeyondBandCount;
+                ShadowAdoptableUsingWiderProfileCount =
+                    shadowAdoptableUsingWiderProfileCount;
+                ShadowSelectedCount = shadowSelectedCount;
+                ShadowSelectedBeyondBandCount =
+                    shadowSelectedBeyondBandCount;
+            }
+        }
+
+        private sealed class ShadowPackingState
+        {
+            internal readonly int[] Skyline;
+            internal readonly int[] GuestIds;
+            internal readonly long GuestBaselineBytes;
+            internal readonly bool UsesWiderProfile;
+
+            internal ShadowPackingState(
+                int[] skyline,
+                IEnumerable<int> guestIds,
+                long guestBaselineBytes,
+                bool usesWiderProfile)
+            {
+                Skyline = skyline;
+                GuestIds = guestIds.OrderBy(id => id).ToArray();
+                GuestBaselineBytes = guestBaselineBytes;
+                UsesWiderProfile = usesWiderProfile;
+            }
+
+            internal string Key =>
+                string.Join(",", GuestIds)
+                + "|"
+                + string.Join(",", Skyline);
+        }
+
+        private readonly struct ShadowPackingDiagnostics
+        {
+            internal readonly int ProfileCount;
+            internal readonly int GroupsWithMultipleProfiles;
+            internal readonly int HostCount;
+            internal readonly int EvaluatedCandidateCount;
+            internal readonly int AdoptableCandidateCount;
+            internal readonly int AdoptableBeyondBandCount;
+            internal readonly int AdoptableUsingWiderProfileCount;
+            internal readonly int SelectedCount;
+            internal readonly int SelectedBeyondBandCount;
+
+            internal ShadowPackingDiagnostics(
+                int profileCount,
+                int groupsWithMultipleProfiles,
+                int hostCount,
+                int evaluatedCandidateCount,
+                int adoptableCandidateCount,
+                int adoptableBeyondBandCount,
+                int adoptableUsingWiderProfileCount,
+                int selectedCount,
+                int selectedBeyondBandCount)
+            {
+                ProfileCount = profileCount;
+                GroupsWithMultipleProfiles = groupsWithMultipleProfiles;
+                HostCount = hostCount;
+                EvaluatedCandidateCount = evaluatedCandidateCount;
+                AdoptableCandidateCount = adoptableCandidateCount;
+                AdoptableBeyondBandCount = adoptableBeyondBandCount;
+                AdoptableUsingWiderProfileCount =
+                    adoptableUsingWiderProfileCount;
+                SelectedCount = selectedCount;
+                SelectedBeyondBandCount = selectedBeyondBandCount;
             }
         }
 
