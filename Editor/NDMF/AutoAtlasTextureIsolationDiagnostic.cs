@@ -3,9 +3,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using nadena.dev.ndmf;
+using nadena.dev.ndmf.localization;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.Utils;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.UIElements;
 using UnityEngine.Rendering;
 
 namespace net.rs64.TexTransTool.NDMF
@@ -230,9 +233,9 @@ namespace net.rs64.TexTransTool.NDMF
 
             void ReportDiagnostic()
             {
-                TTTLog.Info(
-                    "AutoAtlasTexture:info:TemporaryIsolationDiagnostic",
-                    string.Join("\n", lines));
+                ErrorReport.ReportError(
+                    new AutoAtlasTextureIsolationDiagnosticError(
+                        string.Join("\n", lines)));
             }
 
             if (Configuration != null)
@@ -399,6 +402,40 @@ namespace net.rs64.TexTransTool.NDMF
         {
             if (shader == null) return "<null>";
             return shader.name + "#" + shader.GetInstanceID();
+        }
+    }
+
+    internal sealed class AutoAtlasTextureIsolationDiagnosticError : SimpleError
+    {
+        private readonly string _message;
+
+        internal AutoAtlasTextureIsolationDiagnosticError(string message)
+        {
+            _message = message;
+        }
+
+        public override Localizer Localizer => TTTLog.NDMFLocalizer;
+        public override ErrorSeverity Severity => ErrorSeverity.Information;
+        public override string TitleKey =>
+            "AutoAtlasTexture:info:TemporaryIsolationDiagnostic";
+        public override string[] TitleSubst => new[] { _message };
+
+        public override VisualElement CreateVisualElement(ErrorReport report)
+        {
+            var root = new VisualElement();
+            root.style.flexGrow = 1;
+            root.Add(base.CreateVisualElement(report));
+
+            var copyButton = new Button(() =>
+                EditorGUIUtility.systemCopyBuffer = FormatTitle())
+            {
+                text = "AutoAtlasTexture:info:TemporaryIsolationDiagnosticCopy"
+                    .GetLocalize(),
+            };
+            copyButton.style.alignSelf = Align.FlexEnd;
+            root.Add(copyButton);
+
+            return root;
         }
     }
 

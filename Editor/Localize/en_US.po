@@ -146,6 +146,9 @@ msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOvera
 msgid "AutoAtlasTexture:info:TemporaryIsolationDiagnostic"
 msgstr "Temporary diagnostic (AutoAtlasTexture non-target effects)\n{0}"
 
+msgid "AutoAtlasTexture:info:TemporaryIsolationDiagnosticCopy"
+msgstr "Copy"
+
 msgid "AutoAtlasTexture:info:RelocateResult"
 msgstr "Auto Atlas Relocate Result\n{0}"
 

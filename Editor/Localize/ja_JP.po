@@ -147,6 +147,9 @@ msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応
 msgid "AutoAtlasTexture:info:TemporaryIsolationDiagnostic"
 msgstr "一時診断（AutoAtlasTexture 対象外影響）\n{0}"
 
+msgid "AutoAtlasTexture:info:TemporaryIsolationDiagnosticCopy"
+msgstr "コピー"
+
 msgid "AutoAtlasTexture:info:RelocateResult"
 msgstr "自動アトラス再配置結果\n{0}"
 
