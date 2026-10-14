@@ -140,6 +140,8 @@ namespace net.rs64.TexTransTool.NDMF
             if (!Enabled) return;
 
             var lines = new List<string>();
+            var comparedReplacementMaterials =
+                new HashSet<(Material Before, Material After)>();
 
             foreach (var pair in _autoAaoNegotiation)
             {
@@ -188,6 +190,19 @@ namespace net.rs64.TexTransTool.NDMF
                             $"[{stage}] Non-target material slot changed: " +
                             $"{DescribeRenderer(renderer)} slot={slot} " +
                             $"{DescribeMaterial(before)} -> {DescribeMaterial(after)}");
+
+                        if (after != null
+                            && _materials.TryGetValue(before, out var beforeSnapshot)
+                            && comparedReplacementMaterials.Add((before, after)))
+                        {
+                            AppendReplacementMaterialChanges(
+                                beforeSnapshot,
+                                after,
+                                stage,
+                                renderer,
+                                slot,
+                                lines);
+                        }
                     }
                 }
 
@@ -291,6 +306,64 @@ namespace net.rs64.TexTransTool.NDMF
                     $"[{stage}] Non-target material property changed: " +
                     $"{DescribeMaterial(material)}.{propertyName} " +
                     $"{DescribeProperty(oldValue)} -> {DescribeProperty(newValue)}");
+            }
+        }
+
+        private static void AppendReplacementMaterialChanges(
+            MaterialSnapshot before,
+            Material after,
+            string stage,
+            Renderer renderer,
+            int slot,
+            List<string> lines)
+        {
+            var context =
+                $"{DescribeRenderer(renderer)} slot={slot} " +
+                $"{DescribeMaterial(before.Material)} -> {DescribeMaterial(after)}";
+
+            if (!ReferenceEquals(before.Shader, after.shader))
+            {
+                lines.Add(
+                    $"[{stage}] Replaced non-target material shader changed: " +
+                    $"{context} {DescribeShader(before.Shader)} -> " +
+                    $"{DescribeShader(after.shader)}");
+            }
+
+            var afterKeywords = after.shaderKeywords
+                .OrderBy(keyword => keyword, StringComparer.Ordinal)
+                .ToArray();
+            if (!before.Keywords.SequenceEqual(afterKeywords))
+            {
+                lines.Add(
+                    $"[{stage}] Replaced non-target material keywords changed: " +
+                    context);
+            }
+
+            var afterProperties = CaptureProperties(after);
+            foreach (var propertyName in before.Properties.Keys
+                         .Union(afterProperties.Keys)
+                         .OrderBy(name => name, StringComparer.Ordinal))
+            {
+                var hasBefore = before.Properties.TryGetValue(
+                    propertyName, out var oldValue);
+                var hasAfter = afterProperties.TryGetValue(
+                    propertyName, out var newValue);
+
+                if (!hasBefore || !hasAfter)
+                {
+                    lines.Add(
+                        $"[{stage}] Replaced non-target material property set changed: " +
+                        $"{context}.{propertyName}");
+                    continue;
+                }
+
+                if (oldValue.Equals(newValue)) continue;
+
+                lines.Add(
+                    $"[{stage}] Replaced non-target material property changed: " +
+                    $"{context}.{propertyName} " +
+                    $"{DescribeProperty(oldValue)} -> " +
+                    $"{DescribeProperty(newValue)}");
             }
         }
 
