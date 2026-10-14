@@ -569,7 +569,16 @@ namespace net.rs64.TexTransTool.NDMF
                 mergePlan.GroupPairsSharingRendererCount,
                 mergePlan.GroupPairsSharingSourceMeshCount,
                 mergePlan.Selections.Count,
-                mergePlan.CrossAtomicMaterialGroupCount);
+                mergePlan.CrossAtomicMaterialGroupCount,
+                mergePlan.MergeHostCount,
+                mergePlan.EvaluatedMergeCandidateCount,
+                mergePlan.CandidateWithinHostCurrentHeightCount,
+                mergePlan.AdoptableMergeCandidateCount,
+                mergePlan.RejectedPixelCount,
+                mergePlan.RejectedMemoryCount,
+                mergePlan.RejectedMaxDimensionCount,
+                mergePlan.RejectedSamplingCount,
+                mergePlan.RejectedStreamingCount);
 
             if (completed.Count == 0)
             {
