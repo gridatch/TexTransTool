@@ -157,7 +157,7 @@ msgid "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming"
 msgstr "アトラス化対象が存在しません！\n自動アトラス総処理時間: {0}ms\n{1}"
 
 msgid "AutoAtlasTexture:info:TemporaryTimingDiagnostic"
-msgstr "一時診断（処理時間）\nplanner総時間: {0}ms\nstandalone解析合計: {1}ms（{3}回）\nstandalone再配置合計: {2}ms\nplannerその他: {7}ms\n本番DoAtlasTexture合計: {4}ms（{6}回）\n本番再配置合計: {5}ms"
+msgstr "一時診断（処理時間）\nplanner総時間: {0}ms\nstandalone解析合計: {1}ms（{3}回）\nstandalone内訳: Preserve={8}ms / AtlasContext={9}ms / Island正規化={10}ms / 再配置段階={11}ms / 解像度計画={12}ms\nstandalone再配置本体合計: {2}ms\nplannerその他: {7}ms\n本番DoAtlasTexture合計: {4}ms（{6}回）\n本番内訳: Preserve={13}ms / AtlasContext={14}ms / Island正規化={15}ms / 再配置段階={16}ms / 解像度計画={17}ms / Mesh生成={18}ms / Texture生成={19}ms\n本番再配置本体合計: {5}ms\n一時診断（前処理再利用）\natomic group: {20}\n複数groupで共有されるRenderer: {21}件\n共有Rendererを含むgroup: {22}件\nRenderer共有group pair: {23}組\n元Mesh共有group pair: {24}組\n採用された統合: {25}件\n統合内cross-atomic MaterialGroup: {26}件"
 
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
