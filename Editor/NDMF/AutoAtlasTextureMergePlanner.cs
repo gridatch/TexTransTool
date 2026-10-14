@@ -364,7 +364,14 @@ namespace net.rs64.TexTransTool.NDMF
                 planningTimer.Stop();
                 return new PlanResult(
                     Array.Empty<MergeSelection>(),
-                    planningTimer.ElapsedMilliseconds);
+                    planningTimer.ElapsedMilliseconds,
+                    preparedGroupCount: groups.Count,
+                    sharedRendererCount: sharedRenderers.Count,
+                    groupsWithSharedRendererCount: groupsWithSharedRendererCount,
+                    groupPairsSharingRendererCount:
+                        groupPairsSharingRendererCount,
+                    groupPairsSharingSourceMeshCount:
+                        groupPairsSharingSourceMeshCount);
             }
 
             var engine = domain.GetTexTransCoreEngineForUnity();
