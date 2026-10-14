@@ -129,6 +129,11 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int ShadowAdoptableUsingWiderProfileCount;
             internal readonly int ShadowSelectedCount;
             internal readonly int ShadowSelectedBeyondBandCount;
+            internal readonly int ShadowRejectedPixelCount;
+            internal readonly int ShadowRejectedMemoryCount;
+            internal readonly int ShadowRejectedMaxDimensionCount;
+            internal readonly int ShadowRejectedSamplingCount;
+            internal readonly int ShadowRejectedStreamingCount;
 
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
@@ -172,7 +177,12 @@ namespace net.rs64.TexTransTool.NDMF
                 int shadowAdoptableBeyondBandCount = 0,
                 int shadowAdoptableUsingWiderProfileCount = 0,
                 int shadowSelectedCount = 0,
-                int shadowSelectedBeyondBandCount = 0)
+                int shadowSelectedBeyondBandCount = 0,
+                int shadowRejectedPixelCount = 0,
+                int shadowRejectedMemoryCount = 0,
+                int shadowRejectedMaxDimensionCount = 0,
+                int shadowRejectedSamplingCount = 0,
+                int shadowRejectedStreamingCount = 0)
             {
                 Selections = selections;
                 PlanningTimeMilliseconds = planningTimeMilliseconds;
@@ -239,6 +249,12 @@ namespace net.rs64.TexTransTool.NDMF
                 ShadowSelectedCount = shadowSelectedCount;
                 ShadowSelectedBeyondBandCount =
                     shadowSelectedBeyondBandCount;
+                ShadowRejectedPixelCount = shadowRejectedPixelCount;
+                ShadowRejectedMemoryCount = shadowRejectedMemoryCount;
+                ShadowRejectedMaxDimensionCount =
+                    shadowRejectedMaxDimensionCount;
+                ShadowRejectedSamplingCount = shadowRejectedSamplingCount;
+                ShadowRejectedStreamingCount = shadowRejectedStreamingCount;
             }
         }
 
@@ -280,6 +296,11 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int AdoptableUsingWiderProfileCount;
             internal readonly int SelectedCount;
             internal readonly int SelectedBeyondBandCount;
+            internal readonly int RejectedPixelCount;
+            internal readonly int RejectedMemoryCount;
+            internal readonly int RejectedMaxDimensionCount;
+            internal readonly int RejectedSamplingCount;
+            internal readonly int RejectedStreamingCount;
 
             internal ShadowPackingDiagnostics(
                 int profileCount,
@@ -292,7 +313,12 @@ namespace net.rs64.TexTransTool.NDMF
                 int adoptableBeyondBandCount,
                 int adoptableUsingWiderProfileCount,
                 int selectedCount,
-                int selectedBeyondBandCount)
+                int selectedBeyondBandCount,
+                int rejectedPixelCount,
+                int rejectedMemoryCount,
+                int rejectedMaxDimensionCount,
+                int rejectedSamplingCount,
+                int rejectedStreamingCount)
             {
                 ProfileCount = profileCount;
                 GroupsWithMultipleProfiles = groupsWithMultipleProfiles;
@@ -308,6 +334,11 @@ namespace net.rs64.TexTransTool.NDMF
                     adoptableUsingWiderProfileCount;
                 SelectedCount = selectedCount;
                 SelectedBeyondBandCount = selectedBeyondBandCount;
+                RejectedPixelCount = rejectedPixelCount;
+                RejectedMemoryCount = rejectedMemoryCount;
+                RejectedMaxDimensionCount = rejectedMaxDimensionCount;
+                RejectedSamplingCount = rejectedSamplingCount;
+                RejectedStreamingCount = rejectedStreamingCount;
             }
         }
 
@@ -972,7 +1003,12 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.AdoptableBeyondBandCount,
                 shadow2D.AdoptableUsingWiderProfileCount,
                 shadow2D.SelectedCount,
-                shadow2D.SelectedBeyondBandCount);
+                shadow2D.SelectedBeyondBandCount,
+                shadow2D.RejectedPixelCount,
+                shadow2D.RejectedMemoryCount,
+                shadow2D.RejectedMaxDimensionCount,
+                shadow2D.RejectedSamplingCount,
+                shadow2D.RejectedStreamingCount);
         }
 
         private static ShadowPackingDiagnostics EvaluateShadow2DPacking(
@@ -992,6 +1028,11 @@ namespace net.rs64.TexTransTool.NDMF
             var evaluatedCandidateCount = 0;
             var evaluatedBeyondBandLayoutCount = 0;
             var evaluatedUsingWiderProfileCount = 0;
+            var rejectedPixelCount = 0;
+            var rejectedMemoryCount = 0;
+            var rejectedMaxDimensionCount = 0;
+            var rejectedSamplingCount = 0;
+            var rejectedStreamingCount = 0;
 
             var shadowAdoptable =
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
@@ -1212,7 +1253,27 @@ namespace net.rs64.TexTransTool.NDMF
                         evaluatedUsingWiderProfileCount += 1;
 
                     if (!candidate.IsAdoptable)
+                    {
+                        switch (candidate.RejectionReason)
+                        {
+                            case CandidateRejectionReason.PixelCount:
+                                rejectedPixelCount += 1;
+                                break;
+                            case CandidateRejectionReason.FullResidentMemory:
+                                rejectedMemoryCount += 1;
+                                break;
+                            case CandidateRejectionReason.MaxTextureDimension:
+                                rejectedMaxDimensionCount += 1;
+                                break;
+                            case CandidateRejectionReason.Sampling:
+                                rejectedSamplingCount += 1;
+                                break;
+                            case CandidateRejectionReason.Streaming:
+                                rejectedStreamingCount += 1;
+                                break;
+                        }
                         continue;
+                    }
 
                     if (!shadowAdoptable.TryGetValue(
                             key,
@@ -1286,7 +1347,12 @@ namespace net.rs64.TexTransTool.NDMF
                 adoptableBeyondBandCount,
                 adoptableUsingWiderProfileCount,
                 selectedCount,
-                selectedBeyondBandCount);
+                selectedBeyondBandCount,
+                rejectedPixelCount,
+                rejectedMemoryCount,
+                rejectedMaxDimensionCount,
+                rejectedSamplingCount,
+                rejectedStreamingCount);
         }
 
         private static int GetBandUsedHeightPixels(
