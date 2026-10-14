@@ -94,6 +94,18 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int GroupPairsSharingSourceMeshCount;
             internal readonly int CrossAtomicMaterialGroupCount;
 
+            // Temporary diagnostics for determining why practical merge
+            // opportunities are or are not selected.
+            internal readonly int MergeHostCount;
+            internal readonly int EvaluatedMergeCandidateCount;
+            internal readonly int CandidateWithinHostCurrentHeightCount;
+            internal readonly int AdoptableMergeCandidateCount;
+            internal readonly int RejectedPixelCount;
+            internal readonly int RejectedMemoryCount;
+            internal readonly int RejectedMaxDimensionCount;
+            internal readonly int RejectedSamplingCount;
+            internal readonly int RejectedStreamingCount;
+
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
                 long planningTimeMilliseconds = 0,
@@ -110,7 +122,16 @@ namespace net.rs64.TexTransTool.NDMF
                 int groupsWithSharedRendererCount = 0,
                 int groupPairsSharingRendererCount = 0,
                 int groupPairsSharingSourceMeshCount = 0,
-                int crossAtomicMaterialGroupCount = 0)
+                int crossAtomicMaterialGroupCount = 0,
+                int mergeHostCount = 0,
+                int evaluatedMergeCandidateCount = 0,
+                int candidateWithinHostCurrentHeightCount = 0,
+                int adoptableMergeCandidateCount = 0,
+                int rejectedPixelCount = 0,
+                int rejectedMemoryCount = 0,
+                int rejectedMaxDimensionCount = 0,
+                int rejectedSamplingCount = 0,
+                int rejectedStreamingCount = 0)
             {
                 Selections = selections;
                 PlanningTimeMilliseconds = planningTimeMilliseconds;
@@ -136,6 +157,16 @@ namespace net.rs64.TexTransTool.NDMF
                 GroupPairsSharingSourceMeshCount =
                     groupPairsSharingSourceMeshCount;
                 CrossAtomicMaterialGroupCount = crossAtomicMaterialGroupCount;
+                MergeHostCount = mergeHostCount;
+                EvaluatedMergeCandidateCount = evaluatedMergeCandidateCount;
+                CandidateWithinHostCurrentHeightCount =
+                    candidateWithinHostCurrentHeightCount;
+                AdoptableMergeCandidateCount = adoptableMergeCandidateCount;
+                RejectedPixelCount = rejectedPixelCount;
+                RejectedMemoryCount = rejectedMemoryCount;
+                RejectedMaxDimensionCount = rejectedMaxDimensionCount;
+                RejectedSamplingCount = rejectedSamplingCount;
+                RejectedStreamingCount = rejectedStreamingCount;
             }
         }
 
@@ -164,6 +195,16 @@ namespace net.rs64.TexTransTool.NDMF
             AssumePresent,
         }
 
+        internal enum CandidateRejectionReason
+        {
+            None,
+            PixelCount,
+            FullResidentMemory,
+            MaxTextureDimension,
+            Sampling,
+            Streaming,
+        }
+
         internal sealed class Candidate
         {
             internal readonly int[] GroupIds;
@@ -174,6 +215,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long SavingBytes;
             internal readonly float SavingRate;
             internal readonly bool IsAdoptable;
+            internal readonly CandidateRejectionReason RejectionReason;
 
             internal Candidate(
                 int[] groupIds,
@@ -191,23 +233,24 @@ namespace net.rs64.TexTransTool.NDMF
                     ? 0f
                     : (float)SavingBytes / baseline.FullResidentBytes;
 
+                RejectionReason =
+                    merged.PixelCount >= baseline.PixelCount
+                        ? CandidateRejectionReason.PixelCount
+                        : merged.FullResidentBytes >= baseline.FullResidentBytes
+                            ? CandidateRejectionReason.FullResidentMemory
+                            : merged.MaxTextureDimension
+                                > baseline.MaxTextureDimension
+                                ? CandidateRejectionReason.MaxTextureDimension
+                                : HasSamplingRegression(
+                                    baseline, merged, groupIds)
+                                    ? CandidateRejectionReason.Sampling
+                                    : HasStreamingRegression(
+                                        baseline, merged, groupIds)
+                                        ? CandidateRejectionReason.Streaming
+                                        : CandidateRejectionReason.None;
+
                 IsAdoptable =
-                    merged.PixelCount < baseline.PixelCount
-                    && merged.FullResidentBytes < baseline.FullResidentBytes
-                    && merged.MaxTextureDimension
-                        <= baseline.MaxTextureDimension;
-
-                if (IsAdoptable
-                    && HasSamplingRegression(baseline, merged, groupIds))
-                {
-                    IsAdoptable = false;
-                }
-
-                if (IsAdoptable
-                    && HasStreamingRegression(baseline, merged, groupIds))
-                {
-                    IsAdoptable = false;
-                }
+                    RejectionReason == CandidateRejectionReason.None;
             }
         }
 
@@ -495,9 +538,19 @@ namespace net.rs64.TexTransTool.NDMF
             var byId = groups.ToDictionary(group => group.Id);
             var adoptable = new Dictionary<string, Candidate>();
             var evaluatedLayouts = new HashSet<string>(StringComparer.Ordinal);
+            var mergeHostCount = 0;
+            var evaluatedMergeCandidateCount = 0;
+            var candidateWithinHostCurrentHeightCount = 0;
+            var adoptableMergeCandidateCount = 0;
+            var rejectedPixelCount = 0;
+            var rejectedMemoryCount = 0;
+            var rejectedMaxDimensionCount = 0;
+            var rejectedSamplingCount = 0;
+            var rejectedStreamingCount = 0;
 
             foreach (var host in groups.Where(CanHostAnyGuest))
             {
+                mergeHostCount += 1;
                 var hostWidth = host.BandWidthPixels;
                 var capacity = Math.Max(
                     0, hostWidth - host.BandUsedHeightPixels);
@@ -628,8 +681,37 @@ namespace net.rs64.TexTransTool.NDMF
                         layoutSize,
                         propertySizes);
 
+                    evaluatedMergeCandidateCount += 1;
+                    if (host.StandaloneMetrics is { } hostMetrics
+                        && layoutSize.y <= hostMetrics.LayoutSize.y)
+                    {
+                        candidateWithinHostCurrentHeightCount += 1;
+                    }
+
                     if (!candidate.IsAdoptable)
+                    {
+                        switch (candidate.RejectionReason)
+                        {
+                            case CandidateRejectionReason.PixelCount:
+                                rejectedPixelCount += 1;
+                                break;
+                            case CandidateRejectionReason.FullResidentMemory:
+                                rejectedMemoryCount += 1;
+                                break;
+                            case CandidateRejectionReason.MaxTextureDimension:
+                                rejectedMaxDimensionCount += 1;
+                                break;
+                            case CandidateRejectionReason.Sampling:
+                                rejectedSamplingCount += 1;
+                                break;
+                            case CandidateRejectionReason.Streaming:
+                                rejectedStreamingCount += 1;
+                                break;
+                        }
                         continue;
+                    }
+
+                    adoptableMergeCandidateCount += 1;
 
                     if (!adoptable.TryGetValue(key, out var prior)
                         || candidate.SavingBytes > prior.SavingBytes
@@ -697,7 +779,16 @@ namespace net.rs64.TexTransTool.NDMF
                 groupsWithSharedRendererCount,
                 groupPairsSharingRendererCount,
                 groupPairsSharingSourceMeshCount,
-                crossAtomicMaterialGroupCount);
+                crossAtomicMaterialGroupCount,
+                mergeHostCount,
+                evaluatedMergeCandidateCount,
+                candidateWithinHostCurrentHeightCount,
+                adoptableMergeCandidateCount,
+                rejectedPixelCount,
+                rejectedMemoryCount,
+                rejectedMaxDimensionCount,
+                rejectedSamplingCount,
+                rejectedStreamingCount);
         }
 
         private static int GetBandUsedHeightPixels(
