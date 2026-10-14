@@ -150,6 +150,15 @@ msgstr "自動アトラス再配置結果\n{0}\n自動アトラス総処理時�
 msgid "AutoAtlasTexture:info:TargetNotFound"
 msgstr "アトラス化対象が存在しません！\n自動アトラス総処理時間: {0}ms"
 
+msgid "AutoAtlasTexture:info:RelocateResultWithTemporaryTiming"
+msgstr "自動アトラス再配置結果\n{0}\n自動アトラス総処理時間: {1}ms\n{2}"
+
+msgid "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming"
+msgstr "アトラス化対象が存在しません！\n自動アトラス総処理時間: {0}ms\n{1}"
+
+msgid "AutoAtlasTexture:info:TemporaryTimingDiagnostic"
+msgstr "一時診断（処理時間）\nplanner総時間: {0}ms\nstandalone解析合計: {1}ms（{3}回）\nstandalone再配置合計: {2}ms\nplannerその他: {7}ms\n本番DoAtlasTexture合計: {4}ms（{6}回）\n本番再配置合計: {5}ms"
+
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
 
