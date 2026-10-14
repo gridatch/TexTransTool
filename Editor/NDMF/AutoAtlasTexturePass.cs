@@ -78,6 +78,7 @@ namespace net.rs64.TexTransTool.NDMF
             // Store only the NDMF console summary for this build.
             var completed = new List<string>();
             var sourceAlphaCache = new Dictionary<Texture, bool>();
+            var selectionDiagnostics = new List<string>();
 
             string OriginalMaterialName(Material material)
             {
@@ -88,6 +89,14 @@ namespace net.rs64.TexTransTool.NDMF
                 // ObjectReference snapshots its display name at creation; this
                 // remains available even if the original Unity object was destroyed.
                 return identity?.ToString() ?? material.name;
+            }
+
+            string DescribeGroup(IEnumerable<Material> materials)
+            {
+                return string.Join(", ", materials
+                    .Select(OriginalMaterialName)
+                    .Distinct()
+                    .OrderBy(name => name, StringComparer.Ordinal));
             }
 
             var allRenderers = domain.EnumerateRenderer().Where(renderer => renderer != null).ToArray();
@@ -151,9 +160,25 @@ namespace net.rs64.TexTransTool.NDMF
             var preparedGroups = new List<AutoAtlasTextureMergePlanner.PreparedGroup>();
             foreach (var group in groups)
             {
-                if (group.Any(material => excludedMaterials.Contains(material) ||
-                    manuallySelectedMaterials.Contains(material)))
+                var groupName = DescribeGroup(group);
+
+                var explicitlyExcluded = group
+                    .Where(excludedMaterials.Contains)
+                    .ToArray();
+                if (explicitlyExcluded.Length != 0)
                 {
+                    selectionDiagnostics.Add(
+                        $"{groupName} => ExcludedMaterial");
+                    continue;
+                }
+
+                var manualAtlasMaterials = group
+                    .Where(manuallySelectedMaterials.Contains)
+                    .ToArray();
+                if (manualAtlasMaterials.Length != 0)
+                {
+                    selectionDiagnostics.Add(
+                        $"{groupName} => ManualAtlas");
                     continue;
                 }
 
@@ -163,9 +188,28 @@ namespace net.rs64.TexTransTool.NDMF
                 var referencingRenderers = domain
                     .RendererFilterForMaterialFromDomains(group)
                     .ToArray();
-                if (referencingRenderers.Length == 0 ||
-                    referencingRenderers.Any(renderer => !allowedRenderers.Contains(renderer)))
+                if (referencingRenderers.Length == 0)
                 {
+                    selectionDiagnostics.Add(
+                        $"{groupName} => NoReferencingRenderer");
+                    continue;
+                }
+
+                var disallowedRenderers = referencingRenderers
+                    .Where(renderer => !allowedRenderers.Contains(renderer))
+                    .ToArray();
+                if (disallowedRenderers.Length != 0)
+                {
+                    var details = disallowedRenderers.Select(renderer =>
+                    {
+                        if (excludedRenderers.Contains(renderer))
+                            return renderer.name + ":ExcludedRenderer";
+                        if (!AtlasTexture.IsAtlasAllowedRenderer(renderer))
+                            return renderer.name + ":AtlasRendererNotAllowed";
+                        return renderer.name + ":RendererNotCandidate";
+                    });
+                    selectionDiagnostics.Add(
+                        $"{groupName} => RendererNotAllowed [{string.Join(", ", details)}]");
                     continue;
                 }
 
@@ -173,6 +217,11 @@ namespace net.rs64.TexTransTool.NDMF
                     domain, referencingRenderers, UVChannel.UV0);
                 if (atlasRenderers.Length != referencingRenderers.Length)
                 {
+                    var missing = referencingRenderers
+                        .Except(atlasRenderers)
+                        .Select(renderer => renderer.name);
+                    selectionDiagnostics.Add(
+                        $"{groupName} => MissingUV0 [{string.Join(", ", missing)}]");
                     continue;
                 }
 
@@ -182,6 +231,8 @@ namespace net.rs64.TexTransTool.NDMF
                     .ToHashSet();
                 if (texturesToReplace.Count == 0)
                 {
+                    selectionDiagnostics.Add(
+                        $"{groupName} => NoReplaceableTexture");
                     continue;
                 }
 
@@ -190,8 +241,23 @@ namespace net.rs64.TexTransTool.NDMF
                 // must be eligible; otherwise generating an additional atlas can
                 // increase memory usage.
                 if (!ReferencesAreExclusive(
-                    allReferencedMaterials, group, propertyTextures, texturesToReplace))
+                        allReferencedMaterials,
+                        group,
+                        propertyTextures,
+                        texturesToReplace,
+                        out var conflictingMaterial,
+                        out var conflictingProperty,
+                        out var conflictingTexture))
                 {
+                    var materialName = conflictingMaterial != null
+                        ? OriginalMaterialName(conflictingMaterial)
+                        : "<unknown>";
+                    var textureName = conflictingTexture != null
+                        ? conflictingTexture.name
+                        : "<unknown>";
+                    selectionDiagnostics.Add(
+                        $"{groupName} => SharedTextureReference " +
+                        $"[{textureName} -> {materialName}.{conflictingProperty}]");
                     continue;
                 }
 
@@ -305,6 +371,11 @@ namespace net.rs64.TexTransTool.NDMF
                     .ToArray();
                 if (atlasRenderers.Length == 0)
                 {
+                    if (execution.MergeSelection == null)
+                    {
+                        selectionDiagnostics.Add(
+                            $"{DescribeGroup(group)} => NoLiveRendererAtExecution");
+                    }
                     continue;
                 }
 
@@ -324,6 +395,8 @@ namespace net.rs64.TexTransTool.NDMF
                 }
 
                 var executionMetrics = default(AtlasTexture.AtlasExecutionMetrics);
+                var standaloneSizeEvaluated = false;
+                long standaloneOutputPixels = 0;
                 var atlasResult = AtlasTexture.DoAtlasTexture(
                     domain,
                     engine,
@@ -374,6 +447,8 @@ namespace net.rs64.TexTransTool.NDMF
                             }
 
                             // Preserve the existing individual AutoAtlas acceptance rule.
+                            standaloneSizeEvaluated = true;
+                            standaloneOutputPixels = metrics.OutputTexturePixelCount;
                             return metrics.OutputTexturePixelCount > 0
                                 && metrics.OutputTexturePixelCount < originalPixels;
                         },
@@ -381,6 +456,14 @@ namespace net.rs64.TexTransTool.NDMF
 
                 if (!atlasResult.IsSuccess)
                 {
+                    if (execution.MergeSelection == null)
+                    {
+                        selectionDiagnostics.Add(standaloneSizeEvaluated
+                            ? $"{DescribeGroup(group)} => StandalonePixelCount " +
+                              $"[original={originalPixels}, output={standaloneOutputPixels}]"
+                            : $"{DescribeGroup(group)} => StandaloneAtlasFailedBeforeSize");
+                    }
+
                     if (execution.MergeSelection is { } failedMerge)
                     {
                         // A planned merge is only an optimization. If the exact
@@ -470,6 +553,14 @@ namespace net.rs64.TexTransTool.NDMF
                         descriptor.Key, descriptor.Value);
 
                 completed.Add(block);
+            }
+
+            if (selectionDiagnostics.Count != 0)
+            {
+                TTTLog.ReportingObject(configuration, () =>
+                    TTTLog.Info(
+                        "AutoAtlasTexture:info:TemporarySelectionDiagnostic",
+                        string.Join("\n", selectionDiagnostics)));
             }
 
             if (completed.Count == 0)
@@ -678,8 +769,15 @@ namespace net.rs64.TexTransTool.NDMF
             HashSet<Material> allReferencedMaterials,
             HashSet<Material> group,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
-            HashSet<Texture> replacedTextures)
+            HashSet<Texture> replacedTextures,
+            out Material? conflictingMaterial,
+            out string? conflictingProperty,
+            out Texture? conflictingTexture)
         {
+            conflictingMaterial = null;
+            conflictingProperty = null;
+            conflictingTexture = null;
+
             foreach (var material in allReferencedMaterials)
             {
                 var isTarget = group.Contains(material);
@@ -693,7 +791,12 @@ namespace net.rs64.TexTransTool.NDMF
                     if (!isTarget || atlasProperties == null ||
                         !atlasProperties.TryGetValue(property.Key, out var atlasTexture) ||
                         atlasTexture != property.Value)
+                    {
+                        conflictingMaterial = material;
+                        conflictingProperty = property.Key;
+                        conflictingTexture = property.Value;
                         return false;
+                    }
                 }
             }
             return true;
