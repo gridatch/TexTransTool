@@ -53,14 +53,16 @@ namespace net.rs64.TexTransTool.NDMF
         private readonly Dictionary<Material, MaterialSnapshot> _materials = new();
         private readonly HashSet<Material> _targetedMaterials = new();
         private readonly Dictionary<Renderer, HashSet<Material>> _targetedByRenderer = new();
-        private readonly Dictionary<Renderer, string> _autoAaoNegotiation = new();
+        private readonly Dictionary<Renderer, (bool UvEvacuation, bool MeshChanged)>
+            _autoAaoNegotiation = new();
 
         internal bool Enabled { get; private set; }
         internal AutoAtlasTexture? Configuration { get; private set; }
 
         internal void Begin(
             AutoAtlasTexture configuration,
-            IEnumerable<Renderer> renderers)
+            IEnumerable<Renderer> renderers,
+            IEnumerable<Material> referencedMaterials)
         {
             Enabled = true;
             Configuration = configuration;
@@ -79,6 +81,12 @@ namespace net.rs64.TexTransTool.NDMF
                     _materials[material] = new MaterialSnapshot(material);
                 }
             }
+
+            foreach (var material in referencedMaterials.Where(material => material != null))
+            {
+                if (_materials.ContainsKey(material)) continue;
+                _materials[material] = new MaterialSnapshot(material);
+            }
         }
 
         internal void MarkAutoAAONegotiation(
@@ -88,7 +96,7 @@ namespace net.rs64.TexTransTool.NDMF
         {
             if (renderer == null) return;
             _autoAaoNegotiation[renderer] =
-                $"uvEvacuation={uvEvacuationRequested}, meshChanged={meshChanged}";
+                (uvEvacuationRequested, meshChanged);
         }
 
         internal void MarkApplied(
@@ -117,10 +125,14 @@ namespace net.rs64.TexTransTool.NDMF
                 var renderer = pair.Key;
                 if (renderer == null || _targetedByRenderer.ContainsKey(renderer))
                     continue;
+                if (!pair.Value.UvEvacuation && !pair.Value.MeshChanged)
+                    continue;
 
                 lines.Add(
                     $"[{stage}] AAO negotiated but AutoAtlas not applied: " +
-                    $"{DescribeRenderer(renderer)} ({pair.Value})");
+                    $"{DescribeRenderer(renderer)} " +
+                    $"(uvEvacuation={pair.Value.UvEvacuation}, " +
+                    $"meshChanged={pair.Value.MeshChanged})");
             }
 
             foreach (var rendererSnapshot in _renderers.Values)
@@ -372,6 +384,16 @@ namespace net.rs64.TexTransTool.NDMF
         {
             return context.GetState(_ =>
                 new AutoAtlasTextureIsolationDiagnosticState());
+        }
+    }
+
+    internal sealed class AutoAtlasTexturePostAAODiagnosticPass
+        : Pass<AutoAtlasTexturePostAAODiagnosticPass>
+    {
+        protected override void Execute(BuildContext context)
+        {
+            AutoAtlasTextureIsolationDiagnostic.State(context)
+                .Report("after AvatarOptimizer");
         }
     }
 }
