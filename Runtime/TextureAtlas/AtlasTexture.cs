@@ -329,7 +329,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
         )
         {
             using var pf = new PFScope("init");
-            var targeting = domain as IRendererTargeting;
+            IRendererTargeting targeting = domain;
 
             long relocationStageMilliseconds = 0;
             long resolutionPlanMilliseconds = 0;
