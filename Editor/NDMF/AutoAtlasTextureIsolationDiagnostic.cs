@@ -53,6 +53,7 @@ namespace net.rs64.TexTransTool.NDMF
         private readonly Dictionary<Material, MaterialSnapshot> _materials = new();
         private readonly HashSet<Material> _targetedMaterials = new();
         private readonly Dictionary<Renderer, HashSet<Material>> _targetedByRenderer = new();
+        private readonly Dictionary<Renderer, string> _autoAaoNegotiation = new();
 
         internal bool Enabled { get; private set; }
         internal AutoAtlasTexture? Configuration { get; private set; }
@@ -80,6 +81,16 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        internal void MarkAutoAAONegotiation(
+            Renderer renderer,
+            bool uvEvacuationRequested,
+            bool meshChanged)
+        {
+            if (renderer == null) return;
+            _autoAaoNegotiation[renderer] =
+                $"uvEvacuation={uvEvacuationRequested}, meshChanged={meshChanged}";
+        }
+
         internal void MarkApplied(
             IEnumerable<Material> materials,
             IEnumerable<Renderer> renderers)
@@ -100,6 +111,18 @@ namespace net.rs64.TexTransTool.NDMF
             if (!Enabled || Configuration == null) return;
 
             var lines = new List<string>();
+
+            foreach (var pair in _autoAaoNegotiation)
+            {
+                var renderer = pair.Key;
+                if (renderer == null || _targetedByRenderer.ContainsKey(renderer))
+                    continue;
+
+                lines.Add(
+                    $"[{stage}] AAO negotiated but AutoAtlas not applied: " +
+                    $"{DescribeRenderer(renderer)} ({pair.Value})");
+            }
+
             foreach (var rendererSnapshot in _renderers.Values)
             {
                 var renderer = rendererSnapshot.Renderer;
