@@ -3,15 +3,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using nadena.dev.ndmf;
+using nadena.dev.ndmf.localization;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
-using net.rs64.TexTransTool.TextureAtlas.Editor;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.Editor;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using net.rs64.TexTransTool.Utils;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.UIElements;
 using UnityEngine.Experimental.Rendering;
 
 namespace net.rs64.TexTransTool.NDMF
@@ -47,6 +49,40 @@ namespace net.rs64.TexTransTool.NDMF
         }
     }
 
+    internal sealed class AutoAtlasTextureTemporaryDiagnosticError : SimpleError
+    {
+        private readonly string _message;
+
+        internal AutoAtlasTextureTemporaryDiagnosticError(string message)
+        {
+            _message = message;
+        }
+
+        public override Localizer Localizer => TTTLog.NDMFLocalizer;
+        public override ErrorSeverity Severity => ErrorSeverity.Information;
+        public override string TitleKey =>
+            "AutoAtlasTexture:info:TemporaryDiagnosticMessage";
+        public override string[] TitleSubst => new[] { _message };
+
+        public override VisualElement CreateVisualElement(ErrorReport report)
+        {
+            var root = new VisualElement();
+            root.style.flexGrow = 1;
+            root.Add(base.CreateVisualElement(report));
+
+            var copyButton = new Button(() =>
+                EditorGUIUtility.systemCopyBuffer = _message)
+            {
+                text = "AutoAtlasTexture:button:CopyDiagnostics"
+                    .GetLocalize(),
+            };
+            copyButton.style.alignSelf = Align.FlexEnd;
+            root.Add(copyButton);
+
+            return root;
+        }
+    }
+
     internal static class AutoAtlasTextureProcessor
     {
         internal static AutoAtlasTexture[] GetActiveConfigurations(GameObject root)
@@ -76,7 +112,6 @@ namespace net.rs64.TexTransTool.NDMF
             AutoAtlasTexture configuration,
             IReadOnlyCollection<AtlasTexture> manualAtlases)
         {
-            AutoAtlasTextureDiagnosticsCache.Clear();
             var processingTimer = System.Diagnostics.Stopwatch.StartNew();
 
             // Store only the NDMF console summary for this build.
@@ -622,36 +657,31 @@ namespace net.rs64.TexTransTool.NDMF
 
             if (completed.Count == 0)
             {
-                AutoAtlasTextureDiagnosticsCache.LastDiagnostics =
-                    string.Format(
-                        "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming"
-                            .GetLocalize(),
-                        processingTimer.ElapsedMilliseconds,
-                        temporaryTimingDiagnostic);
+                var fullDiagnostic = string.Format(
+                    "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming"
+                        .GetLocalize(),
+                    processingTimer.ElapsedMilliseconds,
+                    temporaryTimingDiagnostic);
 
                 TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info(
-                        "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming",
-                        processingTimer.ElapsedMilliseconds,
-                        temporaryTimingDiagnostic));
+                    ErrorReport.ReportError(
+                        new AutoAtlasTextureTemporaryDiagnosticError(
+                            fullDiagnostic)));
                 return;
             }
 
             var completedBlocks = string.Join("\n\n", completed);
-            AutoAtlasTextureDiagnosticsCache.LastDiagnostics =
-                string.Format(
-                    "AutoAtlasTexture:info:RelocateResultWithTemporaryTiming"
-                        .GetLocalize(),
-                    completedBlocks,
-                    processingTimer.ElapsedMilliseconds,
-                    temporaryTimingDiagnostic);
+            var fullResultDiagnostic = string.Format(
+                "AutoAtlasTexture:info:RelocateResultWithTemporaryTiming"
+                    .GetLocalize(),
+                completedBlocks,
+                processingTimer.ElapsedMilliseconds,
+                temporaryTimingDiagnostic);
 
             TTTLog.ReportingObject(configuration, () =>
-                TTTLog.Info(
-                    "AutoAtlasTexture:info:RelocateResultWithTemporaryTiming",
-                    completedBlocks,
-                    processingTimer.ElapsedMilliseconds,
-                    temporaryTimingDiagnostic));
+                ErrorReport.ReportError(
+                    new AutoAtlasTextureTemporaryDiagnosticError(
+                        fullResultDiagnostic)));
         }
 
         private static bool ReferencesAreExclusive(
