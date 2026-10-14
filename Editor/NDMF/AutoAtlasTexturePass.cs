@@ -469,7 +469,7 @@ namespace net.rs64.TexTransTool.NDMF
                         out var sourceTextureMemoryBytes))
                 {
                     block += "\n" + string.Format(
-                        "AutoAtlasTexture:info:TargetTextureMemory".GetLocalize(),
+                        "AtlasTexture:info:TargetTextureMemory".GetLocalize(),
                         AtlasTexture.FormatTextureMemory(sourceTextureMemoryBytes),
                         AtlasTexture.FormatTextureMemory(executionTextureMemoryBytes));
                 }
