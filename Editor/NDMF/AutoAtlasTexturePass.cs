@@ -80,6 +80,11 @@ namespace net.rs64.TexTransTool.NDMF
             // Store only the NDMF console summary for this build.
             var completed = new List<string>();
 
+            // Temporary diagnostics for validating the extra merge-planning cost.
+            long executionDoAtlasTimeMilliseconds = 0;
+            long executionRelocationTimeMilliseconds = 0;
+            var executionDoAtlasCount = 0;
+
             string OriginalMaterialName(Material material)
             {
                 // Reuse NDMF's object identity; build-stage suffixes are not
@@ -104,8 +109,9 @@ namespace net.rs64.TexTransTool.NDMF
                 processingTimer.Stop();
                 TTTLog.ReportingObject(configuration, () =>
                     TTTLog.Info(
-                        "AutoAtlasTexture:info:TargetNotFound",
-                        processingTimer.ElapsedMilliseconds));
+                        "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming",
+                        processingTimer.ElapsedMilliseconds,
+                        temporaryTimingDiagnostic));
                 return;
             }
 
@@ -332,6 +338,7 @@ namespace net.rs64.TexTransTool.NDMF
                 }
 
                 var executionMetrics = default(AtlasTexture.AtlasExecutionMetrics);
+                var executionTimer = System.Diagnostics.Stopwatch.StartNew();
                 var atlasResult = AtlasTexture.DoAtlasTexture(
                     domain,
                     engine,
@@ -390,6 +397,12 @@ namespace net.rs64.TexTransTool.NDMF
                             return metrics.OutputTexturePixelCount > 0;
                         },
                     });
+                executionTimer.Stop();
+                executionDoAtlasCount += 1;
+                executionDoAtlasTimeMilliseconds +=
+                    executionTimer.ElapsedMilliseconds;
+                executionRelocationTimeMilliseconds +=
+                    executionMetrics.RelocationTimeMilliseconds;
 
                 if (!atlasResult.IsSuccess)
                 {
@@ -501,6 +514,21 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             processingTimer.Stop();
+
+            var temporaryTimingDiagnostic = string.Format(
+                "AutoAtlasTexture:info:TemporaryTimingDiagnostic".GetLocalize(),
+                mergePlan.PlanningTimeMilliseconds,
+                mergePlan.StandaloneAnalysisTimeMilliseconds,
+                mergePlan.StandaloneRelocationTimeMilliseconds,
+                mergePlan.StandaloneAnalysisCount,
+                executionDoAtlasTimeMilliseconds,
+                executionRelocationTimeMilliseconds,
+                executionDoAtlasCount,
+                Math.Max(
+                    0,
+                    mergePlan.PlanningTimeMilliseconds
+                        - mergePlan.StandaloneAnalysisTimeMilliseconds));
+
             if (completed.Count == 0)
             {
                 TTTLog.ReportingObject(configuration, () =>
@@ -512,9 +540,10 @@ namespace net.rs64.TexTransTool.NDMF
 
             TTTLog.ReportingObject(configuration, () =>
                 TTTLog.Info(
-                    "AutoAtlasTexture:info:RelocateResult",
+                    "AutoAtlasTexture:info:RelocateResultWithTemporaryTiming",
                     string.Join("\n\n", completed),
-                    processingTimer.ElapsedMilliseconds));
+                    processingTimer.ElapsedMilliseconds,
+                    temporaryTimingDiagnostic));
         }
 
         private static bool ReferencesAreExclusive(
