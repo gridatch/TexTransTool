@@ -97,12 +97,32 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     atlasContext,
                     tunedAtlasTextures
                 );
+                var resolutionLines =
+                    AtlasResolutionRouteReport.CreateLocalizedLogLines(
+                        resolutionRoutes);
+
+                var sourceTextures = CollectSourceTextures(atlasContext);
+                if (TryCalculateSourceTextureMemory(
+                        domain,
+                        sourceTextures,
+                        out var sourceTextureMemoryBytes)
+                    && TryCalculateFinalTextureMemory(
+                        atlasContext,
+                        tunedAtlasTextures,
+                        out var outputTextureMemoryBytes))
+                {
+                    resolutionLines += "\n" + string.Format(
+                        "AtlasTexture:info:TargetTextureMemory".GetLocalize(),
+                        FormatTextureMemory(sourceTextureMemoryBytes),
+                        FormatTextureMemory(outputTextureMemoryBytes));
+                }
+
                 TTLog.Info(
                     "AtlasTexture:info:RelocateResultWithResolution",
                     relocationMetrics.TopFreeFraction,
                     relocationMetrics.PriorityDownScale,
                     relocationMetrics.OverallDownScale,
-                    AtlasResolutionRouteReport.CreateLocalizedLogLines(resolutionRoutes),
+                    resolutionLines,
                     relocationMetrics.TotalRelocateCount,
                     relocationMetrics.RelocationTimeMilliseconds
                 );
