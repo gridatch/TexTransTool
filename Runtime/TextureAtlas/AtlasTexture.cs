@@ -264,6 +264,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             int targetSize,
             out AtlasExecutionMetrics metrics,
             out long relocationStageMilliseconds,
+            out long relocatorMilliseconds,
             out long resolutionPlanMilliseconds)
         {
             metrics = default;
@@ -280,6 +281,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     out var relocationTime);
             phaseTimer.Stop();
             relocationStageMilliseconds = phaseTimer.ElapsedMilliseconds;
+            relocatorMilliseconds = relocationTime;
 
             if (!IsLosslessRelocation(relocateResult))
             {
