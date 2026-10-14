@@ -313,24 +313,31 @@ namespace net.rs64.TexTransTool.NDMF
         private sealed class ShadowPackingState
         {
             internal readonly int[] Skyline;
-            internal readonly int[] GuestIds;
-            internal readonly long GuestBaselineBytes;
+            internal readonly int[] GroupIds;
+            internal readonly long BaselineBytes;
             internal readonly bool UsesWiderProfile;
+            internal long ProjectedPixelDelta;
+            internal long ProjectedMemoryDelta;
 
             internal ShadowPackingState(
                 int[] skyline,
-                IEnumerable<int> guestIds,
-                long guestBaselineBytes,
+                IEnumerable<int> groupIds,
+                long baselineBytes,
                 bool usesWiderProfile)
             {
                 Skyline = skyline;
-                GuestIds = guestIds.OrderBy(id => id).ToArray();
-                GuestBaselineBytes = guestBaselineBytes;
+                GroupIds = groupIds.OrderBy(id => id).ToArray();
+                BaselineBytes = baselineBytes;
                 UsesWiderProfile = usesWiderProfile;
             }
 
+            internal int MaxHeight =>
+                Skyline.Length == 0 ? 0 : Skyline.Max();
+
+            internal int SkylineArea => Skyline.Sum();
+
             internal string Key =>
-                string.Join(",", GuestIds)
+                string.Join(",", GroupIds)
                 + "|"
                 + string.Join(",", Skyline);
         }
@@ -482,6 +489,7 @@ namespace net.rs64.TexTransTool.NDMF
         {
             internal readonly int[] GroupIds;
             internal readonly TextureCostPlan Baseline;
+            internal readonly TextureCostPlan Merged;
             internal readonly Vector2Int LayoutSize;
             internal readonly IReadOnlyDictionary<string, Vector2Int>
                 PropertySizes;
@@ -499,6 +507,7 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 GroupIds = groupIds;
                 Baseline = baseline;
+                Merged = merged;
                 LayoutSize = layoutSize;
                 PropertySizes = propertySizes;
                 SavingBytes = baseline.FullResidentBytes - merged.FullResidentBytes;
@@ -1140,7 +1149,7 @@ namespace net.rs64.TexTransTool.NDMF
             var profileCount = groups.Sum(group => group.LayoutProfiles.Count);
             var groupsWithMultipleProfiles = groups.Count(
                 group => group.LayoutProfiles.Count > 1);
-            var hostCount = 0;
+            var targetWidthCount = 0;
             var evaluatedCandidateCount = 0;
             var evaluatedBeyondBandLayoutCount = 0;
             var evaluatedUsingWiderProfileCount = 0;
@@ -1172,43 +1181,194 @@ namespace net.rs64.TexTransTool.NDMF
                 new Dictionary<string, bool>(StringComparer.Ordinal);
             var evaluatedLayouts =
                 new HashSet<string>(StringComparer.Ordinal);
+            var candidateCache =
+                new Dictionary<string, Candidate>(StringComparer.Ordinal);
 
-            foreach (var host in groups.OrderBy(group => group.Id))
+            Candidate GetCandidate(int[] ids, Vector2Int layoutSize)
             {
-                if (host.StandaloneMetrics is null
-                    || !host.BaselineCostKnown
-                    || host.BandWidthPixels < PackingGridUnit
-                    || host.BandUsedHeightPixels <= 0
-                    || host.BandWidthPixels % PackingGridUnit != 0)
+                var groupKey = string.Join(",", ids.OrderBy(id => id));
+                var layoutKey =
+                    groupKey + "@" + layoutSize.x + "x" + layoutSize.y;
+                if (candidateCache.TryGetValue(layoutKey, out var cached))
+                    return cached;
+
+                var selectedGroups = ids
+                    .Select(id => byId[id])
+                    .ToArray();
+                var materials = selectedGroups
+                    .SelectMany(group => group.Materials)
+                    .ToHashSet();
+                var propertySizes = BuildPredictedPropertySizes(
+                    materials,
+                    layoutSize,
+                    settings);
+                var baseline = TextureCostPlan.Combine(
+                    selectedGroups.Select(
+                        group => group.BaselineCost));
+                var merged = BuildGeneratedCost(
+                    selectedGroups,
+                    propertyTextures,
+                    propertySizes,
+                    alphaCache,
+                    UnknownAlphaAssumption.AssumePresent);
+
+                var candidate = new Candidate(
+                    ids.OrderBy(id => id).ToArray(),
+                    baseline,
+                    merged,
+                    layoutSize,
+                    propertySizes);
+                candidateCache[layoutKey] = candidate;
+                return candidate;
+            }
+
+            void ScoreState(
+                ShadowPackingState state,
+                int targetWidth)
+            {
+                if (state.GroupIds.Length == 0)
+                {
+                    state.ProjectedPixelDelta = 0;
+                    state.ProjectedMemoryDelta = 0;
+                    return;
+                }
+
+                var layoutSize = new Vector2Int(
+                    targetWidth,
+                    GetCroppedHeight(
+                        targetWidth,
+                        Math.Max(1, state.MaxHeight)));
+                var candidate = GetCandidate(
+                    state.GroupIds,
+                    layoutSize);
+                state.ProjectedPixelDelta =
+                    candidate.Merged.PixelCount
+                    - candidate.Baseline.PixelCount;
+                state.ProjectedMemoryDelta =
+                    candidate.Merged.FullResidentBytes
+                    - candidate.Baseline.FullResidentBytes;
+            }
+
+            List<ShadowPackingState> SelectPropertyAwareStates(
+                IEnumerable<ShadowPackingState> source)
+            {
+                var unique = source
+                    .GroupBy(state => state.Key, StringComparer.Ordinal)
+                    .Select(group => group
+                        .OrderByDescending(state => state.UsesWiderProfile)
+                        .First())
+                    .ToArray();
+
+                if (unique.Length <= ShadowPackingStatesPerHost)
+                    return unique
+                        .OrderBy(state => state.GroupIds.Length == 0 ? 0 : 1)
+                        .ThenBy(state => state.ProjectedPixelDelta)
+                        .ThenBy(state => state.ProjectedMemoryDelta)
+                        .ThenBy(state => state.MaxHeight)
+                        .ThenBy(state => state.SkylineArea)
+                        .ThenBy(state => state.Key, StringComparer.Ordinal)
+                        .ToList();
+
+                var selected =
+                    new Dictionary<string, ShadowPackingState>(
+                        StringComparer.Ordinal);
+
+                void Retain(
+                    IEnumerable<ShadowPackingState> ordered,
+                    int count)
+                {
+                    foreach (var state in ordered.Take(count))
+                        selected.TryAdd(state.Key, state);
+                }
+
+                // Current property cost is useful, but it is not monotonic:
+                // a currently-unprofitable pair can become profitable when a
+                // third group shares an already-paid property texture. Retain
+                // several independent fronts instead of pruning only by the
+                // current merge result.
+                Retain(
+                    unique
+                        .OrderBy(state => state.ProjectedPixelDelta)
+                        .ThenBy(state => state.ProjectedMemoryDelta)
+                        .ThenBy(state => state.MaxHeight)
+                        .ThenBy(state => state.Key, StringComparer.Ordinal),
+                    ShadowPackingStatesPerHost / 2);
+                Retain(
+                    unique
+                        .OrderBy(state => state.ProjectedMemoryDelta)
+                        .ThenBy(state => state.ProjectedPixelDelta)
+                        .ThenBy(state => state.MaxHeight)
+                        .ThenBy(state => state.Key, StringComparer.Ordinal),
+                    ShadowPackingStatesPerHost / 4);
+                Retain(
+                    unique
+                        .OrderBy(state => state.MaxHeight)
+                        .ThenBy(state => state.SkylineArea)
+                        .ThenByDescending(state => state.GroupIds.Length)
+                        .ThenBy(state => state.Key, StringComparer.Ordinal),
+                    ShadowPackingStatesPerHost / 8);
+                Retain(
+                    unique
+                        .OrderByDescending(state => state.BaselineBytes)
+                        .ThenByDescending(state => state.GroupIds.Length)
+                        .ThenBy(state => state.MaxHeight)
+                        .ThenBy(state => state.Key, StringComparer.Ordinal),
+                    ShadowPackingStatesPerHost / 8);
+
+                if (selected.Count < ShadowPackingStatesPerHost)
+                {
+                    Retain(
+                        unique
+                            .OrderBy(state => state.ProjectedPixelDelta)
+                            .ThenBy(state => state.ProjectedMemoryDelta)
+                            .ThenBy(state => state.MaxHeight)
+                            .ThenBy(state => state.SkylineArea)
+                            .ThenBy(state => state.Key, StringComparer.Ordinal),
+                        ShadowPackingStatesPerHost);
+                }
+
+                var empty = unique.FirstOrDefault(
+                    state => state.GroupIds.Length == 0);
+                if (empty != null)
+                    selected[empty.Key] = empty;
+
+                return selected.Values
+                    .OrderBy(state => state.GroupIds.Length == 0 ? 0 : 1)
+                    .ThenBy(state => state.ProjectedPixelDelta)
+                    .ThenBy(state => state.ProjectedMemoryDelta)
+                    .ThenBy(state => state.MaxHeight)
+                    .ThenBy(state => state.SkylineArea)
+                    .ThenBy(state => state.Key, StringComparer.Ordinal)
+                    .Take(ShadowPackingStatesPerHost)
+                    .ToList();
+            }
+
+            foreach (var targetWidth in
+                     AtlasTexture.AutoAtlasTextureSizeCandidates)
+            {
+                if (targetWidth < PackingGridUnit
+                    || targetWidth % PackingGridUnit != 0)
                 {
                     continue;
                 }
 
-                var hostWidth = host.BandWidthPixels;
-                var capacity = hostWidth - host.BandUsedHeightPixels;
-                if (capacity <= 0)
-                    continue;
-
-                var columnCount = hostWidth / PackingGridUnit;
-                var guests = groups
+                var eligibleGroups = groups
                     .Where(group =>
-                        group.Id != host.Id
-                        && group.StandaloneMetrics != null
+                        group.StandaloneMetrics != null
                         && group.BaselineCostKnown
-                        && group.BandWidthPixels > 0
-                        && group.BandWidthPixels <= hostWidth
                         && group.LayoutProfiles.Any(profile =>
-                            profile.Key <= hostWidth
+                            profile.Key <= targetWidth
                             && profile.Key % PackingGridUnit == 0
                             && GetBandUsedHeightPixels(profile.Value)
-                                <= capacity))
+                                <= targetWidth))
                     .OrderBy(group => group.Id)
                     .ToArray();
 
-                if (guests.Length == 0)
+                if (eligibleGroups.Length < 2)
                     continue;
 
-                hostCount += 1;
+                targetWidthCount += 1;
+                var columnCount = targetWidth / PackingGridUnit;
                 var states = new List<ShadowPackingState>
                 {
                     new(
@@ -1218,22 +1378,22 @@ namespace net.rs64.TexTransTool.NDMF
                         false),
                 };
 
-                foreach (var guest in guests)
+                foreach (var group in eligibleGroups)
                 {
                     var generated =
                         new Dictionary<string, ShadowPackingState>(
                             StringComparer.Ordinal);
                     var snapshot = states
                         .Where(state =>
-                            state.GuestIds.Length + 1
-                                < MaxMergeGroupCount)
+                            state.GroupIds.Length + 1
+                                <= MaxMergeGroupCount)
                         .ToArray();
 
                     foreach (var state in snapshot)
                     {
-                        foreach (var profile in guest.LayoutProfiles
+                        foreach (var profile in group.LayoutProfiles
                                      .Where(profile =>
-                                         profile.Key <= hostWidth
+                                         profile.Key <= targetWidth
                                          && profile.Key
                                              % PackingGridUnit == 0)
                                      .OrderBy(profile => profile.Key))
@@ -1245,7 +1405,7 @@ namespace net.rs64.TexTransTool.NDMF
                                 profileWidth / PackingGridUnit;
                             if (widthColumns <= 0
                                 || widthColumns > columnCount
-                                || profileHeight > capacity)
+                                || profileHeight > targetWidth)
                             {
                                 continue;
                             }
@@ -1265,7 +1425,7 @@ namespace net.rs64.TexTransTool.NDMF
                                 }
 
                                 var top = y + profileHeight;
-                                if (top > capacity)
+                                if (top > targetWidth)
                                     continue;
 
                                 var skyline =
@@ -1279,18 +1439,29 @@ namespace net.rs64.TexTransTool.NDMF
 
                                 var next = new ShadowPackingState(
                                     skyline,
-                                    state.GuestIds.Append(guest.Id),
-                                    state.GuestBaselineBytes
-                                        + guest.BaselineCost
+                                    state.GroupIds.Append(group.Id),
+                                    state.BaselineBytes
+                                        + group.BaselineCost
                                             .FullResidentBytes,
                                     state.UsesWiderProfile
                                         || profileWidth
-                                            > guest.BandWidthPixels);
+                                            > group.BandWidthPixels);
+                                ScoreState(next, targetWidth);
 
                                 if (!generated.TryGetValue(
                                         next.Key,
                                         out var prior)
-                                    || (next.UsesWiderProfile
+                                    || next.ProjectedPixelDelta
+                                        < prior.ProjectedPixelDelta
+                                    || (next.ProjectedPixelDelta
+                                            == prior.ProjectedPixelDelta
+                                        && next.ProjectedMemoryDelta
+                                            < prior.ProjectedMemoryDelta)
+                                    || (next.ProjectedPixelDelta
+                                            == prior.ProjectedPixelDelta
+                                        && next.ProjectedMemoryDelta
+                                            == prior.ProjectedMemoryDelta
+                                        && next.UsesWiderProfile
                                         && !prior.UsesWiderProfile))
                                 {
                                     generated[next.Key] = next;
@@ -1303,80 +1474,30 @@ namespace net.rs64.TexTransTool.NDMF
                         continue;
 
                     states.AddRange(generated.Values);
-                    states = states
-                        .GroupBy(state => state.Key, StringComparer.Ordinal)
-                        .Select(group => group.First())
-                        .OrderByDescending(
-                            state => state.GuestBaselineBytes)
-                        .ThenByDescending(
-                            state => state.GuestIds.Length)
-                        .ThenBy(state =>
-                            state.Skyline.Length == 0
-                                ? 0
-                                : state.Skyline.Max())
-                        .ThenBy(state => state.Skyline.Sum())
-                        .ThenBy(state => state.Key, StringComparer.Ordinal)
-                        .Take(ShadowPackingStatesPerHost)
-                        .ToList();
-
-                    if (!states.Any(state => state.GuestIds.Length == 0))
-                    {
-                        states.Add(
-                            new ShadowPackingState(
-                                new int[columnCount],
-                                Array.Empty<int>(),
-                                0,
-                                false));
-                    }
+                    states = SelectPropertyAwareStates(states);
                 }
 
                 foreach (var state in states.Where(
-                             state => state.GuestIds.Length != 0))
+                             state => state.GroupIds.Length >= 2))
                 {
-                    var ids = new[] { host.Id }
-                        .Concat(state.GuestIds)
+                    var ids = state.GroupIds
                         .OrderBy(id => id)
                         .ToArray();
                     var key = string.Join(",", ids);
-                    var guestHeight =
-                        state.Skyline.Length == 0
-                            ? 0
-                            : state.Skyline.Max();
-                    var usedHeight =
-                        host.BandUsedHeightPixels + guestHeight;
                     var layoutSize = new Vector2Int(
-                        hostWidth,
-                        GetCroppedHeight(hostWidth, usedHeight));
+                        targetWidth,
+                        GetCroppedHeight(
+                            targetWidth,
+                            Math.Max(1, state.MaxHeight)));
                     var layoutKey =
                         key + "@" + layoutSize.x + "x" + layoutSize.y;
                     if (!evaluatedLayouts.Add(layoutKey))
                         continue;
 
-                    var selectedGroups = ids
-                        .Select(id => byId[id])
-                        .ToArray();
-                    var materials = selectedGroups
-                        .SelectMany(group => group.Materials)
-                        .ToHashSet();
-                    var propertySizes = BuildPredictedPropertySizes(
-                        materials,
-                        layoutSize,
-                        settings);
-                    var baseline = TextureCostPlan.Combine(
-                        selectedGroups.Select(
-                            group => group.BaselineCost));
-                    var merged = BuildGeneratedCost(
-                        selectedGroups,
-                        propertyTextures,
-                        propertySizes,
-                        alphaCache,
-                        UnknownAlphaAssumption.AssumePresent);
-                    var candidate = new Candidate(
-                        ids,
-                        baseline,
-                        merged,
-                        layoutSize,
-                        propertySizes);
+                    var candidate = GetCandidate(ids, layoutSize);
+                    var baseline = candidate.Baseline;
+                    var merged = candidate.Merged;
+                    var propertySizes = candidate.PropertySizes;
 
                     if (baseline.PixelCount > 0)
                     {
@@ -1544,7 +1665,7 @@ namespace net.rs64.TexTransTool.NDMF
             return new ShadowPackingDiagnostics(
                 profileCount,
                 groupsWithMultipleProfiles,
-                hostCount,
+                targetWidthCount,
                 evaluatedCandidateCount,
                 evaluatedBeyondBandLayoutCount,
                 evaluatedUsingWiderProfileCount,
