@@ -280,6 +280,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     islandSizePriorityTuner,
                     atlasTargetSize,
                     islandRelocatorOverride: null,
+                    losslessOnly: true,
                     out var relocationTime,
                     out var islandProcessingTiming);
             phaseTimer.Stop();
@@ -767,6 +768,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     islandSizePriorityTuner,
                     manualSize,
                     islandRelocatorOverride,
+                    executionOptions?.RequireLossless == true,
                     out var manualTime,
                     out _
                 );
@@ -789,6 +791,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     islandSizePriorityTuner,
                     candidateSize,
                     islandRelocatorOverride,
+                    executionOptions?.RequireLossless == true,
                     out var candidateTime,
                     out _
                 );
@@ -835,6 +838,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , List<IIslandSizePriorityTuner?> islandSizePriorityTuner
             , Vector2Int atlasTargeSize
             , IIslandRelocator? islandRelocatorOverride
+            , bool losslessOnly
             , out long relocationTime
             , out AtlasIslandProcessingTimingDiagnostic timing
         )
@@ -880,7 +884,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
             relocateManage.Height = (float)atlasTargeSize.y / atlasTargeSize.x;
 
             var timer = System.Diagnostics.Stopwatch.StartNew();
-            relocateManage.RelocateLoop(atlasContext, virtualIslandArray, sizePriority, out var relocateResult);
+            relocateManage.RelocateLoop(
+                atlasContext,
+                virtualIslandArray,
+                sizePriority,
+                out var relocateResult,
+                losslessOnly);
             timer.Stop();
             relocationTime = timer.ElapsedMilliseconds;
 
