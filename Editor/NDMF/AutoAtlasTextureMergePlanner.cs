@@ -115,13 +115,6 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int RejectedMaxDimensionCount;
             internal readonly int RejectedSamplingCount;
             internal readonly int RejectedStreamingCount;
-            internal readonly int PixelRejectedEqualCount;
-            internal readonly int PixelRejectedGreaterCount;
-            internal readonly int PixelGateOnlyCount;
-            internal readonly long BestBaselinePixels;
-            internal readonly long BestMergedPixels;
-            internal readonly int BestGroupCount;
-            internal readonly Vector2Int BestLayoutSize;
 
             // Temporary shadow 2D-packing diagnostics. These do not affect the
             // currently selected band-based merge plan.
@@ -251,13 +244,6 @@ namespace net.rs64.TexTransTool.NDMF
                 RejectedMaxDimensionCount = rejectedMaxDimensionCount;
                 RejectedSamplingCount = rejectedSamplingCount;
                 RejectedStreamingCount = rejectedStreamingCount;
-                PixelRejectedEqualCount = pixelRejectedEqualCount;
-                PixelRejectedGreaterCount = pixelRejectedGreaterCount;
-                PixelGateOnlyCount = pixelGateOnlyCount;
-                BestBaselinePixels = bestBaselinePixels;
-                BestMergedPixels = bestMergedPixels;
-                BestGroupCount = bestGroupCount;
-                BestLayoutSize = bestLayoutSize;
                 ShadowProfileCount = shadowProfileCount;
                 ShadowGroupsWithMultipleProfiles =
                     shadowGroupsWithMultipleProfiles;
@@ -337,6 +323,13 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int RejectedMaxDimensionCount;
             internal readonly int RejectedSamplingCount;
             internal readonly int RejectedStreamingCount;
+            internal readonly int PixelRejectedEqualCount;
+            internal readonly int PixelRejectedGreaterCount;
+            internal readonly int PixelGateOnlyCount;
+            internal readonly long BestBaselinePixels;
+            internal readonly long BestMergedPixels;
+            internal readonly int BestGroupCount;
+            internal readonly Vector2Int BestLayoutSize;
 
             internal ShadowPackingDiagnostics(
                 int profileCount,
@@ -382,6 +375,13 @@ namespace net.rs64.TexTransTool.NDMF
                 RejectedMaxDimensionCount = rejectedMaxDimensionCount;
                 RejectedSamplingCount = rejectedSamplingCount;
                 RejectedStreamingCount = rejectedStreamingCount;
+                PixelRejectedEqualCount = pixelRejectedEqualCount;
+                PixelRejectedGreaterCount = pixelRejectedGreaterCount;
+                PixelGateOnlyCount = pixelGateOnlyCount;
+                BestBaselinePixels = bestBaselinePixels;
+                BestMergedPixels = bestMergedPixels;
+                BestGroupCount = bestGroupCount;
+                BestLayoutSize = bestLayoutSize;
             }
         }
 
