@@ -183,6 +183,138 @@ namespace net.rs64.TexTransTool.TextureAtlas
         }
 
 
+        internal static PreparedAtlasContext? PrepareAtlasContext(
+            IRendererTargeting targeting,
+            HashSet<Material> targetMaterials,
+            Renderer[] targetRenderers,
+            AtlasSetting atlasSetting,
+            out long preserveSetupMilliseconds,
+            out long atlasContextConstructionMilliseconds,
+            out long islandNormalizeMilliseconds)
+        {
+            var phaseTimer = System.Diagnostics.Stopwatch.StartNew();
+            var preserveBump2ndMaterials =
+                GetBump2ndOriginalUVPreserveMaterials(
+                    targetMaterials,
+                    targetRenderers,
+                    targeting,
+                    atlasSetting.AtlasTargetUVChannel);
+            var preservedOriginalUVChannel = preserveBump2ndMaterials.Any()
+                ? FindUnusedUVChannel(
+                    targetRenderers,
+                    targeting,
+                    atlasSetting.AtlasTargetUVChannel)
+                : null;
+            phaseTimer.Stop();
+            preserveSetupMilliseconds = phaseTimer.ElapsedMilliseconds;
+
+            if (preserveBump2ndMaterials.Any()
+                && preservedOriginalUVChannel is null)
+            {
+                atlasContextConstructionMilliseconds = 0;
+                islandNormalizeMilliseconds = 0;
+                TTLog.Error(
+                    "AtlasTexture:error:NoFreeUVChannelForIndependentTexture");
+                return null;
+            }
+
+            phaseTimer.Restart();
+            var atlasContext = new AtlasContext(
+                targeting,
+                targetRenderers,
+                targetMaterials,
+                new()
+                {
+                    AtlasTargetUVChannel = atlasSetting.AtlasTargetUVChannel,
+                    PrimaryTexturePropertyOrMaximum =
+                        atlasSetting.UsePrimaryMaximumTexture
+                            ? null
+                            : atlasSetting.PrimaryTextureProperty,
+                    AtlasIslandContextOption = new(),
+                });
+            phaseTimer.Stop();
+            atlasContextConstructionMilliseconds =
+                phaseTimer.ElapsedMilliseconds;
+
+            phaseTimer.Restart();
+            if (atlasSetting.PixelNormalize)
+                atlasContext.SourceVirtualIslandNormalize();
+
+            if (atlasSetting.PixelNormalize
+                && TTMath.Approximately(atlasSetting.IslandPadding, 0))
+            {
+                TTLog.Warning(
+                    "AtlasTexture:warn:IslandPaddingIsZeroAndPixelNormalizeUsed");
+            }
+
+            phaseTimer.Stop();
+            islandNormalizeMilliseconds = phaseTimer.ElapsedMilliseconds;
+
+            return new PreparedAtlasContext(
+                atlasContext,
+                preserveBump2ndMaterials,
+                preservedOriginalUVChannel);
+        }
+
+        internal static bool TryAnalyzePreparedAtlasAtSize(
+            IRendererTargeting domain,
+            PreparedAtlasContext prepared,
+            List<IIslandSizePriorityTuner?> islandSizePriorityTuner,
+            AtlasSetting atlasSetting,
+            int targetSize,
+            out AtlasExecutionMetrics metrics,
+            out long relocationStageMilliseconds,
+            out long resolutionPlanMilliseconds)
+        {
+            metrics = default;
+            var phaseTimer = System.Diagnostics.Stopwatch.StartNew();
+            var atlasTargetSize = new Vector2Int(targetSize, targetSize);
+            var (movedVirtualIslandArray, relocateResult) =
+                IslandProcessing(
+                    domain,
+                    atlasSetting,
+                    prepared.AtlasContext,
+                    islandSizePriorityTuner,
+                    atlasTargetSize,
+                    islandRelocatorOverride: null,
+                    out var relocationTime);
+            phaseTimer.Stop();
+            relocationStageMilliseconds = phaseTimer.ElapsedMilliseconds;
+
+            if (!IsLosslessRelocation(relocateResult))
+            {
+                resolutionPlanMilliseconds = 0;
+                return false;
+            }
+
+            var height =
+                IslandRelocationManager.CalculateIslandsMaxHeight(
+                    movedVirtualIslandArray)
+                + atlasSetting.IslandPadding;
+            var atlasTextureHeightSize = Mathf.Max(
+                GetNormalizedMinHeightSize(atlasTargetSize.y, height),
+                4);
+            var atlasedTextureSize =
+                new Vector2Int(atlasTargetSize.x, atlasTextureHeightSize);
+
+            phaseTimer.Restart();
+            var resolutionPlan = AtlasTextureResolutionPlan.Create(
+                prepared.AtlasContext,
+                atlasSetting,
+                atlasedTextureSize);
+            phaseTimer.Stop();
+            resolutionPlanMilliseconds = phaseTimer.ElapsedMilliseconds;
+
+            metrics = new AtlasExecutionMetrics(
+                (float)(1 - height),
+                relocateResult.TotalRelocateCount,
+                relocationTime,
+                resolutionPlan.TotalPixelCount,
+                resolutionPlan.LayoutSize,
+                resolutionPlan.PropertySizes);
+            return true;
+        }
+
         internal static AtlasResult DoAtlasTexture(
             IDomain domain
             , ITexTransToolForUnity engine
@@ -199,13 +331,19 @@ namespace net.rs64.TexTransTool.TextureAtlas
             using var pf = new PFScope("init");
             var targeting = domain as IRendererTargeting;
 
-            long preserveSetupMilliseconds = 0;
-            long atlasContextConstructionMilliseconds = 0;
-            long islandNormalizeMilliseconds = 0;
             long relocationStageMilliseconds = 0;
             long resolutionPlanMilliseconds = 0;
             long meshGenerationMilliseconds = 0;
             long textureGenerationMilliseconds = 0;
+
+            var prepared = PrepareAtlasContext(
+                targeting,
+                targetMaterials,
+                targetRenderers,
+                atlasSetting,
+                out var preserveSetupMilliseconds,
+                out var atlasContextConstructionMilliseconds,
+                out var islandNormalizeMilliseconds);
 
             void ReportTemporaryTiming()
             {
@@ -220,51 +358,25 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         textureGenerationMilliseconds));
             }
 
-            var phaseTimer = System.Diagnostics.Stopwatch.StartNew();
-            var preserveBump2ndMaterials = GetBump2ndOriginalUVPreserveMaterials(targetMaterials, targetRenderers, targeting, atlasSetting.AtlasTargetUVChannel);
-            var preservedOriginalUVChannel = preserveBump2ndMaterials.Any()
-                ? FindUnusedUVChannel(targetRenderers, targeting, atlasSetting.AtlasTargetUVChannel)
-                : null;
-            phaseTimer.Stop();
-            preserveSetupMilliseconds = phaseTimer.ElapsedMilliseconds;
-
-            if (preserveBump2ndMaterials.Any() && preservedOriginalUVChannel is null)
+            if (prepared is null)
             {
-                TTLog.Error("AtlasTexture:error:NoFreeUVChannelForIndependentTexture");
-                return new(false, null, null, null, preserveBump2ndMaterials, null);
+                return new(
+                    false,
+                    null,
+                    null,
+                    null,
+                    new HashSet<Material>(),
+                    null);
             }
 
-            pf.Split("AtlasContext ctr");
-            phaseTimer.Restart();
-            var atlasContext = new AtlasContext(
-                               targeting
-                               , targetRenderers
-                               , targetMaterials
-                               , new()
-                               {
-                                   AtlasTargetUVChannel = atlasSetting.AtlasTargetUVChannel,
-                                   PrimaryTexturePropertyOrMaximum = atlasSetting.UsePrimaryMaximumTexture ? null : atlasSetting.PrimaryTextureProperty,
-                                   AtlasIslandContextOption = new(),
-                               }
-                               );
-            phaseTimer.Stop();
-            atlasContextConstructionMilliseconds = phaseTimer.ElapsedMilliseconds;
-
-
-
-            pf.Split("PixelNormalize");
-            phaseTimer.Restart();
-            //アイランドまわり
-            if (atlasSetting.PixelNormalize)
-                atlasContext.SourceVirtualIslandNormalize();
-
-            if (atlasSetting.PixelNormalize && TTMath.Approximately(atlasSetting.IslandPadding, 0))
-                TTLog.Warning("AtlasTexture:warn:IslandPaddingIsZeroAndPixelNormalizeUsed");
-            phaseTimer.Stop();
-            islandNormalizeMilliseconds = phaseTimer.ElapsedMilliseconds;
+            var atlasContext = prepared.AtlasContext;
+            var preserveBump2ndMaterials =
+                prepared.PreserveBump2ndMaterials;
+            var preservedOriginalUVChannel =
+                prepared.PreservedOriginalUVChannel;
+            var phaseTimer = System.Diagnostics.Stopwatch.StartNew();
 
             pf.Split("IslandProcessing");
-            phaseTimer.Restart();
             var relocatorOverride =
                 executionOptions?.IslandRelocatorFactory?.Invoke(atlasContext);
 
@@ -281,14 +393,14 @@ namespace net.rs64.TexTransTool.TextureAtlas
             if (executionOptions?.RequireLossless == true &&
                 IsLosslessRelocation(relocateResult) is false)
             {
-                atlasContext.Dispose();
+                prepared.Dispose();
                 return new(false, null, null, null, preserveBump2ndMaterials, preservedOriginalUVChannel);
             }
             if (relocateResult.IslandRelocationResult is null || relocateResult.IslandRelocationResult.IsSuccess is false)
             {
                 // Abort!!!
                 TTLog.Error("AtlasTexture:error:RelocationFailed");
-                atlasContext.Dispose();
+                prepared.Dispose();
                 return new(false, null, null, null, preserveBump2ndMaterials, preservedOriginalUVChannel);
             }
             var source2MovedVirtualIsland = new Dictionary<IslandTransform, IslandTransform>();
@@ -341,7 +453,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 if (acceptAtlasSize(atlasContext, atlasedTextureSize, metrics) is false)
                 {
                     ReportTemporaryTiming();
-                    atlasContext.Dispose();
+                    prepared.Dispose();
                     return new(false, null, null, null, preserveBump2ndMaterials, preservedOriginalUVChannel);
                 }
             }
@@ -617,7 +729,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 case < (1 / 2f): return atlasTextureSize / 2;
             }
         }
-        private static readonly int[] AutoAtlasTextureSizeCandidates = { 256, 512, 1024, 2048, 4096 };
+        internal static readonly int[] AutoAtlasTextureSizeCandidates = { 256, 512, 1024, 2048, 4096 };
 
         static Vector2Int GetAtlasTextureSize(AtlasSetting atlasSetting)
         {
