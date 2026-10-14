@@ -134,7 +134,7 @@ namespace net.rs64.TexTransTool.NDMF
 
         internal void Report(string stage)
         {
-            if (!Enabled || Configuration == null) return;
+            if (!Enabled) return;
 
             var lines = new List<string>();
 
@@ -228,10 +228,17 @@ namespace net.rs64.TexTransTool.NDMF
                 lines.Add($"[{stage}] No direct non-target material/slot/mesh changes detected.");
             }
 
-            TTTLog.ReportingObject(Configuration, () =>
+            void ReportDiagnostic()
+            {
                 TTTLog.Info(
                     "AutoAtlasTexture:info:TemporaryIsolationDiagnostic",
-                    string.Join("\n", lines)));
+                    string.Join("\n", lines));
+            }
+
+            if (Configuration != null)
+                TTTLog.ReportingObject(Configuration, ReportDiagnostic);
+            else
+                ReportDiagnostic();
         }
 
         private static void AppendMaterialChanges(
