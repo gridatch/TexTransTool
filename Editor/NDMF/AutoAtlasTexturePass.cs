@@ -578,7 +578,16 @@ namespace net.rs64.TexTransTool.NDMF
                 mergePlan.RejectedMemoryCount,
                 mergePlan.RejectedMaxDimensionCount,
                 mergePlan.RejectedSamplingCount,
-                mergePlan.RejectedStreamingCount);
+                mergePlan.RejectedStreamingCount,
+                mergePlan.ShadowProfileCount,
+                mergePlan.ShadowGroupsWithMultipleProfiles,
+                mergePlan.ShadowHostCount,
+                mergePlan.ShadowEvaluatedCandidateCount,
+                mergePlan.ShadowAdoptableCandidateCount,
+                mergePlan.ShadowAdoptableBeyondBandCount,
+                mergePlan.ShadowAdoptableUsingWiderProfileCount,
+                mergePlan.ShadowSelectedCount,
+                mergePlan.ShadowSelectedBeyondBandCount);
 
             if (completed.Count == 0)
             {
