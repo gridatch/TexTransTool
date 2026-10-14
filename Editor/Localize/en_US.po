@@ -146,7 +146,7 @@ msgstr "Auto Atlas Relocate Result\n{0}"
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 
-msgid "AutoAtlasTexture:info:TargetTextureMemory"
+msgid "AtlasTexture:info:TargetTextureMemory"
 msgstr "Target texture memory: {0} → {1}"
 
 msgid "AtlasTexture:info:ResolutionRoute"
