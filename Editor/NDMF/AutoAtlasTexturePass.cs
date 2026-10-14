@@ -41,10 +41,13 @@ namespace net.rs64.TexTransTool.NDMF
                 .ToArray();
             var isolationDiagnostic =
                 AutoAtlasTextureIsolationDiagnostic.State(context);
+            var referencedMaterials = session.Domain is NDMFDomain ndmfDomain
+                ? ndmfDomain.GetAllMaterials()
+                : ((IRendererTargeting)session.Domain).GetAllMaterials();
             isolationDiagnostic.Begin(
                 configurations[0],
                 session.Domain.EnumerateRenderer(),
-                session.Domain.GetAllMaterials());
+                referencedMaterials);
 
             AutoAtlasTextureProcessor.Execute(
                 session.Domain,
