@@ -265,9 +265,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
             out AtlasExecutionMetrics metrics,
             out long relocationStageMilliseconds,
             out long relocatorMilliseconds,
+            out AtlasIslandProcessingTimingDiagnostic profileTiming,
             out long resolutionPlanMilliseconds)
         {
             metrics = default;
+            profileTiming = default;
             var phaseTimer = System.Diagnostics.Stopwatch.StartNew();
             var atlasTargetSize = new Vector2Int(targetSize, targetSize);
             var (movedVirtualIslandArray, relocateResult) =
@@ -278,10 +280,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     islandSizePriorityTuner,
                     atlasTargetSize,
                     islandRelocatorOverride: null,
-                    out var relocationTime);
+                    out var relocationTime,
+                    out var islandProcessingTiming);
             phaseTimer.Stop();
             relocationStageMilliseconds = phaseTimer.ElapsedMilliseconds;
             relocatorMilliseconds = relocationTime;
+            profileTiming = islandProcessingTiming;
 
             if (!IsLosslessRelocation(relocateResult))
             {
@@ -763,7 +767,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     islandSizePriorityTuner,
                     manualSize,
                     islandRelocatorOverride,
-                    out var manualTime
+                    out var manualTime,
+                    out _
                 );
                 return (manualSize, manualIslands, manualResult, manualTime);
             }
@@ -784,7 +789,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     islandSizePriorityTuner,
                     candidateSize,
                     islandRelocatorOverride,
-                    out var candidateTime
+                    out var candidateTime,
+                    out _
                 );
 
                 totalRelocationTime += candidateTime;
@@ -830,20 +836,30 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , Vector2Int atlasTargeSize
             , IIslandRelocator? islandRelocatorOverride
             , out long relocationTime
+            , out AtlasIslandProcessingTimingDiagnostic timing
         )
         {
+            var phaseTimer = System.Diagnostics.Stopwatch.StartNew();
             var virtualIslandArray = new IslandTransform[atlasContext.SourceVirtualIslands.Length];
 
             for (var i = 0; virtualIslandArray.Length > i; i += 1)
                 virtualIslandArray[i] = atlasContext.SourceVirtualIslands[i].Clone();
 
-
-
             atlasContext.PrimaryTextureSizeScaling(virtualIslandArray, atlasTargeSize);
+            phaseTimer.Stop();
+            var cloneAndScaleMilliseconds = phaseTimer.ElapsedMilliseconds;
 
+            phaseTimer.Restart();
             var refOriginIslands = GetSourceVirtualIslandForRefOriginIslands(atlasContext);
-            var islandDescription = GenerateIslandDescription(atlasContext, refOriginIslands);
+            phaseTimer.Stop();
+            var referenceIslandMilliseconds = phaseTimer.ElapsedMilliseconds;
 
+            phaseTimer.Restart();
+            var islandDescription = GenerateIslandDescription(atlasContext, refOriginIslands);
+            phaseTimer.Stop();
+            var islandDescriptionMilliseconds = phaseTimer.ElapsedMilliseconds;
+
+            phaseTimer.Restart();
             var sizePriority = new float[virtualIslandArray.Length];
             for (var i = 0; sizePriority.Length > i; i += 1) { sizePriority[i] = 1f; }
 
@@ -852,10 +868,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             for (var i = 0; sizePriority.Length > i; i += 1)
                 sizePriority[i] = TTMath.Saturate(sizePriority[i]);
+            phaseTimer.Stop();
+            var sizePriorityMilliseconds = phaseTimer.ElapsedMilliseconds;
 
             if (atlasSetting.AtlasIslandRelocator != null) { throw new NotImplementedException(); }
             var islandRelocator = islandRelocatorOverride ?? new NFDHPlasFC();
-
 
             var relocateManage = new IslandRelocationManager(islandRelocator);
             relocateManage.Padding = atlasSetting.IslandPadding;
@@ -870,7 +887,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var rectTangleMove = relocateResult.IslandRelocationResult?.IsRectangleMove ?? true;
             Debug.Assert(rectTangleMove is true);
 
+            phaseTimer.Restart();
             PostVirtualIslandProcessing(virtualIslandArray, atlasTargeSize, atlasSetting.PixelNormalize);
+            phaseTimer.Stop();
+
+            timing = new AtlasIslandProcessingTimingDiagnostic(
+                cloneAndScaleMilliseconds,
+                referenceIslandMilliseconds,
+                islandDescriptionMilliseconds,
+                sizePriorityMilliseconds,
+                relocationTime,
+                phaseTimer.ElapsedMilliseconds);
 
             return (virtualIslandArray, relocateResult);
         }
