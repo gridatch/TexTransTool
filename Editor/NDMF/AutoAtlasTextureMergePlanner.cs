@@ -36,6 +36,8 @@ namespace net.rs64.TexTransTool.NDMF
             internal long OriginalPixels;
 
             internal AtlasTexture.AtlasExecutionMetrics? StandaloneMetrics;
+            internal readonly Dictionary<int, AtlasTexture.AtlasExecutionMetrics>
+                LayoutProfiles = new();
             internal int BandWidthPixels;
             internal int BandUsedHeightPixels;
             internal readonly Dictionary<string, double> PropertyDemandLog2 =
@@ -417,7 +419,6 @@ namespace net.rs64.TexTransTool.NDMF
                         groupPairsSharingSourceMeshCount);
             }
 
-            var engine = domain.GetTexTransCoreEngineForUnity();
             var alphaCache = new Dictionary<Texture, bool>();
 
             foreach (var group in groups)
@@ -425,10 +426,8 @@ namespace net.rs64.TexTransTool.NDMF
                 var analysisTimer = System.Diagnostics.Stopwatch.StartNew();
                 group.StandaloneMetrics = AnalyzeAtlas(
                     domain,
-                    engine,
                     settings,
-                    group.Materials,
-                    group.Renderers,
+                    group,
                     out var phaseTiming);
                 analysisTimer.Stop();
 
@@ -873,54 +872,72 @@ namespace net.rs64.TexTransTool.NDMF
 
         private static AtlasTexture.AtlasExecutionMetrics? AnalyzeAtlas(
             IDomain domain,
-            ITexTransToolForUnity engine,
             AtlasSetting settings,
-            HashSet<Material> materials,
-            Renderer[] renderers,
+            PreparedGroup group,
             out AtlasTexture.AtlasExecutionTimingDiagnostic timing)
         {
-            AtlasTexture.AtlasExecutionMetrics? captured = null;
-            var capturedTiming = default(AtlasTexture.AtlasExecutionTimingDiagnostic);
             timing = default;
+            group.LayoutProfiles.Clear();
 
-            try
-            {
-                var result = AtlasTexture.DoAtlasTexture(
-                    domain,
-                    engine,
-                    materials,
-                    renderers,
-                    new List<IIslandSizePriorityTuner?>(),
-                    settings,
-                    new AtlasTexture.AtlasExecutionOptions
-                    {
-                        RequireLossless = true,
-                        ReportProgressInfo = false,
-                        TimingDiagnostic = value => capturedTiming = value,
-                        AcceptAtlasSize = (_, _, metrics) =>
-                        {
-                            captured = metrics;
-                            // Planning stops before mesh/texture generation.
-                            return false;
-                        },
-                    });
-
-                if (result.AtlasContext != null)
-                    result.AtlasContext.Dispose();
-
-                timing = capturedTiming;
-                return captured;
-            }
-            catch (ArgumentException exception)
-                when (AutoAtlasMergeIslandRelocator.IsNfdhComparerFailure(
-                    exception))
-            {
-                // Additional merging probes material combinations which ordinary
-                // AutoAtlasTexture never asks TexTransCore to relocate. NFDHPlasFC's
-                // height comparer can become inconsistent for a sufficiently large
-                // island-height range. Such a combination is simply not a viable
-                // merge candidate; it must not abort the avatar build.
+            var prepared = AtlasTexture.PrepareAtlasContext(
+                domain,
+                group.Materials,
+                group.Renderers,
+                settings,
+                out var preserveSetupMilliseconds,
+                out var atlasContextConstructionMilliseconds,
+                out var islandNormalizeMilliseconds);
+            if (prepared is null)
                 return null;
+
+            using (prepared)
+            {
+                long relocationStageMilliseconds = 0;
+                long resolutionPlanMilliseconds = 0;
+                AtlasTexture.AtlasExecutionMetrics? standalone = null;
+
+                foreach (var size in AtlasTexture.AutoAtlasTextureSizeCandidates)
+                {
+                    try
+                    {
+                        if (!AtlasTexture.TryAnalyzePreparedAtlasAtSize(
+                                domain,
+                                prepared,
+                                new List<IIslandSizePriorityTuner?>(),
+                                settings,
+                                size,
+                                out var metrics,
+                                out var relocationStage,
+                                out var resolutionPlan))
+                        {
+                            relocationStageMilliseconds += relocationStage;
+                            continue;
+                        }
+
+                        relocationStageMilliseconds += relocationStage;
+                        resolutionPlanMilliseconds += resolutionPlan;
+                        group.LayoutProfiles[size] = metrics;
+                        standalone ??= metrics;
+                    }
+                    catch (ArgumentException exception)
+                        when (AutoAtlasMergeIslandRelocator.IsNfdhComparerFailure(
+                            exception))
+                    {
+                        // A profile that cannot be relocated reliably at one
+                        // candidate width is unavailable. Wider widths can still
+                        // produce a valid lossless profile.
+                    }
+                }
+
+                timing = new AtlasTexture.AtlasExecutionTimingDiagnostic(
+                    preserveSetupMilliseconds,
+                    atlasContextConstructionMilliseconds,
+                    islandNormalizeMilliseconds,
+                    relocationStageMilliseconds,
+                    resolutionPlanMilliseconds,
+                    0,
+                    0);
+                return standalone;
             }
         }
 
