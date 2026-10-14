@@ -39,10 +39,19 @@ namespace net.rs64.TexTransTool.NDMF
                 .Where(atlas => TexTransBehaviorSearch.CheckIsActiveBehavior(
                     atlas, context.AvatarRootObject))
                 .ToArray();
+            var isolationDiagnostic =
+                AutoAtlasTextureIsolationDiagnostic.State(context);
+            isolationDiagnostic.Begin(
+                configurations[0],
+                session.Domain.EnumerateRenderer());
+
             AutoAtlasTextureProcessor.Execute(
                 session.Domain,
                 configurations[0],
-                manualAtlases);
+                manualAtlases,
+                isolationDiagnostic);
+
+            isolationDiagnostic.Report("after AutoAtlasTexture");
         }
     }
 
@@ -73,7 +82,8 @@ namespace net.rs64.TexTransTool.NDMF
         internal static void Execute(
             IDomain domain,
             AutoAtlasTexture configuration,
-            IReadOnlyCollection<AtlasTexture> manualAtlases)
+            IReadOnlyCollection<AtlasTexture> manualAtlases,
+            AutoAtlasTextureIsolationDiagnosticState? isolationDiagnostic = null)
         {
             // Store only the NDMF console summary for this build.
             var completed = new List<string>();
@@ -484,6 +494,8 @@ namespace net.rs64.TexTransTool.NDMF
                     resultingTextures,
                     atlasResult.PreserveBump2ndMaterials,
                     atlasResult.PreservedOriginalUVChannel);
+
+                isolationDiagnostic?.MarkApplied(group, atlasRenderers);
 
                 foreach (var rt in compiledTextures.Values)
                     if (!retainedRenderTextures.Contains(rt)) rt.Dispose();
