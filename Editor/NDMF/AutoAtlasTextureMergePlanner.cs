@@ -782,6 +782,7 @@ namespace net.rs64.TexTransTool.NDMF
             out AtlasTexture.AtlasExecutionTimingDiagnostic timing)
         {
             AtlasTexture.AtlasExecutionMetrics? captured = null;
+            var capturedTiming = default(AtlasTexture.AtlasExecutionTimingDiagnostic);
             timing = default;
 
             try
@@ -797,7 +798,7 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         RequireLossless = true,
                         ReportProgressInfo = false,
-                        TimingDiagnostic = value => timing = value,
+                        TimingDiagnostic = value => capturedTiming = value,
                         AcceptAtlasSize = (_, _, metrics) =>
                         {
                             captured = metrics;
@@ -809,6 +810,7 @@ namespace net.rs64.TexTransTool.NDMF
                 if (result.AtlasContext != null)
                     result.AtlasContext.Dispose();
 
+                timing = capturedTiming;
                 return captured;
             }
             catch (ArgumentException exception)
