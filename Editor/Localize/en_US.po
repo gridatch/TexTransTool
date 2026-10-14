@@ -140,6 +140,9 @@ msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x \nOver
 msgid "AtlasTexture:info:RelocateResultWithResolution"
 msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOverall shrink: {2}x\n{3}\nTotal relocate count: {4}\nTime taken relocate: {5}ms"
 
+msgid "AtlasTexture:info:RelocateResultWithResolutionAndMemory"
+msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOverall shrink: {2}x\n{3}\nTarget texture memory: {4} → {5}\nTotal relocate count: {6}\nTime taken relocate: {7}ms"
+
 msgid "AutoAtlasTexture:info:RelocateResult"
 msgstr "Auto Atlas Relocate Result\n{0}"
 
