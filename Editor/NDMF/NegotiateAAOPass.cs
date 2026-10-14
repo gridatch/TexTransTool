@@ -35,18 +35,35 @@ namespace net.rs64.TexTransTool.NDMF.AAO
                 ? AutoAtlasTextureProcessor.GetAAONegotiationRenderers(
                     tttCtx.Domain, autoConfigurations[0]).OfType<SkinnedMeshRenderer>()
                 : Enumerable.Empty<SkinnedMeshRenderer>();
+            var autoTargetSet = autoTarget.ToHashSet();
+            var isolationDiagnostic =
+                AutoAtlasTextureIsolationDiagnostic.State(context);
 
             List<Vector4> uvBuf = null;
-            foreach (var smr in uvEditTarget.Concat(autoTarget).Distinct())
+            foreach (var smr in uvEditTarget.Concat(autoTargetSet).Distinct())
             {
-                if (uvEvacuationAndRegisterToAAO && UVUsageCompabilityAPI.IsTexCoordUsed(smr, 0))
+                var meshBeforeNegotiation = smr.sharedMesh;
+                var uvEvacuationRequested =
+                    uvEvacuationAndRegisterToAAO
+                    && UVUsageCompabilityAPI.IsTexCoordUsed(smr, 0);
+                if (uvEvacuationRequested)
                     UVEvacuation(uvBuf, smr, overrideEvacuationIndex);
 
-                if (removalToIsland is false) { continue; }
-                var removalProvider = MeshRemovalProvider.GetForRenderer(smr);
-                if (removalProvider is not null)
-                    using (removalProvider)
-                        ProvideToIsland(smr, removalProvider);
+                if (removalToIsland)
+                {
+                    var removalProvider = MeshRemovalProvider.GetForRenderer(smr);
+                    if (removalProvider is not null)
+                        using (removalProvider)
+                            ProvideToIsland(smr, removalProvider);
+                }
+
+                if (autoTargetSet.Contains(smr))
+                {
+                    isolationDiagnostic.MarkAutoAAONegotiation(
+                        smr,
+                        uvEvacuationRequested,
+                        !ReferenceEquals(meshBeforeNegotiation, smr.sharedMesh));
+                }
             }
         }
 
