@@ -43,6 +43,15 @@ namespace net.rs64.TexTransTool.NDMF.AAO
             List<Vector4> uvBuf = null;
             foreach (var smr in manualUvEditTargetSet.Concat(autoTargetSet).Distinct())
             {
+                // Temporary isolation test: keep normal/manual AtlasTexture AAO
+                // negotiation intact, but bypass the AutoAtlas-only negotiation.
+                // This distinguishes AutoAtlas execution from its early AAO contract.
+                if (autoTargetSet.Contains(smr)
+                    && !manualUvEditTargetSet.Contains(smr))
+                {
+                    continue;
+                }
+
                 var meshBeforeNegotiation = smr.sharedMesh;
                 var uvEvacuationRequested =
                     uvEvacuationAndRegisterToAAO
