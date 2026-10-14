@@ -87,6 +87,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long StandaloneAtlasContextMilliseconds;
             internal readonly long StandaloneIslandNormalizeMilliseconds;
             internal readonly long StandaloneRelocationStageMilliseconds;
+            internal readonly long StandaloneAllProfileRelocatorMilliseconds;
             internal readonly long StandaloneResolutionPlanMilliseconds;
 
             // Temporary diagnostics for evaluating whether the standalone
@@ -132,6 +133,7 @@ namespace net.rs64.TexTransTool.NDMF
                 long standaloneAtlasContextMilliseconds = 0,
                 long standaloneIslandNormalizeMilliseconds = 0,
                 long standaloneRelocationStageMilliseconds = 0,
+                long standaloneAllProfileRelocatorMilliseconds = 0,
                 long standaloneResolutionPlanMilliseconds = 0,
                 int preparedGroupCount = 0,
                 int sharedRendererCount = 0,
@@ -173,6 +175,8 @@ namespace net.rs64.TexTransTool.NDMF
                     standaloneIslandNormalizeMilliseconds;
                 StandaloneRelocationStageMilliseconds =
                     standaloneRelocationStageMilliseconds;
+                StandaloneAllProfileRelocatorMilliseconds =
+                    standaloneAllProfileRelocatorMilliseconds;
                 StandaloneResolutionPlanMilliseconds =
                     standaloneResolutionPlanMilliseconds;
                 PreparedGroupCount = preparedGroupCount;
@@ -466,6 +470,7 @@ namespace net.rs64.TexTransTool.NDMF
             long standaloneAtlasContextMilliseconds = 0;
             long standaloneIslandNormalizeMilliseconds = 0;
             long standaloneRelocationStageMilliseconds = 0;
+            long standaloneAllProfileRelocatorMilliseconds = 0;
             long standaloneResolutionPlanMilliseconds = 0;
 
             var sharedRenderers = groups
@@ -527,7 +532,8 @@ namespace net.rs64.TexTransTool.NDMF
                     domain,
                     settings,
                     group,
-                    out var phaseTiming);
+                    out var phaseTiming,
+                    out var allProfileRelocatorMilliseconds);
                 analysisTimer.Stop();
 
                 standaloneAnalysisCount += 1;
@@ -539,6 +545,8 @@ namespace net.rs64.TexTransTool.NDMF
                     phaseTiming.IslandNormalizeMilliseconds;
                 standaloneRelocationStageMilliseconds +=
                     phaseTiming.RelocationStageMilliseconds;
+                standaloneAllProfileRelocatorMilliseconds +=
+                    allProfileRelocatorMilliseconds;
                 standaloneResolutionPlanMilliseconds +=
                     phaseTiming.ResolutionPlanMilliseconds;
                 standaloneAnalysisTimeMilliseconds +=
@@ -879,6 +887,7 @@ namespace net.rs64.TexTransTool.NDMF
                 standaloneAtlasContextMilliseconds,
                 standaloneIslandNormalizeMilliseconds,
                 standaloneRelocationStageMilliseconds,
+                standaloneAllProfileRelocatorMilliseconds,
                 standaloneResolutionPlanMilliseconds,
                 groups.Count,
                 sharedRenderers.Count,
@@ -1294,9 +1303,11 @@ namespace net.rs64.TexTransTool.NDMF
             IDomain domain,
             AtlasSetting settings,
             PreparedGroup group,
-            out AtlasTexture.AtlasExecutionTimingDiagnostic timing)
+            out AtlasTexture.AtlasExecutionTimingDiagnostic timing,
+            out long allProfileRelocatorMilliseconds)
         {
             timing = default;
+            allProfileRelocatorMilliseconds = 0;
             group.LayoutProfiles.Clear();
 
             var prepared = AtlasTexture.PrepareAtlasContext(
@@ -1328,13 +1339,18 @@ namespace net.rs64.TexTransTool.NDMF
                                 size,
                                 out var metrics,
                                 out var relocationStage,
+                                out var relocatorMilliseconds,
                                 out var resolutionPlan))
                         {
                             relocationStageMilliseconds += relocationStage;
+                            allProfileRelocatorMilliseconds +=
+                                relocatorMilliseconds;
                             continue;
                         }
 
                         relocationStageMilliseconds += relocationStage;
+                        allProfileRelocatorMilliseconds +=
+                            relocatorMilliseconds;
                         resolutionPlanMilliseconds += resolutionPlan;
                         group.LayoutProfiles[size] = metrics;
                         standalone ??= metrics;
