@@ -860,6 +860,14 @@ namespace net.rs64.TexTransTool.NDMF
                         .Any());
             }
 
+            var shadow2D = EvaluateShadow2DPacking(
+                groups,
+                byId,
+                propertyTextures,
+                settings,
+                alphaCache,
+                adoptable);
+
             planningTimer.Stop();
             return new PlanResult(
                 selected,
@@ -886,7 +894,320 @@ namespace net.rs64.TexTransTool.NDMF
                 rejectedMemoryCount,
                 rejectedMaxDimensionCount,
                 rejectedSamplingCount,
-                rejectedStreamingCount);
+                rejectedStreamingCount,
+                shadow2D.ProfileCount,
+                shadow2D.GroupsWithMultipleProfiles,
+                shadow2D.HostCount,
+                shadow2D.EvaluatedCandidateCount,
+                shadow2D.AdoptableCandidateCount,
+                shadow2D.AdoptableBeyondBandCount,
+                shadow2D.AdoptableUsingWiderProfileCount,
+                shadow2D.SelectedCount,
+                shadow2D.SelectedBeyondBandCount);
+        }
+
+        private static ShadowPackingDiagnostics EvaluateShadow2DPacking(
+            IReadOnlyList<PreparedGroup> groups,
+            IReadOnlyDictionary<int, PreparedGroup> byId,
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
+                propertyTextures,
+            AtlasSetting settings,
+            Dictionary<Texture, bool> alphaCache,
+            IReadOnlyDictionary<string, Candidate> bandAdoptable)
+        {
+            var profileCount = groups.Sum(group => group.LayoutProfiles.Count);
+            var groupsWithMultipleProfiles = groups.Count(
+                group => group.LayoutProfiles.Count > 1);
+            var hostCount = 0;
+            var evaluatedCandidateCount = 0;
+
+            var shadowAdoptable =
+                new Dictionary<string, Candidate>(StringComparer.Ordinal);
+            var shadowUsesWiderProfile =
+                new Dictionary<string, bool>(StringComparer.Ordinal);
+            var evaluatedLayouts =
+                new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var host in groups.OrderBy(group => group.Id))
+            {
+                if (host.StandaloneMetrics is null
+                    || !host.BaselineCostKnown
+                    || host.BandWidthPixels < PackingGridUnit
+                    || host.BandUsedHeightPixels <= 0
+                    || host.BandWidthPixels % PackingGridUnit != 0)
+                {
+                    continue;
+                }
+
+                var hostWidth = host.BandWidthPixels;
+                var capacity = hostWidth - host.BandUsedHeightPixels;
+                if (capacity <= 0)
+                    continue;
+
+                var columnCount = hostWidth / PackingGridUnit;
+                var guests = groups
+                    .Where(group =>
+                        group.Id != host.Id
+                        && group.StandaloneMetrics != null
+                        && group.BaselineCostKnown
+                        && group.BandWidthPixels > 0
+                        && group.BandWidthPixels <= hostWidth
+                        && group.LayoutProfiles.Any(profile =>
+                            profile.Key <= hostWidth
+                            && profile.Key % PackingGridUnit == 0
+                            && GetBandUsedHeightPixels(profile.Value)
+                                <= capacity))
+                    .OrderBy(group => group.Id)
+                    .ToArray();
+
+                if (guests.Length == 0)
+                    continue;
+
+                hostCount += 1;
+                var states = new List<ShadowPackingState>
+                {
+                    new(
+                        new int[columnCount],
+                        Array.Empty<int>(),
+                        0,
+                        false),
+                };
+
+                foreach (var guest in guests)
+                {
+                    var generated =
+                        new Dictionary<string, ShadowPackingState>(
+                            StringComparer.Ordinal);
+                    var snapshot = states
+                        .Where(state =>
+                            state.GuestIds.Length + 1
+                                < MaxMergeGroupCount)
+                        .ToArray();
+
+                    foreach (var state in snapshot)
+                    {
+                        foreach (var profile in guest.LayoutProfiles
+                                     .Where(profile =>
+                                         profile.Key <= hostWidth
+                                         && profile.Key
+                                             % PackingGridUnit == 0)
+                                     .OrderBy(profile => profile.Key))
+                        {
+                            var profileWidth = profile.Key;
+                            var profileHeight =
+                                GetBandUsedHeightPixels(profile.Value);
+                            var widthColumns =
+                                profileWidth / PackingGridUnit;
+                            if (widthColumns <= 0
+                                || widthColumns > columnCount
+                                || profileHeight > capacity)
+                            {
+                                continue;
+                            }
+
+                            for (var x = 0;
+                                 x + widthColumns <= columnCount;
+                                 x += 1)
+                            {
+                                var y = 0;
+                                for (var column = x;
+                                     column < x + widthColumns;
+                                     column += 1)
+                                {
+                                    y = Math.Max(
+                                        y,
+                                        state.Skyline[column]);
+                                }
+
+                                var top = y + profileHeight;
+                                if (top > capacity)
+                                    continue;
+
+                                var skyline =
+                                    (int[])state.Skyline.Clone();
+                                for (var column = x;
+                                     column < x + widthColumns;
+                                     column += 1)
+                                {
+                                    skyline[column] = top;
+                                }
+
+                                var next = new ShadowPackingState(
+                                    skyline,
+                                    state.GuestIds.Append(guest.Id),
+                                    state.GuestBaselineBytes
+                                        + guest.BaselineCost
+                                            .FullResidentBytes,
+                                    state.UsesWiderProfile
+                                        || profileWidth
+                                            > guest.BandWidthPixels);
+
+                                if (!generated.TryGetValue(
+                                        next.Key,
+                                        out var prior)
+                                    || (next.UsesWiderProfile
+                                        && !prior.UsesWiderProfile))
+                                {
+                                    generated[next.Key] = next;
+                                }
+                            }
+                        }
+                    }
+
+                    if (generated.Count == 0)
+                        continue;
+
+                    states.AddRange(generated.Values);
+                    states = states
+                        .GroupBy(state => state.Key, StringComparer.Ordinal)
+                        .Select(group => group.First())
+                        .OrderByDescending(
+                            state => state.GuestBaselineBytes)
+                        .ThenByDescending(
+                            state => state.GuestIds.Length)
+                        .ThenBy(state =>
+                            state.Skyline.Length == 0
+                                ? 0
+                                : state.Skyline.Max())
+                        .ThenBy(state => state.Skyline.Sum())
+                        .ThenBy(state => state.Key, StringComparer.Ordinal)
+                        .Take(ShadowPackingStatesPerHost)
+                        .ToList();
+
+                    if (!states.Any(state => state.GuestIds.Length == 0))
+                    {
+                        states.Add(
+                            new ShadowPackingState(
+                                new int[columnCount],
+                                Array.Empty<int>(),
+                                0,
+                                false));
+                    }
+                }
+
+                foreach (var state in states.Where(
+                             state => state.GuestIds.Length != 0))
+                {
+                    var ids = new[] { host.Id }
+                        .Concat(state.GuestIds)
+                        .OrderBy(id => id)
+                        .ToArray();
+                    var key = string.Join(",", ids);
+                    var guestHeight =
+                        state.Skyline.Length == 0
+                            ? 0
+                            : state.Skyline.Max();
+                    var usedHeight =
+                        host.BandUsedHeightPixels + guestHeight;
+                    var layoutSize = new Vector2Int(
+                        hostWidth,
+                        GetCroppedHeight(hostWidth, usedHeight));
+                    var layoutKey =
+                        key + "@" + layoutSize.x + "x" + layoutSize.y;
+                    if (!evaluatedLayouts.Add(layoutKey))
+                        continue;
+
+                    var selectedGroups = ids
+                        .Select(id => byId[id])
+                        .ToArray();
+                    var materials = selectedGroups
+                        .SelectMany(group => group.Materials)
+                        .ToHashSet();
+                    var propertySizes = BuildPredictedPropertySizes(
+                        materials,
+                        layoutSize,
+                        settings);
+                    var baseline = TextureCostPlan.Combine(
+                        selectedGroups.Select(
+                            group => group.BaselineCost));
+                    var merged = BuildGeneratedCost(
+                        selectedGroups,
+                        propertyTextures,
+                        propertySizes,
+                        alphaCache,
+                        UnknownAlphaAssumption.AssumePresent);
+                    var candidate = new Candidate(
+                        ids,
+                        baseline,
+                        merged,
+                        layoutSize,
+                        propertySizes);
+
+                    evaluatedCandidateCount += 1;
+                    if (!candidate.IsAdoptable)
+                        continue;
+
+                    if (!shadowAdoptable.TryGetValue(
+                            key,
+                            out var priorCandidate)
+                        || candidate.SavingBytes
+                            > priorCandidate.SavingBytes
+                        || (candidate.SavingBytes
+                                == priorCandidate.SavingBytes
+                            && candidate.LayoutSize.y
+                                < priorCandidate.LayoutSize.y))
+                    {
+                        shadowAdoptable[key] = candidate;
+                        shadowUsesWiderProfile[key] =
+                            state.UsesWiderProfile;
+                    }
+                    else if (candidate.SavingBytes
+                                == priorCandidate.SavingBytes
+                             && candidate.LayoutSize.y
+                                == priorCandidate.LayoutSize.y
+                             && state.UsesWiderProfile)
+                    {
+                        shadowUsesWiderProfile[key] = true;
+                    }
+                }
+            }
+
+            bool ImprovesOnBand(string key, Candidate shadow)
+            {
+                if (!bandAdoptable.TryGetValue(key, out var band))
+                    return true;
+                return shadow.SavingBytes > band.SavingBytes
+                    || (shadow.SavingBytes == band.SavingBytes
+                        && shadow.LayoutSize.y < band.LayoutSize.y);
+            }
+
+            var adoptableBeyondBandCount = shadowAdoptable.Count(pair =>
+                ImprovesOnBand(pair.Key, pair.Value));
+            var adoptableUsingWiderProfileCount =
+                shadowUsesWiderProfile.Count(pair =>
+                    pair.Value && shadowAdoptable.ContainsKey(pair.Key));
+
+            var selectedCount = 0;
+            var selectedBeyondBandCount = 0;
+            var consumed = new HashSet<int>();
+            foreach (var pair in shadowAdoptable
+                         .OrderByDescending(
+                             pair => pair.Value.SavingBytes)
+                         .ThenByDescending(
+                             pair => pair.Value.SavingRate)
+                         .ThenByDescending(
+                             pair => pair.Value.GroupIds.Length))
+            {
+                var candidate = pair.Value;
+                if (candidate.GroupIds.Any(consumed.Contains))
+                    continue;
+
+                selectedCount += 1;
+                if (ImprovesOnBand(pair.Key, candidate))
+                    selectedBeyondBandCount += 1;
+                consumed.UnionWith(candidate.GroupIds);
+            }
+
+            return new ShadowPackingDiagnostics(
+                profileCount,
+                groupsWithMultipleProfiles,
+                hostCount,
+                evaluatedCandidateCount,
+                shadowAdoptable.Count,
+                adoptableBeyondBandCount,
+                adoptableUsingWiderProfileCount,
+                selectedCount,
+                selectedBeyondBandCount);
         }
 
         private static int GetBandUsedHeightPixels(
