@@ -43,12 +43,28 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        private readonly record struct PropertySnapshot(
-            ShaderPropertyType Type,
-            Texture? Texture,
-            Vector4 Value,
-            Vector2 Scale,
-            Vector2 Offset);
+        private readonly struct PropertySnapshot
+        {
+            internal readonly ShaderPropertyType Type;
+            internal readonly Texture? Texture;
+            internal readonly Vector4 Value;
+            internal readonly Vector2 Scale;
+            internal readonly Vector2 Offset;
+
+            internal PropertySnapshot(
+                ShaderPropertyType type,
+                Texture? texture,
+                Vector4 value,
+                Vector2 scale,
+                Vector2 offset)
+            {
+                Type = type;
+                Texture = texture;
+                Value = value;
+                Scale = scale;
+                Offset = offset;
+            }
+        }
 
         private readonly Dictionary<Renderer, RendererSnapshot> _renderers = new();
         private readonly Dictionary<Material, MaterialSnapshot> _materials = new();
