@@ -35,12 +35,13 @@ namespace net.rs64.TexTransTool.NDMF.AAO
                 ? AutoAtlasTextureProcessor.GetAAONegotiationRenderers(
                     tttCtx.Domain, autoConfigurations[0]).OfType<SkinnedMeshRenderer>()
                 : Enumerable.Empty<SkinnedMeshRenderer>();
+            var manualUvEditTargetSet = uvEditTarget.ToHashSet();
             var autoTargetSet = autoTarget.ToHashSet();
             var isolationDiagnostic =
                 AutoAtlasTextureIsolationDiagnostic.State(context);
 
             List<Vector4> uvBuf = null;
-            foreach (var smr in uvEditTarget.Concat(autoTargetSet).Distinct())
+            foreach (var smr in manualUvEditTargetSet.Concat(autoTargetSet).Distinct())
             {
                 var meshBeforeNegotiation = smr.sharedMesh;
                 var uvEvacuationRequested =
@@ -57,7 +58,8 @@ namespace net.rs64.TexTransTool.NDMF.AAO
                             ProvideToIsland(smr, removalProvider);
                 }
 
-                if (autoTargetSet.Contains(smr))
+                if (autoTargetSet.Contains(smr)
+                    && !manualUvEditTargetSet.Contains(smr))
                 {
                     isolationDiagnostic.MarkAutoAAONegotiation(
                         smr,
