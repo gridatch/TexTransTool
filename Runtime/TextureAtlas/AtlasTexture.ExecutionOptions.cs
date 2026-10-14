@@ -8,6 +8,28 @@ namespace net.rs64.TexTransTool.TextureAtlas
 {
     public sealed partial class AtlasTexture
     {
+        internal sealed class PreparedAtlasContext : IDisposable
+        {
+            internal readonly AtlasContext AtlasContext;
+            internal readonly HashSet<Material> PreserveBump2ndMaterials;
+            internal readonly int? PreservedOriginalUVChannel;
+
+            internal PreparedAtlasContext(
+                AtlasContext atlasContext,
+                HashSet<Material> preserveBump2ndMaterials,
+                int? preservedOriginalUVChannel)
+            {
+                AtlasContext = atlasContext;
+                PreserveBump2ndMaterials = preserveBump2ndMaterials;
+                PreservedOriginalUVChannel = preservedOriginalUVChannel;
+            }
+
+            public void Dispose()
+            {
+                AtlasContext.Dispose();
+            }
+        }
+
         internal sealed class AtlasExecutionOptions
         {
             internal bool RequireLossless;
