@@ -115,6 +115,13 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int RejectedMaxDimensionCount;
             internal readonly int RejectedSamplingCount;
             internal readonly int RejectedStreamingCount;
+            internal readonly int PixelRejectedEqualCount;
+            internal readonly int PixelRejectedGreaterCount;
+            internal readonly int PixelGateOnlyCount;
+            internal readonly long BestBaselinePixels;
+            internal readonly long BestMergedPixels;
+            internal readonly int BestGroupCount;
+            internal readonly Vector2Int BestLayoutSize;
 
             // Temporary shadow 2D-packing diagnostics. These do not affect the
             // currently selected band-based merge plan.
@@ -134,6 +141,13 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int ShadowRejectedMaxDimensionCount;
             internal readonly int ShadowRejectedSamplingCount;
             internal readonly int ShadowRejectedStreamingCount;
+            internal readonly int ShadowPixelRejectedEqualCount;
+            internal readonly int ShadowPixelRejectedGreaterCount;
+            internal readonly int ShadowPixelGateOnlyCount;
+            internal readonly long ShadowBestBaselinePixels;
+            internal readonly long ShadowBestMergedPixels;
+            internal readonly int ShadowBestGroupCount;
+            internal readonly Vector2Int ShadowBestLayoutSize;
 
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
@@ -182,7 +196,14 @@ namespace net.rs64.TexTransTool.NDMF
                 int shadowRejectedMemoryCount = 0,
                 int shadowRejectedMaxDimensionCount = 0,
                 int shadowRejectedSamplingCount = 0,
-                int shadowRejectedStreamingCount = 0)
+                int shadowRejectedStreamingCount = 0,
+                int shadowPixelRejectedEqualCount = 0,
+                int shadowPixelRejectedGreaterCount = 0,
+                int shadowPixelGateOnlyCount = 0,
+                long shadowBestBaselinePixels = 0,
+                long shadowBestMergedPixels = 0,
+                int shadowBestGroupCount = 0,
+                Vector2Int shadowBestLayoutSize = default)
             {
                 Selections = selections;
                 PlanningTimeMilliseconds = planningTimeMilliseconds;
@@ -230,6 +251,13 @@ namespace net.rs64.TexTransTool.NDMF
                 RejectedMaxDimensionCount = rejectedMaxDimensionCount;
                 RejectedSamplingCount = rejectedSamplingCount;
                 RejectedStreamingCount = rejectedStreamingCount;
+                PixelRejectedEqualCount = pixelRejectedEqualCount;
+                PixelRejectedGreaterCount = pixelRejectedGreaterCount;
+                PixelGateOnlyCount = pixelGateOnlyCount;
+                BestBaselinePixels = bestBaselinePixels;
+                BestMergedPixels = bestMergedPixels;
+                BestGroupCount = bestGroupCount;
+                BestLayoutSize = bestLayoutSize;
                 ShadowProfileCount = shadowProfileCount;
                 ShadowGroupsWithMultipleProfiles =
                     shadowGroupsWithMultipleProfiles;
@@ -255,6 +283,14 @@ namespace net.rs64.TexTransTool.NDMF
                     shadowRejectedMaxDimensionCount;
                 ShadowRejectedSamplingCount = shadowRejectedSamplingCount;
                 ShadowRejectedStreamingCount = shadowRejectedStreamingCount;
+                ShadowPixelRejectedEqualCount = shadowPixelRejectedEqualCount;
+                ShadowPixelRejectedGreaterCount =
+                    shadowPixelRejectedGreaterCount;
+                ShadowPixelGateOnlyCount = shadowPixelGateOnlyCount;
+                ShadowBestBaselinePixels = shadowBestBaselinePixels;
+                ShadowBestMergedPixels = shadowBestMergedPixels;
+                ShadowBestGroupCount = shadowBestGroupCount;
+                ShadowBestLayoutSize = shadowBestLayoutSize;
             }
         }
 
@@ -318,7 +354,14 @@ namespace net.rs64.TexTransTool.NDMF
                 int rejectedMemoryCount,
                 int rejectedMaxDimensionCount,
                 int rejectedSamplingCount,
-                int rejectedStreamingCount)
+                int rejectedStreamingCount,
+                int pixelRejectedEqualCount,
+                int pixelRejectedGreaterCount,
+                int pixelGateOnlyCount,
+                long bestBaselinePixels,
+                long bestMergedPixels,
+                int bestGroupCount,
+                Vector2Int bestLayoutSize)
             {
                 ProfileCount = profileCount;
                 GroupsWithMultipleProfiles = groupsWithMultipleProfiles;
@@ -1008,7 +1051,14 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.RejectedMemoryCount,
                 shadow2D.RejectedMaxDimensionCount,
                 shadow2D.RejectedSamplingCount,
-                shadow2D.RejectedStreamingCount);
+                shadow2D.RejectedStreamingCount,
+                shadow2D.PixelRejectedEqualCount,
+                shadow2D.PixelRejectedGreaterCount,
+                shadow2D.PixelGateOnlyCount,
+                shadow2D.BestBaselinePixels,
+                shadow2D.BestMergedPixels,
+                shadow2D.BestGroupCount,
+                shadow2D.BestLayoutSize);
         }
 
         private static ShadowPackingDiagnostics EvaluateShadow2DPacking(
@@ -1033,6 +1083,14 @@ namespace net.rs64.TexTransTool.NDMF
             var rejectedMaxDimensionCount = 0;
             var rejectedSamplingCount = 0;
             var rejectedStreamingCount = 0;
+            var pixelRejectedEqualCount = 0;
+            var pixelRejectedGreaterCount = 0;
+            var pixelGateOnlyCount = 0;
+            long bestBaselinePixels = 0;
+            long bestMergedPixels = 0;
+            var bestGroupCount = 0;
+            var bestLayoutSize = default(Vector2Int);
+            var bestPixelRatio = double.PositiveInfinity;
 
             var shadowAdoptable =
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
@@ -1246,6 +1304,40 @@ namespace net.rs64.TexTransTool.NDMF
                         layoutSize,
                         propertySizes);
 
+                    if (baseline.PixelCount > 0)
+                    {
+                        var ratio =
+                            (double)merged.PixelCount / baseline.PixelCount;
+                        if (ratio < bestPixelRatio)
+                        {
+                            bestPixelRatio = ratio;
+                            bestBaselinePixels = baseline.PixelCount;
+                            bestMergedPixels = merged.PixelCount;
+                            bestGroupCount = ids.Length;
+                            bestLayoutSize = layoutSize;
+                        }
+                    }
+
+                    if (merged.PixelCount >= baseline.PixelCount)
+                    {
+                        if (merged.PixelCount == baseline.PixelCount)
+                            pixelRejectedEqualCount += 1;
+                        else
+                            pixelRejectedGreaterCount += 1;
+
+                        if (merged.FullResidentBytes
+                                < baseline.FullResidentBytes
+                            && merged.MaxTextureDimension
+                                <= baseline.MaxTextureDimension
+                            && !HasSamplingRegression(
+                                baseline, merged, ids)
+                            && !HasStreamingRegression(
+                                baseline, merged, ids))
+                        {
+                            pixelGateOnlyCount += 1;
+                        }
+                    }
+
                     evaluatedCandidateCount += 1;
                     if (!bandEvaluatedLayouts.Contains(layoutKey))
                         evaluatedBeyondBandLayoutCount += 1;
@@ -1352,7 +1444,14 @@ namespace net.rs64.TexTransTool.NDMF
                 rejectedMemoryCount,
                 rejectedMaxDimensionCount,
                 rejectedSamplingCount,
-                rejectedStreamingCount);
+                rejectedStreamingCount,
+                pixelRejectedEqualCount,
+                pixelRejectedGreaterCount,
+                pixelGateOnlyCount,
+                bestBaselinePixels,
+                bestMergedPixels,
+                bestGroupCount,
+                bestLayoutSize);
         }
 
         private static int GetBandUsedHeightPixels(
