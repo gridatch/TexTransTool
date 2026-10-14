@@ -74,9 +74,26 @@ namespace net.rs64.TexTransTool.NDMF
         {
             internal readonly IReadOnlyList<MergeSelection> Selections;
 
-            internal PlanResult(IReadOnlyList<MergeSelection> selections)
+            // Temporary diagnostics for validating AutoAtlas processing cost.
+            internal readonly long PlanningTimeMilliseconds;
+            internal readonly long StandaloneAnalysisTimeMilliseconds;
+            internal readonly long StandaloneRelocationTimeMilliseconds;
+            internal readonly int StandaloneAnalysisCount;
+
+            internal PlanResult(
+                IReadOnlyList<MergeSelection> selections,
+                long planningTimeMilliseconds = 0,
+                long standaloneAnalysisTimeMilliseconds = 0,
+                long standaloneRelocationTimeMilliseconds = 0,
+                int standaloneAnalysisCount = 0)
             {
                 Selections = selections;
+                PlanningTimeMilliseconds = planningTimeMilliseconds;
+                StandaloneAnalysisTimeMilliseconds =
+                    standaloneAnalysisTimeMilliseconds;
+                StandaloneRelocationTimeMilliseconds =
+                    standaloneRelocationTimeMilliseconds;
+                StandaloneAnalysisCount = standaloneAnalysisCount;
             }
         }
 
@@ -255,10 +272,18 @@ namespace net.rs64.TexTransTool.NDMF
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
             IReadOnlyList<PreparedGroup> groups)
         {
+            var planningTimer = System.Diagnostics.Stopwatch.StartNew();
+            long standaloneAnalysisTimeMilliseconds = 0;
+            long standaloneRelocationTimeMilliseconds = 0;
+            var standaloneAnalysisCount = 0;
+
             if (!configuration.EnableAdditionalAtlasMerging
                 || groups.Count < 2)
             {
-                return new PlanResult(Array.Empty<MergeSelection>());
+                planningTimer.Stop();
+                return new PlanResult(
+                    Array.Empty<MergeSelection>(),
+                    planningTimer.ElapsedMilliseconds);
             }
 
             var engine = domain.GetTexTransCoreEngineForUnity();
@@ -266,8 +291,19 @@ namespace net.rs64.TexTransTool.NDMF
 
             foreach (var group in groups)
             {
+                var analysisTimer = System.Diagnostics.Stopwatch.StartNew();
                 group.StandaloneMetrics = AnalyzeAtlas(
                     domain, engine, settings, group.Materials, group.Renderers);
+                analysisTimer.Stop();
+
+                standaloneAnalysisCount += 1;
+                standaloneAnalysisTimeMilliseconds +=
+                    analysisTimer.ElapsedMilliseconds;
+                if (group.StandaloneMetrics is { } standaloneMetrics)
+                {
+                    standaloneRelocationTimeMilliseconds +=
+                        standaloneMetrics.RelocationTimeMilliseconds;
+                }
             }
 
             foreach (var group in groups)
@@ -518,7 +554,13 @@ namespace net.rs64.TexTransTool.NDMF
                 consumed.UnionWith(candidate.GroupIds);
             }
 
-            return new PlanResult(selected);
+            planningTimer.Stop();
+            return new PlanResult(
+                selected,
+                planningTimer.ElapsedMilliseconds,
+                standaloneAnalysisTimeMilliseconds,
+                standaloneRelocationTimeMilliseconds,
+                standaloneAnalysisCount);
         }
 
         private static int GetBandUsedHeightPixels(
