@@ -84,6 +84,13 @@ namespace net.rs64.TexTransTool.NDMF
             long executionDoAtlasTimeMilliseconds = 0;
             long executionRelocationTimeMilliseconds = 0;
             var executionDoAtlasCount = 0;
+            long executionPreserveSetupMilliseconds = 0;
+            long executionAtlasContextMilliseconds = 0;
+            long executionIslandNormalizeMilliseconds = 0;
+            long executionRelocationStageMilliseconds = 0;
+            long executionResolutionPlanMilliseconds = 0;
+            long executionMeshGenerationMilliseconds = 0;
+            long executionTextureGenerationMilliseconds = 0;
 
             string OriginalMaterialName(Material material)
             {
@@ -337,6 +344,8 @@ namespace net.rs64.TexTransTool.NDMF
                 }
 
                 var executionMetrics = default(AtlasTexture.AtlasExecutionMetrics);
+                var executionPhaseTiming =
+                    default(AtlasTexture.AtlasExecutionTimingDiagnostic);
                 var executionTimer = System.Diagnostics.Stopwatch.StartNew();
                 var atlasResult = AtlasTexture.DoAtlasTexture(
                     domain,
@@ -349,6 +358,7 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         RequireLossless = true,
                         ReportProgressInfo = false,
+                        TimingDiagnostic = value => executionPhaseTiming = value,
                         IslandRelocatorFactory = mergeAtomicGroupByMaterial != null
                             ? atlasContext => new AutoAtlasMergeIslandRelocator(
                                 atlasContext, mergeAtomicGroupByMaterial)
@@ -402,6 +412,20 @@ namespace net.rs64.TexTransTool.NDMF
                     executionTimer.ElapsedMilliseconds;
                 executionRelocationTimeMilliseconds +=
                     executionMetrics.RelocationTimeMilliseconds;
+                executionPreserveSetupMilliseconds +=
+                    executionPhaseTiming.PreserveSetupMilliseconds;
+                executionAtlasContextMilliseconds +=
+                    executionPhaseTiming.AtlasContextConstructionMilliseconds;
+                executionIslandNormalizeMilliseconds +=
+                    executionPhaseTiming.IslandNormalizeMilliseconds;
+                executionRelocationStageMilliseconds +=
+                    executionPhaseTiming.RelocationStageMilliseconds;
+                executionResolutionPlanMilliseconds +=
+                    executionPhaseTiming.ResolutionPlanMilliseconds;
+                executionMeshGenerationMilliseconds +=
+                    executionPhaseTiming.MeshGenerationMilliseconds;
+                executionTextureGenerationMilliseconds +=
+                    executionPhaseTiming.TextureGenerationMilliseconds;
 
                 if (!atlasResult.IsSuccess)
                 {
@@ -526,7 +550,26 @@ namespace net.rs64.TexTransTool.NDMF
                 Math.Max(
                     0,
                     mergePlan.PlanningTimeMilliseconds
-                        - mergePlan.StandaloneAnalysisTimeMilliseconds));
+                        - mergePlan.StandaloneAnalysisTimeMilliseconds),
+                mergePlan.StandalonePreserveSetupMilliseconds,
+                mergePlan.StandaloneAtlasContextMilliseconds,
+                mergePlan.StandaloneIslandNormalizeMilliseconds,
+                mergePlan.StandaloneRelocationStageMilliseconds,
+                mergePlan.StandaloneResolutionPlanMilliseconds,
+                executionPreserveSetupMilliseconds,
+                executionAtlasContextMilliseconds,
+                executionIslandNormalizeMilliseconds,
+                executionRelocationStageMilliseconds,
+                executionResolutionPlanMilliseconds,
+                executionMeshGenerationMilliseconds,
+                executionTextureGenerationMilliseconds,
+                mergePlan.PreparedGroupCount,
+                mergePlan.SharedRendererCount,
+                mergePlan.GroupsWithSharedRendererCount,
+                mergePlan.GroupPairsSharingRendererCount,
+                mergePlan.GroupPairsSharingSourceMeshCount,
+                mergePlan.Selections.Count,
+                mergePlan.CrossAtomicMaterialGroupCount);
 
             if (completed.Count == 0)
             {
