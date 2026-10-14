@@ -43,7 +43,8 @@ namespace net.rs64.TexTransTool.NDMF
                 AutoAtlasTextureIsolationDiagnostic.State(context);
             isolationDiagnostic.Begin(
                 configurations[0],
-                session.Domain.EnumerateRenderer());
+                session.Domain.EnumerateRenderer(),
+                session.Domain.GetAllMaterials());
 
             AutoAtlasTextureProcessor.Execute(
                 session.Domain,
