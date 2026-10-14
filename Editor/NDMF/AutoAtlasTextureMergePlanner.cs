@@ -79,13 +79,38 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long StandaloneAnalysisTimeMilliseconds;
             internal readonly long StandaloneRelocationTimeMilliseconds;
             internal readonly int StandaloneAnalysisCount;
+            internal readonly long StandalonePreserveSetupMilliseconds;
+            internal readonly long StandaloneAtlasContextMilliseconds;
+            internal readonly long StandaloneIslandNormalizeMilliseconds;
+            internal readonly long StandaloneRelocationStageMilliseconds;
+            internal readonly long StandaloneResolutionPlanMilliseconds;
+
+            // Temporary diagnostics for evaluating whether the standalone
+            // preprocessing state can be safely reused later in the pass.
+            internal readonly int PreparedGroupCount;
+            internal readonly int SharedRendererCount;
+            internal readonly int GroupsWithSharedRendererCount;
+            internal readonly int GroupPairsSharingRendererCount;
+            internal readonly int GroupPairsSharingSourceMeshCount;
+            internal readonly int CrossAtomicMaterialGroupCount;
 
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
                 long planningTimeMilliseconds = 0,
                 long standaloneAnalysisTimeMilliseconds = 0,
                 long standaloneRelocationTimeMilliseconds = 0,
-                int standaloneAnalysisCount = 0)
+                int standaloneAnalysisCount = 0,
+                long standalonePreserveSetupMilliseconds = 0,
+                long standaloneAtlasContextMilliseconds = 0,
+                long standaloneIslandNormalizeMilliseconds = 0,
+                long standaloneRelocationStageMilliseconds = 0,
+                long standaloneResolutionPlanMilliseconds = 0,
+                int preparedGroupCount = 0,
+                int sharedRendererCount = 0,
+                int groupsWithSharedRendererCount = 0,
+                int groupPairsSharingRendererCount = 0,
+                int groupPairsSharingSourceMeshCount = 0,
+                int crossAtomicMaterialGroupCount = 0)
             {
                 Selections = selections;
                 PlanningTimeMilliseconds = planningTimeMilliseconds;
@@ -94,6 +119,23 @@ namespace net.rs64.TexTransTool.NDMF
                 StandaloneRelocationTimeMilliseconds =
                     standaloneRelocationTimeMilliseconds;
                 StandaloneAnalysisCount = standaloneAnalysisCount;
+                StandalonePreserveSetupMilliseconds =
+                    standalonePreserveSetupMilliseconds;
+                StandaloneAtlasContextMilliseconds =
+                    standaloneAtlasContextMilliseconds;
+                StandaloneIslandNormalizeMilliseconds =
+                    standaloneIslandNormalizeMilliseconds;
+                StandaloneRelocationStageMilliseconds =
+                    standaloneRelocationStageMilliseconds;
+                StandaloneResolutionPlanMilliseconds =
+                    standaloneResolutionPlanMilliseconds;
+                PreparedGroupCount = preparedGroupCount;
+                SharedRendererCount = sharedRendererCount;
+                GroupsWithSharedRendererCount = groupsWithSharedRendererCount;
+                GroupPairsSharingRendererCount = groupPairsSharingRendererCount;
+                GroupPairsSharingSourceMeshCount =
+                    groupPairsSharingSourceMeshCount;
+                CrossAtomicMaterialGroupCount = crossAtomicMaterialGroupCount;
             }
         }
 
@@ -276,6 +318,45 @@ namespace net.rs64.TexTransTool.NDMF
             long standaloneAnalysisTimeMilliseconds = 0;
             long standaloneRelocationTimeMilliseconds = 0;
             var standaloneAnalysisCount = 0;
+            long standalonePreserveSetupMilliseconds = 0;
+            long standaloneAtlasContextMilliseconds = 0;
+            long standaloneIslandNormalizeMilliseconds = 0;
+            long standaloneRelocationStageMilliseconds = 0;
+            long standaloneResolutionPlanMilliseconds = 0;
+
+            var sharedRenderers = groups
+                .SelectMany(group => group.Renderers)
+                .Where(renderer => renderer != null)
+                .GroupBy(renderer => renderer)
+                .Where(group => group.Count() > 1)
+                .Select(group => group.Key)
+                .ToHashSet();
+            var groupsWithSharedRendererCount = groups.Count(group =>
+                group.Renderers.Any(sharedRenderers.Contains));
+
+            var groupPairsSharingRendererCount = 0;
+            var groupPairsSharingSourceMeshCount = 0;
+            for (var left = 0; left < groups.Count; left += 1)
+            {
+                var leftRenderers = groups[left].Renderers.ToHashSet();
+                var leftMeshes = groups[left].Renderers
+                    .Select(domain.GetMesh)
+                    .Where(mesh => mesh != null)
+                    .ToHashSet();
+
+                for (var right = left + 1; right < groups.Count; right += 1)
+                {
+                    if (groups[right].Renderers.Any(leftRenderers.Contains))
+                        groupPairsSharingRendererCount += 1;
+
+                    if (groups[right].Renderers
+                        .Select(domain.GetMesh)
+                        .Any(mesh => mesh != null && leftMeshes.Contains(mesh)))
+                    {
+                        groupPairsSharingSourceMeshCount += 1;
+                    }
+                }
+            }
 
             if (!configuration.EnableAdditionalAtlasMerging
                 || groups.Count < 2)
@@ -293,10 +374,25 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 var analysisTimer = System.Diagnostics.Stopwatch.StartNew();
                 group.StandaloneMetrics = AnalyzeAtlas(
-                    domain, engine, settings, group.Materials, group.Renderers);
+                    domain,
+                    engine,
+                    settings,
+                    group.Materials,
+                    group.Renderers,
+                    out var phaseTiming);
                 analysisTimer.Stop();
 
                 standaloneAnalysisCount += 1;
+                standalonePreserveSetupMilliseconds +=
+                    phaseTiming.PreserveSetupMilliseconds;
+                standaloneAtlasContextMilliseconds +=
+                    phaseTiming.AtlasContextConstructionMilliseconds;
+                standaloneIslandNormalizeMilliseconds +=
+                    phaseTiming.IslandNormalizeMilliseconds;
+                standaloneRelocationStageMilliseconds +=
+                    phaseTiming.RelocationStageMilliseconds;
+                standaloneResolutionPlanMilliseconds +=
+                    phaseTiming.ResolutionPlanMilliseconds;
                 standaloneAnalysisTimeMilliseconds +=
                     analysisTimer.ElapsedMilliseconds;
                 if (group.StandaloneMetrics is { } standaloneMetrics)
@@ -554,13 +650,47 @@ namespace net.rs64.TexTransTool.NDMF
                 consumed.UnionWith(candidate.GroupIds);
             }
 
+            var crossAtomicMaterialGroupCount = 0;
+            foreach (var selection in selected)
+            {
+                var selectedGroups = selection.GroupIds
+                    .Select(id => groups[id])
+                    .ToArray();
+                var atomicGroupByMaterial = selectedGroups
+                    .SelectMany(group => group.Materials.Select(
+                        material => (material, group.Id)))
+                    .ToDictionary(pair => pair.material, pair => pair.Id);
+                var grouping = new MaterialGroupingContext(
+                    selectedGroups.SelectMany(group => group.Materials).ToHashSet(),
+                    settings.AtlasTargetUVChannel,
+                    null);
+
+                crossAtomicMaterialGroupCount += grouping.GroupMaterials.Count(
+                    materialGroup => materialGroup
+                        .Select(material => atomicGroupByMaterial[material])
+                        .Distinct()
+                        .Skip(1)
+                        .Any());
+            }
+
             planningTimer.Stop();
             return new PlanResult(
                 selected,
                 planningTimer.ElapsedMilliseconds,
                 standaloneAnalysisTimeMilliseconds,
                 standaloneRelocationTimeMilliseconds,
-                standaloneAnalysisCount);
+                standaloneAnalysisCount,
+                standalonePreserveSetupMilliseconds,
+                standaloneAtlasContextMilliseconds,
+                standaloneIslandNormalizeMilliseconds,
+                standaloneRelocationStageMilliseconds,
+                standaloneResolutionPlanMilliseconds,
+                groups.Count,
+                sharedRenderers.Count,
+                groupsWithSharedRendererCount,
+                groupPairsSharingRendererCount,
+                groupPairsSharingSourceMeshCount,
+                crossAtomicMaterialGroupCount);
         }
 
         private static int GetBandUsedHeightPixels(
@@ -648,9 +778,11 @@ namespace net.rs64.TexTransTool.NDMF
             ITexTransToolForUnity engine,
             AtlasSetting settings,
             HashSet<Material> materials,
-            Renderer[] renderers)
+            Renderer[] renderers,
+            out AtlasTexture.AtlasExecutionTimingDiagnostic timing)
         {
             AtlasTexture.AtlasExecutionMetrics? captured = null;
+            timing = default;
 
             try
             {
@@ -665,6 +797,7 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         RequireLossless = true,
                         ReportProgressInfo = false,
+                        TimingDiagnostic = value => timing = value,
                         AcceptAtlasSize = (_, _, metrics) =>
                         {
                             captured = metrics;
