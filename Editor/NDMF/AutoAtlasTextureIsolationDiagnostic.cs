@@ -20,12 +20,14 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Renderer Renderer;
             internal readonly Mesh? Mesh;
             internal readonly Material?[] Materials;
+            internal readonly SlotUvSnapshot[] SlotUv0;
 
             internal RendererSnapshot(Renderer renderer)
             {
                 Renderer = renderer;
                 Mesh = renderer.GetMesh();
                 Materials = renderer.sharedMaterials.ToArray();
+                SlotUv0 = CaptureSlotUv0(Mesh, Materials.Length);
             }
         }
 
@@ -44,6 +46,23 @@ namespace net.rs64.TexTransTool.NDMF
                     .OrderBy(keyword => keyword, StringComparer.Ordinal)
                     .ToArray();
                 Properties = CaptureProperties(material);
+            }
+        }
+
+        private sealed class SlotUvSnapshot
+        {
+            internal readonly bool Available;
+            internal readonly MeshTopology Topology;
+            internal readonly Vector2[] IndexedUv;
+
+            internal SlotUvSnapshot(
+                bool available,
+                MeshTopology topology,
+                Vector2[] indexedUv)
+            {
+                Available = available;
+                Topology = topology;
+                IndexedUv = indexedUv;
             }
         }
 
@@ -206,6 +225,30 @@ namespace net.rs64.TexTransTool.NDMF
                     }
                 }
 
+                for (var slot = 0; slot < rendererSnapshot.Materials.Length; slot++)
+                {
+                    var material = rendererSnapshot.Materials[slot];
+                    if (material == null || _targetedMaterials.Contains(material))
+                        continue;
+
+                    var beforeUv = slot < rendererSnapshot.SlotUv0.Length
+                        ? rendererSnapshot.SlotUv0[slot]
+                        : UnavailableSlotUvSnapshot();
+                    var afterUv = CaptureSlotUv0(renderer.GetMesh(), currentMaterials.Length);
+                    var currentUv = slot < afterUv.Length
+                        ? afterUv[slot]
+                        : UnavailableSlotUvSnapshot();
+
+                    if (!SlotUvEquals(beforeUv, currentUv))
+                    {
+                        lines.Add(
+                            $"[{stage}] Non-target slot UV0 changed: " +
+                            $"{DescribeRenderer(renderer)} slot={slot} " +
+                            $"{DescribeMaterial(material)} " +
+                            $"{DescribeSlotUv(beforeUv)} -> {DescribeSlotUv(currentUv)}");
+                    }
+                }
+
                 var hadTargetMaterial = rendererSnapshot.Materials
                     .Any(material => material != null
                         && _targetedMaterials.Contains(material));
@@ -364,6 +407,81 @@ namespace net.rs64.TexTransTool.NDMF
                     $"{context}.{propertyName} " +
                     $"{DescribeProperty(oldValue)} -> " +
                     $"{DescribeProperty(newValue)}");
+            }
+        }
+
+        private static SlotUvSnapshot[] CaptureSlotUv0(
+            Mesh? mesh,
+            int materialSlotCount)
+        {
+            var result = new SlotUvSnapshot[materialSlotCount];
+            if (mesh == null || mesh.subMeshCount <= 0 || !mesh.HasUV(0))
+            {
+                for (var i = 0; i < result.Length; i++)
+                    result[i] = UnavailableSlotUvSnapshot();
+                return result;
+            }
+
+            var uv = mesh.uv;
+            for (var slot = 0; slot < result.Length; slot++)
+            {
+                var subMesh = Math.Clamp(slot, 0, mesh.subMeshCount - 1);
+                var topology = mesh.GetTopology(subMesh);
+                var indices = mesh.GetIndices(subMesh);
+                var indexedUv = new Vector2[indices.Length];
+                var available = true;
+                for (var i = 0; i < indices.Length; i++)
+                {
+                    var index = indices[i];
+                    if (index < 0 || index >= uv.Length)
+                    {
+                        available = false;
+                        indexedUv = Array.Empty<Vector2>();
+                        break;
+                    }
+
+                    indexedUv[i] = uv[index];
+                }
+
+                result[slot] = new SlotUvSnapshot(
+                    available,
+                    topology,
+                    indexedUv);
+            }
+
+            return result;
+        }
+
+        private static SlotUvSnapshot UnavailableSlotUvSnapshot()
+        {
+            return new SlotUvSnapshot(
+                false,
+                MeshTopology.Triangles,
+                Array.Empty<Vector2>());
+        }
+
+        private static bool SlotUvEquals(
+            SlotUvSnapshot left,
+            SlotUvSnapshot right)
+        {
+            return left.Available == right.Available
+                && left.Topology == right.Topology
+                && left.IndexedUv.SequenceEqual(right.IndexedUv);
+        }
+
+        private static string DescribeSlotUv(SlotUvSnapshot value)
+        {
+            if (!value.Available) return "<unavailable>";
+            unchecked
+            {
+                var hash = 17;
+                foreach (var uv in value.IndexedUv)
+                {
+                    hash = hash * 31 + uv.x.GetHashCode();
+                    hash = hash * 31 + uv.y.GetHashCode();
+                }
+
+                return $"{value.Topology} indices={value.IndexedUv.Length} hash={hash}";
             }
         }
 
