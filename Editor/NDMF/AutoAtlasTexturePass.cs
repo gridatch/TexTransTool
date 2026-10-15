@@ -678,6 +678,35 @@ namespace net.rs64.TexTransTool.NDMF
                 mergePlan.ShadowUniqueGeneratedStateCount,
                 mergePlan.ShadowScoreStateCallCount);
 
+            // The project directory name is useful when comparing logs
+            // from several Unity projects. Never include its absolute path.
+            var projectDirectory = System.IO.Path.GetDirectoryName(
+                Application.dataPath) ?? Application.dataPath;
+            var projectName = new System.IO.DirectoryInfo(projectDirectory).Name;
+            temporaryTimingDiagnostic = string.Format(
+                "AutoAtlasTexture:info:TemporaryProjectName".GetLocalize(),
+                projectName)
+                + "\n" + temporaryTimingDiagnostic;
+
+            if (mergePlan.ShadowStreamingExample is { } streamingExample)
+            {
+                var candidate = streamingExample.Candidate;
+                temporaryTimingDiagnostic += "\n" + string.Format(
+                    "AutoAtlasTexture:info:TemporaryStreamingDiagnostic"
+                        .GetLocalize(),
+                    string.Join(", ", candidate.GroupIds.Select(id => $"g{id}")),
+                    candidate.LayoutSize.x,
+                    candidate.LayoutSize.y,
+                    streamingExample.ActiveGroupId,
+                    streamingExample.CameraBias,
+                    streamingExample.BaselineBytes,
+                    streamingExample.MergedBytes,
+                    streamingExample.MergedBytes
+                        - streamingExample.BaselineBytes,
+                    streamingExample.BaselineEntries,
+                    streamingExample.MergedEntries);
+            }
+
             if (completed.Count == 0)
             {
                 var fullDiagnostic = string.Format(

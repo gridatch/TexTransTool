@@ -150,6 +150,60 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void StreamingDiagnosticIdentifiesActiveGroupAndMips()
+        {
+            var baseline = Plan(new[]
+            {
+                Entry(32, 32, 6, true, new[] { 0 },
+                    demandLog2: new Dictionary<int, double> { [0] = 0d }),
+                Entry(128, 128, 8, true, new[] { 1 },
+                    demandLog2: new Dictionary<int, double> { [1] = 0d }),
+            });
+            var merged = Plan(new[]
+            {
+                Entry(128, 128, 8, true, new[] { 0, 1 },
+                    demandLog2: new Dictionary<int, double>
+                    {
+                        [0] = 0d,
+                        [1] = 0d,
+                    }),
+            });
+
+            var candidate = Candidate(baseline, merged);
+            Assert.That(candidate.RejectionReason,
+                Is.EqualTo(
+                    AutoAtlasTextureMergePlanner.CandidateRejectionReason.Streaming));
+
+            var diagnostic =
+                AutoAtlasTextureMergePlanner.DiagnoseStreamingRegression(candidate);
+            Assert.That(diagnostic, Is.Not.Null);
+            Assert.That(diagnostic.ActiveGroupId, Is.EqualTo(0));
+            Assert.That(diagnostic.MergedBytes,
+                Is.GreaterThan(diagnostic.BaselineBytes));
+            Assert.That(diagnostic.BaselineEntries, Does.Contain("mip="));
+            Assert.That(diagnostic.MergedEntries, Does.Contain("streaming(model)=True"));
+            Assert.That(diagnostic.MergedEntries, Does.Contain("bytes="));
+        }
+
+        [Test]
+        public void StreamingDiagnosticIsAbsentWithoutRegression()
+        {
+            var baseline = Plan(new[]
+            {
+                Entry(128, 128, 8, true, new[] { 0 }),
+                Entry(128, 128, 8, true, new[] { 1 }),
+            });
+            var merged = Plan(new[]
+            {
+                Entry(128, 128, 8, true, new[] { 0, 1 }),
+            });
+            var diagnostic =
+                AutoAtlasTextureMergePlanner.DiagnoseStreamingRegression(
+                    Candidate(baseline, merged));
+            Assert.That(diagnostic, Is.Null);
+        }
+
+        [Test]
         public void CandidateRejectsComplementaryPropertyDensityInflation()
         {
             // Two groups have opposite high/low requirements across two

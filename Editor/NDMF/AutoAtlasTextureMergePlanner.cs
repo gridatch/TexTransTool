@@ -171,6 +171,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long ShadowUniqueGeneratedStateCount;
             internal readonly long ShadowScoreStateCallCount;
             internal readonly string ShadowBestSamplingSummary;
+            internal readonly StreamingRegressionExample? ShadowStreamingExample;
 
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
@@ -256,9 +257,11 @@ namespace net.rs64.TexTransTool.NDMF
                 long shadowPlacementAttemptCount = 0,
                 long shadowUniqueGeneratedStateCount = 0,
                 long shadowScoreStateCallCount = 0,
-                string shadowBestSamplingSummary = "")
+                string shadowBestSamplingSummary = "",
+                StreamingRegressionExample? shadowStreamingExample = null)
             {
                 Selections = selections;
+                ShadowStreamingExample = shadowStreamingExample;
                 PlanningTimeMilliseconds = planningTimeMilliseconds;
                 StandaloneAnalysisTimeMilliseconds =
                     standaloneAnalysisTimeMilliseconds;
@@ -699,6 +702,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long UniqueGeneratedStateCount;
             internal readonly long ScoreStateCallCount;
             internal readonly string BestSamplingSummary;
+            internal readonly StreamingRegressionExample? StreamingExample;
 
             internal ShadowPackingDiagnostics(
                 int profileCount,
@@ -749,7 +753,8 @@ namespace net.rs64.TexTransTool.NDMF
                 long placementAttemptCount,
                 long uniqueGeneratedStateCount,
                 long scoreStateCallCount,
-                string bestSamplingSummary)
+                string bestSamplingSummary,
+                StreamingRegressionExample? streamingExample)
             {
                 ProfileCount = profileCount;
                 GroupsWithMultipleProfiles = groupsWithMultipleProfiles;
@@ -809,6 +814,7 @@ namespace net.rs64.TexTransTool.NDMF
                 UniqueGeneratedStateCount = uniqueGeneratedStateCount;
                 ScoreStateCallCount = scoreStateCallCount;
                 BestSamplingSummary = bestSamplingSummary;
+                StreamingExample = streamingExample;
             }
         }
 
@@ -898,6 +904,37 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        // Only constructed for the most pixel-efficient candidate rejected
+        // by the streaming gate. Not used to select or accept a merge.
+        internal sealed class StreamingRegressionExample
+        {
+            internal readonly Candidate Candidate;
+            internal readonly int ActiveGroupId;
+            internal readonly double CameraBias;
+            internal readonly long BaselineBytes;
+            internal readonly long MergedBytes;
+            internal readonly string BaselineEntries;
+            internal readonly string MergedEntries;
+
+            internal StreamingRegressionExample(
+                Candidate candidate,
+                int activeGroupId,
+                double cameraBias,
+                long baselineBytes,
+                long mergedBytes,
+                string baselineEntries,
+                string mergedEntries)
+            {
+                Candidate = candidate;
+                ActiveGroupId = activeGroupId;
+                CameraBias = cameraBias;
+                BaselineBytes = baselineBytes;
+                MergedBytes = mergedBytes;
+                BaselineEntries = baselineEntries;
+                MergedEntries = mergedEntries;
+            }
+        }
+
         internal sealed class TextureCostPlan
         {
             internal static readonly TextureCostPlan Empty = new(Array.Empty<TextureCostEntry>());
@@ -952,6 +989,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly HashSet<int> Contributors;
             internal readonly Dictionary<int, double> DemandLog2;
             internal readonly long FullResidentBytes;
+            internal readonly string DiagnosticName;
 
             internal TextureCostEntry(
                 int width,
@@ -960,7 +998,8 @@ namespace net.rs64.TexTransTool.NDMF
                 int mipCount,
                 bool streaming,
                 IEnumerable<int> contributors,
-                Dictionary<int, double> demandLog2)
+                Dictionary<int, double> demandLog2,
+                string diagnosticName = "")
                 : this(
                     width,
                     height,
@@ -968,7 +1007,8 @@ namespace net.rs64.TexTransTool.NDMF
                     mipCount,
                     streaming,
                     contributors,
-                    demandLog2)
+                    demandLog2,
+                    diagnosticName)
             {
             }
 
@@ -979,7 +1019,8 @@ namespace net.rs64.TexTransTool.NDMF
                 int mipCount,
                 bool streaming,
                 IEnumerable<int> contributors,
-                Dictionary<int, double> demandLog2)
+                Dictionary<int, double> demandLog2,
+                string diagnosticName = "")
             {
                 Width = width;
                 Height = height;
@@ -990,6 +1031,7 @@ namespace net.rs64.TexTransTool.NDMF
                 Streaming = streaming;
                 Contributors = contributors.ToHashSet();
                 DemandLog2 = demandLog2;
+                DiagnosticName = diagnosticName;
                 FullResidentBytes = CalculateBytes(this, 0);
             }
         }
@@ -1565,7 +1607,8 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.PlacementAttemptCount,
                 shadow2D.UniqueGeneratedStateCount,
                 shadow2D.ScoreStateCallCount,
-                shadow2D.BestSamplingSummary);
+                shadow2D.BestSamplingSummary,
+                shadow2D.StreamingExample);
         }
 
         private static ShadowPackingDiagnostics EvaluateShadow2DPacking(
@@ -1628,6 +1671,8 @@ namespace net.rs64.TexTransTool.NDMF
             long uniqueGeneratedStateCount = 0;
             long scoreStateCallCount = 0;
             var bestSamplingSummary = "";
+            Candidate? bestStreamingCandidate = null;
+            var bestStreamingRatio = double.PositiveInfinity;
 
             var shadowAdoptable =
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
@@ -2296,6 +2341,25 @@ namespace net.rs64.TexTransTool.NDMF
                                 rejectedStreamingCount += 1;
                                 break;
                         }
+
+                        // Keep one useful rejected candidate for diagnosis.
+                        // This does not participate in planning or pruning.
+                        if (candidate.RejectionReason
+                                == CandidateRejectionReason.Streaming
+                            && baseline.PixelCount > 0)
+                        {
+                            var ratio = (double)merged.PixelCount
+                                / baseline.PixelCount;
+                            if (ratio < bestStreamingRatio
+                                || (ratio == bestStreamingRatio
+                                    && (bestStreamingCandidate == null
+                                        || candidate.SavingBytes
+                                            > bestStreamingCandidate.SavingBytes)))
+                            {
+                                bestStreamingRatio = ratio;
+                                bestStreamingCandidate = candidate;
+                            }
+                        }
                         continue;
                     }
 
@@ -2360,6 +2424,11 @@ namespace net.rs64.TexTransTool.NDMF
                 consumed.UnionWith(candidate.GroupIds);
             }
 
+            // Diagnostics are calculated once, after the bounded search.
+            var streamingExample = bestStreamingCandidate == null
+                ? null
+                : DiagnoseStreamingRegression(bestStreamingCandidate);
+
             return new ShadowPackingDiagnostics(
                 profileCount,
                 groupsWithMultipleProfiles,
@@ -2409,7 +2478,8 @@ namespace net.rs64.TexTransTool.NDMF
                 placementAttemptCount,
                 uniqueGeneratedStateCount,
                 scoreStateCallCount,
-                bestSamplingSummary);
+                bestSamplingSummary,
+                streamingExample);
         }
 
         private static int GetBandUsedHeightPixels(
@@ -2670,7 +2740,8 @@ namespace net.rs64.TexTransTool.NDMF
                     mipCount,
                     streaming,
                     new[] { group.Id },
-                    demands));
+                    demands,
+                    diagnosticName: texture.name));
                 bytesPerTexel[texture] =
                     (double)block.Size / (block.Width * block.Height);
             }
@@ -2787,7 +2858,8 @@ namespace net.rs64.TexTransTool.NDMF
                     // deferred compressor, which enables Streaming Mipmaps.
                     streaming: true,
                     contributors,
-                    demand));
+                    demand,
+                    diagnosticName: property.Key));
             }
 
             return new TextureCostPlan(entries, sampling);
@@ -2922,6 +2994,87 @@ namespace net.rs64.TexTransTool.NDMF
                     return true;
             }
             return false;
+        }
+
+        internal static StreamingRegressionExample? DiagnoseStreamingRegression(
+            Candidate candidate)
+        {
+            long worstExcess = 0;
+            var worstGroup = -1;
+            var worstBiasStep = 0;
+            long worstBaselineBytes = 0;
+            long worstMergedBytes = 0;
+
+            foreach (var groupId in candidate.GroupIds)
+            {
+                var active = new HashSet<int> { groupId };
+                for (var biasStep = -32; biasStep <= 40; biasStep += 1)
+                {
+                    var bias = biasStep * 0.5d;
+                    var baselineBytes = CalculateScenarioBytes(
+                        candidate.Baseline, active, bias);
+                    var mergedBytes = CalculateScenarioBytes(
+                        candidate.Merged, active, bias);
+                    var excess = mergedBytes - baselineBytes;
+                    if (excess <= worstExcess) continue;
+
+                    worstExcess = excess;
+                    worstGroup = groupId;
+                    worstBiasStep = biasStep;
+                    worstBaselineBytes = baselineBytes;
+                    worstMergedBytes = mergedBytes;
+                }
+            }
+
+            if (worstGroup < 0) return null;
+
+            var worstBias = worstBiasStep * 0.5d;
+            return new StreamingRegressionExample(
+                candidate,
+                worstGroup,
+                worstBias,
+                worstBaselineBytes,
+                worstMergedBytes,
+                DescribeScenarioEntries(candidate.Baseline, worstGroup, worstBias),
+                DescribeScenarioEntries(candidate.Merged, worstGroup, worstBias));
+        }
+
+        private static string DescribeScenarioEntries(
+            TextureCostPlan plan, int groupId, double cameraBias)
+        {
+            var lines = new List<string>();
+            for (var index = 0; index < plan.Entries.Length; index += 1)
+            {
+                var entry = plan.Entries[index];
+                if (!entry.Contributors.Contains(groupId)) continue;
+
+                var demand = entry.DemandLog2.TryGetValue(
+                    groupId, out var logC) ? logC : UnknownDemandLog2;
+                var mip = 0;
+                if (entry.Streaming && entry.MipCount > 1)
+                {
+                    var desiredMip = (int)Math.Floor(demand + cameraBias);
+                    mip = Math.Max(0,
+                        Math.Min(entry.MipCount - 1, desiredMip));
+                }
+
+                var name = string.IsNullOrEmpty(entry.DiagnosticName)
+                    ? "(unidentified)"
+                    : entry.DiagnosticName.Replace("\r", " ").Replace("\n", " ");
+                var detail = demand == UnknownDemandLog2
+                    ? "unknown"
+                    : demand.ToString("0.###",
+                        System.Globalization.CultureInfo.InvariantCulture);
+                lines.Add(
+                    $"  [{index}] {name}: {entry.Width}×{entry.Height}, "
+                    + $"mip={mip}/{entry.MipCount - 1}, "
+                    + $"bytes={CalculateBytes(entry, mip)}, "
+                    + $"streaming(model)={entry.Streaming}, "
+                    + $"block={entry.BlockWidth}×{entry.BlockHeight}/{entry.BlockSize}B, "
+                    + $"demandLog2={detail}");
+            }
+
+            return lines.Count == 0 ? "  (none)" : string.Join("\n", lines);
         }
 
         private static bool HasStreamingRegression(
