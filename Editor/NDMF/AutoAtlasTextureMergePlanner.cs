@@ -94,6 +94,8 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long StandaloneSizePriorityMilliseconds;
             internal readonly long StandalonePostProcessMilliseconds;
             internal readonly long StandaloneResolutionPlanMilliseconds;
+            internal readonly long LegacyBandPlanningMilliseconds;
+            internal readonly long Shadow2DPlanningMilliseconds;
 
             // Temporary diagnostics for evaluating whether the standalone
             // preprocessing state can be safely reused later in the pass.
@@ -149,6 +151,10 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Vector2Int ShadowBestLayoutSize;
             internal readonly string ShadowBestBaselineSizeSummary;
             internal readonly string ShadowBestPropertySizeSummary;
+            internal readonly string ShadowBestRejectionReason;
+            internal readonly int ShadowOptimisticSourceGroupCount;
+            internal readonly bool ShadowOptimisticExhaustive;
+            internal readonly long ShadowOptimisticLowerBoundMilliseconds;
             internal readonly int ShadowOptimisticEvaluatedCount;
             internal readonly int ShadowOptimisticPixelViableCount;
             internal readonly long ShadowOptimisticBestBaselinePixels;
@@ -173,6 +179,8 @@ namespace net.rs64.TexTransTool.NDMF
                 long standaloneSizePriorityMilliseconds = 0,
                 long standalonePostProcessMilliseconds = 0,
                 long standaloneResolutionPlanMilliseconds = 0,
+                long legacyBandPlanningMilliseconds = 0,
+                long shadow2DPlanningMilliseconds = 0,
                 int preparedGroupCount = 0,
                 int sharedRendererCount = 0,
                 int groupsWithSharedRendererCount = 0,
@@ -219,6 +227,10 @@ namespace net.rs64.TexTransTool.NDMF
                 Vector2Int shadowBestLayoutSize = default,
                 string shadowBestBaselineSizeSummary = "",
                 string shadowBestPropertySizeSummary = "",
+                string shadowBestRejectionReason = "",
+                int shadowOptimisticSourceGroupCount = 0,
+                bool shadowOptimisticExhaustive = false,
+                long shadowOptimisticLowerBoundMilliseconds = 0,
                 int shadowOptimisticEvaluatedCount = 0,
                 int shadowOptimisticPixelViableCount = 0,
                 long shadowOptimisticBestBaselinePixels = 0,
@@ -255,6 +267,10 @@ namespace net.rs64.TexTransTool.NDMF
                     standalonePostProcessMilliseconds;
                 StandaloneResolutionPlanMilliseconds =
                     standaloneResolutionPlanMilliseconds;
+                LegacyBandPlanningMilliseconds =
+                    legacyBandPlanningMilliseconds;
+                Shadow2DPlanningMilliseconds =
+                    shadow2DPlanningMilliseconds;
                 PreparedGroupCount = preparedGroupCount;
                 SharedRendererCount = sharedRendererCount;
                 GroupsWithSharedRendererCount = groupsWithSharedRendererCount;
@@ -319,6 +335,12 @@ namespace net.rs64.TexTransTool.NDMF
                     shadowBestBaselineSizeSummary;
                 ShadowBestPropertySizeSummary =
                     shadowBestPropertySizeSummary;
+                ShadowBestRejectionReason = shadowBestRejectionReason;
+                ShadowOptimisticSourceGroupCount =
+                    shadowOptimisticSourceGroupCount;
+                ShadowOptimisticExhaustive = shadowOptimisticExhaustive;
+                ShadowOptimisticLowerBoundMilliseconds =
+                    shadowOptimisticLowerBoundMilliseconds;
                 ShadowOptimisticEvaluatedCount =
                     shadowOptimisticEvaluatedCount;
                 ShadowOptimisticPixelViableCount =
@@ -399,6 +421,10 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Vector2Int BestLayoutSize;
             internal readonly string BestBaselineSizeSummary;
             internal readonly string BestPropertySizeSummary;
+            internal readonly string BestRejectionReason;
+            internal readonly int OptimisticSourceGroupCount;
+            internal readonly bool OptimisticExhaustive;
+            internal readonly long OptimisticLowerBoundMilliseconds;
             internal readonly int OptimisticEvaluatedCount;
             internal readonly int OptimisticPixelViableCount;
             internal readonly long OptimisticBestBaselinePixels;
@@ -438,6 +464,10 @@ namespace net.rs64.TexTransTool.NDMF
                 Vector2Int bestLayoutSize,
                 string bestBaselineSizeSummary,
                 string bestPropertySizeSummary,
+                string bestRejectionReason,
+                int optimisticSourceGroupCount,
+                bool optimisticExhaustive,
+                long optimisticLowerBoundMilliseconds,
                 int optimisticEvaluatedCount,
                 int optimisticPixelViableCount,
                 long optimisticBestBaselinePixels,
@@ -483,6 +513,11 @@ namespace net.rs64.TexTransTool.NDMF
                 BestLayoutSize = bestLayoutSize;
                 BestBaselineSizeSummary = bestBaselineSizeSummary;
                 BestPropertySizeSummary = bestPropertySizeSummary;
+                BestRejectionReason = bestRejectionReason;
+                OptimisticSourceGroupCount = optimisticSourceGroupCount;
+                OptimisticExhaustive = optimisticExhaustive;
+                OptimisticLowerBoundMilliseconds =
+                    optimisticLowerBoundMilliseconds;
                 OptimisticEvaluatedCount = optimisticEvaluatedCount;
                 OptimisticPixelViableCount = optimisticPixelViableCount;
                 OptimisticBestBaselinePixels = optimisticBestBaselinePixels;
@@ -889,6 +924,9 @@ namespace net.rs64.TexTransTool.NDMF
             var rejectedSamplingCount = 0;
             var rejectedStreamingCount = 0;
 
+            var bandPlanningTimer =
+                System.Diagnostics.Stopwatch.StartNew();
+
             foreach (var host in groups.Where(CanHostAnyGuest))
             {
                 mergeHostCount += 1;
@@ -1064,6 +1102,10 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
+            bandPlanningTimer.Stop();
+            var legacyBandPlanningMilliseconds =
+                bandPlanningTimer.ElapsedMilliseconds;
+
             var selected = new List<MergeSelection>();
             var consumed = new HashSet<int>();
             foreach (var candidate in adoptable.Values
@@ -1103,6 +1145,8 @@ namespace net.rs64.TexTransTool.NDMF
                         .Any());
             }
 
+            var shadowPlanningTimer =
+                System.Diagnostics.Stopwatch.StartNew();
             var shadow2D = EvaluateShadow2DPacking(
                 groups,
                 byId,
@@ -1111,6 +1155,9 @@ namespace net.rs64.TexTransTool.NDMF
                 alphaCache,
                 adoptable,
                 evaluatedLayouts);
+            shadowPlanningTimer.Stop();
+            var shadow2DPlanningMilliseconds =
+                shadowPlanningTimer.ElapsedMilliseconds;
 
             planningTimer.Stop();
             return new PlanResult(
@@ -1130,6 +1177,8 @@ namespace net.rs64.TexTransTool.NDMF
                 standaloneSizePriorityMilliseconds,
                 standalonePostProcessMilliseconds,
                 standaloneResolutionPlanMilliseconds,
+                legacyBandPlanningMilliseconds,
+                shadow2DPlanningMilliseconds,
                 groups.Count,
                 sharedRenderers.Count,
                 groupsWithSharedRendererCount,
@@ -1176,6 +1225,10 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.BestLayoutSize,
                 shadow2D.BestBaselineSizeSummary,
                 shadow2D.BestPropertySizeSummary,
+                shadow2D.BestRejectionReason,
+                shadow2D.OptimisticSourceGroupCount,
+                shadow2D.OptimisticExhaustive,
+                shadow2D.OptimisticLowerBoundMilliseconds,
                 shadow2D.OptimisticEvaluatedCount,
                 shadow2D.OptimisticPixelViableCount,
                 shadow2D.OptimisticBestBaselinePixels,
@@ -1221,7 +1274,11 @@ namespace net.rs64.TexTransTool.NDMF
             var bestLayoutSize = default(Vector2Int);
             var bestBaselineSizeSummary = "";
             var bestPropertySizeSummary = "";
+            var bestRejectionReason = "";
             var bestPixelRatio = double.PositiveInfinity;
+            var optimisticSourceGroupCount = 0;
+            var optimisticExhaustive = false;
+            long optimisticLowerBoundMilliseconds = 0;
             var optimisticEvaluatedCount = 0;
             var optimisticPixelViableCount = 0;
             long optimisticBestBaselinePixels = 0;
@@ -1291,7 +1348,12 @@ namespace net.rs64.TexTransTool.NDMF
                 .OrderBy(group => group.Id)
                 .ToArray();
 
-            if (lowerBoundGroups.Length <= MaxMergeGroupCount)
+            optimisticSourceGroupCount = lowerBoundGroups.Length;
+            optimisticExhaustive =
+                lowerBoundGroups.Length <= MaxMergeGroupCount;
+            var optimisticTimer = System.Diagnostics.Stopwatch.StartNew();
+
+            if (optimisticExhaustive)
             {
                 var seenLowerBoundLayouts =
                     new HashSet<string>(StringComparer.Ordinal);
@@ -1407,6 +1469,10 @@ namespace net.rs64.TexTransTool.NDMF
                     }
                 }
             }
+
+            optimisticTimer.Stop();
+            optimisticLowerBoundMilliseconds =
+                optimisticTimer.ElapsedMilliseconds;
 
             void ScoreState(
                 ShadowPackingState state,
@@ -1728,6 +1794,17 @@ namespace net.rs64.TexTransTool.NDMF
                                         StringComparer.Ordinal)
                                     .Select(pair =>
                                         $"{pair.Key}={pair.Value.x}×{pair.Value.y}"));
+                            bestRejectionReason =
+                                candidate.RejectionReason switch
+                                {
+                                    CandidateRejectionReason.None => "none",
+                                    CandidateRejectionReason.PixelCount => "pixels",
+                                    CandidateRejectionReason.FullResidentMemory => "memory",
+                                    CandidateRejectionReason.MaxTextureDimension => "max dimension",
+                                    CandidateRejectionReason.Sampling => "sampling",
+                                    CandidateRejectionReason.Streaming => "streaming",
+                                    _ => "unknown",
+                                };
                         }
                     }
 
@@ -1891,6 +1968,10 @@ namespace net.rs64.TexTransTool.NDMF
                 bestLayoutSize,
                 bestBaselineSizeSummary,
                 bestPropertySizeSummary,
+                bestRejectionReason,
+                optimisticSourceGroupCount,
+                optimisticExhaustive,
+                optimisticLowerBoundMilliseconds,
                 optimisticEvaluatedCount,
                 optimisticPixelViableCount,
                 optimisticBestBaselinePixels,
