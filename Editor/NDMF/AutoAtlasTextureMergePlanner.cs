@@ -1605,22 +1605,11 @@ namespace net.rs64.TexTransTool.NDMF
             var shadow2DPlanningMilliseconds =
                 shadowPlanningTimer.ElapsedMilliseconds;
 
-            var selected = new List<MergeSelection>();
-            var consumed = new HashSet<int>();
-            var combinedCandidates = adoptable.Values.Select(candidate =>
-                    new MergeSelection(candidate))
-                .Concat(shadow2D.ProductionCandidates)
-                .OrderByDescending(candidate => candidate.PredictedSavingBytes)
-                .ThenByDescending(candidate => candidate.PredictedSavingRate)
-                .ThenByDescending(candidate => candidate.GroupIds.Length)
-                // Equal-value candidates prefer the established band relocator.
-                .ThenBy(candidate => candidate.PackedRegions == null ? 0 : 1);
-            foreach (var candidate in combinedCandidates)
-            {
-                if (candidate.GroupIds.Any(consumed.Contains)) continue;
-                selected.Add(candidate);
-                consumed.UnionWith(candidate.GroupIds);
-            }
+            // Transition to 2D-only production. Legacy band enumeration
+            // remains temporarily for comparison diagnostics, but must not
+            // affect selection or rescue unsuccessful 2D placements.
+            var selected = SelectTwoDimensionalMerges(
+                shadow2D.ProductionCandidates);
 
             var crossAtomicMaterialGroupCount = 0;
             foreach (var selection in selected)
@@ -1729,6 +1718,25 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.BestSamplingSummary,
                 shadow2D.StreamingExample,
                 shadow2D.StreamingRegressingCandidateCount);
+        }
+
+        internal static List<MergeSelection> SelectTwoDimensionalMerges(
+            IEnumerable<MergeSelection> candidates)
+        {
+            var selected = new List<MergeSelection>();
+            var consumed = new HashSet<int>();
+            foreach (var candidate in candidates
+                         .Where(candidate => candidate.PackedRegions != null)
+                         .OrderByDescending(candidate => candidate.PredictedSavingBytes)
+                         .ThenByDescending(candidate => candidate.PredictedSavingRate)
+                         .ThenByDescending(candidate => candidate.GroupIds.Length))
+            {
+                if (candidate.GroupIds.Any(consumed.Contains)) continue;
+                selected.Add(candidate);
+                consumed.UnionWith(candidate.GroupIds);
+            }
+
+            return selected;
         }
 
         private static ShadowPackingDiagnostics EvaluateShadow2DPacking(

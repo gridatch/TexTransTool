@@ -528,6 +528,35 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void ProductionSelectionUsesTwoDimensionalCandidatesOnly()
+        {
+            var baseline = Plan(new[]
+            {
+                Entry(128, 128, 1, false, new[] { 1 }),
+                Entry(128, 128, 1, false, new[] { 2 }),
+            });
+            var merged = Plan(new[]
+            {
+                Entry(128, 128, 1, false, new[] { 1, 2 }),
+            });
+            var candidate = Candidate(baseline, merged, new[] { 1, 2 });
+            var band = new AutoAtlasTextureMergePlanner.MergeSelection(candidate);
+            var regions = new Dictionary<int, RectInt>
+            {
+                [1] = new RectInt(0, 0, 256, 128),
+                [2] = new RectInt(256, 0, 256, 128),
+            };
+            var twoD = new AutoAtlasTextureMergePlanner.MergeSelection(
+                candidate, regions);
+
+            var selected = AutoAtlasTextureMergePlanner
+                .SelectTwoDimensionalMerges(new[] { band, twoD });
+
+            Assert.That(selected.Count, Is.EqualTo(1));
+            Assert.That(selected[0], Is.SameAs(twoD));
+        }
+
+        [Test]
         public void VisibilityAnimationDetectorFindsParentActiveToggleAndRendererToggle()
         {
             var root = new GameObject("Avatar");
