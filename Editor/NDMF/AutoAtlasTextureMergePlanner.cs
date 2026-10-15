@@ -22,8 +22,6 @@ namespace net.rs64.TexTransTool.NDMF
         private const int MaxMergeGroupCount = 12;
         // Candidate exploration below never calls DoAtlasTexture. These limits
         // only bound cheap integer-DP state retention, not expensive atlas probes.
-        private const int BandStatesPerHeight = 8;
-        private const int BandCandidatesPerHost = 512;
         private const int ShadowPackingStatesPerHost = 512;
         private const int PackingGridUnit = 256;
         private const double UnknownDemandLog2 = -32d;
@@ -45,8 +43,7 @@ namespace net.rs64.TexTransTool.NDMF
             // in pixels at the atomic group's own profile width.
             internal readonly Dictionary<(int AtlasWidth, int RegionWidth), int>
                 TwoDimensionalProfileHeights = new();
-            internal int BandWidthPixels;
-            internal int BandUsedHeightPixels;
+            internal int StandaloneWidthPixels;
             internal readonly Dictionary<string, double> PropertyDemandLog2 =
                 new(StringComparer.Ordinal);
             internal readonly Dictionary<string, int> PropertyUseCount =
@@ -934,25 +931,6 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        private sealed class BandState
-        {
-            internal readonly int UsedHeightPixels;
-            internal readonly int[] GuestIds;
-            internal readonly long GuestBaselineBytes;
-
-            internal BandState(
-                int usedHeightPixels,
-                IEnumerable<int> guestIds,
-                long guestBaselineBytes)
-            {
-                UsedHeightPixels = usedHeightPixels;
-                GuestIds = guestIds.OrderBy(id => id).ToArray();
-                GuestBaselineBytes = guestBaselineBytes;
-            }
-
-            internal string Key => string.Join(",", GuestIds);
-        }
-
         private enum UnknownAlphaAssumption
         {
             AssumeAbsent,
@@ -1319,8 +1297,7 @@ namespace net.rs64.TexTransTool.NDMF
                 if (group.StandaloneMetrics is not { } metrics)
                     continue;
 
-                group.BandWidthPixels = Math.Max(1, metrics.LayoutSize.x);
-                group.BandUsedHeightPixels = GetBandUsedHeightPixels(metrics);
+                group.StandaloneWidthPixels = Math.Max(1, metrics.LayoutSize.x);
 
                 foreach (var property in group.Materials
                              .Where(propertyTextures.ContainsKey)
@@ -1374,29 +1351,9 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
-            bool CanHostAnyGuest(PreparedGroup host)
-            {
-                if (host.StandaloneMetrics == null
-                    || !host.BaselineCostKnown
-                    || host.BandWidthPixels <= 0
-                    || host.BandUsedHeightPixels <= 0)
-                {
-                    return false;
-                }
-
-                var capacity = host.BandWidthPixels - host.BandUsedHeightPixels;
-                if (capacity <= 0) return false;
-
-                return mergeGroups.Any(guest =>
-                    guest.Id != host.Id
-                    && guest.StandaloneMetrics != null
-                    && guest.BaselineCostKnown
-                    && guest.BandWidthPixels > 0
-                    && guest.BandWidthPixels <= host.BandWidthPixels
-                    && guest.BandUsedHeightPixels > 0
-                    && guest.BandUsedHeightPixels <= capacity);
-            }
-
+            // The legacy band search is no longer needed for production.
+            // Compatibility diagnostic values are temporary and will be
+            // removed together with the obsolete console format.
             var byId = groups.ToDictionary(group => group.Id);
             var adoptable = new Dictionary<string, Candidate>();
             var evaluatedLayouts = new HashSet<string>(StringComparer.Ordinal);
@@ -1409,186 +1366,7 @@ namespace net.rs64.TexTransTool.NDMF
             var rejectedMaxDimensionCount = 0;
             var rejectedSamplingCount = 0;
             var rejectedStreamingCount = 0;
-
-            var bandPlanningTimer =
-                System.Diagnostics.Stopwatch.StartNew();
-
-            foreach (var host in mergeGroups.Where(CanHostAnyGuest))
-            {
-                mergeHostCount += 1;
-                var hostWidth = host.BandWidthPixels;
-                var capacity = Math.Max(
-                    0, hostWidth - host.BandUsedHeightPixels);
-                if (capacity <= 0) continue;
-
-                var guests = mergeGroups
-                    .Where(group =>
-                        group.Id != host.Id
-                        && group.StandaloneMetrics != null
-                        && group.BaselineCostKnown
-                        && group.BandWidthPixels > 0
-                        && group.BandWidthPixels <= hostWidth
-                        && group.BandUsedHeightPixels > 0
-                        && group.BandUsedHeightPixels <= capacity)
-                    .OrderBy(group => group.Id)
-                    .ToArray();
-                if (guests.Length == 0) continue;
-
-                var statesByHeight = new Dictionary<int, List<BandState>>
-                {
-                    [0] = new List<BandState>
-                    {
-                        new BandState(0, Array.Empty<int>(), 0),
-                    },
-                };
-
-                foreach (var guest in guests)
-                {
-                    var snapshot = statesByHeight.Values
-                        .SelectMany(states => states)
-                        .Where(state =>
-                            state.GuestIds.Length + 1 < MaxMergeGroupCount)
-                        .ToArray();
-
-                    foreach (var state in snapshot)
-                    {
-                        if (state.GuestIds.Contains(guest.Id)) continue;
-                        var nextHeight =
-                            state.UsedHeightPixels + guest.BandUsedHeightPixels;
-                        if (nextHeight > capacity) continue;
-
-                        var next = new BandState(
-                            nextHeight,
-                            state.GuestIds.Append(guest.Id),
-                            state.GuestBaselineBytes
-                                + guest.BaselineCost.FullResidentBytes);
-
-                        if (!statesByHeight.TryGetValue(
-                                nextHeight, out var bucket))
-                        {
-                            bucket = statesByHeight[nextHeight] =
-                                new List<BandState>();
-                        }
-
-                        if (bucket.Any(existing =>
-                                existing.Key == next.Key))
-                            continue;
-
-                        bucket.Add(next);
-                        bucket.Sort((left, right) =>
-                        {
-                            var cmp = right.GuestBaselineBytes.CompareTo(
-                                left.GuestBaselineBytes);
-                            if (cmp != 0) return cmp;
-                            cmp = right.GuestIds.Length.CompareTo(
-                                left.GuestIds.Length);
-                            if (cmp != 0) return cmp;
-                            return string.CompareOrdinal(
-                                left.Key, right.Key);
-                        });
-
-                        if (bucket.Count > BandStatesPerHeight)
-                            bucket.RemoveRange(
-                                BandStatesPerHeight,
-                                bucket.Count - BandStatesPerHeight);
-                    }
-                }
-
-                var hostStates = statesByHeight.Values
-                    .SelectMany(states => states)
-                    .Where(state => state.GuestIds.Length != 0)
-                    .OrderByDescending(state => state.GuestBaselineBytes)
-                    .ThenByDescending(state => state.UsedHeightPixels)
-                    .ThenByDescending(state => state.GuestIds.Length)
-                    .ThenBy(state => state.Key, StringComparer.Ordinal)
-                    .Take(BandCandidatesPerHost)
-                    .ToArray();
-
-                foreach (var state in hostStates)
-                {
-                    var ids = new[] { host.Id }
-                        .Concat(state.GuestIds)
-                        .OrderBy(id => id)
-                        .ToArray();
-                    var key = string.Join(",", ids);
-                    var usedHeight =
-                        host.BandUsedHeightPixels + state.UsedHeightPixels;
-                    var layoutSize = new Vector2Int(
-                        hostWidth,
-                        GetCroppedHeight(hostWidth, usedHeight));
-                    var layoutKey =
-                        key + "@" + layoutSize.x + "x" + layoutSize.y;
-                    if (!evaluatedLayouts.Add(layoutKey))
-                        continue;
-
-                    var selectedGroups = ids
-                        .Select(id => byId[id])
-                        .ToArray();
-                    var propertySizes = GetPredictedPropertySizes(
-                        ids,
-                        layoutSize);
-
-                    var baseline = TextureCostPlan.Combine(
-                        selectedGroups.Select(group => group.BaselineCost));
-                    var merged = BuildGeneratedCost(
-                        selectedGroups,
-                        propertyTextures,
-                        propertySizes,
-                        alphaCache,
-                        UnknownAlphaAssumption.AssumePresent);
-
-                    var candidate = new Candidate(
-                        ids,
-                        baseline,
-                        merged,
-                        layoutSize,
-                        propertySizes);
-
-                    evaluatedMergeCandidateCount += 1;
-                    if (host.StandaloneMetrics is { } hostMetrics
-                        && layoutSize.y <= hostMetrics.LayoutSize.y)
-                    {
-                        candidateWithinHostCurrentHeightCount += 1;
-                    }
-
-                    if (!candidate.IsAdoptable)
-                    {
-                        switch (candidate.RejectionReason)
-                        {
-                            case CandidateRejectionReason.PixelCount:
-                                rejectedPixelCount += 1;
-                                break;
-                            case CandidateRejectionReason.FullResidentMemory:
-                                rejectedMemoryCount += 1;
-                                break;
-                            case CandidateRejectionReason.MaxTextureDimension:
-                                rejectedMaxDimensionCount += 1;
-                                break;
-                            case CandidateRejectionReason.Sampling:
-                                rejectedSamplingCount += 1;
-                                break;
-                            case CandidateRejectionReason.Streaming:
-                                rejectedStreamingCount += 1;
-                                break;
-                        }
-                        continue;
-                    }
-
-                    adoptableMergeCandidateCount += 1;
-
-                    if (!adoptable.TryGetValue(key, out var prior)
-                        || candidate.SavingBytes > prior.SavingBytes
-                        || (candidate.SavingBytes == prior.SavingBytes
-                            && candidate.LayoutSize.y < prior.LayoutSize.y))
-                    {
-                        adoptable[key] = candidate;
-                    }
-                }
-            }
-
-            bandPlanningTimer.Stop();
-            var legacyBandPlanningMilliseconds =
-                bandPlanningTimer.ElapsedMilliseconds;
+            const long legacyBandPlanningMilliseconds = 0;
 
             var shadowPlanningTimer =
                 System.Diagnostics.Stopwatch.StartNew();
@@ -1605,9 +1383,7 @@ namespace net.rs64.TexTransTool.NDMF
             var shadow2DPlanningMilliseconds =
                 shadowPlanningTimer.ElapsedMilliseconds;
 
-            // Transition to 2D-only production. Legacy band enumeration
-            // remains temporarily for comparison diagnostics, but must not
-            // affect selection or rescue unsuccessful 2D placements.
+            // Production uses only two-dimensional packing candidates.
             var selected = SelectTwoDimensionalMerges(
                 shadow2D.ProductionCandidates);
 
@@ -2294,7 +2070,7 @@ namespace net.rs64.TexTransTool.NDMF
                                             .FullResidentBytes,
                                     state.UsesWiderProfile
                                         || profileWidth
-                                            > group.BandWidthPixels,
+                                            > group.StandaloneWidthPixels,
                                     new ShadowPackingPlacement(
                                         group.Id,
                                         new RectInt(
@@ -2637,7 +2413,7 @@ namespace net.rs64.TexTransTool.NDMF
                     pair.Value, shadowPackedRegions[pair.Key])).ToArray());
         }
 
-        private static int GetBandUsedHeightPixels(
+        private static int GetUsedHeightPixels(
             AtlasTexture.AtlasExecutionMetrics metrics)
         {
             var width = Math.Max(1, metrics.LayoutSize.x);
@@ -2862,7 +2638,7 @@ namespace net.rs64.TexTransTool.NDMF
                         resolutionPlanMilliseconds += resolutionPlan;
                         group.LayoutProfiles[size] = metrics;
                         group.TwoDimensionalProfileHeights[(size, size)] =
-                            GetBandUsedHeightPixels(metrics);
+                            GetUsedHeightPixels(metrics);
                         standalone ??= metrics;
 
                         // NFDH's padding is expressed in local UV units.
@@ -2878,7 +2654,7 @@ namespace net.rs64.TexTransTool.NDMF
                             {
                                 group.TwoDimensionalProfileHeights[
                                     (atlasWidth, size)] =
-                                    GetBandUsedHeightPixels(metrics);
+                                    GetUsedHeightPixels(metrics);
                                 continue;
                             }
 
@@ -2901,7 +2677,7 @@ namespace net.rs64.TexTransTool.NDMF
                                 {
                                     group.TwoDimensionalProfileHeights[
                                         (atlasWidth, size)] =
-                                        GetBandUsedHeightPixels(paddedMetrics);
+                                        GetUsedHeightPixels(paddedMetrics);
                                 }
                             }
                             catch (ArgumentException exception)
