@@ -270,6 +270,19 @@ namespace net.rs64.TexTransTool.NDMF
                 propertyTextures,
                 preparedGroups);
 
+            // Capture the original renderer/material relationships before
+            // standalone atlas execution mutates domain meshes and materials.
+            var streamingVisibilityDiagnostic =
+                mergePlan.ShadowStreamingExample is { } streamingExample
+                    ? DescribeStreamingVisibilityRelations(
+                        preparedGroups,
+                        streamingExample,
+                        domain.GetMaterials,
+                        domain.GetMesh,
+                        OriginalMaterialName,
+                        configuration.transform.root)
+                    : null;
+
             var selectedIds = mergePlan.Selections
                 .SelectMany(selection => selection.GroupIds)
                 .ToHashSet();
@@ -705,6 +718,10 @@ namespace net.rs64.TexTransTool.NDMF
                         - streamingExample.BaselineBytes,
                     streamingExample.BaselineEntries,
                     streamingExample.MergedEntries);
+
+                if (streamingVisibilityDiagnostic != null)
+                    temporaryTimingDiagnostic += "\n"
+                        + streamingVisibilityDiagnostic;
             }
 
             if (completed.Count == 0)
@@ -734,6 +751,145 @@ namespace net.rs64.TexTransTool.NDMF
                 ErrorReport.ReportError(
                     new AutoAtlasTextureTemporaryDiagnosticError(
                         fullResultDiagnostic)));
+        }
+
+        /// <summary>
+        /// Temporary diagnostic only. Snapshot which source renderers/material
+        /// slots belong to the rejected atomic groups. Shared renderers have
+        /// coupled Renderer/GameObject activation, but this cannot prove that
+        /// distinct renderers will or will not be animated independently.
+        /// </summary>
+        internal static string DescribeStreamingVisibilityRelations(
+            IReadOnlyList<AutoAtlasTextureMergePlanner.PreparedGroup> groups,
+            AutoAtlasTextureMergePlanner.StreamingRegressionExample example,
+            Func<Renderer, Material?[]> getMaterials,
+            Func<Renderer, Mesh?> getMesh,
+            Func<Material, string> originalMaterialName,
+            Transform root)
+        {
+            string SafeName(string? name) =>
+                (name ?? "(unnamed)").Replace("\r", " ").Replace("\n", " ");
+
+            string RendererPath(Renderer renderer)
+            {
+                var parts = new Stack<string>();
+                for (var t = renderer.transform; t != null; t = t.parent)
+                {
+                    parts.Push(SafeName(t.name) + "[" + t.GetSiblingIndex() + "]");
+                    if (t == root) break;
+                }
+
+                return string.Join("/", parts);
+            }
+
+            var byId = groups.ToDictionary(group => group.Id);
+            var selected = example.Candidate.GroupIds.Select(id => byId[id])
+                .ToArray();
+
+            var groupRendererSets = selected.Select(group =>
+                group.Renderers.Where(renderer => renderer != null).ToHashSet())
+                .ToArray();
+
+            var commonRenderers = groupRendererSets.Length == 0
+                ? new HashSet<Renderer>()
+                : new HashSet<Renderer>(groupRendererSets[0]);
+            foreach (var renderers in groupRendererSets.Skip(1))
+                commonRenderers.IntersectWith(renderers);
+
+            HashSet<Mesh> GroupMeshes(
+                HashSet<Renderer> renderers)
+            {
+                return renderers.Select(getMesh)
+                    .Where(mesh => mesh != null)
+                    .Select(mesh => mesh!)
+                    .ToHashSet();
+            }
+
+            var groupMeshes = groupRendererSets.Select(GroupMeshes).ToArray();
+            var commonMeshes = groupMeshes.Length == 0
+                ? new HashSet<Mesh>()
+                : new HashSet<Mesh>(groupMeshes[0]);
+            foreach (var meshes in groupMeshes.Skip(1))
+                commonMeshes.IntersectWith(meshes);
+
+            var groupDetails = new List<string>();
+            foreach (var group in selected)
+            {
+                var materialNames = group.Materials
+                    .Select(originalMaterialName)
+                    .Select(SafeName)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(name => name, StringComparer.Ordinal)
+                    .ToArray();
+
+                var rendererDescriptions = group.Renderers
+                    .Where(renderer => renderer != null)
+                    .Distinct()
+                    .OrderBy(RendererPath, StringComparer.Ordinal)
+                    .ThenBy(renderer => renderer.GetType().Name,
+                        StringComparer.Ordinal)
+                    .Select(renderer =>
+                    {
+                        var slots = getMaterials(renderer);
+                        var matchedSlots = new List<string>();
+                        for (var index = 0; index < slots.Length; index += 1)
+                        {
+                            var material = slots[index];
+                            if (material == null || !group.Materials.Contains(material))
+                                continue;
+
+                            matchedSlots.Add(index + ":"
+                                + SafeName(originalMaterialName(material)));
+                        }
+
+                        var mesh = getMesh(renderer);
+                        return string.Format(
+                            "AutoAtlasTexture:info:TemporaryStreamingRenderer"
+                                .GetLocalize(),
+                            RendererPath(renderer),
+                            renderer.GetType().Name,
+                            matchedSlots.Count == 0
+                                ? "(none)" : string.Join(", ", matchedSlots),
+                            mesh == null ? "(none)" : SafeName(mesh.name),
+                            renderer.enabled,
+                            renderer.gameObject.activeSelf,
+                            renderer.gameObject.activeInHierarchy);
+                    })
+                    .ToArray();
+
+                groupDetails.Add(string.Format(
+                    "AutoAtlasTexture:info:TemporaryStreamingGroup"
+                        .GetLocalize(),
+                    group.Id,
+                    materialNames.Length == 0
+                        ? "(none)" : string.Join(", ", materialNames),
+                    rendererDescriptions.Length,
+                    rendererDescriptions.Length == 0
+                        ? "  (none)"
+                        : string.Join("\n", rendererDescriptions)));
+            }
+
+            var commonRendererNames = commonRenderers
+                .Select(renderer => RendererPath(renderer)
+                    + " [" + renderer.GetType().Name + "]")
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            var commonMeshNames = commonMeshes
+                .Select(mesh => SafeName(mesh.name))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+
+            return string.Format(
+                "AutoAtlasTexture:info:TemporaryStreamingVisibilityDiagnostic"
+                    .GetLocalize(),
+                string.Join(", ", selected.Select(group => "g" + group.Id)),
+                commonRendererNames.Length,
+                commonRendererNames.Length == 0
+                    ? "(none)" : string.Join(", ", commonRendererNames),
+                commonMeshNames.Length,
+                commonMeshNames.Length == 0
+                    ? "(none)" : string.Join(", ", commonMeshNames),
+                string.Join("\n", groupDetails));
         }
 
         private static bool ReferencesAreExclusive(
