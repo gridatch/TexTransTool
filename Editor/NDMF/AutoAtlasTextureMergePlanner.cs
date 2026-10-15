@@ -100,7 +100,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long StandaloneSizePriorityMilliseconds;
             internal readonly long StandalonePostProcessMilliseconds;
             internal readonly long StandaloneResolutionPlanMilliseconds;
-            internal readonly long LegacyBandPlanningMilliseconds;
+
             internal readonly long Shadow2DPlanningMilliseconds;
             internal readonly int PropertyRequirementBuildCount;
             internal readonly long PropertyRequirementBuildMilliseconds;
@@ -116,15 +116,7 @@ namespace net.rs64.TexTransTool.NDMF
 
             // Temporary diagnostics for determining why practical merge
             // opportunities are or are not selected.
-            internal readonly int MergeHostCount;
-            internal readonly int EvaluatedMergeCandidateCount;
-            internal readonly int CandidateWithinHostCurrentHeightCount;
-            internal readonly int AdoptableMergeCandidateCount;
-            internal readonly int RejectedPixelCount;
-            internal readonly int RejectedMemoryCount;
-            internal readonly int RejectedMaxDimensionCount;
-            internal readonly int RejectedSamplingCount;
-            internal readonly int RejectedStreamingCount;
+
 
             // Temporary shadow 2D-packing diagnostics. These do not affect the
             // currently selected band-based merge plan.
@@ -132,13 +124,13 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int ShadowGroupsWithMultipleProfiles;
             internal readonly int ShadowHostCount;
             internal readonly int ShadowEvaluatedCandidateCount;
-            internal readonly int ShadowEvaluatedBeyondBandLayoutCount;
+
             internal readonly int ShadowEvaluatedUsingWiderProfileCount;
             internal readonly int ShadowAdoptableCandidateCount;
-            internal readonly int ShadowAdoptableBeyondBandCount;
+
             internal readonly int ShadowAdoptableUsingWiderProfileCount;
             internal readonly int ShadowSelectedCount;
-            internal readonly int ShadowSelectedBeyondBandCount;
+
             internal readonly int ShadowRejectedPixelCount;
             internal readonly int ShadowRejectedMemoryCount;
             internal readonly int ShadowRejectedMaxDimensionCount;
@@ -197,7 +189,7 @@ namespace net.rs64.TexTransTool.NDMF
                 long standaloneSizePriorityMilliseconds = 0,
                 long standalonePostProcessMilliseconds = 0,
                 long standaloneResolutionPlanMilliseconds = 0,
-                long legacyBandPlanningMilliseconds = 0,
+
                 long shadow2DPlanningMilliseconds = 0,
                 int propertyRequirementBuildCount = 0,
                 long propertyRequirementBuildMilliseconds = 0,
@@ -207,26 +199,18 @@ namespace net.rs64.TexTransTool.NDMF
                 int groupPairsSharingRendererCount = 0,
                 int groupPairsSharingSourceMeshCount = 0,
                 int crossAtomicMaterialGroupCount = 0,
-                int mergeHostCount = 0,
-                int evaluatedMergeCandidateCount = 0,
-                int candidateWithinHostCurrentHeightCount = 0,
-                int adoptableMergeCandidateCount = 0,
-                int rejectedPixelCount = 0,
-                int rejectedMemoryCount = 0,
-                int rejectedMaxDimensionCount = 0,
-                int rejectedSamplingCount = 0,
-                int rejectedStreamingCount = 0,
+
                 int shadowProfileCount = 0,
                 int shadowGroupsWithMultipleProfiles = 0,
                 int shadowHostCount = 0,
                 int shadowEvaluatedCandidateCount = 0,
-                int shadowEvaluatedBeyondBandLayoutCount = 0,
+
                 int shadowEvaluatedUsingWiderProfileCount = 0,
                 int shadowAdoptableCandidateCount = 0,
-                int shadowAdoptableBeyondBandCount = 0,
+
                 int shadowAdoptableUsingWiderProfileCount = 0,
                 int shadowSelectedCount = 0,
-                int shadowSelectedBeyondBandCount = 0,
+
                 int shadowRejectedPixelCount = 0,
                 int shadowRejectedMemoryCount = 0,
                 int shadowRejectedMaxDimensionCount = 0,
@@ -300,8 +284,7 @@ namespace net.rs64.TexTransTool.NDMF
                     standalonePostProcessMilliseconds;
                 StandaloneResolutionPlanMilliseconds =
                     standaloneResolutionPlanMilliseconds;
-                LegacyBandPlanningMilliseconds =
-                    legacyBandPlanningMilliseconds;
+
                 Shadow2DPlanningMilliseconds =
                     shadow2DPlanningMilliseconds;
                 PropertyRequirementBuildCount =
@@ -315,35 +298,23 @@ namespace net.rs64.TexTransTool.NDMF
                 GroupPairsSharingSourceMeshCount =
                     groupPairsSharingSourceMeshCount;
                 CrossAtomicMaterialGroupCount = crossAtomicMaterialGroupCount;
-                MergeHostCount = mergeHostCount;
-                EvaluatedMergeCandidateCount = evaluatedMergeCandidateCount;
-                CandidateWithinHostCurrentHeightCount =
-                    candidateWithinHostCurrentHeightCount;
-                AdoptableMergeCandidateCount = adoptableMergeCandidateCount;
-                RejectedPixelCount = rejectedPixelCount;
-                RejectedMemoryCount = rejectedMemoryCount;
-                RejectedMaxDimensionCount = rejectedMaxDimensionCount;
-                RejectedSamplingCount = rejectedSamplingCount;
-                RejectedStreamingCount = rejectedStreamingCount;
+
                 ShadowProfileCount = shadowProfileCount;
                 ShadowGroupsWithMultipleProfiles =
                     shadowGroupsWithMultipleProfiles;
                 ShadowHostCount = shadowHostCount;
                 ShadowEvaluatedCandidateCount =
                     shadowEvaluatedCandidateCount;
-                ShadowEvaluatedBeyondBandLayoutCount =
-                    shadowEvaluatedBeyondBandLayoutCount;
+
                 ShadowEvaluatedUsingWiderProfileCount =
                     shadowEvaluatedUsingWiderProfileCount;
                 ShadowAdoptableCandidateCount =
                     shadowAdoptableCandidateCount;
-                ShadowAdoptableBeyondBandCount =
-                    shadowAdoptableBeyondBandCount;
+
                 ShadowAdoptableUsingWiderProfileCount =
                     shadowAdoptableUsingWiderProfileCount;
                 ShadowSelectedCount = shadowSelectedCount;
-                ShadowSelectedBeyondBandCount =
-                    shadowSelectedBeyondBandCount;
+
                 ShadowRejectedPixelCount = shadowRejectedPixelCount;
                 ShadowRejectedMemoryCount = shadowRejectedMemoryCount;
                 ShadowRejectedMaxDimensionCount =
@@ -763,13 +734,13 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int GroupsWithMultipleProfiles;
             internal readonly int HostCount;
             internal readonly int EvaluatedCandidateCount;
-            internal readonly int EvaluatedBeyondBandLayoutCount;
+
             internal readonly int EvaluatedUsingWiderProfileCount;
             internal readonly int AdoptableCandidateCount;
-            internal readonly int AdoptableBeyondBandCount;
+
             internal readonly int AdoptableUsingWiderProfileCount;
             internal readonly int SelectedCount;
-            internal readonly int SelectedBeyondBandCount;
+
             internal readonly int RejectedPixelCount;
             internal readonly int RejectedMemoryCount;
             internal readonly int RejectedMaxDimensionCount;
@@ -817,13 +788,13 @@ namespace net.rs64.TexTransTool.NDMF
                 int groupsWithMultipleProfiles,
                 int hostCount,
                 int evaluatedCandidateCount,
-                int evaluatedBeyondBandLayoutCount,
+
                 int evaluatedUsingWiderProfileCount,
                 int adoptableCandidateCount,
-                int adoptableBeyondBandCount,
+
                 int adoptableUsingWiderProfileCount,
                 int selectedCount,
-                int selectedBeyondBandCount,
+
                 int rejectedPixelCount,
                 int rejectedMemoryCount,
                 int rejectedMaxDimensionCount,
@@ -871,16 +842,15 @@ namespace net.rs64.TexTransTool.NDMF
                 GroupsWithMultipleProfiles = groupsWithMultipleProfiles;
                 HostCount = hostCount;
                 EvaluatedCandidateCount = evaluatedCandidateCount;
-                EvaluatedBeyondBandLayoutCount =
-                    evaluatedBeyondBandLayoutCount;
+
                 EvaluatedUsingWiderProfileCount =
                     evaluatedUsingWiderProfileCount;
                 AdoptableCandidateCount = adoptableCandidateCount;
-                AdoptableBeyondBandCount = adoptableBeyondBandCount;
+
                 AdoptableUsingWiderProfileCount =
                     adoptableUsingWiderProfileCount;
                 SelectedCount = selectedCount;
-                SelectedBeyondBandCount = selectedBeyondBandCount;
+
                 RejectedPixelCount = rejectedPixelCount;
                 RejectedMemoryCount = rejectedMemoryCount;
                 RejectedMaxDimensionCount = rejectedMaxDimensionCount;
@@ -1355,18 +1325,6 @@ namespace net.rs64.TexTransTool.NDMF
             // Compatibility diagnostic values are temporary and will be
             // removed together with the obsolete console format.
             var byId = groups.ToDictionary(group => group.Id);
-            var adoptable = new Dictionary<string, Candidate>();
-            var evaluatedLayouts = new HashSet<string>(StringComparer.Ordinal);
-            var mergeHostCount = 0;
-            var evaluatedMergeCandidateCount = 0;
-            var candidateWithinHostCurrentHeightCount = 0;
-            var adoptableMergeCandidateCount = 0;
-            var rejectedPixelCount = 0;
-            var rejectedMemoryCount = 0;
-            var rejectedMaxDimensionCount = 0;
-            var rejectedSamplingCount = 0;
-            var rejectedStreamingCount = 0;
-            const long legacyBandPlanningMilliseconds = 0;
 
             var shadowPlanningTimer =
                 System.Diagnostics.Stopwatch.StartNew();
@@ -1376,8 +1334,6 @@ namespace net.rs64.TexTransTool.NDMF
                 propertyTextures,
                 settings,
                 alphaCache,
-                adoptable,
-                evaluatedLayouts,
                 GetPredictedPropertySizes);
             shadowPlanningTimer.Stop();
             var shadow2DPlanningMilliseconds =
@@ -1424,7 +1380,6 @@ namespace net.rs64.TexTransTool.NDMF
                 standaloneSizePriorityMilliseconds,
                 standalonePostProcessMilliseconds,
                 standaloneResolutionPlanMilliseconds,
-                legacyBandPlanningMilliseconds,
                 shadow2DPlanningMilliseconds,
                 propertyRequirementBuildCount,
                 propertyRequirementBuildMilliseconds,
@@ -1434,26 +1389,14 @@ namespace net.rs64.TexTransTool.NDMF
                 groupPairsSharingRendererCount,
                 groupPairsSharingSourceMeshCount,
                 crossAtomicMaterialGroupCount,
-                mergeHostCount,
-                evaluatedMergeCandidateCount,
-                candidateWithinHostCurrentHeightCount,
-                adoptableMergeCandidateCount,
-                rejectedPixelCount,
-                rejectedMemoryCount,
-                rejectedMaxDimensionCount,
-                rejectedSamplingCount,
-                rejectedStreamingCount,
                 shadow2D.ProfileCount,
                 shadow2D.GroupsWithMultipleProfiles,
                 shadow2D.HostCount,
                 shadow2D.EvaluatedCandidateCount,
-                shadow2D.EvaluatedBeyondBandLayoutCount,
                 shadow2D.EvaluatedUsingWiderProfileCount,
                 shadow2D.AdoptableCandidateCount,
-                shadow2D.AdoptableBeyondBandCount,
                 shadow2D.AdoptableUsingWiderProfileCount,
                 shadow2D.SelectedCount,
-                shadow2D.SelectedBeyondBandCount,
                 shadow2D.RejectedPixelCount,
                 shadow2D.RejectedMemoryCount,
                 shadow2D.RejectedMaxDimensionCount,
@@ -1522,8 +1465,6 @@ namespace net.rs64.TexTransTool.NDMF
                 propertyTextures,
             AtlasSetting settings,
             Dictionary<Texture, bool> alphaCache,
-            IReadOnlyDictionary<string, Candidate> bandAdoptable,
-            HashSet<string> bandEvaluatedLayouts,
             Func<int[], Vector2Int,
                 IReadOnlyDictionary<string, Vector2Int>>
                 propertySizeProvider)
@@ -1534,7 +1475,6 @@ namespace net.rs64.TexTransTool.NDMF
                 group => group.TwoDimensionalProfileHeights.Count > 1);
             var targetWidthCount = 0;
             var evaluatedCandidateCount = 0;
-            var evaluatedBeyondBandLayoutCount = 0;
             var evaluatedUsingWiderProfileCount = 0;
             var rejectedPixelCount = 0;
             var rejectedMemoryCount = 0;
@@ -2237,8 +2177,6 @@ namespace net.rs64.TexTransTool.NDMF
                     }
 
                     evaluatedCandidateCount += 1;
-                    if (!bandEvaluatedLayouts.Contains(layoutKey))
-                        evaluatedBeyondBandLayoutCount += 1;
                     if (state.UsesWiderProfile)
                         evaluatedUsingWiderProfileCount += 1;
 
@@ -2316,23 +2254,11 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
-            bool ImprovesOnBand(string key, Candidate shadow)
-            {
-                if (!bandAdoptable.TryGetValue(key, out var band))
-                    return true;
-                return shadow.SavingBytes > band.SavingBytes
-                    || (shadow.SavingBytes == band.SavingBytes
-                        && shadow.LayoutSize.y < band.LayoutSize.y);
-            }
-
-            var adoptableBeyondBandCount = shadowAdoptable.Count(pair =>
-                ImprovesOnBand(pair.Key, pair.Value));
             var adoptableUsingWiderProfileCount =
                 shadowUsesWiderProfile.Count(pair =>
                     pair.Value && shadowAdoptable.ContainsKey(pair.Key));
 
             var selectedCount = 0;
-            var selectedBeyondBandCount = 0;
             var consumed = new HashSet<int>();
             foreach (var pair in shadowAdoptable
                          .OrderByDescending(
@@ -2347,8 +2273,6 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
 
                 selectedCount += 1;
-                if (ImprovesOnBand(pair.Key, candidate))
-                    selectedBeyondBandCount += 1;
                 consumed.UnionWith(candidate.GroupIds);
             }
 
@@ -2362,13 +2286,10 @@ namespace net.rs64.TexTransTool.NDMF
                 groupsWithMultipleProfiles,
                 targetWidthCount,
                 evaluatedCandidateCount,
-                evaluatedBeyondBandLayoutCount,
                 evaluatedUsingWiderProfileCount,
                 shadowAdoptable.Count,
-                adoptableBeyondBandCount,
                 adoptableUsingWiderProfileCount,
                 selectedCount,
-                selectedBeyondBandCount,
                 rejectedPixelCount,
                 rejectedMemoryCount,
                 rejectedMaxDimensionCount,
