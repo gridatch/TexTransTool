@@ -130,6 +130,7 @@ namespace net.rs64.TexTransTool.NDMF
             long executionTextureGenerationMilliseconds = 0;
             var twoDimensionalExecutionSucceeded = 0;
             var twoDimensionalExecutionFallback = 0;
+            var twoDimensionalFallbackReasons = new List<string>();
 
             string OriginalMaterialName(Material material)
             {
@@ -403,6 +404,8 @@ namespace net.rs64.TexTransTool.NDMF
                         .ToDictionary(pair => pair.material, pair => pair.Id);
                 }
 
+                AutoAtlas2DMergeIslandRelocator? twoDimensionalRelocator = null;
+                string? twoDimensionalSizeRejection = null;
                 var executionMetrics = default(AtlasTexture.AtlasExecutionMetrics);
                 var executionPhaseTiming =
                     default(AtlasTexture.AtlasExecutionTimingDiagnostic);
@@ -420,15 +423,23 @@ namespace net.rs64.TexTransTool.NDMF
                         ReportProgressInfo = false,
                         TimingDiagnostic = value => executionPhaseTiming = value,
                         IslandRelocatorFactory = mergeAtomicGroupByMaterial != null
-                            ? atlasContext => execution.MergeSelection?.PackedRegions
-                                is { } packedRegions
-                                ? new AutoAtlas2DMergeIslandRelocator(
-                                    atlasContext,
-                                    mergeAtomicGroupByMaterial,
-                                    packedRegions,
-                                    execution.MergeSelection.PlannedLayoutSize.x)
-                                : new AutoAtlasMergeIslandRelocator(
-                                    atlasContext, mergeAtomicGroupByMaterial)
+                            ? atlasContext =>
+                            {
+                                if (execution.MergeSelection?.PackedRegions
+                                    is { } packedRegions)
+                                {
+                                    twoDimensionalRelocator =
+                                        new AutoAtlas2DMergeIslandRelocator(
+                                            atlasContext,
+                                            mergeAtomicGroupByMaterial,
+                                            packedRegions,
+                                            execution.MergeSelection.PlannedLayoutSize.x);
+                                    return twoDimensionalRelocator;
+                                }
+
+                                return new AutoAtlasMergeIslandRelocator(
+                                    atlasContext, mergeAtomicGroupByMaterial);
+                            }
                             : null,
                         ForcedAutoAtlasWidth =
                             execution.MergeSelection?.PackedRegions != null
@@ -452,6 +463,9 @@ namespace net.rs64.TexTransTool.NDMF
                                     || metrics.LayoutSize.y
                                         > mergeSelection.PlannedLayoutSize.y)
                                 {
+                                    if (mergeSelection.PackedRegions != null)
+                                        twoDimensionalSizeRejection =
+                                            $"出力レイアウトが不適合: actual={metrics.LayoutSize.x}×{metrics.LayoutSize.y}, planned={mergeSelection.PlannedLayoutSize.x}×{mergeSelection.PlannedLayoutSize.y}, outputPixels={metrics.OutputTexturePixelCount}";
                                     return false;
                                 }
 
@@ -464,6 +478,9 @@ namespace net.rs64.TexTransTool.NDMF
                                         || property.Value.x > plannedSize.x
                                         || property.Value.y > plannedSize.y)
                                     {
+                                        if (mergeSelection.PackedRegions != null)
+                                            twoDimensionalSizeRejection =
+                                                $"プロパティ解像度が不適合: {property.Key} actual={property.Value.x}×{property.Value.y}, planned={plannedSize.x}×{plannedSize.y}";
                                         return false;
                                     }
                                 }
@@ -506,7 +523,15 @@ namespace net.rs64.TexTransTool.NDMF
                     if (execution.MergeSelection is { } failedMerge)
                     {
                         if (failedMerge.PackedRegions != null)
+                        {
                             twoDimensionalExecutionFallback += 1;
+                            var reason = twoDimensionalRelocator?.FailureDetail;
+                            if (string.IsNullOrEmpty(reason))
+                                reason = twoDimensionalSizeRejection
+                                    ?? "DoAtlasTextureが失敗（配置・サイズ判定の詳細未取得）";
+                            twoDimensionalFallbackReasons.Add(
+                                $"groups={string.Join(",", failedMerge.GroupIds.Select(id => "g" + id))}, layout={failedMerge.PlannedLayoutSize.x}×{failedMerge.PlannedLayoutSize.y}: {reason}");
+                        }
                         // A merge plan is only an optimization. If its
                         // placement cannot be executed losslessly, retry the
                         // original atomic groups without merging them.
@@ -560,7 +585,14 @@ namespace net.rs64.TexTransTool.NDMF
                     }
 
                     if (memoryCheckedMerge.PackedRegions != null)
+                    {
                         twoDimensionalExecutionFallback += 1;
+                        var reason = !hasExecutionTextureMemory
+                            ? "最終テクスチャメモリを計算できない"
+                            : $"最終テクスチャメモリが削減されない: actual={executionTextureMemoryBytes} bytes, baseline={memoryCheckedMerge.BaselineBytes} bytes";
+                        twoDimensionalFallbackReasons.Add(
+                            $"groups={string.Join(",", memoryCheckedMerge.GroupIds.Select(id => "g" + id))}, layout={memoryCheckedMerge.PlannedLayoutSize.x}×{memoryCheckedMerge.PlannedLayoutSize.y}: {reason}");
+                    }
                     EnqueueStandaloneFallback(memoryCheckedMerge);
                     continue;
                 }
@@ -727,6 +759,10 @@ namespace net.rs64.TexTransTool.NDMF
                     selection.PackedRegions != null),
                 twoDimensionalExecutionSucceeded,
                 twoDimensionalExecutionFallback);
+            if (twoDimensionalFallbackReasons.Count != 0)
+                temporaryTimingDiagnostic += "\n" + string.Format(
+                    "AutoAtlasTexture:info:Temporary2DFallbackReason".GetLocalize(),
+                    string.Join("\n", twoDimensionalFallbackReasons));
 
             // The project directory name is useful when comparing logs
             // from several Unity projects. Never include its absolute path.

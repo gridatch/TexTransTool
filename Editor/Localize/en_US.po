@@ -173,6 +173,9 @@ msgstr "  - {0} [{1}] / group material slots={2} / source mesh={3} / Renderer.en
 msgid "AutoAtlasTexture:info:TemporaryStreamingImpactCount"
 msgstr "2D texture-merging candidates with Streaming memory increase: {0}"
 
+msgid "AutoAtlasTexture:info:Temporary2DFallbackReason"
+msgstr "2D texture merging (production failure details)\n{0}"
+
 msgid "AutoAtlasTexture:info:Temporary2DProduction"
 msgstr "2D texture merging (production): planned={0} / succeeded={1} / standalone fallback={2}"
 

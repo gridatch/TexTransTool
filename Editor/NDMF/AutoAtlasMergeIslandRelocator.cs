@@ -203,6 +203,13 @@ namespace net.rs64.TexTransTool.NDMF
         private readonly IReadOnlyDictionary<int, RectInt> _regions;
         private readonly int _atlasWidth;
         private readonly bool _valid;
+        internal string FailureDetail { get; private set; } = "";
+
+        private RelocationResult Fail(string reason)
+        {
+            FailureDetail = reason;
+            return new RelocationResult(false, true);
+        }
 
         internal AutoAtlas2DMergeIslandRelocator(
             AtlasContext context,
@@ -243,6 +250,10 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             _valid = valid;
+            if (!valid)
+                FailureDetail = !ValidatePlannedRegions(regions, atlasWidth)
+                    ? "計画矩形の重複・範囲外・不足"
+                    : "元UV IslandとAtomic Groupの対応が不整合";
         }
 
         internal static bool ValidatePlannedRegions(
@@ -270,20 +281,21 @@ namespace net.rs64.TexTransTool.NDMF
             RelocationContext context,
             IslandTransform[] islands)
         {
-            if (!_valid || islands.Length == 0
+            if (!_valid) return Fail(FailureDetail);
+            if (islands.Length == 0
                 || islands.Length != _groupByIsland.Length
                 || Math.Abs(context.TargetHeight - 1f) > Epsilon)
-                return new RelocationResult(false, true);
+                return Fail($"Island数またはTargetHeightが不正: islands={islands.Length}, map={_groupByIsland.Length}, targetHeight={context.TargetHeight}");
 
             var groupedIndices = Enumerable.Range(0, islands.Length)
                 .GroupBy(index => _groupByIsland[index]).ToArray();
             if (groupedIndices.Length != _regions.Count)
-                return new RelocationResult(false, true);
+                return Fail($"実行時group数の相違: actual={groupedIndices.Length}, planned={_regions.Count}");
 
             foreach (var group in groupedIndices)
             {
                 if (!_regions.TryGetValue(group.Key, out var region))
-                    return new RelocationResult(false, true);
+                    return Fail($"g{group.Key}の配置矩形なし");
 
                 // The base island scale is relative to the full atlas width.
                 // Convert to the group's profile width for local NFDH, then
@@ -292,6 +304,10 @@ namespace net.rs64.TexTransTool.NDMF
                 var localIslands = group.Select(index => islands[index]).ToArray();
                 foreach (var island in localIslands)
                     island.Size *= localScale;
+
+                // Diagnostic only; never used as the actual placement.
+                var profilePaddingProbe = localIslands
+                    .Select(island => island.Clone()).ToArray();
 
                 RelocationResult localResult;
                 try
@@ -305,11 +321,27 @@ namespace net.rs64.TexTransTool.NDMF
                     when (AutoAtlasMergeIslandRelocator
                         .IsNfdhComparerFailure(exception))
                 {
-                    return new RelocationResult(false, true);
+                    return Fail($"g{group.Key}のNFDH比較処理が失敗: {exception.Message}");
                 }
 
                 if (!localResult.IsSuccess)
-                    return new RelocationResult(false, true);
+                {
+                    // Check if using the standalone-profile padding would fit.
+                    // This is solely to diagnose any padding-model mismatch.
+                    string probeResult;
+                    try
+                    {
+                        var trial = new NFDHPlasFC().Relocation(
+                            new RelocationContext(1f, context.Padding),
+                            profilePaddingProbe);
+                        probeResult = trial.IsSuccess.ToString();
+                    }
+                    catch (Exception)
+                    {
+                        probeResult = "error";
+                    }
+                    return Fail($"g{group.Key}の矩形内NFDH配置に失敗: region={region}, islands={localIslands.Length}, globalPadding={context.Padding}, localPadding={context.Padding * localScale}, standalonePaddingFit={probeResult}");
+                }
 
                 var minX = (float)region.xMin / _atlasWidth;
                 var minY = (float)region.yMin / _atlasWidth;
@@ -331,7 +363,7 @@ namespace net.rs64.TexTransTool.NDMF
                         || box.X < minX - Epsilon || box.Y < minY - Epsilon
                         || box.Z + context.Padding > maxX + Epsilon
                         || box.W + context.Padding > maxY + Epsilon)
-                        return new RelocationResult(false, true);
+                        return Fail($"g{group.Key}の実配置が矩形外: region={region}, box=({box.X},{box.Y},{box.Z},{box.W}), globalPadding={context.Padding}");
                 }
             }
 
