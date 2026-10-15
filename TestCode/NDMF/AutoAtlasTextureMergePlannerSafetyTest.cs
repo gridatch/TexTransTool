@@ -385,6 +385,22 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void SkylineDominanceRequiresEveryColumnNoHigher()
+        {
+            var dominates = AutoAtlasTextureMergePlanner.SkylineDominates;
+            Assert.That(dominates(new[] { 128, 256 }, new[] { 256, 256 }),
+                Is.True);
+            Assert.That(dominates(new[] { 256, 256 }, new[] { 128, 256 }),
+                Is.False);
+            Assert.That(dominates(new[] { 128, 256 }, new[] { 256, 128 }),
+                Is.False);
+            Assert.That(dominates(new[] { 128, 256 }, new[] { 128, 256 }),
+                Is.True);
+            Assert.That(dominates(new[] { 128 }, new[] { 128, 128 }),
+                Is.False);
+        }
+
+        [Test]
         public void TwoDimensionalProfilePaddingUsesFinalAtlasPixels()
         {
             const float globalPadding = 0.01f;

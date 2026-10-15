@@ -682,6 +682,45 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        /// <summary>
+        /// For identical already-placed group sets, a skyline no higher in
+        /// any column leaves at least as much room for every future placement.
+        /// A different group set must never be pruned using geometry alone:
+        /// property-aware merge savings are not monotonic across sets.
+        /// </summary>
+        internal static bool SkylineDominates(
+            IReadOnlyList<int> left, IReadOnlyList<int> right)
+        {
+            if (left.Count != right.Count) return false;
+            for (var column = 0; column < left.Count; column += 1)
+                if (left[column] > right[column]) return false;
+            return true;
+        }
+
+        private static List<ShadowPackingState> RemoveDominatedSkylineStates(
+            IEnumerable<ShadowPackingState> input)
+        {
+            var byGroupSet = new Dictionary<
+                string, List<ShadowPackingState>>(StringComparer.Ordinal);
+
+            foreach (var state in input)
+            {
+                var key = string.Join(",", state.GroupIds);
+                if (!byGroupSet.TryGetValue(key, out var frontier))
+                    byGroupSet[key] = frontier = new List<ShadowPackingState>();
+
+                if (frontier.Any(previous =>
+                        SkylineDominates(previous.Skyline, state.Skyline)))
+                    continue;
+
+                frontier.RemoveAll(previous =>
+                    SkylineDominates(state.Skyline, previous.Skyline));
+                frontier.Add(state);
+            }
+
+            return byGroupSet.Values.SelectMany(frontier => frontier).ToList();
+        }
+
         private readonly struct ShadowPackingDiagnostics
         {
             internal readonly int ProfileCount;
@@ -2237,10 +2276,12 @@ namespace net.rs64.TexTransTool.NDMF
                         continue;
 
                     uniqueGeneratedStateCount += generated.Count;
-                    foreach (var generatedState in generated.Values)
+                    var undominated = RemoveDominatedSkylineStates(
+                        generated.Values);
+                    foreach (var generatedState in undominated)
                         ScoreState(generatedState, targetWidth);
 
-                    states.AddRange(generated.Values);
+                    states.AddRange(undominated);
                     var selectionTimer =
                         System.Diagnostics.Stopwatch.StartNew();
                     states = SelectPropertyAwareStates(states);
