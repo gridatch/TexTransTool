@@ -660,7 +660,13 @@ namespace net.rs64.TexTransTool.NDMF
                 mergePlan.StandaloneReferenceIslandMilliseconds,
                 mergePlan.StandaloneIslandDescriptionMilliseconds,
                 mergePlan.StandaloneSizePriorityMilliseconds,
-                mergePlan.StandalonePostProcessMilliseconds);
+                mergePlan.StandalonePostProcessMilliseconds,
+                mergePlan.ShadowOptimisticSourceGroupCount,
+                mergePlan.ShadowOptimisticExhaustive,
+                mergePlan.ShadowOptimisticLowerBoundMilliseconds,
+                mergePlan.LegacyBandPlanningMilliseconds,
+                mergePlan.Shadow2DPlanningMilliseconds,
+                mergePlan.ShadowBestRejectionReason);
 
             if (completed.Count == 0)
             {
