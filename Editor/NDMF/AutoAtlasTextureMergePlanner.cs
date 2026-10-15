@@ -161,6 +161,9 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long ShadowOptimisticBestMergedPixels;
             internal readonly int ShadowOptimisticBestGroupCount;
             internal readonly Vector2Int ShadowOptimisticBestLayoutSize;
+            internal readonly int ShadowProjectionEvaluationCount;
+            internal readonly int ShadowSafetyEvaluationCount;
+            internal readonly string ShadowBestSamplingSummary;
 
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
@@ -236,7 +239,10 @@ namespace net.rs64.TexTransTool.NDMF
                 long shadowOptimisticBestBaselinePixels = 0,
                 long shadowOptimisticBestMergedPixels = 0,
                 int shadowOptimisticBestGroupCount = 0,
-                Vector2Int shadowOptimisticBestLayoutSize = default)
+                Vector2Int shadowOptimisticBestLayoutSize = default,
+                int shadowProjectionEvaluationCount = 0,
+                int shadowSafetyEvaluationCount = 0,
+                string shadowBestSamplingSummary = "")
             {
                 Selections = selections;
                 PlanningTimeMilliseconds = planningTimeMilliseconds;
@@ -353,6 +359,29 @@ namespace net.rs64.TexTransTool.NDMF
                     shadowOptimisticBestGroupCount;
                 ShadowOptimisticBestLayoutSize =
                     shadowOptimisticBestLayoutSize;
+                ShadowProjectionEvaluationCount =
+                    shadowProjectionEvaluationCount;
+                ShadowSafetyEvaluationCount =
+                    shadowSafetyEvaluationCount;
+                ShadowBestSamplingSummary = shadowBestSamplingSummary;
+            }
+        }
+
+        private sealed class ShadowCostProjection
+        {
+            internal readonly TextureCostPlan Baseline;
+            internal readonly TextureCostPlan Merged;
+            internal readonly IReadOnlyDictionary<string, Vector2Int>
+                PropertySizes;
+
+            internal ShadowCostProjection(
+                TextureCostPlan baseline,
+                TextureCostPlan merged,
+                IReadOnlyDictionary<string, Vector2Int> propertySizes)
+            {
+                Baseline = baseline;
+                Merged = merged;
+                PropertySizes = propertySizes;
             }
         }
 
@@ -431,6 +460,9 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long OptimisticBestMergedPixels;
             internal readonly int OptimisticBestGroupCount;
             internal readonly Vector2Int OptimisticBestLayoutSize;
+            internal readonly int ProjectionEvaluationCount;
+            internal readonly int SafetyEvaluationCount;
+            internal readonly string BestSamplingSummary;
 
             internal ShadowPackingDiagnostics(
                 int profileCount,
@@ -473,7 +505,10 @@ namespace net.rs64.TexTransTool.NDMF
                 long optimisticBestBaselinePixels,
                 long optimisticBestMergedPixels,
                 int optimisticBestGroupCount,
-                Vector2Int optimisticBestLayoutSize)
+                Vector2Int optimisticBestLayoutSize,
+                int projectionEvaluationCount,
+                int safetyEvaluationCount,
+                string bestSamplingSummary)
             {
                 ProfileCount = profileCount;
                 GroupsWithMultipleProfiles = groupsWithMultipleProfiles;
@@ -524,6 +559,9 @@ namespace net.rs64.TexTransTool.NDMF
                 OptimisticBestMergedPixels = optimisticBestMergedPixels;
                 OptimisticBestGroupCount = optimisticBestGroupCount;
                 OptimisticBestLayoutSize = optimisticBestLayoutSize;
+                ProjectionEvaluationCount = projectionEvaluationCount;
+                SafetyEvaluationCount = safetyEvaluationCount;
+                BestSamplingSummary = bestSamplingSummary;
             }
         }
 
@@ -1234,7 +1272,10 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.OptimisticBestBaselinePixels,
                 shadow2D.OptimisticBestMergedPixels,
                 shadow2D.OptimisticBestGroupCount,
-                shadow2D.OptimisticBestLayoutSize);
+                shadow2D.OptimisticBestLayoutSize,
+                shadow2D.ProjectionEvaluationCount,
+                shadow2D.SafetyEvaluationCount,
+                shadow2D.BestSamplingSummary);
         }
 
         private static ShadowPackingDiagnostics EvaluateShadow2DPacking(
@@ -1286,6 +1327,9 @@ namespace net.rs64.TexTransTool.NDMF
             var optimisticBestGroupCount = 0;
             var optimisticBestLayoutSize = default(Vector2Int);
             var optimisticBestPixelRatio = double.PositiveInfinity;
+            var projectionEvaluationCount = 0;
+            var safetyEvaluationCount = 0;
+            var bestSamplingSummary = "";
 
             var shadowAdoptable =
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
@@ -1293,18 +1337,24 @@ namespace net.rs64.TexTransTool.NDMF
                 new Dictionary<string, bool>(StringComparer.Ordinal);
             var evaluatedLayouts =
                 new HashSet<string>(StringComparer.Ordinal);
+            var projectionCache =
+                new Dictionary<string, ShadowCostProjection>(
+                    StringComparer.Ordinal);
             var candidateCache =
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
 
-            Candidate GetCandidate(int[] ids, Vector2Int layoutSize)
+            ShadowCostProjection GetProjection(
+                int[] ids,
+                Vector2Int layoutSize)
             {
-                var groupKey = string.Join(",", ids.OrderBy(id => id));
+                var orderedIds = ids.OrderBy(id => id).ToArray();
+                var groupKey = string.Join(",", orderedIds);
                 var layoutKey =
                     groupKey + "@" + layoutSize.x + "x" + layoutSize.y;
-                if (candidateCache.TryGetValue(layoutKey, out var cached))
+                if (projectionCache.TryGetValue(layoutKey, out var cached))
                     return cached;
 
-                var selectedGroups = ids
+                var selectedGroups = orderedIds
                     .Select(id => byId[id])
                     .ToArray();
                 var materials = selectedGroups
@@ -1324,12 +1374,32 @@ namespace net.rs64.TexTransTool.NDMF
                     alphaCache,
                     UnknownAlphaAssumption.AssumePresent);
 
-                var candidate = new Candidate(
-                    ids.OrderBy(id => id).ToArray(),
+                projectionEvaluationCount += 1;
+                var projection = new ShadowCostProjection(
                     baseline,
                     merged,
-                    layoutSize,
                     propertySizes);
+                projectionCache[layoutKey] = projection;
+                return projection;
+            }
+
+            Candidate GetCandidate(int[] ids, Vector2Int layoutSize)
+            {
+                var orderedIds = ids.OrderBy(id => id).ToArray();
+                var groupKey = string.Join(",", orderedIds);
+                var layoutKey =
+                    groupKey + "@" + layoutSize.x + "x" + layoutSize.y;
+                if (candidateCache.TryGetValue(layoutKey, out var cached))
+                    return cached;
+
+                var projection = GetProjection(orderedIds, layoutSize);
+                safetyEvaluationCount += 1;
+                var candidate = new Candidate(
+                    orderedIds,
+                    projection.Baseline,
+                    projection.Merged,
+                    layoutSize,
+                    projection.PropertySizes);
                 candidateCache[layoutKey] = candidate;
                 return candidate;
             }
@@ -1442,26 +1512,26 @@ namespace net.rs64.TexTransTool.NDMF
                         if (!seenLowerBoundLayouts.Add(lowerBoundKey))
                             continue;
 
-                        var candidate = GetCandidate(ids, layoutSize);
+                        var projection = GetProjection(ids, layoutSize);
                         optimisticEvaluatedCount += 1;
-                        if (candidate.Merged.PixelCount
-                            < candidate.Baseline.PixelCount)
+                        if (projection.Merged.PixelCount
+                            < projection.Baseline.PixelCount)
                         {
                             optimisticPixelViableCount += 1;
                         }
 
-                        if (candidate.Baseline.PixelCount > 0)
+                        if (projection.Baseline.PixelCount > 0)
                         {
                             var ratio =
-                                (double)candidate.Merged.PixelCount
-                                / candidate.Baseline.PixelCount;
+                                (double)projection.Merged.PixelCount
+                                / projection.Baseline.PixelCount;
                             if (ratio < optimisticBestPixelRatio)
                             {
                                 optimisticBestPixelRatio = ratio;
                                 optimisticBestBaselinePixels =
-                                    candidate.Baseline.PixelCount;
+                                    projection.Baseline.PixelCount;
                                 optimisticBestMergedPixels =
-                                    candidate.Merged.PixelCount;
+                                    projection.Merged.PixelCount;
                                 optimisticBestGroupCount = ids.Length;
                                 optimisticBestLayoutSize = layoutSize;
                             }
@@ -1490,15 +1560,15 @@ namespace net.rs64.TexTransTool.NDMF
                     GetCroppedHeight(
                         targetWidth,
                         Math.Max(1, state.MaxHeight)));
-                var candidate = GetCandidate(
+                var projection = GetProjection(
                     state.GroupIds,
                     layoutSize);
                 state.ProjectedPixelDelta =
-                    candidate.Merged.PixelCount
-                    - candidate.Baseline.PixelCount;
+                    projection.Merged.PixelCount
+                    - projection.Baseline.PixelCount;
                 state.ProjectedMemoryDelta =
-                    candidate.Merged.FullResidentBytes
-                    - candidate.Baseline.FullResidentBytes;
+                    projection.Merged.FullResidentBytes
+                    - projection.Baseline.FullResidentBytes;
             }
 
             List<ShadowPackingState> SelectPropertyAwareStates(
@@ -1794,6 +1864,18 @@ namespace net.rs64.TexTransTool.NDMF
                                         StringComparer.Ordinal)
                                     .Select(pair =>
                                         $"{pair.Key}={pair.Value.x}×{pair.Value.y}"));
+                            bestSamplingSummary = string.Join(
+                                ", ",
+                                ids.Select(id =>
+                                {
+                                    var before = baseline
+                                        .SamplingBytesPerTexel
+                                        .GetValueOrDefault(id);
+                                    var after = merged
+                                        .SamplingBytesPerTexel
+                                        .GetValueOrDefault(id);
+                                    return $"g{id}:{before:0.###}→{after:0.###}";
+                                }));
                             bestRejectionReason =
                                 candidate.RejectionReason switch
                                 {
@@ -1977,7 +2059,10 @@ namespace net.rs64.TexTransTool.NDMF
                 optimisticBestBaselinePixels,
                 optimisticBestMergedPixels,
                 optimisticBestGroupCount,
-                optimisticBestLayoutSize);
+                optimisticBestLayoutSize,
+                projectionEvaluationCount,
+                safetyEvaluationCount,
+                bestSamplingSummary);
         }
 
         private static int GetBandUsedHeightPixels(
