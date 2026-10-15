@@ -97,6 +97,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long LegacyBandPlanningMilliseconds;
             internal readonly long Shadow2DPlanningMilliseconds;
             internal readonly int PropertyRequirementBuildCount;
+            internal readonly long PropertyRequirementBuildMilliseconds;
 
             // Temporary diagnostics for evaluating whether the standalone
             // preprocessing state can be safely reused later in the pass.
@@ -186,6 +187,7 @@ namespace net.rs64.TexTransTool.NDMF
                 long legacyBandPlanningMilliseconds = 0,
                 long shadow2DPlanningMilliseconds = 0,
                 int propertyRequirementBuildCount = 0,
+                long propertyRequirementBuildMilliseconds = 0,
                 int preparedGroupCount = 0,
                 int sharedRendererCount = 0,
                 int groupsWithSharedRendererCount = 0,
@@ -281,6 +283,8 @@ namespace net.rs64.TexTransTool.NDMF
                     shadow2DPlanningMilliseconds;
                 PropertyRequirementBuildCount =
                     propertyRequirementBuildCount;
+                PropertyRequirementBuildMilliseconds =
+                    propertyRequirementBuildMilliseconds;
                 PreparedGroupCount = preparedGroupCount;
                 SharedRendererCount = sharedRendererCount;
                 GroupsWithSharedRendererCount = groupsWithSharedRendererCount;
@@ -856,6 +860,7 @@ namespace net.rs64.TexTransTool.NDMF
                 new Dictionary<string, PropertyResolutionRequirements>(
                     StringComparer.Ordinal);
             var propertyRequirementBuildCount = 0;
+            long propertyRequirementBuildMilliseconds = 0;
 
             IReadOnlyDictionary<string, Vector2Int>
                 GetPredictedPropertySizes(
@@ -872,9 +877,14 @@ namespace net.rs64.TexTransTool.NDMF
                         .Select(id => groups[id])
                         .SelectMany(group => group.Materials)
                         .ToHashSet();
+                    var requirementTimer =
+                        System.Diagnostics.Stopwatch.StartNew();
                     requirements = BuildPredictedPropertyRequirements(
                         materials,
-                        settings);
+                        propertyTextures);
+                    requirementTimer.Stop();
+                    propertyRequirementBuildMilliseconds +=
+                        requirementTimer.ElapsedMilliseconds;
                     propertyRequirementCache[key] = requirements;
                     propertyRequirementBuildCount += 1;
                 }
@@ -1279,6 +1289,7 @@ namespace net.rs64.TexTransTool.NDMF
                 legacyBandPlanningMilliseconds,
                 shadow2DPlanningMilliseconds,
                 propertyRequirementBuildCount,
+                propertyRequirementBuildMilliseconds,
                 groups.Count,
                 sharedRenderers.Count,
                 groupsWithSharedRendererCount,
@@ -2162,11 +2173,14 @@ namespace net.rs64.TexTransTool.NDMF
         private static PropertyResolutionRequirements
             BuildPredictedPropertyRequirements(
                 HashSet<Material> materials,
-                AtlasSetting settings)
+                IReadOnlyDictionary<
+                    Material,
+                    IReadOnlyDictionary<string, Texture>>
+                    propertyTextures)
         {
             var grouping = new MaterialGroupingContext(
                 materials,
-                settings.AtlasTargetUVChannel,
+                propertyTextures,
                 null);
             var properties = grouping.GroupMaterials
                 .SelectMany(group => group.GroupedTexture.Keys)
