@@ -345,8 +345,6 @@ namespace net.rs64.TexTransTool.NDMF
 
                 var minX = (float)region.xMin / _atlasWidth;
                 var minY = (float)region.yMin / _atlasWidth;
-                var maxX = (float)region.xMax / _atlasWidth;
-                var maxY = (float)region.yMax / _atlasWidth;
 
                 foreach (var island in localIslands)
                 {
@@ -355,19 +353,46 @@ namespace net.rs64.TexTransTool.NDMF
                     island.Position.X += minX;
                     island.Position.Y += minY;
 
-                    var box = island.GetBox();
-                    if (float.IsNaN(box.X) || float.IsNaN(box.Y)
-                        || float.IsNaN(box.Z) || float.IsNaN(box.W)
-                        || float.IsInfinity(box.X) || float.IsInfinity(box.Y)
-                        || float.IsInfinity(box.Z) || float.IsInfinity(box.W)
-                        || box.X < minX - Epsilon || box.Y < minY - Epsilon
-                        || box.Z + context.Padding > maxX + Epsilon
-                        || box.W + context.Padding > maxY + Epsilon)
-                        return Fail($"g{group.Key}の実配置が矩形外: region={region}, box=({box.X},{box.Y},{box.Z},{box.W}), globalPadding={context.Padding}");
+                    if (!IsWithinPlannedRegion(
+                            island, region, _atlasWidth, context.Padding))
+                    {
+                        var box = island.GetBox();
+                        return Fail($"g{group.Key}の実配置が矩形境界の必要余白を満たさない: region={region}, box=({box.X},{box.Y},{box.Z},{box.W}), globalPadding={context.Padding}, perSideMargin={context.Padding * 0.5f}");
+                    }
                 }
             }
 
             return new RelocationResult(true, true);
+        }
+
+        internal static bool IsWithinPlannedRegion(
+            IslandTransform island, RectInt region, int atlasWidth,
+            float padding)
+        {
+            if (atlasWidth <= 0 || padding < 0f
+                || float.IsNaN(padding) || float.IsInfinity(padding))
+                return false;
+
+            var box = island.GetBox();
+            if (float.IsNaN(box.X) || float.IsNaN(box.Y)
+                || float.IsNaN(box.Z) || float.IsNaN(box.W)
+                || float.IsInfinity(box.X) || float.IsInfinity(box.Y)
+                || float.IsInfinity(box.Z) || float.IsInfinity(box.W))
+                return false;
+
+            // NFDH has already placed and padded the islands. Requiring a
+            // second full padding at each boundary rejects ordinary valid
+            // NFDH results. Reserve at least half padding at each edge: two
+            // adjacent, nonoverlapping regions then have a full padding gap.
+            var halfPadding = padding * 0.5f;
+            var minX = (float)region.xMin / atlasWidth;
+            var minY = (float)region.yMin / atlasWidth;
+            var maxX = (float)region.xMax / atlasWidth;
+            var maxY = (float)region.yMax / atlasWidth;
+            return box.X >= minX + halfPadding - Epsilon
+                && box.Y >= minY + halfPadding - Epsilon
+                && box.Z <= maxX - halfPadding + Epsilon
+                && box.W <= maxY - halfPadding + Epsilon;
         }
     }
 }

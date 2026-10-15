@@ -417,6 +417,52 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void TwoDimensionalPackingAcceptsValidNfdhPlacementNearBorder()
+        {
+            // Reproduces the measured g3 box from Seiran_Koiboshi:
+            // the island is within its assigned 1024x371 region, but the
+            // previous check added another full 0.01 padding to its right
+            // edge and rejected it.
+            var island = new net.rs64.TexTransCore.UVIsland.IslandTransform
+            {
+                Position = new System.Numerics.Vector2(
+                    0.8077679f, 0.00999999f),
+                Size = new System.Numerics.Vector2(
+                    0.9929619f - 0.8077679f,
+                    0.06580675f - 0.00999999f),
+            };
+
+            Assert.That(
+                AutoAtlas2DMergeIslandRelocator.IsWithinPlannedRegion(
+                    island, new RectInt(0, 0, 1024, 371), 1024, 0.01f),
+                Is.True);
+        }
+
+        [Test]
+        public void TwoDimensionalPackingStillRejectsInsufficientBorderGap()
+        {
+            var island = new net.rs64.TexTransCore.UVIsland.IslandTransform
+            {
+                Position = new System.Numerics.Vector2(0.99f, 0.01f),
+                Size = new System.Numerics.Vector2(0.009f, 0.04f),
+            };
+
+            Assert.That(
+                AutoAtlas2DMergeIslandRelocator.IsWithinPlannedRegion(
+                    island, new RectInt(0, 0, 1024, 371), 1024, 0.01f),
+                Is.False);
+
+            // A region boundary, not only the full atlas boundary, must
+            // also preserve half-padding on its own side.
+            island.Position = new System.Numerics.Vector2(0.50f, 0.01f);
+            island.Size = new System.Numerics.Vector2(0.009f, 0.04f);
+            Assert.That(
+                AutoAtlas2DMergeIslandRelocator.IsWithinPlannedRegion(
+                    island, new RectInt(0, 0, 512, 512), 1024, 0.01f),
+                Is.False);
+        }
+
+        [Test]
         public void TwoDimensionalSelectionCarriesPlannedRegions()
         {
             var baseline = Plan(new[]
