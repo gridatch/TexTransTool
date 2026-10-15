@@ -214,6 +214,38 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Is.True);
         }
 
+        [Test]
+        public void GroupLayoutCacheKeyMatchesDistinctEquivalentArrays()
+        {
+            var key = new AutoAtlasTextureMergePlanner.GroupLayoutKey(
+                new[] { 0, 1, 8 },
+                new Vector2Int(512, 256));
+            var same = new AutoAtlasTextureMergePlanner.GroupLayoutKey(
+                new[] { 0, 1, 8 },
+                new Vector2Int(512, 256));
+            var differentGroup = new AutoAtlasTextureMergePlanner.GroupLayoutKey(
+                new[] { 0, 2, 8 },
+                new Vector2Int(512, 256));
+            var differentWidth = new AutoAtlasTextureMergePlanner.GroupLayoutKey(
+                new[] { 0, 1, 8 },
+                new Vector2Int(1024, 256));
+            var differentHeight = new AutoAtlasTextureMergePlanner.GroupLayoutKey(
+                new[] { 0, 1, 8 },
+                new Vector2Int(512, 512));
+
+            Assert.That(key.Equals(same), Is.True);
+            Assert.That(key.GetHashCode(), Is.EqualTo(same.GetHashCode()));
+            Assert.That(key.Equals(differentGroup), Is.False);
+            Assert.That(key.Equals(differentWidth), Is.False);
+            Assert.That(key.Equals(differentHeight), Is.False);
+
+            var cache = new Dictionary<
+                AutoAtlasTextureMergePlanner.GroupLayoutKey,
+                int> { [key] = 42 };
+            Assert.That(cache.TryGetValue(same, out var value), Is.True);
+            Assert.That(value, Is.EqualTo(42));
+        }
+
         private static AutoAtlasTextureMergePlanner.Candidate Candidate(
             AutoAtlasTextureMergePlanner.TextureCostPlan baseline,
             AutoAtlasTextureMergePlanner.TextureCostPlan merged,

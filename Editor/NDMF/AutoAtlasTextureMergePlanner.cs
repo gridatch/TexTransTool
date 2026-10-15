@@ -422,7 +422,9 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        private readonly struct GroupLayoutKey
+        // Keys borrow already-sorted group ID arrays. Callers must not mutate
+        // those arrays after inserting a key in a cache.
+        internal readonly struct GroupLayoutKey
             : IEquatable<GroupLayoutKey>
         {
             private readonly int[] _groupIds;
@@ -1634,29 +1636,28 @@ namespace net.rs64.TexTransTool.NDMF
             var evaluatedLayouts =
                 new HashSet<string>(StringComparer.Ordinal);
             var projectionCache =
-                new Dictionary<string, ShadowCostProjection>(
-                    StringComparer.Ordinal);
+                new Dictionary<GroupLayoutKey, ShadowCostProjection>();
             var candidateCache =
-                new Dictionary<string, Candidate>(StringComparer.Ordinal);
+                new Dictionary<GroupLayoutKey, Candidate>();
 
             ShadowCostProjection GetProjection(
                 int[] ids,
                 Vector2Int layoutSize)
             {
-                var orderedIds = ids.OrderBy(id => id).ToArray();
-                var groupKey = string.Join(",", orderedIds);
-                var layoutKey =
-                    groupKey + "@" + layoutSize.x + "x" + layoutSize.y;
+                // Shadow states append IDs in ascending order; lower-bound
+                // and final-candidate callers also supply sorted, immutable IDs.
+                // Avoid re-sorting and allocating strings on every cache hit.
+                var layoutKey = new GroupLayoutKey(ids, layoutSize);
                 if (projectionCache.TryGetValue(layoutKey, out var cached))
                     return cached;
 
                 var projectionTimer =
                     System.Diagnostics.Stopwatch.StartNew();
-                var selectedGroups = orderedIds
+                var selectedGroups = ids
                     .Select(id => byId[id])
                     .ToArray();
                 var propertySizes = propertySizeProvider(
-                    orderedIds,
+                    ids,
                     layoutSize);
                 var baseline = TextureCostPlan.Combine(
                     selectedGroups.Select(
@@ -1682,17 +1683,17 @@ namespace net.rs64.TexTransTool.NDMF
 
             Candidate GetCandidate(int[] ids, Vector2Int layoutSize)
             {
-                var orderedIds = ids.OrderBy(id => id).ToArray();
-                var groupKey = string.Join(",", orderedIds);
-                var layoutKey =
-                    groupKey + "@" + layoutSize.x + "x" + layoutSize.y;
+                // Shadow states append IDs in ascending order; lower-bound
+                // and final-candidate callers also supply sorted, immutable IDs.
+                // Avoid re-sorting and allocating strings on every cache hit.
+                var layoutKey = new GroupLayoutKey(ids, layoutSize);
                 if (candidateCache.TryGetValue(layoutKey, out var cached))
                     return cached;
 
-                var projection = GetProjection(orderedIds, layoutSize);
+                var projection = GetProjection(ids, layoutSize);
                 safetyEvaluationCount += 1;
                 var candidate = new Candidate(
-                    orderedIds,
+                    ids,
                     projection.Baseline,
                     projection.Merged,
                     layoutSize,
