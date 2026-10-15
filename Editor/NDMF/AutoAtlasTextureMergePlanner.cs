@@ -2681,7 +2681,7 @@ namespace net.rs64.TexTransTool.NDMF
                                 }
                             }
                             catch (ArgumentException exception)
-                                when (AutoAtlasMergeIslandRelocator
+                                when (AutoAtlas2DMergeIslandRelocator
                                     .IsNfdhComparerFailure(exception))
                             {
                                 // This padded profile cannot be relocated
@@ -2690,7 +2690,7 @@ namespace net.rs64.TexTransTool.NDMF
                         }
                     }
                     catch (ArgumentException exception)
-                        when (AutoAtlasMergeIslandRelocator.IsNfdhComparerFailure(
+                        when (AutoAtlas2DMergeIslandRelocator.IsNfdhComparerFailure(
                             exception))
                     {
                         // A profile that cannot be relocated reliably at one
