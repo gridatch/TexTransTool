@@ -706,19 +706,54 @@ namespace net.rs64.TexTransTool.NDMF
             foreach (var state in input)
             {
                 var key = string.Join(",", state.GroupIds);
-                if (!byGroupSet.TryGetValue(key, out var frontier))
-                    byGroupSet[key] = frontier = new List<ShadowPackingState>();
-
-                if (frontier.Any(previous =>
-                        SkylineDominates(previous.Skyline, state.Skyline)))
-                    continue;
-
-                frontier.RemoveAll(previous =>
-                    SkylineDominates(state.Skyline, previous.Skyline));
-                frontier.Add(state);
+                if (!byGroupSet.TryGetValue(key, out var candidates))
+                    byGroupSet[key] = candidates =
+                        new List<ShadowPackingState>();
+                candidates.Add(state);
             }
 
-            return byGroupSet.Values.SelectMany(frontier => frontier).ToList();
+            var survivors = new List<ShadowPackingState>();
+            foreach (var candidates in byGroupSet.Values)
+            {
+                // If A dominates B, then A has no greater skyline area.
+                // Process smaller areas first so an inserted survivor can
+                // never be dominated by a later state. This removes the
+                // quadratic RemoveAll scan performed for every insertion.
+                candidates.Sort((left, right) =>
+                {
+                    var cmp = left.SkylineArea.CompareTo(right.SkylineArea);
+                    if (cmp != 0) return cmp;
+                    cmp = left.MaxHeight.CompareTo(right.MaxHeight);
+                    return cmp != 0 ? cmp :
+                        ShadowPackingStateStableComparer.Instance.Compare(
+                            left, right);
+                });
+
+                var frontier = new List<ShadowPackingState>();
+                foreach (var candidate in candidates)
+                {
+                    var dominated = false;
+                    foreach (var kept in frontier)
+                    {
+                        // A skyline's maximum height cannot exceed the
+                        // candidate's maximum if it dominates the candidate.
+                        if (kept.MaxHeight > candidate.MaxHeight)
+                            continue;
+                        if (!SkylineDominates(
+                                kept.Skyline, candidate.Skyline))
+                            continue;
+                        dominated = true;
+                        break;
+                    }
+
+                    if (!dominated)
+                        frontier.Add(candidate);
+                }
+
+                survivors.AddRange(frontier);
+            }
+
+            return survivors;
         }
 
         private readonly struct ShadowPackingDiagnostics
@@ -2277,14 +2312,18 @@ namespace net.rs64.TexTransTool.NDMF
                         continue;
 
                     uniqueGeneratedStateCount += generated.Count;
+                    var selectionTimer =
+                        System.Diagnostics.Stopwatch.StartNew();
                     var undominated = RemoveDominatedSkylineStates(
                         generated.Values);
+                    selectionTimer.Stop();
+                    stateSelectionMilliseconds +=
+                        selectionTimer.ElapsedMilliseconds;
                     foreach (var generatedState in undominated)
                         ScoreState(generatedState, targetWidth);
 
                     states.AddRange(undominated);
-                    var selectionTimer =
-                        System.Diagnostics.Stopwatch.StartNew();
+                    selectionTimer.Restart();
                     states = SelectPropertyAwareStates(states);
                     selectionTimer.Stop();
                     stateSelectionMilliseconds +=
