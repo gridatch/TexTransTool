@@ -857,7 +857,9 @@ namespace net.rs64.TexTransTool.NDMF
                     budgetComparison.StateSelectionMilliseconds,
                     budgetComparison.SameSelectedGroupLayouts,
                     budgetComparison.ProductionSummary,
-                    budgetComparison.ComparisonSummary);
+                    budgetComparison.ComparisonSummary,
+                    budgetComparison.ProductionRetentionDiagnostic,
+                    budgetComparison.ComparisonRetentionDiagnostic);
 
             temporaryTimingDiagnostic += "\n" + string.Format(
                 "AutoAtlasTexture:info:Temporary2DProduction".GetLocalize(),
