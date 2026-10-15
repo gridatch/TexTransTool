@@ -440,6 +440,125 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        private readonly struct ShadowPackingStateKey
+            : IEquatable<ShadowPackingStateKey>
+        {
+            private readonly int[] _groupIds;
+            private readonly int[] _skyline;
+            private readonly int _hashCode;
+
+            internal ShadowPackingStateKey(
+                int[] groupIds,
+                int[] skyline)
+            {
+                _groupIds = groupIds;
+                _skyline = skyline;
+
+                unchecked
+                {
+                    var hash = 17;
+                    for (var index = 0;
+                         index < groupIds.Length;
+                         index += 1)
+                    {
+                        hash = hash * 31 + groupIds[index];
+                    }
+
+                    hash = hash * 31 + 397;
+
+                    for (var index = 0;
+                         index < skyline.Length;
+                         index += 1)
+                    {
+                        hash = hash * 31 + skyline[index];
+                    }
+
+                    _hashCode = hash;
+                }
+            }
+
+            public bool Equals(ShadowPackingStateKey other)
+            {
+                if (_hashCode != other._hashCode
+                    || _groupIds.Length != other._groupIds.Length
+                    || _skyline.Length != other._skyline.Length)
+                {
+                    return false;
+                }
+
+                for (var index = 0;
+                     index < _groupIds.Length;
+                     index += 1)
+                {
+                    if (_groupIds[index] != other._groupIds[index])
+                        return false;
+                }
+
+                for (var index = 0;
+                     index < _skyline.Length;
+                     index += 1)
+                {
+                    if (_skyline[index] != other._skyline[index])
+                        return false;
+                }
+
+                return true;
+            }
+
+            public override bool Equals(object? obj) =>
+                obj is ShadowPackingStateKey other
+                && Equals(other);
+
+            public override int GetHashCode() => _hashCode;
+        }
+
+        private sealed class ShadowPackingStateStableComparer
+            : IComparer<ShadowPackingState>
+        {
+            internal static readonly ShadowPackingStateStableComparer
+                Instance = new();
+
+            public int Compare(
+                ShadowPackingState? left,
+                ShadowPackingState? right)
+            {
+                if (ReferenceEquals(left, right)) return 0;
+                if (left is null) return -1;
+                if (right is null) return 1;
+
+                var commonGroupCount = Math.Min(
+                    left.GroupIds.Length,
+                    right.GroupIds.Length);
+                for (var index = 0;
+                     index < commonGroupCount;
+                     index += 1)
+                {
+                    var cmp = left.GroupIds[index]
+                        .CompareTo(right.GroupIds[index]);
+                    if (cmp != 0) return cmp;
+                }
+
+                var groupCountCmp = left.GroupIds.Length
+                    .CompareTo(right.GroupIds.Length);
+                if (groupCountCmp != 0) return groupCountCmp;
+
+                var commonSkylineCount = Math.Min(
+                    left.Skyline.Length,
+                    right.Skyline.Length);
+                for (var index = 0;
+                     index < commonSkylineCount;
+                     index += 1)
+                {
+                    var cmp = left.Skyline[index]
+                        .CompareTo(right.Skyline[index]);
+                    if (cmp != 0) return cmp;
+                }
+
+                return left.Skyline.Length
+                    .CompareTo(right.Skyline.Length);
+            }
+        }
+
         private sealed class ShadowPackingState
         {
             internal readonly int[] Skyline;
@@ -448,27 +567,39 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly bool UsesWiderProfile;
             internal readonly int MaxHeight;
             internal readonly int SkylineArea;
-            internal readonly string Key;
+            internal readonly ShadowPackingStateKey StateKey;
             internal long ProjectedPixelDelta;
             internal long ProjectedMemoryDelta;
 
             internal ShadowPackingState(
                 int[] skyline,
-                IEnumerable<int> groupIds,
+                int[] groupIds,
                 long baselineBytes,
                 bool usesWiderProfile)
             {
                 Skyline = skyline;
-                GroupIds = groupIds.OrderBy(id => id).ToArray();
+                GroupIds = groupIds;
                 BaselineBytes = baselineBytes;
                 UsesWiderProfile = usesWiderProfile;
-                MaxHeight =
-                    Skyline.Length == 0 ? 0 : Skyline.Max();
-                SkylineArea = Skyline.Sum();
-                Key =
-                    string.Join(",", GroupIds)
-                    + "|"
-                    + string.Join(",", Skyline);
+
+                var maxHeight = 0;
+                var skylineArea = 0;
+                for (var index = 0;
+                     index < skyline.Length;
+                     index += 1)
+                {
+                    maxHeight = Math.Max(
+                        maxHeight,
+                        skyline[index]);
+                    skylineArea += skyline[index];
+                }
+
+                MaxHeight = maxHeight;
+                SkylineArea = skylineArea;
+                StateKey =
+                    new ShadowPackingStateKey(
+                        groupIds,
+                        skyline);
             }
         }
 
