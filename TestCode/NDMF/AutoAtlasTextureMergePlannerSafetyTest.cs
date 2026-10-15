@@ -112,7 +112,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void CandidateRejectsSingletonStreamingRegression()
+        public void CandidateRecordsSingletonStreamingRegressionWithoutRejecting()
         {
             // The merged full-resident texture is smaller than the two
             // standalone textures combined, but group 0 alone would have to
@@ -146,7 +146,11 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 merged.FullResidentBytes,
                 Is.LessThan(baseline.FullResidentBytes),
                 "Precondition: merged resident memory must look beneficial.");
-            Assert.That(Candidate(baseline, merged).IsAdoptable, Is.False);
+            var candidate = Candidate(baseline, merged);
+            Assert.That(candidate.IsAdoptable, Is.True);
+            Assert.That(candidate.StreamingWouldRegress, Is.True);
+            Assert.That(candidate.RejectionReason,
+                Is.EqualTo(AutoAtlasTextureMergePlanner.CandidateRejectionReason.None));
         }
 
         [Test]
@@ -170,9 +174,8 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             });
 
             var candidate = Candidate(baseline, merged);
-            Assert.That(candidate.RejectionReason,
-                Is.EqualTo(
-                    AutoAtlasTextureMergePlanner.CandidateRejectionReason.Streaming));
+            Assert.That(candidate.IsAdoptable, Is.True);
+            Assert.That(candidate.StreamingWouldRegress, Is.True);
 
             var diagnostic =
                 AutoAtlasTextureMergePlanner.DiagnoseStreamingRegression(candidate);
@@ -328,6 +331,56 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             {
                 Object.DestroyImmediate(sharedMesh);
                 Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void TextureMergingExclusionAppliesToRendererWithoutRemovingGroup()
+        {
+            var root = new GameObject("TextureMergingExclusionTest");
+            try
+            {
+                var a = root.AddComponent<MeshRenderer>();
+                var bObject = new GameObject("Other");
+                bObject.transform.SetParent(root.transform);
+                var b = bObject.AddComponent<MeshRenderer>();
+                var exclusions = new HashSet<Renderer> { a };
+
+                Assert.That(AutoAtlasTextureProcessor.IsExcludedFromTextureMerging(
+                    new HashSet<Material>(), new Renderer[] { a, b },
+                    new HashSet<Material>(), exclusions), Is.True);
+                Assert.That(AutoAtlasTextureProcessor.IsExcludedFromTextureMerging(
+                    new HashSet<Material>(), new Renderer[] { b },
+                    new HashSet<Material>(), exclusions), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void TextureMergingExclusionAppliesToAnyMaterialInAtomicGroup()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+            var material = new Material(shader);
+            try
+            {
+                Assert.That(AutoAtlasTextureProcessor.IsExcludedFromTextureMerging(
+                    new HashSet<Material> { material },
+                    System.Array.Empty<Renderer>(),
+                    new HashSet<Material> { material },
+                    new HashSet<Renderer>()), Is.True);
+                Assert.That(AutoAtlasTextureProcessor.IsExcludedFromTextureMerging(
+                    new HashSet<Material> { material },
+                    System.Array.Empty<Renderer>(),
+                    new HashSet<Material>(),
+                    new HashSet<Renderer>()), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
             }
         }
 

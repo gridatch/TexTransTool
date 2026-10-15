@@ -32,6 +32,7 @@ namespace net.rs64.TexTransTool.NDMF
         internal sealed class PreparedGroup
         {
             internal int Id;
+            internal bool ExcludedFromTextureMerging;
             internal HashSet<Material> Materials = new();
             internal Renderer[] Renderers = Array.Empty<Renderer>();
             internal HashSet<Texture> SourceTextures = new();
@@ -172,6 +173,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long ShadowScoreStateCallCount;
             internal readonly string ShadowBestSamplingSummary;
             internal readonly StreamingRegressionExample? ShadowStreamingExample;
+            internal readonly int ShadowStreamingRegressingCandidateCount;
 
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
@@ -258,10 +260,13 @@ namespace net.rs64.TexTransTool.NDMF
                 long shadowUniqueGeneratedStateCount = 0,
                 long shadowScoreStateCallCount = 0,
                 string shadowBestSamplingSummary = "",
-                StreamingRegressionExample? shadowStreamingExample = null)
+                StreamingRegressionExample? shadowStreamingExample = null,
+                int shadowStreamingRegressingCandidateCount = 0)
             {
                 Selections = selections;
                 ShadowStreamingExample = shadowStreamingExample;
+                ShadowStreamingRegressingCandidateCount =
+                    shadowStreamingRegressingCandidateCount;
                 PlanningTimeMilliseconds = planningTimeMilliseconds;
                 StandaloneAnalysisTimeMilliseconds =
                     standaloneAnalysisTimeMilliseconds;
@@ -703,6 +708,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long ScoreStateCallCount;
             internal readonly string BestSamplingSummary;
             internal readonly StreamingRegressionExample? StreamingExample;
+            internal readonly int StreamingRegressingCandidateCount;
 
             internal ShadowPackingDiagnostics(
                 int profileCount,
@@ -754,7 +760,8 @@ namespace net.rs64.TexTransTool.NDMF
                 long uniqueGeneratedStateCount,
                 long scoreStateCallCount,
                 string bestSamplingSummary,
-                StreamingRegressionExample? streamingExample)
+                StreamingRegressionExample? streamingExample,
+                int streamingRegressingCandidateCount)
             {
                 ProfileCount = profileCount;
                 GroupsWithMultipleProfiles = groupsWithMultipleProfiles;
@@ -815,6 +822,8 @@ namespace net.rs64.TexTransTool.NDMF
                 ScoreStateCallCount = scoreStateCallCount;
                 BestSamplingSummary = bestSamplingSummary;
                 StreamingExample = streamingExample;
+                StreamingRegressingCandidateCount =
+                    streamingRegressingCandidateCount;
             }
         }
 
@@ -864,6 +873,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long SavingBytes;
             internal readonly float SavingRate;
             internal readonly bool IsAdoptable;
+            internal readonly bool StreamingWouldRegress;
             internal readonly CandidateRejectionReason RejectionReason;
 
             internal Candidate(
@@ -894,18 +904,19 @@ namespace net.rs64.TexTransTool.NDMF
                                 : HasSamplingRegression(
                                     baseline, merged, groupIds)
                                     ? CandidateRejectionReason.Sampling
-                                    : HasStreamingRegression(
-                                        baseline, merged, groupIds)
-                                        ? CandidateRejectionReason.Streaming
-                                        : CandidateRejectionReason.None;
+                                    : CandidateRejectionReason.None;
 
                 IsAdoptable =
                     RejectionReason == CandidateRejectionReason.None;
+                // A potential singleton-view memory increase is a diagnostic,
+                // not a condition for rejecting texture merging.
+                StreamingWouldRegress = IsAdoptable
+                    && HasStreamingRegression(baseline, merged, groupIds);
             }
         }
 
-        // Only constructed for the most pixel-efficient candidate rejected
-        // by the streaming gate. Not used to select or accept a merge.
+        // Only constructed for one viable candidate with a potential
+        // single-group Streaming memory increase. Not used for selection.
         internal sealed class StreamingRegressionExample
         {
             internal readonly Candidate Candidate;
@@ -1094,7 +1105,7 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             if (!configuration.EnableAdditionalAtlasMerging
-                || groups.Count < 2)
+                || groups.Count(group => !group.ExcludedFromTextureMerging) < 2)
             {
                 planningTimer.Stop();
                 return new PlanResult(
@@ -1108,6 +1119,10 @@ namespace net.rs64.TexTransTool.NDMF
                     groupPairsSharingSourceMeshCount:
                         groupPairsSharingSourceMeshCount);
             }
+
+            var mergeGroups = groups
+                .Where(group => !group.ExcludedFromTextureMerging)
+                .ToArray();
 
             var alphaCache = new Dictionary<Texture, bool>();
             var propertyRequirementCache =
@@ -1265,7 +1280,7 @@ namespace net.rs64.TexTransTool.NDMF
                 var capacity = host.BandWidthPixels - host.BandUsedHeightPixels;
                 if (capacity <= 0) return false;
 
-                return groups.Any(guest =>
+                return mergeGroups.Any(guest =>
                     guest.Id != host.Id
                     && guest.StandaloneMetrics != null
                     && guest.BaselineCostKnown
@@ -1291,7 +1306,7 @@ namespace net.rs64.TexTransTool.NDMF
             var bandPlanningTimer =
                 System.Diagnostics.Stopwatch.StartNew();
 
-            foreach (var host in groups.Where(CanHostAnyGuest))
+            foreach (var host in mergeGroups.Where(CanHostAnyGuest))
             {
                 mergeHostCount += 1;
                 var hostWidth = host.BandWidthPixels;
@@ -1299,7 +1314,7 @@ namespace net.rs64.TexTransTool.NDMF
                     0, hostWidth - host.BandUsedHeightPixels);
                 if (capacity <= 0) continue;
 
-                var guests = groups
+                var guests = mergeGroups
                     .Where(group =>
                         group.Id != host.Id
                         && group.StandaloneMetrics != null
@@ -1510,7 +1525,7 @@ namespace net.rs64.TexTransTool.NDMF
             var shadowPlanningTimer =
                 System.Diagnostics.Stopwatch.StartNew();
             var shadow2D = EvaluateShadow2DPacking(
-                groups,
+                mergeGroups,
                 byId,
                 propertyTextures,
                 settings,
@@ -1608,7 +1623,8 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.UniqueGeneratedStateCount,
                 shadow2D.ScoreStateCallCount,
                 shadow2D.BestSamplingSummary,
-                shadow2D.StreamingExample);
+                shadow2D.StreamingExample,
+                shadow2D.StreamingRegressingCandidateCount);
         }
 
         private static ShadowPackingDiagnostics EvaluateShadow2DPacking(
@@ -1673,6 +1689,7 @@ namespace net.rs64.TexTransTool.NDMF
             var bestSamplingSummary = "";
             Candidate? bestStreamingCandidate = null;
             var bestStreamingRatio = double.PositiveInfinity;
+            var streamingRegressingCandidateCount = 0;
 
             var shadowAdoptable =
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
@@ -2342,25 +2359,26 @@ namespace net.rs64.TexTransTool.NDMF
                                 break;
                         }
 
-                        // Keep one useful rejected candidate for diagnosis.
-                        // This does not participate in planning or pruning.
-                        if (candidate.RejectionReason
-                                == CandidateRejectionReason.Streaming
-                            && baseline.PixelCount > 0)
-                        {
-                            var ratio = (double)merged.PixelCount
-                                / baseline.PixelCount;
-                            if (ratio < bestStreamingRatio
-                                || (ratio == bestStreamingRatio
-                                    && (bestStreamingCandidate == null
-                                        || candidate.SavingBytes
-                                            > bestStreamingCandidate.SavingBytes)))
-                            {
-                                bestStreamingRatio = ratio;
-                                bestStreamingCandidate = candidate;
-                            }
-                        }
                         continue;
+                    }
+
+                    // Keep Streaming implications separate from the adoption
+                    // gates. Analyze only viable candidates, retaining the
+                    // best pixel-saving example for the temporary console log.
+                    if (candidate.StreamingWouldRegress)
+                    {
+                        streamingRegressingCandidateCount += 1;
+                        var ratio = (double)merged.PixelCount
+                            / baseline.PixelCount;
+                        if (ratio < bestStreamingRatio
+                            || (ratio == bestStreamingRatio
+                                && (bestStreamingCandidate == null
+                                    || candidate.SavingBytes
+                                        > bestStreamingCandidate.SavingBytes)))
+                        {
+                            bestStreamingRatio = ratio;
+                            bestStreamingCandidate = candidate;
+                        }
                     }
 
                     if (!shadowAdoptable.TryGetValue(
@@ -2479,7 +2497,8 @@ namespace net.rs64.TexTransTool.NDMF
                 uniqueGeneratedStateCount,
                 scoreStateCallCount,
                 bestSamplingSummary,
-                streamingExample);
+                streamingExample,
+                streamingRegressingCandidateCount);
         }
 
         private static int GetBandUsedHeightPixels(

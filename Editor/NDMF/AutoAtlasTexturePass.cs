@@ -183,6 +183,11 @@ namespace net.rs64.TexTransTool.NDMF
 
             var excludedMaterials = domain.GetDomainsMaterialsHashSet(
                 configuration.ExcludedMaterials);
+            var mergingExcludedRenderers = domain
+                .GetDomainsRenderers(configuration.TextureMergingExcludedRenderers)
+                .ToHashSet();
+            var mergingExcludedMaterials = domain.GetDomainsMaterialsHashSet(
+                configuration.TextureMergingExcludedMaterials);
 
             // Resolve manual AtlasTexture targets through TTT's existing lookup
             // rather than rescanning hierarchy and comparing raw user selections.
@@ -260,6 +265,9 @@ namespace net.rs64.TexTransTool.NDMF
                     SourceTextures = texturesToReplace,
                     OriginalPixels = texturesToReplace.Sum(texture =>
                         (long)texture.width * texture.height),
+                    ExcludedFromTextureMerging = IsExcludedFromTextureMerging(
+                        group, atlasRenderers, mergingExcludedMaterials,
+                        mergingExcludedRenderers),
                 });
             }
 
@@ -701,6 +709,10 @@ namespace net.rs64.TexTransTool.NDMF
                 projectName)
                 + "\n" + temporaryTimingDiagnostic;
 
+            temporaryTimingDiagnostic += "\n" + string.Format(
+                "AutoAtlasTexture:info:TemporaryStreamingImpactCount".GetLocalize(),
+                mergePlan.ShadowStreamingRegressingCandidateCount);
+
             if (mergePlan.ShadowStreamingExample is { } streamingExample)
             {
                 var candidate = streamingExample.Candidate;
@@ -890,6 +902,16 @@ namespace net.rs64.TexTransTool.NDMF
                 commonMeshNames.Length == 0
                     ? "(none)" : string.Join(", ", commonMeshNames),
                 string.Join("\n", groupDetails));
+        }
+
+        internal static bool IsExcludedFromTextureMerging(
+            IReadOnlyCollection<Material> materials,
+            IEnumerable<Renderer> renderers,
+            HashSet<Material> excludedMaterials,
+            HashSet<Renderer> excludedRenderers)
+        {
+            return materials.Any(excludedMaterials.Contains)
+                || renderers.Any(excludedRenderers.Contains);
         }
 
         private static bool ReferencesAreExclusive(

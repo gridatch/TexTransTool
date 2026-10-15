@@ -22,6 +22,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
         // unchanged while this is false.
         public bool EnableAdditionalAtlasMerging = false;
 
+        // Apply only to texture merging; standalone atlasing is unaffected.
+        public List<Renderer> TextureMergingExcludedRenderers = new();
+        public List<Material> TextureMergingExcludedMaterials = new();
+
         public List<Renderer> ExcludedRenderers = new();
         public List<Material> ExcludedMaterials = new();
     }
