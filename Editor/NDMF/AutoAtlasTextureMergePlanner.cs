@@ -1999,8 +1999,9 @@ namespace net.rs64.TexTransTool.NDMF
                 foreach (var group in eligibleGroups)
                 {
                     var generated =
-                        new Dictionary<string, ShadowPackingState>(
-                            StringComparer.Ordinal);
+                        new Dictionary<
+                            ShadowPackingStateKey,
+                            ShadowPackingState>();
                     var snapshot = states
                         .Where(state =>
                             state.GroupIds.Length + 1
@@ -2056,9 +2057,18 @@ namespace net.rs64.TexTransTool.NDMF
                                     skyline[column] = top;
                                 }
 
+                                var nextGroupIds =
+                                    new int[state.GroupIds.Length + 1];
+                                Array.Copy(
+                                    state.GroupIds,
+                                    nextGroupIds,
+                                    state.GroupIds.Length);
+                                nextGroupIds[nextGroupIds.Length - 1] =
+                                    group.Id;
+
                                 var next = new ShadowPackingState(
                                     skyline,
-                                    state.GroupIds.Append(group.Id),
+                                    nextGroupIds,
                                     state.BaselineBytes
                                         + group.BaselineCost
                                             .FullResidentBytes,
@@ -2071,12 +2081,12 @@ namespace net.rs64.TexTransTool.NDMF
                                 // and property cost. Deduplicate geometry before
                                 // running the property-cost projection.
                                 if (!generated.TryGetValue(
-                                        next.Key,
+                                        next.StateKey,
                                         out var prior)
                                     || (next.UsesWiderProfile
                                         && !prior.UsesWiderProfile))
                                 {
-                                    generated[next.Key] = next;
+                                    generated[next.StateKey] = next;
                                 }
                             }
                         }
