@@ -177,6 +177,9 @@ msgstr "2D統合候補のStreamingメモリ増加: {0}件"
 msgid "AutoAtlasTexture:info:Temporary2DFallbackReason"
 msgstr "2Dテクスチャ統合（本番失敗の詳細）\n{0}"
 
+msgid "AutoAtlasTexture:info:TemporaryVisibilityAnimationExclusion"
+msgstr "表示切替アニメーションによるテクスチャ統合の除外: {0}グループ / 対象マテリアル: {1}"
+
 msgid "AutoAtlasTexture:info:Temporary2DProduction"
 msgstr "2Dテクスチャ統合（本番）: 計画={0}件 / 成功={1}件 / 単体処理へ復帰={2}件"
 

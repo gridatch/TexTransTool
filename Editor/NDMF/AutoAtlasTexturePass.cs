@@ -915,6 +915,24 @@ namespace net.rs64.TexTransTool.NDMF
                     "AutoAtlasTexture:info:Temporary2DFallbackReason".GetLocalize(),
                     string.Join("\n", twoDimensionalFallbackReasons));
 
+            if (configuration.EnableAdditionalAtlasMerging
+                && configuration.ExcludeVisibilityAnimatedItemsFromTextureMerging)
+            {
+                var affectedGroups = preparedGroups
+                    .Where(group => group.Renderers.Any(
+                        animatedVisibilityRenderers.Contains))
+                    .ToArray();
+                var affectedMaterials = affectedGroups
+                    .SelectMany(group => group.Materials)
+                    .Select(OriginalMaterialName)
+                    .Distinct()
+                    .OrderBy(name => name, StringComparer.Ordinal);
+                temporaryTimingDiagnostic += "\n" + string.Format(
+                    "AutoAtlasTexture:info:TemporaryVisibilityAnimationExclusion".GetLocalize(),
+                    affectedGroups.Length,
+                    string.Join(", ", affectedMaterials));
+            }
+
             // The project directory name is useful when comparing logs
             // from several Unity projects. Never include its absolute path.
             var projectDirectory = System.IO.Path.GetDirectoryName(

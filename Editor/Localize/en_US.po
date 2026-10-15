@@ -176,6 +176,9 @@ msgstr "2D texture-merging candidates with Streaming memory increase: {0}"
 msgid "AutoAtlasTexture:info:Temporary2DFallbackReason"
 msgstr "2D texture merging (production failure details)\n{0}"
 
+msgid "AutoAtlasTexture:info:TemporaryVisibilityAnimationExclusion"
+msgstr "Texture merging excluded by visibility animation: {0} groups / materials: {1}"
+
 msgid "AutoAtlasTexture:info:Temporary2DProduction"
 msgstr "2D texture merging (production): planned={0} / succeeded={1} / standalone fallback={2}"
 
