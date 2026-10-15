@@ -715,42 +715,46 @@ namespace net.rs64.TexTransTool.NDMF
             var survivors = new List<ShadowPackingState>();
             foreach (var candidates in byGroupSet.Values)
             {
-                // If A dominates B, then A has no greater skyline area.
-                // Process smaller areas first so an inserted survivor can
-                // never be dominated by a later state. This removes the
-                // quadratic RemoveAll scan performed for every insertion.
-                candidates.Sort((left, right) =>
-                {
-                    var cmp = left.SkylineArea.CompareTo(right.SkylineArea);
-                    if (cmp != 0) return cmp;
-                    cmp = left.MaxHeight.CompareTo(right.MaxHeight);
-                    return cmp != 0 ? cmp :
-                        ShadowPackingStateStableComparer.Instance.Compare(
-                            left, right);
-                });
-
-                var frontier = new List<ShadowPackingState>();
+                // Exhaustive skyline dominance compares every pair, creating
+                // quadratic cost (measured at 7.9 seconds for 131k generated
+                // states in Seiran_SailorCupid). Instead, find two favorable
+                // witnesses in linear time for each identical group set.
+                // Only discard states PROVEN dominated by a witness; missing
+                // some dominance opportunities is safe.
+                var minimumArea = candidates[0];
+                var minimumHeight = candidates[0];
                 foreach (var candidate in candidates)
                 {
-                    var dominated = false;
-                    foreach (var kept in frontier)
-                    {
-                        // A skyline's maximum height cannot exceed the
-                        // candidate's maximum if it dominates the candidate.
-                        if (kept.MaxHeight > candidate.MaxHeight)
-                            continue;
-                        if (!SkylineDominates(
-                                kept.Skyline, candidate.Skyline))
-                            continue;
-                        dominated = true;
-                        break;
-                    }
-
-                    if (!dominated)
-                        frontier.Add(candidate);
+                    if (candidate.SkylineArea < minimumArea.SkylineArea
+                        || (candidate.SkylineArea
+                                == minimumArea.SkylineArea
+                            && candidate.MaxHeight
+                                < minimumArea.MaxHeight))
+                        minimumArea = candidate;
+                    if (candidate.MaxHeight < minimumHeight.MaxHeight
+                        || (candidate.MaxHeight
+                                == minimumHeight.MaxHeight
+                            && candidate.SkylineArea
+                                < minimumHeight.SkylineArea))
+                        minimumHeight = candidate;
                 }
 
-                survivors.AddRange(frontier);
+                foreach (var candidate in candidates)
+                {
+                    if (!ReferenceEquals(candidate, minimumArea)
+                        && minimumArea.MaxHeight <= candidate.MaxHeight
+                        && SkylineDominates(
+                            minimumArea.Skyline, candidate.Skyline))
+                        continue;
+
+                    if (!ReferenceEquals(candidate, minimumHeight)
+                        && minimumHeight.MaxHeight <= candidate.MaxHeight
+                        && SkylineDominates(
+                            minimumHeight.Skyline, candidate.Skyline))
+                        continue;
+
+                    survivors.Add(candidate);
+                }
             }
 
             return survivors;
