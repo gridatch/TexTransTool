@@ -149,12 +149,78 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             Assert.That(Candidate(baseline, merged).IsAdoptable, Is.False);
         }
 
+        [Test]
+        public void CandidateRejectsComplementaryPropertyDensityInflation()
+        {
+            // Two groups have opposite high/low requirements across two
+            // properties. Putting both properties on one wider shared layout
+            // raises both generated property textures to the larger envelope.
+            var baseline = Plan(new[]
+            {
+                Entry(64, 64, 1, false, new[] { 0 }),
+                Entry(32, 32, 1, false, new[] { 0 }),
+                Entry(32, 32, 1, false, new[] { 1 }),
+                Entry(64, 64, 1, false, new[] { 1 }),
+            });
+            var merged = Plan(new[]
+            {
+                Entry(128, 64, 1, false, new[] { 0, 1 }),
+                Entry(128, 64, 1, false, new[] { 0, 1 }),
+            });
+
+            Assert.That(merged.PixelCount, Is.GreaterThan(baseline.PixelCount));
+            Assert.That(Candidate(baseline, merged).IsAdoptable, Is.False);
+        }
+
+        [Test]
+        public void CandidateCanBecomeBeneficialAfterAddingThirdGroup()
+        {
+            // The pair is not useful by itself: the shared output only ties the
+            // two standalone textures. A third group can make the same shared
+            // output strictly cheaper than keeping all three independently.
+            var pairBaseline = Plan(new[]
+            {
+                Entry(64, 64, 1, false, new[] { 0 }),
+                Entry(64, 64, 1, false, new[] { 1 }),
+            });
+            var pairMerged = Plan(new[]
+            {
+                Entry(128, 64, 1, false, new[] { 0, 1 }),
+            });
+
+            Assert.That(
+                Candidate(pairBaseline, pairMerged, new[] { 0, 1 }).IsAdoptable,
+                Is.False);
+
+            var tripleBaseline = Plan(new[]
+            {
+                Entry(64, 64, 1, false, new[] { 0 }),
+                Entry(64, 64, 1, false, new[] { 1 }),
+                Entry(128, 64, 1, false, new[] { 2 }),
+            });
+            var tripleMerged = Plan(new[]
+            {
+                Entry(128, 64, 1, false, new[] { 0, 1, 2 }),
+            });
+
+            Assert.That(
+                tripleMerged.PixelCount,
+                Is.LessThan(tripleBaseline.PixelCount));
+            Assert.That(
+                Candidate(
+                    tripleBaseline,
+                    tripleMerged,
+                    new[] { 0, 1, 2 }).IsAdoptable,
+                Is.True);
+        }
+
         private static AutoAtlasTextureMergePlanner.Candidate Candidate(
             AutoAtlasTextureMergePlanner.TextureCostPlan baseline,
-            AutoAtlasTextureMergePlanner.TextureCostPlan merged)
+            AutoAtlasTextureMergePlanner.TextureCostPlan merged,
+            int[] groupIds = null)
         {
             return new AutoAtlasTextureMergePlanner.Candidate(
-                new[] { 0, 1 },
+                groupIds ?? new[] { 0, 1 },
                 baseline,
                 merged,
                 new Vector2Int(64, 64),
