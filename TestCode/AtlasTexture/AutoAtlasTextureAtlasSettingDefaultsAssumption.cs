@@ -88,6 +88,46 @@ namespace net.rs64.TexTransTool.TestCode
         }
 
         [Test]
+        public void PropertyResolutionUsesHighestDensityAcrossMergedGroups()
+        {
+            var emission = CalculatePropertySize(
+                new UnityEngine.Vector2Int(2048, 1024),
+                autoSize: true,
+                new UnityEngine.Vector2Int?[]
+                {
+                    new UnityEngine.Vector2Int(2048, 800),
+                    new UnityEngine.Vector2Int(2048, 600),
+                },
+                new[]
+                {
+                    new UnityEngine.Vector2Int(1024, 400),
+                    new UnityEngine.Vector2Int(512, 150),
+                }
+            );
+            var bump = CalculatePropertySize(
+                new UnityEngine.Vector2Int(2048, 1024),
+                autoSize: true,
+                new UnityEngine.Vector2Int?[]
+                {
+                    new UnityEngine.Vector2Int(2048, 800),
+                    new UnityEngine.Vector2Int(2048, 600),
+                },
+                new[]
+                {
+                    new UnityEngine.Vector2Int(512, 200),
+                    new UnityEngine.Vector2Int(1024, 300),
+                }
+            );
+
+            Assert.That(
+                emission,
+                Is.EqualTo(new UnityEngine.Vector2Int(1024, 512)));
+            Assert.That(
+                bump,
+                Is.EqualTo(new UnityEngine.Vector2Int(1024, 512)));
+        }
+
+        [Test]
         public void PropertyResolutionDoesNotShrinkBelowFourPixels()
         {
             var result = CalculatePropertySize(
