@@ -387,7 +387,8 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         [Test]
         public void SkylineDominanceRequiresEveryColumnNoHigher()
         {
-            var dominates = AutoAtlasTextureMergePlanner.SkylineDominates;
+            System.Func<IReadOnlyList<int>, IReadOnlyList<int>, bool> dominates =
+                AutoAtlasTextureMergePlanner.SkylineDominates;
             Assert.That(dominates(new[] { 128, 256 }, new[] { 256, 256 }),
                 Is.True);
             Assert.That(dominates(new[] { 256, 256 }, new[] { 128, 256 }),

@@ -1705,9 +1705,10 @@ namespace net.rs64.TexTransTool.NDMF
                 IReadOnlyDictionary<string, Vector2Int>>
                 propertySizeProvider)
         {
-            var profileCount = groups.Sum(group => group.LayoutProfiles.Count);
+            var profileCount = groups.Sum(
+                group => group.TwoDimensionalProfileHeights.Count);
             var groupsWithMultipleProfiles = groups.Count(
-                group => group.LayoutProfiles.Count > 1);
+                group => group.TwoDimensionalProfileHeights.Count > 1);
             var targetWidthCount = 0;
             var evaluatedCandidateCount = 0;
             var evaluatedBeyondBandLayoutCount = 0;
