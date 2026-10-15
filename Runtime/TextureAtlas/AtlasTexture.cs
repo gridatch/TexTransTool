@@ -849,20 +849,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 && TTMath.Approximately(relocateResult.OverallDownScale, 1f);
         }
 
-        /// <summary>
-        /// Identifies the known TexTransCore NFDH sort-contract failure.
-        /// Other ArgumentExceptions must continue propagating.
-        /// </summary>
-        internal static bool IsNfdhComparerFailure(ArgumentException exception)
-        {
-            return exception.Message.IndexOf(
-                       "IComparer.Compare() method returns inconsistent results",
-                       StringComparison.Ordinal) >= 0
-                && (exception.StackTrace?.IndexOf(
-                       "NFDHPlasFC.NextFitDecreasingHeightPlusFloorCeiling",
-                       StringComparison.Ordinal) ?? -1) >= 0;
-        }
-
         private static (IslandTransform[] virtualIslandArray, IslandRelocationManager.RelocateResult relocateResult) IslandProcessing(
             IRendererTargeting domain
             , AtlasSetting atlasSetting
@@ -916,31 +902,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
             relocateManage.Height = (float)atlasTargeSize.y / atlasTargeSize.x;
 
             var timer = System.Diagnostics.Stopwatch.StartNew();
-            IslandRelocationManager.RelocateResult relocateResult;
-            try
-            {
-                relocateManage.RelocateLoop(
-                    atlasContext,
-                    virtualIslandArray,
-                    sizePriority,
-                    out relocateResult,
-                    losslessOnly);
-            }
-            catch (ArgumentException exception)
-                when (losslessOnly
-                    && islandRelocatorOverride == null
-                    && IsNfdhComparerFailure(exception))
-            {
-                // TexTransCore's NFDH height comparer can violate the sort
-                // contract for near-equal heights. Treat only this known
-                // exception as an unsuccessful lossless profile, allowing
-                // AutoAtlas to try its next width. Failed islands are cloned
-                // and must never be used to generate meshes or materials.
-                relocateResult = new IslandRelocationManager.RelocateResult
-                {
-                    IslandRelocationResult = new RelocationResult(false, true),
-                };
-            }
+            relocateManage.RelocateLoop(
+                atlasContext,
+                virtualIslandArray,
+                sizePriority,
+                out var relocateResult,
+                losslessOnly);
             timer.Stop();
             relocationTime = timer.ElapsedMilliseconds;
 
