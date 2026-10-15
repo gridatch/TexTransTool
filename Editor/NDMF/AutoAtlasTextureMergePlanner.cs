@@ -96,6 +96,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long StandaloneResolutionPlanMilliseconds;
             internal readonly long LegacyBandPlanningMilliseconds;
             internal readonly long Shadow2DPlanningMilliseconds;
+            internal readonly int PropertyRequirementBuildCount;
 
             // Temporary diagnostics for evaluating whether the standalone
             // preprocessing state can be safely reused later in the pass.
@@ -184,6 +185,7 @@ namespace net.rs64.TexTransTool.NDMF
                 long standaloneResolutionPlanMilliseconds = 0,
                 long legacyBandPlanningMilliseconds = 0,
                 long shadow2DPlanningMilliseconds = 0,
+                int propertyRequirementBuildCount = 0,
                 int preparedGroupCount = 0,
                 int sharedRendererCount = 0,
                 int groupsWithSharedRendererCount = 0,
@@ -277,6 +279,8 @@ namespace net.rs64.TexTransTool.NDMF
                     legacyBandPlanningMilliseconds;
                 Shadow2DPlanningMilliseconds =
                     shadow2DPlanningMilliseconds;
+                PropertyRequirementBuildCount =
+                    propertyRequirementBuildCount;
                 PreparedGroupCount = preparedGroupCount;
                 SharedRendererCount = sharedRendererCount;
                 GroupsWithSharedRendererCount = groupsWithSharedRendererCount;
@@ -364,6 +368,33 @@ namespace net.rs64.TexTransTool.NDMF
                 ShadowSafetyEvaluationCount =
                     shadowSafetyEvaluationCount;
                 ShadowBestSamplingSummary = shadowBestSamplingSummary;
+            }
+        }
+
+        private sealed class PropertyResolutionRequirement
+        {
+            internal readonly Vector2Int?[] PrimarySizes;
+            internal readonly Vector2Int[] SourceSizes;
+
+            internal PropertyResolutionRequirement(
+                IEnumerable<Vector2Int?> primarySizes,
+                IEnumerable<Vector2Int> sourceSizes)
+            {
+                PrimarySizes = primarySizes.ToArray();
+                SourceSizes = sourceSizes.ToArray();
+            }
+        }
+
+        private sealed class PropertyResolutionRequirements
+        {
+            internal readonly IReadOnlyDictionary<
+                string, PropertyResolutionRequirement> ByProperty;
+
+            internal PropertyResolutionRequirements(
+                IReadOnlyDictionary<string, PropertyResolutionRequirement>
+                    byProperty)
+            {
+                ByProperty = byProperty;
             }
         }
 
@@ -821,6 +852,37 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             var alphaCache = new Dictionary<Texture, bool>();
+            var propertyRequirementCache =
+                new Dictionary<string, PropertyResolutionRequirements>(
+                    StringComparer.Ordinal);
+            var propertyRequirementBuildCount = 0;
+
+            IReadOnlyDictionary<string, Vector2Int>
+                GetPredictedPropertySizes(
+                    int[] ids,
+                    Vector2Int layoutSize)
+            {
+                var orderedIds = ids.OrderBy(id => id).ToArray();
+                var key = string.Join(",", orderedIds);
+                if (!propertyRequirementCache.TryGetValue(
+                        key,
+                        out var requirements))
+                {
+                    var materials = orderedIds
+                        .Select(id => groups[id])
+                        .SelectMany(group => group.Materials)
+                        .ToHashSet();
+                    requirements = BuildPredictedPropertyRequirements(
+                        materials,
+                        settings);
+                    propertyRequirementCache[key] = requirements;
+                    propertyRequirementBuildCount += 1;
+                }
+
+                return BuildPredictedPropertySizes(
+                    requirements,
+                    layoutSize);
+            }
 
             foreach (var group in groups)
             {
@@ -1076,11 +1138,9 @@ namespace net.rs64.TexTransTool.NDMF
                     var selectedGroups = ids
                         .Select(id => byId[id])
                         .ToArray();
-                    var materials = selectedGroups
-                        .SelectMany(group => group.Materials)
-                        .ToHashSet();
-                    var propertySizes = BuildPredictedPropertySizes(
-                        materials, layoutSize, settings);
+                    var propertySizes = GetPredictedPropertySizes(
+                        ids,
+                        layoutSize);
 
                     var baseline = TextureCostPlan.Combine(
                         selectedGroups.Select(group => group.BaselineCost));
@@ -1192,7 +1252,8 @@ namespace net.rs64.TexTransTool.NDMF
                 settings,
                 alphaCache,
                 adoptable,
-                evaluatedLayouts);
+                evaluatedLayouts,
+                GetPredictedPropertySizes);
             shadowPlanningTimer.Stop();
             var shadow2DPlanningMilliseconds =
                 shadowPlanningTimer.ElapsedMilliseconds;
@@ -1217,6 +1278,7 @@ namespace net.rs64.TexTransTool.NDMF
                 standaloneResolutionPlanMilliseconds,
                 legacyBandPlanningMilliseconds,
                 shadow2DPlanningMilliseconds,
+                propertyRequirementBuildCount,
                 groups.Count,
                 sharedRenderers.Count,
                 groupsWithSharedRendererCount,
@@ -1286,7 +1348,10 @@ namespace net.rs64.TexTransTool.NDMF
             AtlasSetting settings,
             Dictionary<Texture, bool> alphaCache,
             IReadOnlyDictionary<string, Candidate> bandAdoptable,
-            HashSet<string> bandEvaluatedLayouts)
+            HashSet<string> bandEvaluatedLayouts,
+            Func<int[], Vector2Int,
+                IReadOnlyDictionary<string, Vector2Int>>
+                propertySizeProvider)
         {
             var profileCount = groups.Sum(group => group.LayoutProfiles.Count);
             var groupsWithMultipleProfiles = groups.Count(
@@ -1357,13 +1422,9 @@ namespace net.rs64.TexTransTool.NDMF
                 var selectedGroups = orderedIds
                     .Select(id => byId[id])
                     .ToArray();
-                var materials = selectedGroups
-                    .SelectMany(group => group.Materials)
-                    .ToHashSet();
-                var propertySizes = BuildPredictedPropertySizes(
-                    materials,
-                    layoutSize,
-                    settings);
+                var propertySizes = propertySizeProvider(
+                    orderedIds,
+                    layoutSize);
                 var baseline = TextureCostPlan.Combine(
                     selectedGroups.Select(
                         group => group.BaselineCost));
@@ -2098,20 +2159,23 @@ namespace net.rs64.TexTransTool.NDMF
             return Math.Max(4, height);
         }
 
-        private static IReadOnlyDictionary<string, Vector2Int>
-            BuildPredictedPropertySizes(
+        private static PropertyResolutionRequirements
+            BuildPredictedPropertyRequirements(
                 HashSet<Material> materials,
-                Vector2Int layoutSize,
                 AtlasSetting settings)
         {
             var grouping = new MaterialGroupingContext(
-                materials, settings.AtlasTargetUVChannel, null);
+                materials,
+                settings.AtlasTargetUVChannel,
+                null);
             var properties = grouping.GroupMaterials
                 .SelectMany(group => group.GroupedTexture.Keys)
                 .Distinct()
                 .OrderBy(property => property, StringComparer.Ordinal);
 
-            var result = new Dictionary<string, Vector2Int>();
+            var result = new Dictionary<
+                string, PropertyResolutionRequirement>(
+                StringComparer.Ordinal);
             foreach (var property in properties)
             {
                 var primarySizes = new List<Vector2Int?>();
@@ -2129,17 +2193,39 @@ namespace net.rs64.TexTransTool.NDMF
                     var primary = group.GetPrimaryTexture(null);
                     primarySizes.Add(primary == null
                         ? null
-                        : new Vector2Int(primary.width, primary.height));
+                        : new Vector2Int(
+                            primary.width,
+                            primary.height));
                     sourceSizes.Add(
-                        new Vector2Int(source.width, source.height));
+                        new Vector2Int(
+                            source.width,
+                            source.height));
                 }
 
                 result[property] =
+                    new PropertyResolutionRequirement(
+                        primarySizes,
+                        sourceSizes);
+            }
+
+            return new PropertyResolutionRequirements(result);
+        }
+
+        private static IReadOnlyDictionary<string, Vector2Int>
+            BuildPredictedPropertySizes(
+                PropertyResolutionRequirements requirements,
+                Vector2Int layoutSize)
+        {
+            var result = new Dictionary<string, Vector2Int>(
+                StringComparer.Ordinal);
+            foreach (var pair in requirements.ByProperty)
+            {
+                result[pair.Key] =
                     AtlasTextureResolutionPlan.CalculatePropertySize(
                         layoutSize,
                         autoSize: true,
-                        primarySizes,
-                        sourceSizes);
+                        pair.Value.PrimarySizes,
+                        pair.Value.SourceSizes);
             }
 
             return result;
