@@ -273,10 +273,10 @@ namespace net.rs64.TexTransTool.NDMF
             // Capture the original renderer/material relationships before
             // standalone atlas execution mutates domain meshes and materials.
             var streamingVisibilityDiagnostic =
-                mergePlan.ShadowStreamingExample is { } streamingExample
+                mergePlan.ShadowStreamingExample is { } visibilityStreamingExample
                     ? DescribeStreamingVisibilityRelations(
                         preparedGroups,
-                        streamingExample,
+                        visibilityStreamingExample,
                         domain.GetMaterials,
                         domain.GetMesh,
                         OriginalMaterialName,
