@@ -422,6 +422,49 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        private readonly struct GroupLayoutKey
+            : IEquatable<GroupLayoutKey>
+        {
+            private readonly int[] _groupIds;
+            private readonly int _width;
+            private readonly int _height;
+            private readonly int _hashCode;
+
+            internal GroupLayoutKey(
+                int[] groupIds,
+                Vector2Int layoutSize)
+            {
+                _groupIds = groupIds;
+                _width = layoutSize.x;
+                _height = layoutSize.y;
+                unchecked
+                {
+                    var hash = 17;
+                    for (var index = 0; index < groupIds.Length; index += 1)
+                        hash = hash * 31 + groupIds[index];
+                    hash = hash * 31 + _width;
+                    hash = hash * 31 + _height;
+                    _hashCode = hash;
+                }
+            }
+
+            public bool Equals(GroupLayoutKey other)
+            {
+                if (_hashCode != other._hashCode
+                    || _width != other._width
+                    || _height != other._height
+                    || _groupIds.Length != other._groupIds.Length)
+                    return false;
+                for (var index = 0; index < _groupIds.Length; index += 1)
+                    if (_groupIds[index] != other._groupIds[index]) return false;
+                return true;
+            }
+
+            public override bool Equals(object? obj) =>
+                obj is GroupLayoutKey other && Equals(other);
+
+            public override int GetHashCode() => _hashCode;
+        }
         private sealed class ShadowCostProjection
         {
             internal readonly TextureCostPlan Baseline;
