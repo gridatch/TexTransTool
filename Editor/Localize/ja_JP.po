@@ -183,6 +183,9 @@ msgstr "表示切替アニメーションによるテクスチャ統合の除外
 msgid "AutoAtlasTexture:info:Temporary2DProduction"
 msgstr "2Dテクスチャ統合（本番）: 計画={0}件 / 成功={1}件 / 単体処理へ復帰={2}件"
 
+msgid "AutoAtlasTexture:info:TemporarySearchBudgetComparison"
+msgstr "一時診断（状態数上限の同一ビルド比較・1024は計画のみ）\n512状態: 探索={0}ms / 安全候補={1} / 想定採用={2} / 想定削減={3} bytes / 配置試行={4} / unique state={5} / state選別={6}ms\n1024状態: 探索={7}ms / 安全候補={8} / 想定採用={9} / 想定削減={10} bytes / 配置試行={11} / unique state={12} / state選別={13}ms\n採用グループ・出力サイズ・予測削減量の一致={14}\n512案: {15}\n1024案: {16}\n注: 本番で適用するのは512案のみ。1024案の本番実行は未検証です。"
+
 msgid "AutoAtlasTexture:info:TemporaryTimingDiagnostic"
 msgstr "一時診断（2D統合）\nplanner総時間: {0}ms / standalone解析: {1}ms（{2}回） / 本番DoAtlasTexture: {3}ms（{4}回）\natomic group: {5} / 採用された統合: {6}\nLayoutProfile: {7} / 複数profile group: {8} / 2D対象幅: {9}\n2D評価候補: {10} / standaloneより広いprofile: {11}\n安全条件通過: {12} / 広いprofileで通過: {13} / 想定採用数: {14}\n棄却理由: pixels={15} / memory={16} / 最大辺={17} / sampling={18}\nplanner詳細: 2D={19}ms / state選別={20}ms / 配置試行={21} / unique state={22} / score={23}\n投影評価: {24} / safety評価: {25} / property要件構築: {26}（{27}ms）\n理論下限: 全subset評価={28} / 計算={29}ms / pixels条件通過={30}\n最良ピクセル候補: {31}→{32} / 棄却理由: {33}"
 

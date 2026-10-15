@@ -838,6 +838,27 @@ namespace net.rs64.TexTransTool.NDMF
                 mergePlan.ShadowBestMergedPixels,
                 mergePlan.ShadowBestRejectionReason);
 
+            if (mergePlan.BudgetComparison is { } budgetComparison)
+                temporaryTimingDiagnostic += "\n" + string.Format(
+                    "AutoAtlasTexture:info:TemporarySearchBudgetComparison".GetLocalize(),
+                    mergePlan.Shadow2DPlanningMilliseconds,
+                    mergePlan.ShadowAdoptableCandidateCount,
+                    mergePlan.Selections.Count,
+                    mergePlan.Selections.Sum(item => item.PredictedSavingBytes),
+                    mergePlan.ShadowPlacementAttemptCount,
+                    mergePlan.ShadowUniqueGeneratedStateCount,
+                    mergePlan.ShadowStateSelectionMilliseconds,
+                    budgetComparison.SearchMilliseconds,
+                    budgetComparison.AdoptableCandidateCount,
+                    budgetComparison.SelectedCount,
+                    budgetComparison.PredictedSavingBytes,
+                    budgetComparison.PlacementAttempts,
+                    budgetComparison.UniqueStates,
+                    budgetComparison.StateSelectionMilliseconds,
+                    budgetComparison.SameSelectedGroupLayouts,
+                    budgetComparison.ProductionSummary,
+                    budgetComparison.ComparisonSummary);
+
             temporaryTimingDiagnostic += "\n" + string.Format(
                 "AutoAtlasTexture:info:Temporary2DProduction".GetLocalize(),
                 mergePlan.Selections.Count(selection =>

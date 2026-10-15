@@ -23,6 +23,8 @@ namespace net.rs64.TexTransTool.NDMF
         // Candidate exploration below never calls DoAtlasTexture. These limits
         // only bound cheap integer-DP state retention, not expensive atlas probes.
         private const int ShadowPackingStatesPerHost = 512;
+        // Temporary comparison: 1024 states are never used in production.
+        private const int ComparisonShadowPackingStatesPerHost = 1024;
         private const int PackingGridUnit = 256;
         private const double UnknownDemandLog2 = -32d;
         private const double Epsilon = 1e-8;
@@ -80,9 +82,48 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        internal sealed class SearchBudgetComparison
+        {
+            internal readonly long SearchMilliseconds;
+            internal readonly int AdoptableCandidateCount;
+            internal readonly int SelectedCount;
+            internal readonly long PredictedSavingBytes;
+            internal readonly long PlacementAttempts;
+            internal readonly long UniqueStates;
+            internal readonly long StateSelectionMilliseconds;
+            internal readonly bool SameSelectedGroupLayouts;
+            internal readonly string ProductionSummary;
+            internal readonly string ComparisonSummary;
+
+            internal SearchBudgetComparison(
+                long searchMilliseconds,
+                int adoptableCandidateCount,
+                int selectedCount,
+                long predictedSavingBytes,
+                long placementAttempts,
+                long uniqueStates,
+                long stateSelectionMilliseconds,
+                bool sameSelectedGroupLayouts,
+                string productionSummary,
+                string comparisonSummary)
+            {
+                SearchMilliseconds = searchMilliseconds;
+                AdoptableCandidateCount = adoptableCandidateCount;
+                SelectedCount = selectedCount;
+                PredictedSavingBytes = predictedSavingBytes;
+                PlacementAttempts = placementAttempts;
+                UniqueStates = uniqueStates;
+                StateSelectionMilliseconds = stateSelectionMilliseconds;
+                SameSelectedGroupLayouts = sameSelectedGroupLayouts;
+                ProductionSummary = productionSummary;
+                ComparisonSummary = comparisonSummary;
+            }
+        }
+
         internal sealed class PlanResult
         {
             internal readonly IReadOnlyList<MergeSelection> Selections;
+            internal readonly SearchBudgetComparison? BudgetComparison;
 
             // Temporary diagnostics for validating AutoAtlas processing cost.
             internal readonly long PlanningTimeMilliseconds;
@@ -250,9 +291,11 @@ namespace net.rs64.TexTransTool.NDMF
                 long shadowScoreStateCallCount = 0,
                 string shadowBestSamplingSummary = "",
                 StreamingRegressionExample? shadowStreamingExample = null,
-                int shadowStreamingRegressingCandidateCount = 0)
+                int shadowStreamingRegressingCandidateCount = 0,
+                SearchBudgetComparison? budgetComparison = null)
             {
                 Selections = selections;
+                BudgetComparison = budgetComparison;
                 ShadowStreamingExample = shadowStreamingExample;
                 ShadowStreamingRegressingCandidateCount =
                     shadowStreamingRegressingCandidateCount;
@@ -1321,9 +1364,6 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
-            // The legacy band search is no longer needed for production.
-            // Compatibility diagnostic values are temporary and will be
-            // removed together with the obsolete console format.
             var byId = groups.ToDictionary(group => group.Id);
 
             var shadowPlanningTimer =
@@ -1334,14 +1374,46 @@ namespace net.rs64.TexTransTool.NDMF
                 propertyTextures,
                 settings,
                 alphaCache,
-                GetPredictedPropertySizes);
+                GetPredictedPropertySizes,
+                ShadowPackingStatesPerHost);
             shadowPlanningTimer.Stop();
             var shadow2DPlanningMilliseconds =
                 shadowPlanningTimer.ElapsedMilliseconds;
 
-            // Production uses only two-dimensional packing candidates.
+            // Independent comparison beam; precomputed atomic profiles and
+            // property requirement cache are shared across both searches.
+            var comparisonTimer =
+                System.Diagnostics.Stopwatch.StartNew();
+            var comparison2D = EvaluateShadow2DPacking(
+                mergeGroups,
+                byId,
+                propertyTextures,
+                settings,
+                alphaCache,
+                GetPredictedPropertySizes,
+                ComparisonShadowPackingStatesPerHost);
+            comparisonTimer.Stop();
+
+            // Production always uses the original 512-state result.
             var selected = SelectTwoDimensionalMerges(
                 shadow2D.ProductionCandidates);
+            var comparisonSelected = SelectTwoDimensionalMerges(
+                comparison2D.ProductionCandidates);
+            var productionSummary = DescribeBudgetSelections(selected);
+            var comparisonSummary =
+                DescribeBudgetSelections(comparisonSelected);
+            var budgetComparison = new SearchBudgetComparison(
+                comparisonTimer.ElapsedMilliseconds,
+                comparison2D.AdoptableCandidateCount,
+                comparisonSelected.Count,
+                comparisonSelected.Sum(item => item.PredictedSavingBytes),
+                comparison2D.PlacementAttemptCount,
+                comparison2D.UniqueGeneratedStateCount,
+                comparison2D.StateSelectionMilliseconds,
+                string.Equals(productionSummary, comparisonSummary,
+                    StringComparison.Ordinal),
+                productionSummary,
+                comparisonSummary);
 
             var crossAtomicMaterialGroupCount = 0;
             foreach (var selection in selected)
@@ -1436,7 +1508,26 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.ScoreStateCallCount,
                 shadow2D.BestSamplingSummary,
                 shadow2D.StreamingExample,
-                shadow2D.StreamingRegressingCandidateCount);
+                shadow2D.StreamingRegressingCandidateCount,
+                budgetComparison);
+        }
+
+        private static string DescribeBudgetSelections(
+            IEnumerable<MergeSelection> selections)
+        {
+            var descriptions = selections
+                .Select(selection =>
+                    string.Join("+",
+                        selection.GroupIds.OrderBy(id => id)
+                            .Select(id => "g" + id))
+                    + "@" + selection.PlannedLayoutSize.x
+                    + "x" + selection.PlannedLayoutSize.y
+                    + ":" + selection.PredictedSavingBytes + "B")
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .ToArray();
+            return descriptions.Length == 0
+                ? "(none)"
+                : string.Join("; ", descriptions);
         }
 
         internal static List<MergeSelection> SelectTwoDimensionalMerges(
@@ -1467,8 +1558,11 @@ namespace net.rs64.TexTransTool.NDMF
             Dictionary<Texture, bool> alphaCache,
             Func<int[], Vector2Int,
                 IReadOnlyDictionary<string, Vector2Int>>
-                propertySizeProvider)
+                propertySizeProvider,
+            int stateBudget)
         {
+            if (stateBudget < 8 || stateBudget % 8 != 0)
+                throw new ArgumentOutOfRangeException(nameof(stateBudget));
             var profileCount = groups.Sum(
                 group => group.TwoDimensionalProfileHeights.Count);
             var groupsWithMultipleProfiles = groups.Count(
@@ -1771,7 +1865,7 @@ namespace net.rs64.TexTransTool.NDMF
                 // is deduplicated by StateKey, so the union is already unique.
                 var unique = source.ToArray();
 
-                if (unique.Length <= ShadowPackingStatesPerHost)
+                if (unique.Length <= stateBudget)
                     return unique
                         .OrderBy(
                             state =>
@@ -1802,7 +1896,7 @@ namespace net.rs64.TexTransTool.NDMF
                     foreach (var state in ordered)
                     {
                         if (selected.Count
-                                >= ShadowPackingStatesPerHost
+                                >= stateBudget
                             || added >= count)
                         {
                             break;
@@ -1830,7 +1924,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    ShadowPackingStatesPerHost / 2);
+                    stateBudget / 2);
                 Retain(
                     unique
                         .OrderBy(
@@ -1841,7 +1935,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    ShadowPackingStatesPerHost / 4);
+                    stateBudget / 4);
                 Retain(
                     unique
                         .OrderBy(state => state.MaxHeight)
@@ -1851,7 +1945,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    ShadowPackingStatesPerHost / 8);
+                    stateBudget / 8);
                 Retain(
                     unique
                         .OrderByDescending(
@@ -1862,9 +1956,9 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    ShadowPackingStatesPerHost / 8);
+                    stateBudget / 8);
 
-                if (selected.Count < ShadowPackingStatesPerHost)
+                if (selected.Count < stateBudget)
                 {
                     Retain(
                         unique
@@ -1879,7 +1973,7 @@ namespace net.rs64.TexTransTool.NDMF
                             .ThenBy(
                                 state => state,
                                 ShadowPackingStateStableComparer.Instance),
-                        ShadowPackingStatesPerHost);
+                        stateBudget);
                 }
 
                 return selected
