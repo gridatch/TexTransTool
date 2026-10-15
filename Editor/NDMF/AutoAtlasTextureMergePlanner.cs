@@ -1829,30 +1829,33 @@ namespace net.rs64.TexTransTool.NDMF
             List<ShadowPackingState> SelectPropertyAwareStates(
                 IEnumerable<ShadowPackingState> source)
             {
-                var unique = source
-                    .GroupBy(state => state.Key, StringComparer.Ordinal)
-                    .Select(group => group
-                        .OrderByDescending(state => state.UsesWiderProfile)
-                        .First())
-                    .ToArray();
+                // Existing states cannot contain the group currently being
+                // expanded, while generated states always do. generated itself
+                // is deduplicated by StateKey, so the union is already unique.
+                var unique = source.ToArray();
 
                 if (unique.Length <= ShadowPackingStatesPerHost)
                     return unique
-                        .OrderBy(state => state.GroupIds.Length == 0 ? 0 : 1)
-                        .ThenBy(state => state.ProjectedPixelDelta)
-                        .ThenBy(state => state.ProjectedMemoryDelta)
+                        .OrderBy(
+                            state =>
+                                state.GroupIds.Length == 0 ? 0 : 1)
+                        .ThenBy(
+                            state => state.ProjectedPixelDelta)
+                        .ThenBy(
+                            state => state.ProjectedMemoryDelta)
                         .ThenBy(state => state.MaxHeight)
                         .ThenBy(state => state.SkylineArea)
-                        .ThenBy(state => state.Key, StringComparer.Ordinal)
+                        .ThenBy(
+                            state => state,
+                            ShadowPackingStateStableComparer.Instance)
                         .ToList();
 
                 var selected =
-                    new Dictionary<string, ShadowPackingState>(
-                        StringComparer.Ordinal);
+                    new HashSet<ShadowPackingState>();
                 var empty = unique.FirstOrDefault(
                     state => state.GroupIds.Length == 0);
                 if (empty != null)
-                    selected[empty.Key] = empty;
+                    selected.Add(empty);
 
                 void Retain(
                     IEnumerable<ShadowPackingState> ordered,
@@ -1861,16 +1864,16 @@ namespace net.rs64.TexTransTool.NDMF
                     var added = 0;
                     foreach (var state in ordered)
                     {
-                        if (selected.Count >= ShadowPackingStatesPerHost
+                        if (selected.Count
+                                >= ShadowPackingStatesPerHost
                             || added >= count)
                         {
                             break;
                         }
 
-                        if (selected.ContainsKey(state.Key))
+                        if (!selected.Add(state))
                             continue;
 
-                        selected[state.Key] = state;
                         added += 1;
                     }
                 }
@@ -1882,52 +1885,79 @@ namespace net.rs64.TexTransTool.NDMF
                 // current merge result.
                 Retain(
                     unique
-                        .OrderBy(state => state.ProjectedPixelDelta)
-                        .ThenBy(state => state.ProjectedMemoryDelta)
+                        .OrderBy(
+                            state => state.ProjectedPixelDelta)
+                        .ThenBy(
+                            state => state.ProjectedMemoryDelta)
                         .ThenBy(state => state.MaxHeight)
-                        .ThenBy(state => state.Key, StringComparer.Ordinal),
+                        .ThenBy(
+                            state => state,
+                            ShadowPackingStateStableComparer.Instance),
                     ShadowPackingStatesPerHost / 2);
                 Retain(
                     unique
-                        .OrderBy(state => state.ProjectedMemoryDelta)
-                        .ThenBy(state => state.ProjectedPixelDelta)
+                        .OrderBy(
+                            state => state.ProjectedMemoryDelta)
+                        .ThenBy(
+                            state => state.ProjectedPixelDelta)
                         .ThenBy(state => state.MaxHeight)
-                        .ThenBy(state => state.Key, StringComparer.Ordinal),
+                        .ThenBy(
+                            state => state,
+                            ShadowPackingStateStableComparer.Instance),
                     ShadowPackingStatesPerHost / 4);
                 Retain(
                     unique
                         .OrderBy(state => state.MaxHeight)
                         .ThenBy(state => state.SkylineArea)
-                        .ThenByDescending(state => state.GroupIds.Length)
-                        .ThenBy(state => state.Key, StringComparer.Ordinal),
+                        .ThenByDescending(
+                            state => state.GroupIds.Length)
+                        .ThenBy(
+                            state => state,
+                            ShadowPackingStateStableComparer.Instance),
                     ShadowPackingStatesPerHost / 8);
                 Retain(
                     unique
-                        .OrderByDescending(state => state.BaselineBytes)
-                        .ThenByDescending(state => state.GroupIds.Length)
+                        .OrderByDescending(
+                            state => state.BaselineBytes)
+                        .ThenByDescending(
+                            state => state.GroupIds.Length)
                         .ThenBy(state => state.MaxHeight)
-                        .ThenBy(state => state.Key, StringComparer.Ordinal),
+                        .ThenBy(
+                            state => state,
+                            ShadowPackingStateStableComparer.Instance),
                     ShadowPackingStatesPerHost / 8);
 
                 if (selected.Count < ShadowPackingStatesPerHost)
                 {
                     Retain(
                         unique
-                            .OrderBy(state => state.ProjectedPixelDelta)
-                            .ThenBy(state => state.ProjectedMemoryDelta)
+                            .OrderBy(
+                                state =>
+                                    state.ProjectedPixelDelta)
+                            .ThenBy(
+                                state =>
+                                    state.ProjectedMemoryDelta)
                             .ThenBy(state => state.MaxHeight)
                             .ThenBy(state => state.SkylineArea)
-                            .ThenBy(state => state.Key, StringComparer.Ordinal),
+                            .ThenBy(
+                                state => state,
+                                ShadowPackingStateStableComparer.Instance),
                         ShadowPackingStatesPerHost);
                 }
 
-                return selected.Values
-                    .OrderBy(state => state.GroupIds.Length == 0 ? 0 : 1)
-                    .ThenBy(state => state.ProjectedPixelDelta)
-                    .ThenBy(state => state.ProjectedMemoryDelta)
+                return selected
+                    .OrderBy(
+                        state =>
+                            state.GroupIds.Length == 0 ? 0 : 1)
+                    .ThenBy(
+                        state => state.ProjectedPixelDelta)
+                    .ThenBy(
+                        state => state.ProjectedMemoryDelta)
                     .ThenBy(state => state.MaxHeight)
                     .ThenBy(state => state.SkylineArea)
-                    .ThenBy(state => state.Key, StringComparer.Ordinal)
+                    .ThenBy(
+                        state => state,
+                        ShadowPackingStateStableComparer.Instance)
                     .ToList();
             }
 
