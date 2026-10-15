@@ -111,12 +111,9 @@ namespace net.rs64.TexTransTool.NDMF
                 animationIndex,
                 avatarRoot,
                 renderers,
-                transform =>
+                transform => new[]
                 {
-                    var paths = pathRemapper.GetAllPathsForObject(transform)
-                        .ToHashSet(StringComparer.Ordinal);
-                    paths.Add(pathRemapper.GetVirtualPathForObject(transform));
-                    return paths;
+                    pathRemapper.GetVirtualPathForObject(transform),
                 });
         }
 
