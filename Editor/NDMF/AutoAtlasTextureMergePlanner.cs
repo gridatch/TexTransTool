@@ -165,6 +165,11 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Vector2Int ShadowOptimisticBestLayoutSize;
             internal readonly int ShadowProjectionEvaluationCount;
             internal readonly int ShadowSafetyEvaluationCount;
+            internal readonly long ShadowProjectionEvaluationMilliseconds;
+            internal readonly long ShadowStateSelectionMilliseconds;
+            internal readonly long ShadowPlacementAttemptCount;
+            internal readonly long ShadowUniqueGeneratedStateCount;
+            internal readonly long ShadowScoreStateCallCount;
             internal readonly string ShadowBestSamplingSummary;
 
             internal PlanResult(
@@ -246,6 +251,11 @@ namespace net.rs64.TexTransTool.NDMF
                 Vector2Int shadowOptimisticBestLayoutSize = default,
                 int shadowProjectionEvaluationCount = 0,
                 int shadowSafetyEvaluationCount = 0,
+                long shadowProjectionEvaluationMilliseconds = 0,
+                long shadowStateSelectionMilliseconds = 0,
+                long shadowPlacementAttemptCount = 0,
+                long shadowUniqueGeneratedStateCount = 0,
+                long shadowScoreStateCallCount = 0,
                 string shadowBestSamplingSummary = "")
             {
                 Selections = selections;
@@ -371,6 +381,16 @@ namespace net.rs64.TexTransTool.NDMF
                     shadowProjectionEvaluationCount;
                 ShadowSafetyEvaluationCount =
                     shadowSafetyEvaluationCount;
+                ShadowProjectionEvaluationMilliseconds =
+                    shadowProjectionEvaluationMilliseconds;
+                ShadowStateSelectionMilliseconds =
+                    shadowStateSelectionMilliseconds;
+                ShadowPlacementAttemptCount =
+                    shadowPlacementAttemptCount;
+                ShadowUniqueGeneratedStateCount =
+                    shadowUniqueGeneratedStateCount;
+                ShadowScoreStateCallCount =
+                    shadowScoreStateCallCount;
                 ShadowBestSamplingSummary = shadowBestSamplingSummary;
             }
         }
@@ -426,6 +446,9 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int[] GroupIds;
             internal readonly long BaselineBytes;
             internal readonly bool UsesWiderProfile;
+            internal readonly int MaxHeight;
+            internal readonly int SkylineArea;
+            internal readonly string Key;
             internal long ProjectedPixelDelta;
             internal long ProjectedMemoryDelta;
 
@@ -439,17 +462,14 @@ namespace net.rs64.TexTransTool.NDMF
                 GroupIds = groupIds.OrderBy(id => id).ToArray();
                 BaselineBytes = baselineBytes;
                 UsesWiderProfile = usesWiderProfile;
+                MaxHeight =
+                    Skyline.Length == 0 ? 0 : Skyline.Max();
+                SkylineArea = Skyline.Sum();
+                Key =
+                    string.Join(",", GroupIds)
+                    + "|"
+                    + string.Join(",", Skyline);
             }
-
-            internal int MaxHeight =>
-                Skyline.Length == 0 ? 0 : Skyline.Max();
-
-            internal int SkylineArea => Skyline.Sum();
-
-            internal string Key =>
-                string.Join(",", GroupIds)
-                + "|"
-                + string.Join(",", Skyline);
         }
 
         private readonly struct ShadowPackingDiagnostics
@@ -497,6 +517,11 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Vector2Int OptimisticBestLayoutSize;
             internal readonly int ProjectionEvaluationCount;
             internal readonly int SafetyEvaluationCount;
+            internal readonly long ProjectionEvaluationMilliseconds;
+            internal readonly long StateSelectionMilliseconds;
+            internal readonly long PlacementAttemptCount;
+            internal readonly long UniqueGeneratedStateCount;
+            internal readonly long ScoreStateCallCount;
             internal readonly string BestSamplingSummary;
 
             internal ShadowPackingDiagnostics(
@@ -543,6 +568,11 @@ namespace net.rs64.TexTransTool.NDMF
                 Vector2Int optimisticBestLayoutSize,
                 int projectionEvaluationCount,
                 int safetyEvaluationCount,
+                long projectionEvaluationMilliseconds,
+                long stateSelectionMilliseconds,
+                long placementAttemptCount,
+                long uniqueGeneratedStateCount,
+                long scoreStateCallCount,
                 string bestSamplingSummary)
             {
                 ProfileCount = profileCount;
@@ -596,6 +626,12 @@ namespace net.rs64.TexTransTool.NDMF
                 OptimisticBestLayoutSize = optimisticBestLayoutSize;
                 ProjectionEvaluationCount = projectionEvaluationCount;
                 SafetyEvaluationCount = safetyEvaluationCount;
+                ProjectionEvaluationMilliseconds =
+                    projectionEvaluationMilliseconds;
+                StateSelectionMilliseconds = stateSelectionMilliseconds;
+                PlacementAttemptCount = placementAttemptCount;
+                UniqueGeneratedStateCount = uniqueGeneratedStateCount;
+                ScoreStateCallCount = scoreStateCallCount;
                 BestSamplingSummary = bestSamplingSummary;
             }
         }
@@ -1348,6 +1384,11 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.OptimisticBestLayoutSize,
                 shadow2D.ProjectionEvaluationCount,
                 shadow2D.SafetyEvaluationCount,
+                shadow2D.ProjectionEvaluationMilliseconds,
+                shadow2D.StateSelectionMilliseconds,
+                shadow2D.PlacementAttemptCount,
+                shadow2D.UniqueGeneratedStateCount,
+                shadow2D.ScoreStateCallCount,
                 shadow2D.BestSamplingSummary);
         }
 
@@ -1405,6 +1446,11 @@ namespace net.rs64.TexTransTool.NDMF
             var optimisticBestPixelRatio = double.PositiveInfinity;
             var projectionEvaluationCount = 0;
             var safetyEvaluationCount = 0;
+            long projectionEvaluationMilliseconds = 0;
+            long stateSelectionMilliseconds = 0;
+            long placementAttemptCount = 0;
+            long uniqueGeneratedStateCount = 0;
+            long scoreStateCallCount = 0;
             var bestSamplingSummary = "";
 
             var shadowAdoptable =
@@ -1430,6 +1476,8 @@ namespace net.rs64.TexTransTool.NDMF
                 if (projectionCache.TryGetValue(layoutKey, out var cached))
                     return cached;
 
+                var projectionTimer =
+                    System.Diagnostics.Stopwatch.StartNew();
                 var selectedGroups = orderedIds
                     .Select(id => byId[id])
                     .ToArray();
@@ -1445,8 +1493,11 @@ namespace net.rs64.TexTransTool.NDMF
                     propertySizes,
                     alphaCache,
                     UnknownAlphaAssumption.AssumePresent);
+                projectionTimer.Stop();
 
                 projectionEvaluationCount += 1;
+                projectionEvaluationMilliseconds +=
+                    projectionTimer.ElapsedMilliseconds;
                 var projection = new ShadowCostProjection(
                     baseline,
                     merged,
@@ -1620,6 +1671,7 @@ namespace net.rs64.TexTransTool.NDMF
                 ShadowPackingState state,
                 int targetWidth)
             {
+                scoreStateCallCount += 1;
                 if (state.GroupIds.Length == 0)
                 {
                     state.ProjectedPixelDelta = 0;
@@ -1819,6 +1871,7 @@ namespace net.rs64.TexTransTool.NDMF
                                  x + widthColumns <= columnCount;
                                  x += 1)
                             {
+                                placementAttemptCount += 1;
                                 var y = 0;
                                 for (var column = x;
                                      column < x + widthColumns;
@@ -1851,22 +1904,15 @@ namespace net.rs64.TexTransTool.NDMF
                                     state.UsesWiderProfile
                                         || profileWidth
                                             > group.BandWidthPixels);
-                                ScoreState(next, targetWidth);
 
+                                // Same key means the same group set and exact
+                                // skyline, therefore the same projected layout
+                                // and property cost. Deduplicate geometry before
+                                // running the property-cost projection.
                                 if (!generated.TryGetValue(
                                         next.Key,
                                         out var prior)
-                                    || next.ProjectedPixelDelta
-                                        < prior.ProjectedPixelDelta
-                                    || (next.ProjectedPixelDelta
-                                            == prior.ProjectedPixelDelta
-                                        && next.ProjectedMemoryDelta
-                                            < prior.ProjectedMemoryDelta)
-                                    || (next.ProjectedPixelDelta
-                                            == prior.ProjectedPixelDelta
-                                        && next.ProjectedMemoryDelta
-                                            == prior.ProjectedMemoryDelta
-                                        && next.UsesWiderProfile
+                                    || (next.UsesWiderProfile
                                         && !prior.UsesWiderProfile))
                                 {
                                     generated[next.Key] = next;
@@ -1878,8 +1924,17 @@ namespace net.rs64.TexTransTool.NDMF
                     if (generated.Count == 0)
                         continue;
 
+                    uniqueGeneratedStateCount += generated.Count;
+                    foreach (var generatedState in generated.Values)
+                        ScoreState(generatedState, targetWidth);
+
                     states.AddRange(generated.Values);
+                    var selectionTimer =
+                        System.Diagnostics.Stopwatch.StartNew();
                     states = SelectPropertyAwareStates(states);
+                    selectionTimer.Stop();
+                    stateSelectionMilliseconds +=
+                        selectionTimer.ElapsedMilliseconds;
                 }
 
                 foreach (var state in states.Where(
@@ -2134,6 +2189,11 @@ namespace net.rs64.TexTransTool.NDMF
                 optimisticBestLayoutSize,
                 projectionEvaluationCount,
                 safetyEvaluationCount,
+                projectionEvaluationMilliseconds,
+                stateSelectionMilliseconds,
+                placementAttemptCount,
+                uniqueGeneratedStateCount,
+                scoreStateCallCount,
                 bestSamplingSummary);
         }
 
