@@ -185,6 +185,12 @@ msgstr "2D texture merging (production): planned={0} / succeeded={1} / standalon
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetComparison"
 msgstr "Temporary same-build search-budget comparison (1024 is planning-only)\n512 states: search={0}ms / eligible={1} / planned selections={2} / predicted savings={3} bytes / placement attempts={4} / unique states={5} / selection={6}ms\n1024 states: search={7}ms / eligible={8} / planned selections={9} / predicted savings={10} bytes / placement attempts={11} / unique states={12} / selection={13}ms\nSame selected groups, output sizes and predicted savings={14}\n512 plan: {15}\n1024 plan: {16}\nRetention contribution (512): {17}\nRetention contribution (1024): {18}\nNote: assigned counts per-DP-step retention events (states can recur). sole/shared measure overlap in ranking prefixes actually visited; selectedPaths lists retention reasons observed along adopted candidate paths. These are descriptive, not causal ablation results.\nNote: only the 512-state plan runs in production. The 1024-state plan has not been executed."
 
+msgid "AutoAtlasTexture:info:TemporaryRetentionAblationHeader"
+msgstr "Temporary 512-state criterion ablation (diagnostics only; production unchanged)\nBaseline: P256/M128/H64/B64. Changes in safe candidates compare group sets plus output sizes."
+
+msgid "AutoAtlasTexture:info:TemporaryRetentionAblation"
+msgstr "{0}: search={1}ms / evaluated={2} / safe={3} / selected={4} / predicted savings={5} bytes / state selection={6}ms / placements={7}\nSame selected groups, sizes and predicted savings as baseline={8} / gained safe={9} / lost safe={10}\nSelected plan: {11}\nGained safe: {12}\nLost safe: {13}"
+
 msgid "AutoAtlasTexture:info:TemporaryTimingDiagnostic"
 msgstr "Temporary 2D packing diagnostic\nPlanner: {0}ms / Standalone: {1}ms ({2} runs) / Production DoAtlasTexture: {3}ms ({4} runs)\nAtomic groups: {5} / Selected merges: {6}\nLayout profiles: {7} / Groups with multiple profiles: {8} / 2D target widths: {9}\nEvaluated 2D candidates: {10} / Wider-than-standalone profiles: {11}\nPassed safety: {12} / Passed with wider profiles: {13} / Projected selections: {14}\nRejection: pixels={15} / memory={16} / max dimension={17} / sampling={18}\nPlanner: 2D={19}ms / state selection={20}ms / placement attempts={21} / unique states={22} / score={23}\nProjection evaluations: {24} / Safety evaluations: {25} / Property requirement builds: {26} ({27}ms)\nOptimistic lower bound: exhaustive={28} / time={29}ms / pixel-viable={30}\nBest pixel candidate: {31}→{32} / rejection: {33}"
 

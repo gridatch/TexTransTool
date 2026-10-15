@@ -861,6 +861,33 @@ namespace net.rs64.TexTransTool.NDMF
                     budgetComparison.ProductionRetentionDiagnostic,
                     budgetComparison.ComparisonRetentionDiagnostic);
 
+            if (mergePlan.RetentionAblations.Count != 0)
+            {
+                temporaryTimingDiagnostic += "\n"
+                    + "AutoAtlasTexture:info:TemporaryRetentionAblationHeader"
+                        .GetLocalize();
+                foreach (var ablation in mergePlan.RetentionAblations)
+                {
+                    temporaryTimingDiagnostic += "\n" + string.Format(
+                        "AutoAtlasTexture:info:TemporaryRetentionAblation"
+                            .GetLocalize(),
+                        ablation.Name,
+                        ablation.PlanningMilliseconds,
+                        ablation.EvaluatedCandidateCount,
+                        ablation.AdoptableCandidateCount,
+                        ablation.SelectedCount,
+                        ablation.SelectedSavingBytes,
+                        ablation.StateSelectionMilliseconds,
+                        ablation.PlacementAttemptCount,
+                        ablation.SameSelectedPlan,
+                        ablation.AddedSafeCandidateCount,
+                        ablation.LostSafeCandidateCount,
+                        ablation.SelectedPlan,
+                        ablation.AddedSafeCandidates,
+                        ablation.LostSafeCandidates);
+                }
+            }
+
             temporaryTimingDiagnostic += "\n" + string.Format(
                 "AutoAtlasTexture:info:Temporary2DProduction".GetLocalize(),
                 mergePlan.Selections.Count(selection =>
