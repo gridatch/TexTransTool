@@ -490,6 +490,115 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void VisibilityAnimationDetectorFindsParentActiveToggleAndRendererToggle()
+        {
+            var root = new GameObject("Avatar");
+            var outfit = new GameObject("Outfit");
+            var underOutfit = new GameObject("Part");
+            var accessory = new GameObject("Accessory");
+            var staticItem = new GameObject("Static");
+            try
+            {
+                outfit.transform.SetParent(root.transform);
+                underOutfit.transform.SetParent(outfit.transform);
+                accessory.transform.SetParent(root.transform);
+                staticItem.transform.SetParent(root.transform);
+
+                var outfitRenderer = underOutfit.AddComponent<MeshRenderer>();
+                var accessoryRenderer = accessory.AddComponent<MeshRenderer>();
+                var staticRenderer = staticItem.AddComponent<MeshRenderer>();
+
+                var clip = nadena.dev.ndmf.animator.VirtualClip.Create("toggles");
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Outfit", typeof(GameObject), "m_IsActive"),
+                    AnimationCurve.Constant(0f, 1f, 0f));
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Accessory", typeof(MeshRenderer), "m_Enabled"),
+                    AnimationCurve.Constant(0f, 1f, 0f));
+
+                var index = new nadena.dev.ndmf.animator.AnimationIndex(
+                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
+                var paths = new Dictionary<Transform, string>
+                {
+                    [root.transform] = "",
+                    [outfit.transform] = "Outfit",
+                    [underOutfit.transform] = "Outfit/Part",
+                    [accessory.transform] = "Accessory",
+                    [staticItem.transform] = "Static",
+                };
+
+                var detected = AutoAtlasTextureVisibilityAnimationDetector.Detect(
+                    index, root.transform,
+                    new Renderer[] { outfitRenderer, accessoryRenderer, staticRenderer },
+                    transform => new[] { paths[transform] });
+
+                Assert.That(detected, Is.EquivalentTo(
+                    new Renderer[] { outfitRenderer, accessoryRenderer }));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void VisibilityAnimationDetectorIgnoresConstantCurrentState()
+        {
+            var clip = nadena.dev.ndmf.animator.VirtualClip.Create("always-on");
+            clip.SetFloatCurve(
+                UnityEditor.EditorCurveBinding.FloatCurve(
+                    "Accessory", typeof(MeshRenderer), "m_Enabled"),
+                AnimationCurve.Constant(0f, 1f, 1f));
+
+            var root = new GameObject("Avatar");
+            var child = new GameObject("Accessory");
+            try
+            {
+                child.transform.SetParent(root.transform);
+                var renderer = child.AddComponent<MeshRenderer>();
+                var index = new nadena.dev.ndmf.animator.AnimationIndex(
+                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
+
+                var detected = AutoAtlasTextureVisibilityAnimationDetector.Detect(
+                    index, root.transform,
+                    new Renderer[] { renderer },
+                    transform => transform == root.transform
+                        ? new[] { "" }
+                        : new[] { "Accessory" });
+
+                Assert.That(detected, Is.Empty);
+                renderer.enabled = false;
+                detected = AutoAtlasTextureVisibilityAnimationDetector.Detect(
+                    index, root.transform,
+                    new Renderer[] { renderer },
+                    transform => transform == root.transform
+                        ? new[] { "" }
+                        : new[] { "Accessory" });
+                Assert.That(detected, Is.EquivalentTo(new Renderer[] { renderer }));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void VisibilityAnimationDetectorCurveThreshold()
+        {
+            Assert.That(
+                AutoAtlasTextureVisibilityAnimationDetector.CurveChangesVisibility(
+                    AnimationCurve.Constant(0f, 1f, 1f), true), Is.False);
+            Assert.That(
+                AutoAtlasTextureVisibilityAnimationDetector.CurveChangesVisibility(
+                    AnimationCurve.Constant(0f, 1f, 0f), true), Is.True);
+            Assert.That(
+                AutoAtlasTextureVisibilityAnimationDetector.CurveChangesVisibility(
+                    AnimationCurve.Constant(0f, 1f, 0f), false), Is.False);
+        }
+
+        [Test]
         public void GroupLayoutCacheKeyMatchesDistinctEquivalentArrays()
         {
             var key = new AutoAtlasTextureMergePlanner.GroupLayoutKey(

@@ -201,6 +201,9 @@ msgstr "診断ログをコピー"
 msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
 msgstr "余白を利用してテクスチャを統合"
 
+msgid "AutoAtlasTexture:prop:ExcludeVisibilityAnimatedItemsFromTextureMerging"
+msgstr "オンオフ可能なアイテムは統合しない"
+
 msgid "AutoAtlasTexture:prop:TextureMergingExcludedRenderers"
 msgstr "テクスチャ統合から除外するRenderer"
 

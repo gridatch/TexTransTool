@@ -4,6 +4,7 @@
     "references": [
         "net.rs64.tex-trans-tool.ndmf",
         "net.rs64.tex-trans-core",
+        "nadena.dev.ndmf",
         "UnityEditor.TestRunner",
         "UnityEngine.TestRunner"
     ],

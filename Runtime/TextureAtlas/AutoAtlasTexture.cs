@@ -21,6 +21,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
         // Optional second-stage optimization. Existing AutoAtlasTexture behavior is
         // unchanged while this is false.
         public bool EnableAdditionalAtlasMerging = false;
+        public bool ExcludeVisibilityAnimatedItemsFromTextureMerging = false;
 
         // Apply only to texture merging; standalone atlasing is unaffected.
         public List<Renderer> TextureMergingExcludedRenderers = new();

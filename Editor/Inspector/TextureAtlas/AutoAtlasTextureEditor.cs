@@ -10,6 +10,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     {
         private SerializedProperty _islandPadding = null!;
         private SerializedProperty _enableAdditionalAtlasMerging = null!;
+        private SerializedProperty _excludeVisibilityAnimatedItemsFromTextureMerging = null!;
         private SerializedProperty _textureMergingExcludedRenderers = null!;
         private SerializedProperty _textureMergingExcludedMaterials = null!;
         private SerializedProperty _excludedRenderers = null!;
@@ -20,6 +21,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             _islandPadding = serializedObject.FindProperty(nameof(AutoAtlasTexture.IslandPadding));
             _enableAdditionalAtlasMerging = serializedObject.FindProperty(nameof(AutoAtlasTexture.EnableAdditionalAtlasMerging));
+            _excludeVisibilityAnimatedItemsFromTextureMerging = serializedObject.FindProperty(nameof(AutoAtlasTexture.ExcludeVisibilityAnimatedItemsFromTextureMerging));
             _textureMergingExcludedRenderers = serializedObject.FindProperty(nameof(AutoAtlasTexture.TextureMergingExcludedRenderers));
             _textureMergingExcludedMaterials = serializedObject.FindProperty(nameof(AutoAtlasTexture.TextureMergingExcludedMaterials));
             _excludedRenderers = serializedObject.FindProperty(nameof(AutoAtlasTexture.ExcludedRenderers));
@@ -47,6 +49,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 {
                     using (new EditorGUI.IndentLevelScope())
                     {
+                        EditorGUILayout.PropertyField(
+                            _excludeVisibilityAnimatedItemsFromTextureMerging,
+                            "AutoAtlasTexture:prop:ExcludeVisibilityAnimatedItemsFromTextureMerging".GlcV());
                         EditorGUILayout.PropertyField(
                             _textureMergingExcludedRenderers,
                             "AutoAtlasTexture:prop:TextureMergingExcludedRenderers".GlcV(), true);

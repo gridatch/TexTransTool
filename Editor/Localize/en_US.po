@@ -200,6 +200,9 @@ msgstr "Copy diagnostics log"
 msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
 msgstr "Merge textures into unused atlas space"
 
+msgid "AutoAtlasTexture:prop:ExcludeVisibilityAnimatedItemsFromTextureMerging"
+msgstr "Do not merge textures of items with visibility animations"
+
 msgid "AutoAtlasTexture:prop:TextureMergingExcludedRenderers"
 msgstr "Renderers excluded from texture merging"
 

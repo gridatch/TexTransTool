@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using nadena.dev.ndmf;
+using nadena.dev.ndmf.animator;
 using nadena.dev.ndmf.localization;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
@@ -42,10 +43,19 @@ namespace net.rs64.TexTransTool.NDMF
                 .Where(atlas => TexTransBehaviorSearch.CheckIsActiveBehavior(
                     atlas, context.AvatarRootObject))
                 .ToArray();
+            var configuration = configurations[0];
+            var animationServices =
+                configuration.EnableAdditionalAtlasMerging
+                && configuration.ExcludeVisibilityAnimatedItemsFromTextureMerging
+                    ? context.Extension<AnimatorServicesContext>()
+                    : null;
             AutoAtlasTextureProcessor.Execute(
                 session.Domain,
-                configurations[0],
-                manualAtlases);
+                configuration,
+                manualAtlases,
+                animationServices?.AnimationIndex,
+                animationServices?.ObjectPathRemapper,
+                context.AvatarRootTransform);
         }
     }
 
@@ -83,6 +93,136 @@ namespace net.rs64.TexTransTool.NDMF
         }
     }
 
+
+    /// <summary>
+    /// Detects visibility animation on renderers and their parent GameObjects.
+    /// This only determines whether a property can take a value different from
+    /// its current one; it does not infer runtime usage frequency or menu reachability.
+    /// </summary>
+    internal static class AutoAtlasTextureVisibilityAnimationDetector
+    {
+        internal static HashSet<Renderer> Detect(
+            AnimationIndex animationIndex,
+            ObjectPathRemapper pathRemapper,
+            Transform avatarRoot,
+            IEnumerable<Renderer> renderers)
+        {
+            return Detect(
+                animationIndex,
+                avatarRoot,
+                renderers,
+                transform =>
+                {
+                    var paths = pathRemapper.GetAllPathsForObject(transform)
+                        .ToHashSet(StringComparer.Ordinal);
+                    paths.Add(pathRemapper.GetVirtualPathForObject(transform));
+                    return paths;
+                });
+        }
+
+        // Allows tests to supply deterministic object paths without requiring
+        // a live NDMF BuildContext.
+        internal static HashSet<Renderer> Detect(
+            AnimationIndex animationIndex,
+            Transform avatarRoot,
+            IEnumerable<Renderer> renderers,
+            Func<Transform, IEnumerable<string>> pathsForObject)
+        {
+            var animatedRenderers = new HashSet<Renderer>();
+            var gameObjectVisibility = new Dictionary<Transform, bool>();
+
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null) continue;
+
+                var transform = renderer.transform;
+                var cursor = transform;
+                var insideAvatar = false;
+                while (cursor != null)
+                {
+                    if (cursor == avatarRoot)
+                    {
+                        insideAvatar = true;
+                        break;
+                    }
+                    cursor = cursor.parent;
+                }
+                if (!insideAvatar) continue;
+
+                if (HasAnimatedVisibility(
+                        animationIndex, pathsForObject(transform),
+                        renderer.GetType(), "m_Enabled", renderer.enabled))
+                {
+                    animatedRenderers.Add(renderer);
+                    continue;
+                }
+
+                for (cursor = transform; cursor != null; cursor = cursor.parent)
+                {
+                    if (!gameObjectVisibility.TryGetValue(cursor, out var animated))
+                    {
+                        animated = HasAnimatedVisibility(
+                            animationIndex, pathsForObject(cursor),
+                            typeof(GameObject), "m_IsActive",
+                            cursor.gameObject.activeSelf);
+                        gameObjectVisibility.Add(cursor, animated);
+                    }
+
+                    if (animated)
+                    {
+                        animatedRenderers.Add(renderer);
+                        break;
+                    }
+
+                    if (cursor == avatarRoot) break;
+                }
+            }
+
+            return animatedRenderers;
+        }
+
+        private static bool HasAnimatedVisibility(
+            AnimationIndex index, IEnumerable<string> paths,
+            Type componentType, string propertyName, bool currentValue)
+        {
+            foreach (var path in paths.Distinct(StringComparer.Ordinal))
+            {
+                foreach (var clip in index.GetClipsForObjectPath(path))
+                {
+                    foreach (var binding in clip.GetFloatCurveBindings())
+                    {
+                        if (binding.path != path
+                            || binding.propertyName != propertyName
+                            || binding.type == null
+                            || !binding.type.IsAssignableFrom(componentType)
+                            || (propertyName == "m_IsActive"
+                                ? binding.type != typeof(GameObject)
+                                : !typeof(Renderer).IsAssignableFrom(binding.type)))
+                            continue;
+
+                        if (CurveChangesVisibility(
+                                clip.GetFloatCurve(binding), currentValue))
+                            return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool CurveChangesVisibility(
+            AnimationCurve? curve, bool currentValue)
+        {
+            if (curve == null) return false;
+            // Boolean animation properties are encoded as float 0 or 1.
+            // Curves that keep the current state must not exclude an item.
+            return curve.keys.Any(key =>
+                !float.IsNaN(key.value)
+                && !float.IsInfinity(key.value)
+                && (key.value >= 0.5f) != currentValue);
+        }
+    }
+
     internal static class AutoAtlasTextureProcessor
     {
         internal static AutoAtlasTexture[] GetActiveConfigurations(GameObject root)
@@ -110,7 +250,10 @@ namespace net.rs64.TexTransTool.NDMF
         internal static void Execute(
             IDomain domain,
             AutoAtlasTexture configuration,
-            IReadOnlyCollection<AtlasTexture> manualAtlases)
+            IReadOnlyCollection<AtlasTexture> manualAtlases,
+            AnimationIndex? animationIndex = null,
+            ObjectPathRemapper? objectPathRemapper = null,
+            Transform? avatarRoot = null)
         {
             var processingTimer = System.Diagnostics.Stopwatch.StartNew();
 
@@ -191,6 +334,16 @@ namespace net.rs64.TexTransTool.NDMF
                 .ToHashSet();
             var mergingExcludedMaterials = domain.GetDomainsMaterialsHashSet(
                 configuration.TextureMergingExcludedMaterials);
+            var animatedVisibilityRenderers =
+                configuration.EnableAdditionalAtlasMerging
+                && configuration.ExcludeVisibilityAnimatedItemsFromTextureMerging
+                && animationIndex != null
+                && objectPathRemapper != null
+                && avatarRoot != null
+                    ? AutoAtlasTextureVisibilityAnimationDetector.Detect(
+                        animationIndex, objectPathRemapper, avatarRoot,
+                        allRenderers)
+                    : new HashSet<Renderer>();
 
             // Resolve manual AtlasTexture targets through TTT's existing lookup
             // rather than rescanning hierarchy and comparing raw user selections.
@@ -270,7 +423,8 @@ namespace net.rs64.TexTransTool.NDMF
                         (long)texture.width * texture.height),
                     ExcludedFromTextureMerging = IsExcludedFromTextureMerging(
                         group, atlasRenderers, mergingExcludedMaterials,
-                        mergingExcludedRenderers),
+                        mergingExcludedRenderers)
+                        || atlasRenderers.Any(animatedVisibilityRenderers.Contains),
                 });
             }
 
