@@ -15,16 +15,6 @@ namespace net.rs64.TexTransTool.NDMF
     /// </summary>
     internal sealed class AutoAtlas2DMergeIslandRelocator : IIslandRelocator
     {
-        internal static bool IsNfdhComparerFailure(ArgumentException exception)
-        {
-            return exception.Message.IndexOf(
-                       "IComparer.Compare() method returns inconsistent results",
-                       StringComparison.Ordinal) >= 0
-                && (exception.StackTrace?.IndexOf(
-                       "NFDHPlasFC.NextFitDecreasingHeightPlusFloorCeiling",
-                       StringComparison.Ordinal) ?? -1) >= 0;
-        }
-
         private const float Epsilon = 1e-5f;
         private readonly int[] _groupByIsland;
         private readonly IReadOnlyDictionary<int, RectInt> _regions;
@@ -145,8 +135,7 @@ namespace net.rs64.TexTransTool.NDMF
                         localIslands);
                 }
                 catch (ArgumentException exception)
-                    when (AutoAtlas2DMergeIslandRelocator
-                        .IsNfdhComparerFailure(exception))
+                    when (AtlasTexture.IsNfdhComparerFailure(exception))
                 {
                     return Fail($"g{group.Key}のNFDH比較処理が失敗: {exception.Message}");
                 }
