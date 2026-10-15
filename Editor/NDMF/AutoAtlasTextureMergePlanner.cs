@@ -22,10 +22,7 @@ namespace net.rs64.TexTransTool.NDMF
         private const int MaxMergeGroupCount = 12;
         // Candidate exploration below never calls DoAtlasTexture. These limits
         // only bound cheap integer-DP state retention, not expensive atlas probes.
-        // Evaluation build: compare 1024 retained skyline states against
-        // the validated 512-state debug.608 baseline. Keep all other pruning
-        // and packing rules unchanged for a controlled A/B comparison.
-        private const int ShadowPackingStatesPerHost = 1024;
+        private const int ShadowPackingStatesPerHost = 512;
         private const int PackingGridUnit = 256;
         private const double UnknownDemandLog2 = -32d;
         private const double Epsilon = 1e-8;
