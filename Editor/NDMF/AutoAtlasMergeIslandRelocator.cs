@@ -190,4 +190,152 @@ namespace net.rs64.TexTransTool.NDMF
                         StringComparison.Ordinal) ?? -1) >= 0;
         }
     }
+
+    /// <summary>
+    /// Executes the rectangle placements selected by the 2D texture
+    /// merging planner. Every atomic group is packed independently into its
+    /// reserved region; execution fails closed for incompatible groupings.
+    /// </summary>
+    internal sealed class AutoAtlas2DMergeIslandRelocator : IIslandRelocator
+    {
+        private const float Epsilon = 1e-5f;
+        private readonly int[] _groupByIsland;
+        private readonly IReadOnlyDictionary<int, RectInt> _regions;
+        private readonly int _atlasWidth;
+        private readonly bool _valid;
+
+        internal AutoAtlas2DMergeIslandRelocator(
+            AtlasContext context,
+            IReadOnlyDictionary<Material, int> groupByMaterial,
+            IReadOnlyDictionary<int, RectInt> regions,
+            int atlasWidth)
+        {
+            _regions = regions;
+            _atlasWidth = atlasWidth;
+            _groupByIsland = new int[context.SourceVirtualIslands.Length];
+
+            var valid = ValidatePlannedRegions(regions, atlasWidth)
+                && groupByMaterial.Values.All(regions.ContainsKey);
+
+            for (var index = 0; index < _groupByIsland.Length; index++)
+            {
+                // Multiple origin islands and material groups may map onto
+                // one source virtual island. They must all belong to exactly
+                // one atomic group, otherwise the planned split is impossible.
+                var ids = context.ReverseSourceVirtualIsland2OriginIslands[
+                        context.SourceVirtualIslands[index]]
+                    .Select(origin => context.AtlasIslandCtx
+                        .ReverseOriginDict[origin])
+                    .Select(submesh => context.MaterialGroupingCtx
+                        .GroupMaterials[submesh.MaterialGroupID])
+                    .SelectMany(materials => materials)
+                    .Select(material =>
+                        groupByMaterial.TryGetValue(material, out var id)
+                            ? (int?)id
+                            : null)
+                    .Distinct()
+                    .ToArray();
+
+                _groupByIsland[index] = ids.Length == 1 && ids[0].HasValue
+                    ? ids[0].Value
+                    : -1;
+                if (_groupByIsland[index] < 0) valid = false;
+            }
+
+            _valid = valid;
+        }
+
+        internal static bool ValidatePlannedRegions(
+            IReadOnlyDictionary<int, RectInt> regions, int atlasWidth)
+        {
+            if (regions.Count < 2 || atlasWidth <= 0) return false;
+
+            var rectangles = regions.Values.ToArray();
+            foreach (var rect in rectangles)
+            {
+                if (rect.width <= 0 || rect.height <= 0
+                    || rect.xMin < 0 || rect.yMin < 0
+                    || rect.xMax > atlasWidth || rect.yMax > atlasWidth)
+                    return false;
+            }
+
+            for (var a = 0; a < rectangles.Length; a++)
+                for (var b = a + 1; b < rectangles.Length; b++)
+                    if (rectangles[a].Overlaps(rectangles[b]))
+                        return false;
+            return true;
+        }
+
+        public RelocationResult Relocation(
+            RelocationContext context,
+            IslandTransform[] islands)
+        {
+            if (!_valid || islands.Length == 0
+                || islands.Length != _groupByIsland.Length
+                || Math.Abs(context.TargetHeight - 1f) > Epsilon)
+                return new RelocationResult(false, true);
+
+            var groupedIndices = Enumerable.Range(0, islands.Length)
+                .GroupBy(index => _groupByIsland[index]).ToArray();
+            if (groupedIndices.Length != _regions.Count)
+                return new RelocationResult(false, true);
+
+            foreach (var group in groupedIndices)
+            {
+                if (!_regions.TryGetValue(group.Key, out var region))
+                    return new RelocationResult(false, true);
+
+                // The base island scale is relative to the full atlas width.
+                // Convert to the group's profile width for local NFDH, then
+                // translate the result back to global atlas UV coordinates.
+                var localScale = (float)_atlasWidth / region.width;
+                var localIslands = group.Select(index => islands[index]).ToArray();
+                foreach (var island in localIslands)
+                    island.Size *= localScale;
+
+                RelocationResult localResult;
+                try
+                {
+                    localResult = new NFDHPlasFC().Relocation(
+                        new RelocationContext(
+                            1f, context.Padding * localScale),
+                        localIslands);
+                }
+                catch (ArgumentException exception)
+                    when (AutoAtlasMergeIslandRelocator
+                        .IsNfdhComparerFailure(exception))
+                {
+                    return new RelocationResult(false, true);
+                }
+
+                if (!localResult.IsSuccess)
+                    return new RelocationResult(false, true);
+
+                var minX = (float)region.xMin / _atlasWidth;
+                var minY = (float)region.yMin / _atlasWidth;
+                var maxX = (float)region.xMax / _atlasWidth;
+                var maxY = (float)region.yMax / _atlasWidth;
+
+                foreach (var island in localIslands)
+                {
+                    island.Size /= localScale;
+                    island.Position /= localScale;
+                    island.Position.X += minX;
+                    island.Position.Y += minY;
+
+                    var box = island.GetBox();
+                    if (float.IsNaN(box.X) || float.IsNaN(box.Y)
+                        || float.IsNaN(box.Z) || float.IsNaN(box.W)
+                        || float.IsInfinity(box.X) || float.IsInfinity(box.Y)
+                        || float.IsInfinity(box.Z) || float.IsInfinity(box.W)
+                        || box.X < minX - Epsilon || box.Y < minY - Epsilon
+                        || box.Z + context.Padding > maxX + Epsilon
+                        || box.W + context.Padding > maxY + Epsilon)
+                        return new RelocationResult(false, true);
+                }
+            }
+
+            return new RelocationResult(true, true);
+        }
+    }
 }

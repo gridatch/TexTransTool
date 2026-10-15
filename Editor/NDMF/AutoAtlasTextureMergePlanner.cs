@@ -58,20 +58,24 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Vector2Int PlannedLayoutSize;
             internal readonly IReadOnlyDictionary<string, Vector2Int>
                 PlannedPropertySizes;
+            internal readonly IReadOnlyDictionary<int, RectInt>? PackedRegions;
+            internal readonly long PredictedSavingBytes;
+            internal readonly float PredictedSavingRate;
 
             internal MergeSelection(
-                IEnumerable<int> groupIds,
-                TextureCostPlan baseline,
-                Vector2Int plannedLayoutSize,
-                IReadOnlyDictionary<string, Vector2Int> plannedPropertySizes)
+                Candidate candidate,
+                IReadOnlyDictionary<int, RectInt>? packedRegions = null)
             {
-                GroupIds = groupIds.OrderBy(id => id).ToArray();
-                BaselineBytes = baseline.FullResidentBytes;
-                PlannedLayoutSize = plannedLayoutSize;
-                PlannedPropertySizes = plannedPropertySizes.ToDictionary(
+                GroupIds = candidate.GroupIds.OrderBy(id => id).ToArray();
+                BaselineBytes = candidate.Baseline.FullResidentBytes;
+                PlannedLayoutSize = candidate.LayoutSize;
+                PlannedPropertySizes = candidate.PropertySizes.ToDictionary(
                     pair => pair.Key,
                     pair => pair.Value,
                     StringComparer.Ordinal);
+                PackedRegions = packedRegions;
+                PredictedSavingBytes = candidate.SavingBytes;
+                PredictedSavingRate = candidate.SavingRate;
             }
         }
 
@@ -612,6 +616,21 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        private sealed class ShadowPackingPlacement
+        {
+            internal readonly int GroupId;
+            internal readonly RectInt Region;
+            internal readonly ShadowPackingPlacement? Previous;
+
+            internal ShadowPackingPlacement(
+                int groupId, RectInt region, ShadowPackingPlacement? previous)
+            {
+                GroupId = groupId;
+                Region = region;
+                Previous = previous;
+            }
+        }
+
         private sealed class ShadowPackingState
         {
             internal readonly int[] Skyline;
@@ -621,6 +640,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int MaxHeight;
             internal readonly int SkylineArea;
             internal readonly ShadowPackingStateKey StateKey;
+            internal readonly ShadowPackingPlacement? PlacementTail;
             internal long ProjectedPixelDelta;
             internal long ProjectedMemoryDelta;
 
@@ -628,8 +648,10 @@ namespace net.rs64.TexTransTool.NDMF
                 int[] skyline,
                 int[] groupIds,
                 long baselineBytes,
-                bool usesWiderProfile)
+                bool usesWiderProfile,
+                ShadowPackingPlacement? placementTail = null)
             {
+                PlacementTail = placementTail;
                 Skyline = skyline;
                 GroupIds = groupIds;
                 BaselineBytes = baselineBytes;
@@ -709,6 +731,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly string BestSamplingSummary;
             internal readonly StreamingRegressionExample? StreamingExample;
             internal readonly int StreamingRegressingCandidateCount;
+            internal readonly IReadOnlyList<MergeSelection> ProductionCandidates;
 
             internal ShadowPackingDiagnostics(
                 int profileCount,
@@ -761,8 +784,10 @@ namespace net.rs64.TexTransTool.NDMF
                 long scoreStateCallCount,
                 string bestSamplingSummary,
                 StreamingRegressionExample? streamingExample,
-                int streamingRegressingCandidateCount)
+                int streamingRegressingCandidateCount,
+                IReadOnlyList<MergeSelection> productionCandidates)
             {
+                ProductionCandidates = productionCandidates;
                 ProfileCount = profileCount;
                 GroupsWithMultipleProfiles = groupsWithMultipleProfiles;
                 HostCount = hostCount;
@@ -1483,45 +1508,6 @@ namespace net.rs64.TexTransTool.NDMF
             var legacyBandPlanningMilliseconds =
                 bandPlanningTimer.ElapsedMilliseconds;
 
-            var selected = new List<MergeSelection>();
-            var consumed = new HashSet<int>();
-            foreach (var candidate in adoptable.Values
-                         .OrderByDescending(candidate => candidate.SavingBytes)
-                         .ThenByDescending(candidate => candidate.SavingRate)
-                         .ThenByDescending(candidate => candidate.GroupIds.Length))
-            {
-                if (candidate.GroupIds.Any(consumed.Contains)) continue;
-                selected.Add(new MergeSelection(
-                    candidate.GroupIds,
-                    candidate.Baseline,
-                    candidate.LayoutSize,
-                    candidate.PropertySizes));
-                consumed.UnionWith(candidate.GroupIds);
-            }
-
-            var crossAtomicMaterialGroupCount = 0;
-            foreach (var selection in selected)
-            {
-                var selectedGroups = selection.GroupIds
-                    .Select(id => groups[id])
-                    .ToArray();
-                var atomicGroupByMaterial = selectedGroups
-                    .SelectMany(group => group.Materials.Select(
-                        material => (material, group.Id)))
-                    .ToDictionary(pair => pair.material, pair => pair.Id);
-                var grouping = new MaterialGroupingContext(
-                    selectedGroups.SelectMany(group => group.Materials).ToHashSet(),
-                    settings.AtlasTargetUVChannel,
-                    null);
-
-                crossAtomicMaterialGroupCount += grouping.GroupMaterials.Count(
-                    materialGroup => materialGroup
-                        .Select(material => atomicGroupByMaterial[material])
-                        .Distinct()
-                        .Skip(1)
-                        .Any());
-            }
-
             var shadowPlanningTimer =
                 System.Diagnostics.Stopwatch.StartNew();
             var shadow2D = EvaluateShadow2DPacking(
@@ -1536,6 +1522,42 @@ namespace net.rs64.TexTransTool.NDMF
             shadowPlanningTimer.Stop();
             var shadow2DPlanningMilliseconds =
                 shadowPlanningTimer.ElapsedMilliseconds;
+
+            var selected = new List<MergeSelection>();
+            var consumed = new HashSet<int>();
+            var combinedCandidates = adoptable.Values.Select(candidate =>
+                    new MergeSelection(candidate))
+                .Concat(shadow2D.ProductionCandidates)
+                .OrderByDescending(candidate => candidate.PredictedSavingBytes)
+                .ThenByDescending(candidate => candidate.PredictedSavingRate)
+                .ThenByDescending(candidate => candidate.GroupIds.Length)
+                // Equal-value candidates prefer the established band relocator.
+                .ThenBy(candidate => candidate.PackedRegions == null ? 0 : 1);
+            foreach (var candidate in combinedCandidates)
+            {
+                if (candidate.GroupIds.Any(consumed.Contains)) continue;
+                selected.Add(candidate);
+                consumed.UnionWith(candidate.GroupIds);
+            }
+
+            var crossAtomicMaterialGroupCount = 0;
+            foreach (var selection in selected)
+            {
+                var selectedGroups = selection.GroupIds
+                    .Select(id => byId[id]).ToArray();
+                var atomicGroupByMaterial = selectedGroups
+                    .SelectMany(group => group.Materials.Select(
+                        material => (material, group.Id)))
+                    .ToDictionary(pair => pair.material, pair => pair.Id);
+                var grouping = new MaterialGroupingContext(
+                    selectedGroups.SelectMany(group => group.Materials).ToHashSet(),
+                    settings.AtlasTargetUVChannel,
+                    null);
+                crossAtomicMaterialGroupCount += grouping.GroupMaterials.Count(
+                    materialGroup => materialGroup
+                        .Select(material => atomicGroupByMaterial[material])
+                        .Distinct().Skip(1).Any());
+            }
 
             planningTimer.Stop();
             return new PlanResult(
@@ -1695,6 +1717,9 @@ namespace net.rs64.TexTransTool.NDMF
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
             var shadowUsesWiderProfile =
                 new Dictionary<string, bool>(StringComparer.Ordinal);
+            var shadowPackedRegions =
+                new Dictionary<string, IReadOnlyDictionary<int, RectInt>>(
+                    StringComparer.Ordinal);
             var evaluatedLayouts =
                 new HashSet<string>(StringComparer.Ordinal);
             var projectionCache =
@@ -2180,7 +2205,15 @@ namespace net.rs64.TexTransTool.NDMF
                                             .FullResidentBytes,
                                     state.UsesWiderProfile
                                         || profileWidth
-                                            > group.BandWidthPixels);
+                                            > group.BandWidthPixels,
+                                    new ShadowPackingPlacement(
+                                        group.Id,
+                                        new RectInt(
+                                            x * PackingGridUnit,
+                                            y,
+                                            profileWidth,
+                                            profileHeight),
+                                        state.PlacementTail));
 
                                 // Same key means the same group set and exact
                                 // skyline, therefore the same projected layout
@@ -2392,6 +2425,12 @@ namespace net.rs64.TexTransTool.NDMF
                                 < priorCandidate.LayoutSize.y))
                     {
                         shadowAdoptable[key] = candidate;
+                        var regions = new Dictionary<int, RectInt>();
+                        for (var placement = state.PlacementTail;
+                             placement != null;
+                             placement = placement.Previous)
+                            regions.Add(placement.GroupId, placement.Region);
+                        shadowPackedRegions[key] = regions;
                         shadowUsesWiderProfile[key] =
                             state.UsesWiderProfile;
                     }
@@ -2498,7 +2537,9 @@ namespace net.rs64.TexTransTool.NDMF
                 scoreStateCallCount,
                 bestSamplingSummary,
                 streamingExample,
-                streamingRegressingCandidateCount);
+                streamingRegressingCandidateCount,
+                shadowAdoptable.Select(pair => new MergeSelection(
+                    pair.Value, shadowPackedRegions[pair.Key])).ToArray());
         }
 
         private static int GetBandUsedHeightPixels(

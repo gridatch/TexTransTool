@@ -385,6 +385,65 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void TwoDimensionalPackingRejectsOverlapAndOutOfBounds()
+        {
+            var valid = new Dictionary<int, RectInt>
+            {
+                [3] = new RectInt(0, 0, 512, 512),
+                [6] = new RectInt(512, 0, 512, 1024),
+            };
+            Assert.That(AutoAtlas2DMergeIslandRelocator.ValidatePlannedRegions(
+                valid, 1024), Is.True);
+
+            var overlap = new Dictionary<int, RectInt>
+            {
+                [3] = new RectInt(0, 0, 512, 512),
+                [6] = new RectInt(256, 256, 512, 512),
+            };
+            Assert.That(AutoAtlas2DMergeIslandRelocator.ValidatePlannedRegions(
+                overlap, 1024), Is.False);
+
+            var outside = new Dictionary<int, RectInt>
+            {
+                [3] = new RectInt(0, 0, 512, 512),
+                [6] = new RectInt(512, 0, 1024, 512),
+            };
+            Assert.That(AutoAtlas2DMergeIslandRelocator.ValidatePlannedRegions(
+                outside, 1024), Is.False);
+
+            Assert.That(AutoAtlas2DMergeIslandRelocator.ValidatePlannedRegions(
+                new Dictionary<int, RectInt> { [3] = valid[3] }, 1024),
+                Is.False);
+        }
+
+        [Test]
+        public void TwoDimensionalSelectionCarriesPlannedRegions()
+        {
+            var baseline = Plan(new[]
+            {
+                Entry(64, 64, 1, false, new[] { 3 }),
+                Entry(64, 64, 1, false, new[] { 6 }),
+            });
+            var merged = Plan(new[]
+            {
+                Entry(64, 64, 1, false, new[] { 3, 6 }),
+            });
+            var candidate = Candidate(baseline, merged, new[] { 3, 6 });
+            var regions = new Dictionary<int, RectInt>
+            {
+                [3] = new RectInt(0, 0, 256, 128),
+                [6] = new RectInt(256, 0, 256, 128),
+            };
+            var selection = new AutoAtlasTextureMergePlanner.MergeSelection(
+                candidate, regions);
+
+            Assert.That(selection.PackedRegions, Is.Not.Null);
+            Assert.That(selection.GroupIds, Is.EqualTo(new[] { 3, 6 }));
+            Assert.That(selection.PackedRegions[6].x, Is.EqualTo(256));
+            Assert.That(selection.PredictedSavingBytes, Is.GreaterThan(0));
+        }
+
+        [Test]
         public void GroupLayoutCacheKeyMatchesDistinctEquivalentArrays()
         {
             var key = new AutoAtlasTextureMergePlanner.GroupLayoutKey(

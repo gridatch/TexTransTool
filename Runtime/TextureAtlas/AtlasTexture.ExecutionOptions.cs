@@ -34,6 +34,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
         {
             internal bool RequireLossless;
             internal bool ReportProgressInfo = true;
+            internal int? ForcedAutoAtlasWidth;
             internal Func<AtlasContext, IIslandRelocator>? IslandRelocatorFactory;
             internal Func<AtlasContext, Vector2Int, AtlasExecutionMetrics, bool>? AcceptAtlasSize;
             internal Action<AtlasExecutionTimingDiagnostic>? TimingDiagnostic;

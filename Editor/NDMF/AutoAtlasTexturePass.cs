@@ -128,6 +128,8 @@ namespace net.rs64.TexTransTool.NDMF
             long executionResolutionPlanMilliseconds = 0;
             long executionMeshGenerationMilliseconds = 0;
             long executionTextureGenerationMilliseconds = 0;
+            var twoDimensionalExecutionSucceeded = 0;
+            var twoDimensionalExecutionFallback = 0;
 
             string OriginalMaterialName(Material material)
             {
@@ -418,9 +420,20 @@ namespace net.rs64.TexTransTool.NDMF
                         ReportProgressInfo = false,
                         TimingDiagnostic = value => executionPhaseTiming = value,
                         IslandRelocatorFactory = mergeAtomicGroupByMaterial != null
-                            ? atlasContext => new AutoAtlasMergeIslandRelocator(
-                                atlasContext, mergeAtomicGroupByMaterial)
+                            ? atlasContext => execution.MergeSelection?.PackedRegions
+                                is { } packedRegions
+                                ? new AutoAtlas2DMergeIslandRelocator(
+                                    atlasContext,
+                                    mergeAtomicGroupByMaterial,
+                                    packedRegions,
+                                    execution.MergeSelection.PlannedLayoutSize.x)
+                                : new AutoAtlasMergeIslandRelocator(
+                                    atlasContext, mergeAtomicGroupByMaterial)
                             : null,
+                        ForcedAutoAtlasWidth =
+                            execution.MergeSelection?.PackedRegions != null
+                                ? execution.MergeSelection.PlannedLayoutSize.x
+                                : null,
                         AcceptAtlasSize = (atlasContext, size, metrics) =>
                         {
                             executionMetrics = metrics;
@@ -431,6 +444,9 @@ namespace net.rs64.TexTransTool.NDMF
                                 // stays within both the predicted layout and every
                                 // predicted property-resolution envelope.
                                 if (metrics.OutputTexturePixelCount <= 0
+                                    || (mergeSelection.PackedRegions != null
+                                        && metrics.LayoutSize.x
+                                            != mergeSelection.PlannedLayoutSize.x)
                                     || metrics.LayoutSize.x
                                         > mergeSelection.PlannedLayoutSize.x
                                     || metrics.LayoutSize.y
@@ -489,10 +505,11 @@ namespace net.rs64.TexTransTool.NDMF
                 {
                     if (execution.MergeSelection is { } failedMerge)
                     {
-                        // A planned merge is only an optimization. If the exact
-                        // build-time band layout does not satisfy the planner's
-                        // envelope, preserve ordinary AutoAtlas behavior by
-                        // retrying every atomic group independently.
+                        if (failedMerge.PackedRegions != null)
+                            twoDimensionalExecutionFallback += 1;
+                        // A merge plan is only an optimization. If its
+                        // placement cannot be executed losslessly, retry the
+                        // original atomic groups without merging them.
                         EnqueueStandaloneFallback(failedMerge);
                     }
                     continue;
@@ -542,9 +559,14 @@ namespace net.rs64.TexTransTool.NDMF
                         rt.Dispose();
                     }
 
+                    if (memoryCheckedMerge.PackedRegions != null)
+                        twoDimensionalExecutionFallback += 1;
                     EnqueueStandaloneFallback(memoryCheckedMerge);
                     continue;
                 }
+
+                if (execution.MergeSelection?.PackedRegions != null)
+                    twoDimensionalExecutionSucceeded += 1;
 
                 var resultingTextures = tuningResult.RenderTextures.ToDictionary(
                     item => item.Key,
@@ -698,6 +720,13 @@ namespace net.rs64.TexTransTool.NDMF
                 mergePlan.ShadowPlacementAttemptCount,
                 mergePlan.ShadowUniqueGeneratedStateCount,
                 mergePlan.ShadowScoreStateCallCount);
+
+            temporaryTimingDiagnostic += "\n" + string.Format(
+                "AutoAtlasTexture:info:Temporary2DProduction".GetLocalize(),
+                mergePlan.Selections.Count(selection =>
+                    selection.PackedRegions != null),
+                twoDimensionalExecutionSucceeded,
+                twoDimensionalExecutionFallback);
 
             // The project directory name is useful when comparing logs
             // from several Unity projects. Never include its absolute path.

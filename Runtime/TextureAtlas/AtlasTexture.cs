@@ -778,6 +778,21 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 return (manualSize, manualIslands, manualResult, manualTime);
             }
 
+            if (executionOptions?.ForcedAutoAtlasWidth is int forcedWidth)
+            {
+                if (!AutoAtlasTextureSizeCandidates.Contains(forcedWidth))
+                    throw new ArgumentOutOfRangeException(
+                        nameof(executionOptions.ForcedAutoAtlasWidth));
+                var forcedSize = new Vector2Int(forcedWidth, forcedWidth);
+                var (forcedIslands, forcedResult) = IslandProcessing(
+                    domain, atlasSetting, atlasContext,
+                    islandSizePriorityTuner, forcedSize,
+                    islandRelocatorOverride,
+                    executionOptions.RequireLossless,
+                    out var forcedTime, out _);
+                return (forcedSize, forcedIslands, forcedResult, forcedTime);
+            }
+
             IslandTransform[]? selectedIslands = null;
             IslandRelocationManager.RelocateResult? selectedResult = null;
             var maxCandidateSize = AutoAtlasTextureSizeCandidates[AutoAtlasTextureSizeCandidates.Length - 1];
