@@ -666,7 +666,10 @@ namespace net.rs64.TexTransTool.NDMF
                 mergePlan.ShadowOptimisticLowerBoundMilliseconds,
                 mergePlan.LegacyBandPlanningMilliseconds,
                 mergePlan.Shadow2DPlanningMilliseconds,
-                mergePlan.ShadowBestRejectionReason);
+                mergePlan.ShadowBestRejectionReason,
+                mergePlan.ShadowProjectionEvaluationCount,
+                mergePlan.ShadowSafetyEvaluationCount,
+                mergePlan.ShadowBestSamplingSummary);
 
             if (completed.Count == 0)
             {
