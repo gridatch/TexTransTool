@@ -149,6 +149,12 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Vector2Int ShadowBestLayoutSize;
             internal readonly string ShadowBestBaselineSizeSummary;
             internal readonly string ShadowBestPropertySizeSummary;
+            internal readonly int ShadowOptimisticEvaluatedCount;
+            internal readonly int ShadowOptimisticPixelViableCount;
+            internal readonly long ShadowOptimisticBestBaselinePixels;
+            internal readonly long ShadowOptimisticBestMergedPixels;
+            internal readonly int ShadowOptimisticBestGroupCount;
+            internal readonly Vector2Int ShadowOptimisticBestLayoutSize;
 
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
@@ -212,7 +218,13 @@ namespace net.rs64.TexTransTool.NDMF
                 int shadowBestGroupCount = 0,
                 Vector2Int shadowBestLayoutSize = default,
                 string shadowBestBaselineSizeSummary = "",
-                string shadowBestPropertySizeSummary = "")
+                string shadowBestPropertySizeSummary = "",
+                int shadowOptimisticEvaluatedCount = 0,
+                int shadowOptimisticPixelViableCount = 0,
+                long shadowOptimisticBestBaselinePixels = 0,
+                long shadowOptimisticBestMergedPixels = 0,
+                int shadowOptimisticBestGroupCount = 0,
+                Vector2Int shadowOptimisticBestLayoutSize = default)
             {
                 Selections = selections;
                 PlanningTimeMilliseconds = planningTimeMilliseconds;
@@ -307,6 +319,18 @@ namespace net.rs64.TexTransTool.NDMF
                     shadowBestBaselineSizeSummary;
                 ShadowBestPropertySizeSummary =
                     shadowBestPropertySizeSummary;
+                ShadowOptimisticEvaluatedCount =
+                    shadowOptimisticEvaluatedCount;
+                ShadowOptimisticPixelViableCount =
+                    shadowOptimisticPixelViableCount;
+                ShadowOptimisticBestBaselinePixels =
+                    shadowOptimisticBestBaselinePixels;
+                ShadowOptimisticBestMergedPixels =
+                    shadowOptimisticBestMergedPixels;
+                ShadowOptimisticBestGroupCount =
+                    shadowOptimisticBestGroupCount;
+                ShadowOptimisticBestLayoutSize =
+                    shadowOptimisticBestLayoutSize;
             }
         }
 
@@ -375,6 +399,12 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Vector2Int BestLayoutSize;
             internal readonly string BestBaselineSizeSummary;
             internal readonly string BestPropertySizeSummary;
+            internal readonly int OptimisticEvaluatedCount;
+            internal readonly int OptimisticPixelViableCount;
+            internal readonly long OptimisticBestBaselinePixels;
+            internal readonly long OptimisticBestMergedPixels;
+            internal readonly int OptimisticBestGroupCount;
+            internal readonly Vector2Int OptimisticBestLayoutSize;
 
             internal ShadowPackingDiagnostics(
                 int profileCount,
@@ -407,7 +437,13 @@ namespace net.rs64.TexTransTool.NDMF
                 int bestGroupCount,
                 Vector2Int bestLayoutSize,
                 string bestBaselineSizeSummary,
-                string bestPropertySizeSummary)
+                string bestPropertySizeSummary,
+                int optimisticEvaluatedCount,
+                int optimisticPixelViableCount,
+                long optimisticBestBaselinePixels,
+                long optimisticBestMergedPixels,
+                int optimisticBestGroupCount,
+                Vector2Int optimisticBestLayoutSize)
             {
                 ProfileCount = profileCount;
                 GroupsWithMultipleProfiles = groupsWithMultipleProfiles;
@@ -447,6 +483,12 @@ namespace net.rs64.TexTransTool.NDMF
                 BestLayoutSize = bestLayoutSize;
                 BestBaselineSizeSummary = bestBaselineSizeSummary;
                 BestPropertySizeSummary = bestPropertySizeSummary;
+                OptimisticEvaluatedCount = optimisticEvaluatedCount;
+                OptimisticPixelViableCount = optimisticPixelViableCount;
+                OptimisticBestBaselinePixels = optimisticBestBaselinePixels;
+                OptimisticBestMergedPixels = optimisticBestMergedPixels;
+                OptimisticBestGroupCount = optimisticBestGroupCount;
+                OptimisticBestLayoutSize = optimisticBestLayoutSize;
             }
         }
 
@@ -1133,7 +1175,13 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.BestGroupCount,
                 shadow2D.BestLayoutSize,
                 shadow2D.BestBaselineSizeSummary,
-                shadow2D.BestPropertySizeSummary);
+                shadow2D.BestPropertySizeSummary,
+                shadow2D.OptimisticEvaluatedCount,
+                shadow2D.OptimisticPixelViableCount,
+                shadow2D.OptimisticBestBaselinePixels,
+                shadow2D.OptimisticBestMergedPixels,
+                shadow2D.OptimisticBestGroupCount,
+                shadow2D.OptimisticBestLayoutSize);
         }
 
         private static ShadowPackingDiagnostics EvaluateShadow2DPacking(
@@ -1174,6 +1222,13 @@ namespace net.rs64.TexTransTool.NDMF
             var bestBaselineSizeSummary = "";
             var bestPropertySizeSummary = "";
             var bestPixelRatio = double.PositiveInfinity;
+            var optimisticEvaluatedCount = 0;
+            var optimisticPixelViableCount = 0;
+            long optimisticBestBaselinePixels = 0;
+            long optimisticBestMergedPixels = 0;
+            var optimisticBestGroupCount = 0;
+            var optimisticBestLayoutSize = default(Vector2Int);
+            var optimisticBestPixelRatio = double.PositiveInfinity;
 
             var shadowAdoptable =
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
@@ -1220,6 +1275,137 @@ namespace net.rs64.TexTransTool.NDMF
                     propertySizes);
                 candidateCache[layoutKey] = candidate;
                 return candidate;
+            }
+
+            // Exact subset enumeration is bounded to the same maximum group count
+            // already supported by merge execution. Geometry is deliberately
+            // optimistic here: for each group, independently use its smallest
+            // available profile area/height and derive only an area lower bound.
+            // If even this lower bound cannot reduce pixel count, no real 2D
+            // placement of that subset can satisfy the strict pixel gate.
+            var lowerBoundGroups = groups
+                .Where(group =>
+                    group.StandaloneMetrics != null
+                    && group.BaselineCostKnown
+                    && group.LayoutProfiles.Count != 0)
+                .OrderBy(group => group.Id)
+                .ToArray();
+
+            if (lowerBoundGroups.Length <= MaxMergeGroupCount)
+            {
+                var seenLowerBoundLayouts =
+                    new HashSet<string>(StringComparer.Ordinal);
+                var subsetCount = 1 << lowerBoundGroups.Length;
+                for (var mask = 1; mask < subsetCount; mask += 1)
+                {
+                    var selectedGroups = new List<PreparedGroup>();
+                    for (var bit = 0; bit < lowerBoundGroups.Length; bit += 1)
+                    {
+                        if ((mask & (1 << bit)) != 0)
+                            selectedGroups.Add(lowerBoundGroups[bit]);
+                    }
+
+                    if (selectedGroups.Count < 2
+                        || selectedGroups.Count > MaxMergeGroupCount)
+                    {
+                        continue;
+                    }
+
+                    var ids = selectedGroups
+                        .Select(group => group.Id)
+                        .OrderBy(id => id)
+                        .ToArray();
+
+                    foreach (var targetWidth in
+                             AtlasTexture.AutoAtlasTextureSizeCandidates)
+                    {
+                        long minimumArea = 0;
+                        var minimumHeight = 0;
+                        var allGroupsFitWidth = true;
+
+                        foreach (var group in selectedGroups)
+                        {
+                            var profiles = group.LayoutProfiles
+                                .Where(profile =>
+                                    profile.Key <= targetWidth
+                                    && profile.Key % PackingGridUnit == 0)
+                                .Select(profile => (
+                                    Width: profile.Key,
+                                    Height: GetBandUsedHeightPixels(
+                                        profile.Value)))
+                                .Where(profile =>
+                                    profile.Height <= targetWidth)
+                                .ToArray();
+
+                            if (profiles.Length == 0)
+                            {
+                                allGroupsFitWidth = false;
+                                break;
+                            }
+
+                            minimumArea += profiles.Min(profile =>
+                                (long)profile.Width * profile.Height);
+                            minimumHeight = Math.Max(
+                                minimumHeight,
+                                profiles.Min(profile => profile.Height));
+                        }
+
+                        if (!allGroupsFitWidth)
+                            continue;
+
+                        var areaHeight = (int)Math.Min(
+                            int.MaxValue,
+                            (minimumArea + targetWidth - 1)
+                                / targetWidth);
+                        var lowerBoundUsedHeight = Math.Max(
+                            minimumHeight,
+                            areaHeight);
+                        if (lowerBoundUsedHeight <= 0
+                            || lowerBoundUsedHeight > targetWidth)
+                        {
+                            continue;
+                        }
+
+                        var layoutSize = new Vector2Int(
+                            targetWidth,
+                            GetCroppedHeight(
+                                targetWidth,
+                                lowerBoundUsedHeight));
+                        var lowerBoundKey =
+                            string.Join(",", ids)
+                            + "@"
+                            + layoutSize.x
+                            + "x"
+                            + layoutSize.y;
+                        if (!seenLowerBoundLayouts.Add(lowerBoundKey))
+                            continue;
+
+                        var candidate = GetCandidate(ids, layoutSize);
+                        optimisticEvaluatedCount += 1;
+                        if (candidate.Merged.PixelCount
+                            < candidate.Baseline.PixelCount)
+                        {
+                            optimisticPixelViableCount += 1;
+                        }
+
+                        if (candidate.Baseline.PixelCount > 0)
+                        {
+                            var ratio =
+                                (double)candidate.Merged.PixelCount
+                                / candidate.Baseline.PixelCount;
+                            if (ratio < optimisticBestPixelRatio)
+                            {
+                                optimisticBestPixelRatio = ratio;
+                                optimisticBestBaselinePixels =
+                                    candidate.Baseline.PixelCount;
+                                optimisticBestMergedPixels =
+                                    candidate.Merged.PixelCount;
+                                optimisticBestGroupCount = ids.Length;
+                                optimisticBestLayoutSize = layoutSize;
+                            }
+                        }
+                    }
+                }
             }
 
             void ScoreState(
@@ -1704,7 +1890,13 @@ namespace net.rs64.TexTransTool.NDMF
                 bestGroupCount,
                 bestLayoutSize,
                 bestBaselineSizeSummary,
-                bestPropertySizeSummary);
+                bestPropertySizeSummary,
+                optimisticEvaluatedCount,
+                optimisticPixelViableCount,
+                optimisticBestBaselinePixels,
+                optimisticBestMergedPixels,
+                optimisticBestGroupCount,
+                optimisticBestLayoutSize);
         }
 
         private static int GetBandUsedHeightPixels(
