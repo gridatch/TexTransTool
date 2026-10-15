@@ -671,7 +671,12 @@ namespace net.rs64.TexTransTool.NDMF
                 mergePlan.ShadowSafetyEvaluationCount,
                 mergePlan.ShadowBestSamplingSummary,
                 mergePlan.PropertyRequirementBuildCount,
-                mergePlan.PropertyRequirementBuildMilliseconds);
+                mergePlan.PropertyRequirementBuildMilliseconds,
+                mergePlan.ShadowProjectionEvaluationMilliseconds,
+                mergePlan.ShadowStateSelectionMilliseconds,
+                mergePlan.ShadowPlacementAttemptCount,
+                mergePlan.ShadowUniqueGeneratedStateCount,
+                mergePlan.ShadowScoreStateCallCount);
 
             if (completed.Count == 0)
             {
