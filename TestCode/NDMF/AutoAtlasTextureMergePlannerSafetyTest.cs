@@ -385,6 +385,27 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void TwoDimensionalProfilePaddingUsesFinalAtlasPixels()
+        {
+            const float globalPadding = 0.01f;
+            Assert.That(
+                AutoAtlasTextureMergePlanner.GetTwoDimensionalLocalPadding(
+                    globalPadding, 1024, 256),
+                Is.EqualTo(0.04f).Within(0.000001f));
+            Assert.That(
+                AutoAtlasTextureMergePlanner.GetTwoDimensionalLocalPadding(
+                    globalPadding, 1024, 1024),
+                Is.EqualTo(globalPadding).Within(0.000001f));
+
+            // Padding is the same in X and Y in a square local NFDH UV
+            // coordinate system: the physical distance remains 10.24px.
+            Assert.That(
+                AutoAtlasTextureMergePlanner.GetTwoDimensionalLocalPadding(
+                    globalPadding, 1024, 256) * 256f,
+                Is.EqualTo(globalPadding * 1024f).Within(0.00001f));
+        }
+
+        [Test]
         public void TwoDimensionalPackingRejectsOverlapAndOutOfBounds()
         {
             var valid = new Dictionary<int, RectInt>

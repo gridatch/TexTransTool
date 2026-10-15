@@ -41,6 +41,10 @@ namespace net.rs64.TexTransTool.NDMF
             internal AtlasTexture.AtlasExecutionMetrics? StandaloneMetrics;
             internal readonly Dictionary<int, AtlasTexture.AtlasExecutionMetrics>
                 LayoutProfiles = new();
+            // Heights include the final atlas's required padding, expressed
+            // in pixels at the atomic group's own profile width.
+            internal readonly Dictionary<(int AtlasWidth, int RegionWidth), int>
+                TwoDimensionalProfileHeights = new();
             internal int BandWidthPixels;
             internal int BandUsedHeightPixels;
             internal readonly Dictionary<string, double> PropertyDemandLog2 =
@@ -1842,14 +1846,13 @@ namespace net.rs64.TexTransTool.NDMF
 
                         foreach (var group in selectedGroups)
                         {
-                            var profiles = group.LayoutProfiles
+                            var profiles = group.TwoDimensionalProfileHeights
                                 .Where(profile =>
-                                    profile.Key <= targetWidth
-                                    && profile.Key % PackingGridUnit == 0)
+                                    profile.Key.AtlasWidth == targetWidth
+                                    && profile.Key.RegionWidth % PackingGridUnit == 0)
                                 .Select(profile => (
-                                    Width: profile.Key,
-                                    Height: GetBandUsedHeightPixels(
-                                        profile.Value)))
+                                    Width: profile.Key.RegionWidth,
+                                    Height: profile.Value))
                                 .Where(profile =>
                                     profile.Height <= targetWidth)
                                 .ToArray();
@@ -2105,11 +2108,10 @@ namespace net.rs64.TexTransTool.NDMF
                     .Where(group =>
                         group.StandaloneMetrics != null
                         && group.BaselineCostKnown
-                        && group.LayoutProfiles.Any(profile =>
-                            profile.Key <= targetWidth
-                            && profile.Key % PackingGridUnit == 0
-                            && GetBandUsedHeightPixels(profile.Value)
-                                <= targetWidth))
+                        && group.TwoDimensionalProfileHeights.Any(profile =>
+                            profile.Key.AtlasWidth == targetWidth
+                            && profile.Key.RegionWidth % PackingGridUnit == 0
+                            && profile.Value <= targetWidth))
                     .OrderBy(group => group.Id)
                     .ToArray();
 
@@ -2141,16 +2143,16 @@ namespace net.rs64.TexTransTool.NDMF
 
                     foreach (var state in snapshot)
                     {
-                        foreach (var profile in group.LayoutProfiles
+                        foreach (var profile in group.TwoDimensionalProfileHeights
                                      .Where(profile =>
-                                         profile.Key <= targetWidth
-                                         && profile.Key
+                                         profile.Key.AtlasWidth == targetWidth
+                                         && profile.Key.RegionWidth
                                              % PackingGridUnit == 0)
-                                     .OrderBy(profile => profile.Key))
+                                     .OrderBy(profile =>
+                                         profile.Key.RegionWidth))
                         {
-                            var profileWidth = profile.Key;
-                            var profileHeight =
-                                GetBandUsedHeightPixels(profile.Value);
+                            var profileWidth = profile.Key.RegionWidth;
+                            var profileHeight = profile.Value;
                             var widthColumns =
                                 profileWidth / PackingGridUnit;
                             if (widthColumns <= 0
@@ -2650,6 +2652,38 @@ namespace net.rs64.TexTransTool.NDMF
             return result;
         }
 
+        internal static float GetTwoDimensionalLocalPadding(
+            float atlasPadding, int atlasWidth, int regionWidth)
+        {
+            if (atlasWidth <= 0 || regionWidth <= 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(regionWidth), "Atlas and region widths must be positive.");
+            return atlasPadding * ((float)atlasWidth / regionWidth);
+        }
+
+        private static AtlasSetting CreateTwoDimensionalProfileSettings(
+            AtlasSetting settings, int atlasWidth, int regionWidth)
+        {
+            return new AtlasSetting
+            {
+                AtlasTextureSize = settings.AtlasTextureSize,
+                CustomAspect = settings.CustomAspect,
+                AtlasTextureHeightSize = settings.AtlasTextureHeightSize,
+                AtlasTargetUVChannel = settings.AtlasTargetUVChannel,
+                UsePrimaryMaximumTexture = settings.UsePrimaryMaximumTexture,
+                PrimaryTextureProperty = settings.PrimaryTextureProperty,
+                ForceSizePriority = settings.ForceSizePriority,
+                IslandPadding = GetTwoDimensionalLocalPadding(
+                    settings.IslandPadding, atlasWidth, regionWidth),
+                IncludeDisabledRenderer = settings.IncludeDisabledRenderer,
+                BackGroundColor = settings.BackGroundColor,
+                PixelNormalize = settings.PixelNormalize,
+                DownScaleAlgorithm = settings.DownScaleAlgorithm,
+                ForceSetTexture = settings.ForceSetTexture,
+                TextureFineTuning = settings.TextureFineTuning,
+            };
+        }
+
         private static AtlasTexture.AtlasExecutionMetrics? AnalyzeAtlas(
             IDomain domain,
             AtlasSetting settings,
@@ -2663,6 +2697,7 @@ namespace net.rs64.TexTransTool.NDMF
             allProfileRelocatorMilliseconds = 0;
             islandProcessingTiming = default;
             group.LayoutProfiles.Clear();
+            group.TwoDimensionalProfileHeights.Clear();
 
             var prepared = AtlasTexture.PrepareAtlasContext(
                 domain,
@@ -2733,7 +2768,57 @@ namespace net.rs64.TexTransTool.NDMF
                             profileTiming.PostProcessMilliseconds;
                         resolutionPlanMilliseconds += resolutionPlan;
                         group.LayoutProfiles[size] = metrics;
+                        group.TwoDimensionalProfileHeights[(size, size)] =
+                            GetBandUsedHeightPixels(metrics);
                         standalone ??= metrics;
+
+                        // NFDH's padding is expressed in local UV units.
+                        // A subregion of width 'size' inside a wider final
+                        // atlas needs the same padding in final-atlas pixels:
+                        // localPadding = globalPadding * finalWidth / size.
+                        foreach (var atlasWidth in
+                                 AtlasTexture.AutoAtlasTextureSizeCandidates)
+                        {
+                            if (atlasWidth <= size) continue;
+
+                            if (settings.IslandPadding == 0f)
+                            {
+                                group.TwoDimensionalProfileHeights[
+                                    (atlasWidth, size)] =
+                                    GetBandUsedHeightPixels(metrics);
+                                continue;
+                            }
+
+                            var profileSettings =
+                                CreateTwoDimensionalProfileSettings(
+                                    settings, atlasWidth, size);
+                            try
+                            {
+                                if (AtlasTexture.TryAnalyzePreparedAtlasAtSize(
+                                        domain,
+                                        prepared,
+                                        new List<IIslandSizePriorityTuner?>(),
+                                        profileSettings,
+                                        size,
+                                        out var paddedMetrics,
+                                        out _,
+                                        out _,
+                                        out _,
+                                        out _))
+                                {
+                                    group.TwoDimensionalProfileHeights[
+                                        (atlasWidth, size)] =
+                                        GetBandUsedHeightPixels(paddedMetrics);
+                                }
+                            }
+                            catch (ArgumentException exception)
+                                when (AutoAtlasMergeIslandRelocator
+                                    .IsNfdhComparerFailure(exception))
+                            {
+                                // This padded profile cannot be relocated
+                                // reliably at the selected width.
+                            }
+                        }
                     }
                     catch (ArgumentException exception)
                         when (AutoAtlasMergeIslandRelocator.IsNfdhComparerFailure(
