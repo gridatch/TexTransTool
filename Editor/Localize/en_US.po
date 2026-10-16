@@ -143,7 +143,10 @@ msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOvera
 msgid "AtlasTexture:info:RelocateResultWithResolutionAndMemory"
 msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOverall shrink: {2}x\n{3}\nTarget texture memory: {4} → {5}\nTotal relocate count: {6}\nTime taken relocate: {7}ms"
 
-msgid "AutoAtlasTexture:info:TwoDimensionalFallback"\nmsgstr "2D texture merging could not complete; individual atlas processing was retried.\n{0}"\n\nmsgid "AutoAtlasTexture:info:RelocateResult"
+msgid "AutoAtlasTexture:info:TwoDimensionalFallback"
+msgstr "2D texture merging could not complete; individual atlas processing was retried.\n{0}"
+
+msgid "AutoAtlasTexture:info:RelocateResult"
 msgstr "Auto Atlas Relocate Result\n{0}\nTotal Auto Atlas processing time: {1}ms"
 
 msgid "AutoAtlasTexture:info:TargetNotFound"
