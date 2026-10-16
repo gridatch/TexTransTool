@@ -23,8 +23,6 @@ namespace net.rs64.TexTransTool.NDMF
         // Candidate exploration below never calls DoAtlasTexture. These limits
         // only bound cheap integer-DP state retention, not expensive atlas probes.
         private const int ShadowPackingStatesPerHost = 512;
-        // Temporary comparison: 1024 states are never used in production.
-        private const int ComparisonShadowPackingStatesPerHost = 1024;
         private const int PackingGridUnit = 256;
         private const double UnknownDemandLog2 = -32d;
         private const double Epsilon = 1e-8;
@@ -82,160 +80,9 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        private readonly struct SearchRetentionAllocation
-        {
-            internal readonly string Name;
-            internal readonly int PixelStates;
-            internal readonly int MemoryStates;
-            internal readonly int HeightStates;
-            internal readonly int BaselineStates;
-
-            internal SearchRetentionAllocation(
-                string name,
-                int pixelStates,
-                int memoryStates,
-                int heightStates,
-                int baselineStates)
-            {
-                Name = name;
-                PixelStates = pixelStates;
-                MemoryStates = memoryStates;
-                HeightStates = heightStates;
-                BaselineStates = baselineStates;
-            }
-
-            internal void Validate(int stateBudget)
-            {
-                if (PixelStates < 0 || MemoryStates < 0
-                    || HeightStates < 0 || BaselineStates < 0
-                    || PixelStates + MemoryStates
-                        + HeightStates + BaselineStates != stateBudget)
-                    throw new ArgumentException(
-                        "Retention allocation must be non-negative "
-                        + "and sum to the state budget.");
-            }
-        }
-
-        internal sealed class RetentionAblationComparison
-        {
-            internal readonly string Name;
-            internal readonly long PlanningMilliseconds;
-            internal readonly int EvaluatedCandidateCount;
-            internal readonly int AdoptableCandidateCount;
-            internal readonly int SelectedCount;
-            internal readonly long SelectedSavingBytes;
-            internal readonly long PlacementAttemptCount;
-            internal readonly long StateSelectionMilliseconds;
-            internal readonly bool SameSelectedPlan;
-            internal readonly int AddedSafeCandidateCount;
-            internal readonly int LostSafeCandidateCount;
-            internal readonly string SelectedPlan;
-            internal readonly string AddedSafeCandidates;
-            internal readonly string LostSafeCandidates;
-
-            internal RetentionAblationComparison(
-                string name,
-                long planningMilliseconds,
-                int evaluatedCandidateCount,
-                int adoptableCandidateCount,
-                int selectedCount,
-                long selectedSavingBytes,
-                long placementAttemptCount,
-                long stateSelectionMilliseconds,
-                bool sameSelectedPlan,
-                string selectedPlan,
-                IReadOnlyList<string> addedSafeCandidates,
-                IReadOnlyList<string> lostSafeCandidates)
-            {
-                Name = name;
-                PlanningMilliseconds = planningMilliseconds;
-                EvaluatedCandidateCount = evaluatedCandidateCount;
-                AdoptableCandidateCount = adoptableCandidateCount;
-                SelectedCount = selectedCount;
-                SelectedSavingBytes = selectedSavingBytes;
-                PlacementAttemptCount = placementAttemptCount;
-                StateSelectionMilliseconds = stateSelectionMilliseconds;
-                SameSelectedPlan = sameSelectedPlan;
-                SelectedPlan = selectedPlan;
-                AddedSafeCandidateCount = addedSafeCandidates.Count;
-                LostSafeCandidateCount = lostSafeCandidates.Count;
-                AddedSafeCandidates = DescribeCandidateDifferences(
-                    addedSafeCandidates);
-                LostSafeCandidates = DescribeCandidateDifferences(
-                    lostSafeCandidates);
-            }
-        }
-
-        private static string DescribeCandidateDifferences(
-            IReadOnlyList<string> candidates)
-        {
-            if (candidates.Count == 0) return "(none)";
-            const int maxListed = 12;
-            var listed = string.Join("; ", candidates.Take(maxListed));
-            return candidates.Count > maxListed
-                ? listed + "; ...(+" + (candidates.Count - maxListed) + ")"
-                : listed;
-        }
-
-        private static string DescribeCandidateKey(MergeSelection selection)
-        {
-            return string.Join("+", selection.GroupIds
-                .OrderBy(id => id).Select(id => "g" + id))
-                + "@" + selection.PlannedLayoutSize.x
-                + "x" + selection.PlannedLayoutSize.y;
-        }
-
-        internal sealed class SearchBudgetComparison
-        {
-            internal readonly long SearchMilliseconds;
-            internal readonly int AdoptableCandidateCount;
-            internal readonly int SelectedCount;
-            internal readonly long PredictedSavingBytes;
-            internal readonly long PlacementAttempts;
-            internal readonly long UniqueStates;
-            internal readonly long StateSelectionMilliseconds;
-            internal readonly bool SameSelectedGroupLayouts;
-            internal readonly string ProductionSummary;
-            internal readonly string ComparisonSummary;
-            internal readonly string ProductionRetentionDiagnostic;
-            internal readonly string ComparisonRetentionDiagnostic;
-
-            internal SearchBudgetComparison(
-                long searchMilliseconds,
-                int adoptableCandidateCount,
-                int selectedCount,
-                long predictedSavingBytes,
-                long placementAttempts,
-                long uniqueStates,
-                long stateSelectionMilliseconds,
-                bool sameSelectedGroupLayouts,
-                string productionSummary,
-                string comparisonSummary,
-                string productionRetentionDiagnostic,
-                string comparisonRetentionDiagnostic)
-            {
-                SearchMilliseconds = searchMilliseconds;
-                AdoptableCandidateCount = adoptableCandidateCount;
-                SelectedCount = selectedCount;
-                PredictedSavingBytes = predictedSavingBytes;
-                PlacementAttempts = placementAttempts;
-                UniqueStates = uniqueStates;
-                StateSelectionMilliseconds = stateSelectionMilliseconds;
-                SameSelectedGroupLayouts = sameSelectedGroupLayouts;
-                ProductionSummary = productionSummary;
-                ComparisonSummary = comparisonSummary;
-                ProductionRetentionDiagnostic = productionRetentionDiagnostic;
-                ComparisonRetentionDiagnostic = comparisonRetentionDiagnostic;
-            }
-        }
-
         internal sealed class PlanResult
         {
             internal readonly IReadOnlyList<MergeSelection> Selections;
-            internal readonly SearchBudgetComparison? BudgetComparison;
-            internal readonly IReadOnlyList<RetentionAblationComparison>
-                RetentionAblations;
-
             // Temporary diagnostics for validating AutoAtlas processing cost.
             internal readonly long PlanningTimeMilliseconds;
             internal readonly long StandaloneAnalysisTimeMilliseconds;
@@ -402,15 +249,9 @@ namespace net.rs64.TexTransTool.NDMF
                 long shadowScoreStateCallCount = 0,
                 string shadowBestSamplingSummary = "",
                 StreamingRegressionExample? shadowStreamingExample = null,
-                int shadowStreamingRegressingCandidateCount = 0,
-                SearchBudgetComparison? budgetComparison = null,
-                IReadOnlyList<RetentionAblationComparison>?
-                    retentionAblations = null)
+                int shadowStreamingRegressingCandidateCount = 0)
             {
                 Selections = selections;
-                BudgetComparison = budgetComparison;
-                RetentionAblations = retentionAblations
-                    ?? Array.Empty<RetentionAblationComparison>();
                 ShadowStreamingExample = shadowStreamingExample;
                 ShadowStreamingRegressingCandidateCount =
                     shadowStreamingRegressingCandidateCount;
@@ -751,9 +592,6 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int GroupId;
             internal readonly RectInt Region;
             internal readonly ShadowPackingPlacement? Previous;
-            // All state-retention reasons accumulated while this node survives.
-            // This is diagnostic metadata, never consulted by the planner.
-            internal int RetainedByMask;
 
             internal ShadowPackingPlacement(
                 int groupId, RectInt region, ShadowPackingPlacement? previous)
@@ -776,9 +614,6 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly ShadowPackingPlacement? PlacementTail;
             internal long ProjectedPixelDelta;
             internal long ProjectedMemoryDelta;
-            // Reset at each bounded selection; only ranks actually inspected
-            // by the existing selectors contribute to this diagnostic mask.
-            internal int ObservedTopRankMask;
 
             internal ShadowPackingState(
                 int[] skyline,
@@ -892,32 +727,6 @@ namespace net.rs64.TexTransTool.NDMF
             return survivors;
         }
 
-        // Sequential retention buckets: pixel / memory / height /
-        // baseline size / pixel-based fill; "uncapped" has no ranking decision.
-        private const int RetainedForPixels = 1;
-        private const int RetainedForMemory = 2;
-        private const int RetainedForHeight = 4;
-        private const int RetainedForBaseline = 8;
-        private const int RetainedForFill = 16;
-        private const int RetainedUncapped = 32;
-
-        private static string DescribeRetentionPath(
-            ShadowPackingPlacement? placement)
-        {
-            var counts = new int[6];
-            for (var current = placement;
-                 current != null;
-                 current = current.Previous)
-            {
-                var mask = current.RetainedByMask;
-                for (var i = 0; i < counts.Length; i++)
-                    if ((mask & (1 << i)) != 0)
-                        counts[i]++;
-            }
-
-            return string.Join("/", counts);
-        }
-
         private readonly struct ShadowPackingDiagnostics
         {
             internal readonly int ProfileCount;
@@ -972,7 +781,6 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly StreamingRegressionExample? StreamingExample;
             internal readonly int StreamingRegressingCandidateCount;
             internal readonly IReadOnlyList<MergeSelection> ProductionCandidates;
-            internal readonly string RetentionDiagnostic;
 
             internal ShadowPackingDiagnostics(
                 int profileCount,
@@ -1026,11 +834,9 @@ namespace net.rs64.TexTransTool.NDMF
                 string bestSamplingSummary,
                 StreamingRegressionExample? streamingExample,
                 int streamingRegressingCandidateCount,
-                IReadOnlyList<MergeSelection> productionCandidates,
-                string retentionDiagnostic)
+                IReadOnlyList<MergeSelection> productionCandidates)
             {
                 ProductionCandidates = productionCandidates;
-                RetentionDiagnostic = retentionDiagnostic;
                 ProfileCount = profileCount;
                 GroupsWithMultipleProfiles = groupsWithMultipleProfiles;
                 HostCount = hostCount;
@@ -1530,108 +1336,8 @@ namespace net.rs64.TexTransTool.NDMF
             var shadow2DPlanningMilliseconds =
                 shadowPlanningTimer.ElapsedMilliseconds;
 
-            // Independent comparison beam; precomputed atomic profiles and
-            // property requirement cache are shared across both searches.
-            var comparisonTimer =
-                System.Diagnostics.Stopwatch.StartNew();
-            var comparison2D = EvaluateShadow2DPacking(
-                mergeGroups,
-                byId,
-                propertyTextures,
-                settings,
-                alphaCache,
-                GetPredictedPropertySizes,
-                ComparisonShadowPackingStatesPerHost);
-            comparisonTimer.Stop();
-
-            // Production always uses the original 512-state result.
             var selected = SelectTwoDimensionalMerges(
                 shadow2D.ProductionCandidates);
-            var comparisonSelected = SelectTwoDimensionalMerges(
-                comparison2D.ProductionCandidates);
-            var productionSummary = DescribeBudgetSelections(selected);
-            var comparisonSummary =
-                DescribeBudgetSelections(comparisonSelected);
-            var budgetComparison = new SearchBudgetComparison(
-                comparisonTimer.ElapsedMilliseconds,
-                comparison2D.AdoptableCandidateCount,
-                comparisonSelected.Count,
-                comparisonSelected.Sum(item => item.PredictedSavingBytes),
-                comparison2D.PlacementAttemptCount,
-                comparison2D.UniqueGeneratedStateCount,
-                comparison2D.StateSelectionMilliseconds,
-                string.Equals(productionSummary, comparisonSummary,
-                    StringComparison.Ordinal),
-                productionSummary,
-                comparisonSummary,
-                shadow2D.RetentionDiagnostic,
-                comparison2D.RetentionDiagnostic);
-
-            // Temporary same-build ablations: 512 states in every run.
-            // Only the default 256/128/64/64 result is used by production.
-            // Redistribute the removed criterion's quota to pixel retention.
-            var ablationAllocations = new[]
-            {
-                new SearchRetentionAllocation(
-                    "M除外 P384/M0/H64/B64", 384, 0, 64, 64),
-                new SearchRetentionAllocation(
-                    "H除外 P320/M128/H0/B64", 320, 128, 0, 64),
-                new SearchRetentionAllocation(
-                    "B除外 P320/M128/H64/B0", 320, 128, 64, 0),
-                new SearchRetentionAllocation(
-                    "Pのみ P512/M0/H0/B0", 512, 0, 0, 0),
-            };
-            var baselineSafeLayouts = shadow2D.ProductionCandidates
-                .Select(DescribeCandidateKey)
-                .ToHashSet(StringComparer.Ordinal);
-            var retentionAblations =
-                new List<RetentionAblationComparison>();
-            foreach (var allocation in ablationAllocations)
-            {
-                var ablationTimer =
-                    System.Diagnostics.Stopwatch.StartNew();
-                var ablation = EvaluateShadow2DPacking(
-                    mergeGroups,
-                    byId,
-                    propertyTextures,
-                    settings,
-                    alphaCache,
-                    GetPredictedPropertySizes,
-                    ShadowPackingStatesPerHost,
-                    allocation);
-                ablationTimer.Stop();
-
-                var ablationSelected = SelectTwoDimensionalMerges(
-                    ablation.ProductionCandidates);
-                var ablationSummary =
-                    DescribeBudgetSelections(ablationSelected);
-                var ablationSafeLayouts = ablation.ProductionCandidates
-                    .Select(DescribeCandidateKey)
-                    .ToHashSet(StringComparer.Ordinal);
-                var added = ablationSafeLayouts
-                    .Except(baselineSafeLayouts)
-                    .OrderBy(key => key, StringComparer.Ordinal)
-                    .ToArray();
-                var lost = baselineSafeLayouts
-                    .Except(ablationSafeLayouts)
-                    .OrderBy(key => key, StringComparer.Ordinal)
-                    .ToArray();
-                retentionAblations.Add(new RetentionAblationComparison(
-                    allocation.Name,
-                    ablationTimer.ElapsedMilliseconds,
-                    ablation.EvaluatedCandidateCount,
-                    ablation.AdoptableCandidateCount,
-                    ablationSelected.Count,
-                    ablationSelected.Sum(
-                        selectedItem => selectedItem.PredictedSavingBytes),
-                    ablation.PlacementAttemptCount,
-                    ablation.StateSelectionMilliseconds,
-                    string.Equals(productionSummary, ablationSummary,
-                        StringComparison.Ordinal),
-                    ablationSummary,
-                    added,
-                    lost));
-            }
 
             var crossAtomicMaterialGroupCount = 0;
             foreach (var selection in selected)
@@ -1726,27 +1432,7 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.ScoreStateCallCount,
                 shadow2D.BestSamplingSummary,
                 shadow2D.StreamingExample,
-                shadow2D.StreamingRegressingCandidateCount,
-                budgetComparison,
-                retentionAblations);
-        }
-
-        private static string DescribeBudgetSelections(
-            IEnumerable<MergeSelection> selections)
-        {
-            var descriptions = selections
-                .Select(selection =>
-                    string.Join("+",
-                        selection.GroupIds.OrderBy(id => id)
-                            .Select(id => "g" + id))
-                    + "@" + selection.PlannedLayoutSize.x
-                    + "x" + selection.PlannedLayoutSize.y
-                    + ":" + selection.PredictedSavingBytes + "B")
-                .OrderBy(value => value, StringComparer.Ordinal)
-                .ToArray();
-            return descriptions.Length == 0
-                ? "(none)"
-                : string.Join("; ", descriptions);
+                shadow2D.StreamingRegressingCandidateCount);
         }
 
         internal static List<MergeSelection> SelectTwoDimensionalMerges(
@@ -1778,19 +1464,10 @@ namespace net.rs64.TexTransTool.NDMF
             Func<int[], Vector2Int,
                 IReadOnlyDictionary<string, Vector2Int>>
                 propertySizeProvider,
-            int stateBudget,
-            SearchRetentionAllocation? retentionAllocationOverride = null)
+            int stateBudget)
         {
             if (stateBudget < 8 || stateBudget % 8 != 0)
                 throw new ArgumentOutOfRangeException(nameof(stateBudget));
-            var retentionAllocation = retentionAllocationOverride
-                ?? new SearchRetentionAllocation(
-                    "default",
-                    stateBudget / 2,
-                    stateBudget / 4,
-                    stateBudget / 8,
-                    stateBudget / 8);
-            retentionAllocation.Validate(stateBudget);
             var profileCount = groups.Sum(
                 group => group.TwoDimensionalProfileHeights.Count);
             var groupsWithMultipleProfiles = groups.Count(
@@ -1841,22 +1518,12 @@ namespace net.rs64.TexTransTool.NDMF
             Candidate? bestStreamingCandidate = null;
             var bestStreamingRatio = double.PositiveInfinity;
             var streamingRegressingCandidateCount = 0;
-            // Count state-step retention events, not distinct states over the
-            // whole search. Each target width has its own DP.
-            var assignedRetention = new long[6];
-            var soleObservedTopRank = new long[4];
-            long overlappingObservedTopRank = 0;
-            long outsideObservedTopRank = 0;
-
             var shadowAdoptable =
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
             var shadowUsesWiderProfile =
                 new Dictionary<string, bool>(StringComparer.Ordinal);
             var shadowPackedRegions =
                 new Dictionary<string, IReadOnlyDictionary<int, RectInt>>(
-                    StringComparer.Ordinal);
-            var shadowRetentionPaths =
-                new Dictionary<string, ShadowPackingPlacement?>(
                     StringComparer.Ordinal);
             var evaluatedLayouts =
                 new HashSet<string>(StringComparer.Ordinal);
@@ -2104,14 +1771,6 @@ namespace net.rs64.TexTransTool.NDMF
 
                 if (unique.Length <= stateBudget)
                 {
-                    foreach (var state in unique)
-                    {
-                        if (state.PlacementTail == null) continue;
-                        state.PlacementTail.RetainedByMask |=
-                            RetainedUncapped;
-                        assignedRetention[5]++;
-                    }
-
                     return unique
                         .OrderBy(
                             state =>
@@ -2128,9 +1787,6 @@ namespace net.rs64.TexTransTool.NDMF
                         .ToList();
                 }
 
-                foreach (var state in unique)
-                    state.ObservedTopRankMask = 0;
-
                 var selected =
                     new HashSet<ShadowPackingState>();
                 var empty = unique.FirstOrDefault(
@@ -2140,12 +1796,9 @@ namespace net.rs64.TexTransTool.NDMF
 
                 void Retain(
                     IEnumerable<ShadowPackingState> ordered,
-                    int count,
-                    int reasonMask,
-                    int assignedIndex)
+                    int count)
                 {
                     var added = 0;
-                    var ranked = 0;
                     foreach (var state in ordered)
                     {
                         if (selected.Count
@@ -2155,19 +1808,8 @@ namespace net.rs64.TexTransTool.NDMF
                             break;
                         }
 
-                        // Top-count overlap under each ranking, including
-                        // states already retained by an earlier ranking.
-                        if (ranked++ < count)
-                            state.ObservedTopRankMask |= reasonMask;
-
                         if (!selected.Add(state))
                             continue;
-
-                        if (state.PlacementTail != null)
-                        {
-                            state.PlacementTail.RetainedByMask |= reasonMask;
-                            assignedRetention[assignedIndex]++;
-                        }
 
                         added += 1;
                     }
@@ -2188,8 +1830,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    retentionAllocation.PixelStates,
-                    RetainedForPixels, 0);
+                    stateBudget / 2);
                 Retain(
                     unique
                         .OrderBy(
@@ -2200,8 +1841,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    retentionAllocation.MemoryStates,
-                    RetainedForMemory, 1);
+                    stateBudget / 4);
                 Retain(
                     unique
                         .OrderBy(state => state.MaxHeight)
@@ -2211,8 +1851,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    retentionAllocation.HeightStates,
-                    RetainedForHeight, 2);
+                    stateBudget / 8);
                 Retain(
                     unique
                         .OrderByDescending(
@@ -2223,8 +1862,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    retentionAllocation.BaselineStates,
-                    RetainedForBaseline, 3);
+                    stateBudget / 8);
 
                 if (selected.Count < stateBudget)
                 {
@@ -2241,30 +1879,7 @@ namespace net.rs64.TexTransTool.NDMF
                             .ThenBy(
                                 state => state,
                                 ShadowPackingStateStableComparer.Instance),
-                        stateBudget,
-                        RetainedForFill, 4);
-                }
-
-                // Observed overlap of the top-ranked portions actually
-                // visited by the sequential selectors. Not an ablation test.
-                foreach (var state in selected)
-                {
-                    if (state.PlacementTail == null) continue;
-                    var mask = state.ObservedTopRankMask;
-                    if (mask == 0)
-                    {
-                        outsideObservedTopRank++;
-                    }
-                    else if ((mask & (mask - 1)) != 0)
-                    {
-                        overlappingObservedTopRank++;
-                    }
-                    else
-                    {
-                        for (var i = 0; i < 4; i++)
-                            if (mask == (1 << i))
-                                soleObservedTopRank[i]++;
-                    }
+                        stateBudget);
                 }
 
                 return selected
@@ -2625,7 +2240,6 @@ namespace net.rs64.TexTransTool.NDMF
                              placement = placement.Previous)
                             regions.Add(placement.GroupId, placement.Region);
                         shadowPackedRegions[key] = regions;
-                        shadowRetentionPaths[key] = state.PlacementTail;
                         shadowUsesWiderProfile[key] =
                             state.UsesWiderProfile;
                     }
@@ -2645,7 +2259,6 @@ namespace net.rs64.TexTransTool.NDMF
                     pair.Value && shadowAdoptable.ContainsKey(pair.Key));
 
             var selectedCount = 0;
-            var selectedRetentionPaths = new List<string>();
             var consumed = new HashSet<int>();
             foreach (var pair in shadowAdoptable
                          .OrderByDescending(
@@ -2661,29 +2274,7 @@ namespace net.rs64.TexTransTool.NDMF
 
                 selectedCount += 1;
                 consumed.UnionWith(candidate.GroupIds);
-                selectedRetentionPaths.Add(
-                    string.Join("+", candidate.GroupIds
-                        .OrderBy(id => id)
-                        .Select(id => "g" + id))
-                    + "@" + candidate.LayoutSize.x
-                    + "x" + candidate.LayoutSize.y
-                    + " [" + DescribeRetentionPath(
-                        shadowRetentionPaths[pair.Key]) + "]");
             }
-
-            var retentionDiagnostic =
-                "assigned(P/M/H/B/F/free)="
-                + string.Join("/", assignedRetention)
-                + "; soleObservedTop(P/M/H/B)="
-                + string.Join("/", soleObservedTopRank)
-                + "; sharedObservedTop="
-                + overlappingObservedTopRank
-                + "; outsideObservedTop="
-                + outsideObservedTopRank
-                + "; selectedPaths(P/M/H/B/F/free)="
-                + (selectedRetentionPaths.Count == 0
-                    ? "(none)"
-                    : string.Join("; ", selectedRetentionPaths));
 
             // Diagnostics are calculated once, after the bounded search.
             var streamingExample = bestStreamingCandidate == null
@@ -2740,8 +2331,7 @@ namespace net.rs64.TexTransTool.NDMF
                 streamingExample,
                 streamingRegressingCandidateCount,
                 shadowAdoptable.Select(pair => new MergeSelection(
-                    pair.Value, shadowPackedRegions[pair.Key])).ToArray(),
-                retentionDiagnostic);
+                    pair.Value, shadowPackedRegions[pair.Key])).ToArray());
         }
 
         private static int GetUsedHeightPixels(
