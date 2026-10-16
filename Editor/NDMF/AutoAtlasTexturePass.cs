@@ -381,6 +381,24 @@ namespace net.rs64.TexTransTool.NDMF
                 propertyTextures,
                 preparedGroups);
 
+            string FormatMergeSelections(
+                IEnumerable<AutoAtlasTextureMergePlanner.MergeSelection> selections)
+            {
+                return string.Join("\n", selections.Select(selection =>
+                {
+                    var ids = string.Join("+",
+                        selection.GroupIds.Select(id => "g" + id));
+                    var materials = string.Join(", ",
+                        selection.GroupIds
+                            .SelectMany(id => preparedGroups[id].Materials)
+                            .Select(OriginalMaterialName)
+                            .Distinct()
+                            .OrderBy(name => name, StringComparer.Ordinal));
+                    return $"{ids} [{selection.PlannedLayoutSize.x}×{selection.PlannedLayoutSize.y}] " +
+                           $"{selection.PredictedSavingBytes} bytes: {materials}";
+                }));
+            }
+
             var selectedIds = mergePlan.Selections
                 .SelectMany(selection => selection.GroupIds)
                 .ToHashSet();
@@ -707,6 +725,20 @@ namespace net.rs64.TexTransTool.NDMF
 
             processingTimer.Stop();
 
+
+            if (mergePlan.Improvement is { } improvement)
+            {
+                TTTLog.ReportingObject(configuration, () =>
+                    TTTLog.Info(
+                        "AutoAtlasTexture:info:SelectionImprovement",
+                        improvement.CandidateCount,
+                        improvement.GreedySavingBytes,
+                        improvement.ExactSavingBytes,
+                        improvement.ExactSavingBytes
+                            - improvement.GreedySavingBytes,
+                        FormatMergeSelections(improvement.GreedySelections),
+                        FormatMergeSelections(mergePlan.Selections)));
+            }
 
             if (twoDimensionalFallbackReasons.Count != 0)
             {

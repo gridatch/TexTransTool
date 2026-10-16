@@ -143,6 +143,9 @@ msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOvera
 msgid "AtlasTexture:info:RelocateResultWithResolutionAndMemory"
 msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOverall shrink: {2}x\n{3}\nTarget texture memory: {4} → {5}\nTotal relocate count: {6}\nTime taken relocate: {7}ms"
 
+msgid "AutoAtlasTexture:info:SelectionImprovement"
+msgstr "2D atlas merge selection improvement (planning estimates)\nExact selection outperformed Greedy.\nEligible candidates: {0}\nPredicted additional savings: {1} bytes → {2} bytes (difference: {3} bytes)\nGreedy selection:\n{4}\nExact selection:\n{5}"
+
 msgid "AutoAtlasTexture:info:TwoDimensionalFallback"
 msgstr "2D texture merging could not complete; individual atlas processing was retried.\n{0}"
 
