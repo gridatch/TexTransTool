@@ -614,6 +614,111 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void ExecutionQueuePreservesDisjointMergedAndStandaloneGroups()
+        {
+            var textures = new[]
+            {
+                new Texture2D(2, 2),
+                new Texture2D(2, 2),
+                new Texture2D(2, 2),
+                new Texture2D(2, 2),
+                new Texture2D(2, 2),
+            };
+            try
+            {
+                var groups = new AutoAtlasTextureMergePlanner.PreparedGroup[textures.Length];
+                for (var id = 0; id < groups.Length; id++)
+                {
+                    groups[id] = new AutoAtlasTextureMergePlanner.PreparedGroup
+                    {
+                        Id = id,
+                        SourceTextures = new HashSet<Texture> { textures[id] },
+                    };
+                }
+
+                var first = TwoGroupSelection(0, 1, 16);
+                var second = TwoGroupSelection(3, 4, 16);
+                var queue = AutoAtlasTextureProcessor.CreateExecutionGroups(
+                    groups, new[] { first, second });
+
+                Assert.That(queue.Count, Is.EqualTo(3));
+                var mergedFirst = queue.Dequeue();
+                Assert.That(mergedFirst.MergeSelection, Is.SameAs(first));
+                Assert.That(mergedFirst.SourceTextures, Is.EquivalentTo(
+                    new Texture[] { textures[0], textures[1] }));
+                var mergedSecond = queue.Dequeue();
+                Assert.That(mergedSecond.MergeSelection, Is.SameAs(second));
+                Assert.That(mergedSecond.SourceTextures, Is.EquivalentTo(
+                    new Texture[] { textures[3], textures[4] }));
+                var standalone = queue.Dequeue();
+                Assert.That(standalone.MergeSelection, Is.Null);
+                Assert.That(standalone.SourceTextures,
+                    Is.SameAs(groups[2].SourceTextures));
+                Assert.That(queue.Count, Is.Zero);
+            }
+            finally
+            {
+                foreach (var texture in textures)
+                    UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
+        public void FailedMergeQueuesOriginalAtomicGroupsWithoutTouchingOtherWork()
+        {
+            var textures = new[]
+            {
+                new Texture2D(2, 2),
+                new Texture2D(2, 2),
+                new Texture2D(2, 2),
+                new Texture2D(2, 2),
+                new Texture2D(2, 2),
+            };
+            try
+            {
+                var groups = new AutoAtlasTextureMergePlanner.PreparedGroup[textures.Length];
+                for (var id = 0; id < groups.Length; id++)
+                {
+                    groups[id] = new AutoAtlasTextureMergePlanner.PreparedGroup
+                    {
+                        Id = id,
+                        SourceTextures = new HashSet<Texture> { textures[id] },
+                    };
+                }
+
+                var failed = TwoGroupSelection(0, 1, 16);
+                var unaffected = TwoGroupSelection(3, 4, 16);
+                var queue = AutoAtlasTextureProcessor.CreateExecutionGroups(
+                    groups, new[] { failed, unaffected });
+
+                Assert.That(queue.Dequeue().MergeSelection, Is.SameAs(failed));
+                AutoAtlasTextureProcessor.EnqueueStandaloneFallback(
+                    queue, failed, groups);
+
+                // Other selected merges and originally standalone groups stay
+                // ahead of the failed merge's individual retries.
+                Assert.That(queue.Count, Is.EqualTo(4));
+                Assert.That(queue.Dequeue().MergeSelection, Is.SameAs(unaffected));
+                var originalStandalone = queue.Dequeue();
+                Assert.That(originalStandalone.MergeSelection, Is.Null);
+                Assert.That(originalStandalone.SourceTextures,
+                    Is.SameAs(groups[2].SourceTextures));
+                var retry0 = queue.Dequeue();
+                var retry1 = queue.Dequeue();
+                Assert.That(retry0.MergeSelection, Is.Null);
+                Assert.That(retry1.MergeSelection, Is.Null);
+                Assert.That(retry0.SourceTextures, Is.SameAs(groups[0].SourceTextures));
+                Assert.That(retry1.SourceTextures, Is.SameAs(groups[1].SourceTextures));
+                Assert.That(queue.Count, Is.Zero);
+            }
+            finally
+            {
+                foreach (var texture in textures)
+                    UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
         public void VisibilityAnimationDetectorFindsParentActiveToggleAndRendererToggle()
         {
             var root = new GameObject("Avatar");

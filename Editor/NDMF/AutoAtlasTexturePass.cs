@@ -184,6 +184,74 @@ namespace net.rs64.TexTransTool.NDMF
 
     internal static class AutoAtlasTextureProcessor
     {
+        internal sealed class ExecutionGroup
+        {
+            internal readonly HashSet<Material> Materials;
+            internal readonly Renderer[] Renderers;
+            internal readonly HashSet<Texture> SourceTextures;
+            internal readonly AutoAtlasTextureMergePlanner.MergeSelection? MergeSelection;
+
+            internal ExecutionGroup(
+                HashSet<Material> materials,
+                Renderer[] renderers,
+                HashSet<Texture> sourceTextures,
+                AutoAtlasTextureMergePlanner.MergeSelection? mergeSelection)
+            {
+                Materials = materials;
+                Renderers = renderers;
+                SourceTextures = sourceTextures;
+                MergeSelection = mergeSelection;
+            }
+        }
+
+        internal static Queue<ExecutionGroup> CreateExecutionGroups(
+            IReadOnlyList<AutoAtlasTextureMergePlanner.PreparedGroup> preparedGroups,
+            IReadOnlyList<AutoAtlasTextureMergePlanner.MergeSelection> selections)
+        {
+            var selectedIds = selections.SelectMany(selection => selection.GroupIds)
+                .ToHashSet();
+            var queue = new Queue<ExecutionGroup>();
+
+            foreach (var selection in selections)
+            {
+                var selected = selection.GroupIds
+                    .Select(id => preparedGroups[id])
+                    .ToArray();
+                queue.Enqueue(new ExecutionGroup(
+                    selected.SelectMany(group => group.Materials).ToHashSet(),
+                    selected.SelectMany(group => group.Renderers).Distinct().ToArray(),
+                    selected.SelectMany(group => group.SourceTextures).ToHashSet(),
+                    selection));
+            }
+
+            foreach (var prepared in preparedGroups.Where(
+                         group => !selectedIds.Contains(group.Id)))
+            {
+                queue.Enqueue(new ExecutionGroup(
+                    prepared.Materials,
+                    prepared.Renderers,
+                    prepared.SourceTextures,
+                    null));
+            }
+
+            return queue;
+        }
+
+        internal static void EnqueueStandaloneFallback(
+            Queue<ExecutionGroup> queue,
+            AutoAtlasTextureMergePlanner.MergeSelection failedMerge,
+            IReadOnlyList<AutoAtlasTextureMergePlanner.PreparedGroup> preparedGroups)
+        {
+            foreach (var id in failedMerge.GroupIds)
+            {
+                var prepared = preparedGroups[id];
+                queue.Enqueue(new ExecutionGroup(
+                    prepared.Materials,
+                    prepared.Renderers,
+                    prepared.SourceTextures,
+                    null));
+            }
+        }
         internal static AutoAtlasTexture[] GetActiveConfigurations(GameObject root)
         {
             return root.GetComponentsInChildren<AutoAtlasTexture>(true)
@@ -399,51 +467,8 @@ namespace net.rs64.TexTransTool.NDMF
                 }));
             }
 
-            var selectedIds = mergePlan.Selections
-                .SelectMany(selection => selection.GroupIds)
-                .ToHashSet();
-
-            var executionGroups = new Queue<(
-                HashSet<Material> Materials,
-                Renderer[] Renderers,
-                HashSet<Texture> SourceTextures,
-                AutoAtlasTextureMergePlanner.MergeSelection? MergeSelection)>();
-
-            foreach (var selection in mergePlan.Selections)
-            {
-                var selected = selection.GroupIds
-                    .Select(id => preparedGroups[id])
-                    .ToArray();
-                executionGroups.Enqueue((
-                    selected.SelectMany(group => group.Materials).ToHashSet(),
-                    selected.SelectMany(group => group.Renderers).Distinct().ToArray(),
-                    selected.SelectMany(group => group.SourceTextures).ToHashSet(),
-                    selection));
-            }
-
-            foreach (var prepared in preparedGroups.Where(
-                         group => !selectedIds.Contains(group.Id)))
-            {
-                executionGroups.Enqueue((
-                    prepared.Materials,
-                    prepared.Renderers,
-                    prepared.SourceTextures,
-                    null));
-            }
-
-            void EnqueueStandaloneFallback(
-                AutoAtlasTextureMergePlanner.MergeSelection failedMerge)
-            {
-                foreach (var id in failedMerge.GroupIds)
-                {
-                    var prepared = preparedGroups[id];
-                    executionGroups.Enqueue((
-                        prepared.Materials,
-                        prepared.Renderers,
-                        prepared.SourceTextures,
-                        null));
-                }
-            }
+            var executionGroups = CreateExecutionGroups(
+                preparedGroups, mergePlan.Selections);
 
             var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
             while (executionGroups.Count != 0)
@@ -614,7 +639,8 @@ namespace net.rs64.TexTransTool.NDMF
                         // A merge plan is only an optimization. If its
                         // placement cannot be executed losslessly, retry the
                         // original atomic groups without merging them.
-                        EnqueueStandaloneFallback(failedMerge);
+                        EnqueueStandaloneFallback(
+                            executionGroups, failedMerge, preparedGroups);
                     }
                     continue;
                 }
@@ -671,7 +697,8 @@ namespace net.rs64.TexTransTool.NDMF
                         twoDimensionalFallbackReasons.Add(
                             $"groups={string.Join(",", memoryCheckedMerge.GroupIds.Select(id => "g" + id))}, layout={memoryCheckedMerge.PlannedLayoutSize.x}×{memoryCheckedMerge.PlannedLayoutSize.y}: {reason}");
                     }
-                    EnqueueStandaloneFallback(memoryCheckedMerge);
+                    EnqueueStandaloneFallback(
+                        executionGroups, memoryCheckedMerge, preparedGroups);
                     continue;
                 }
 
