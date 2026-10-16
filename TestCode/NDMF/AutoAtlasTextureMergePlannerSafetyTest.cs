@@ -522,6 +522,76 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void ExactSelectionCombinesDisjointCandidatesWhenGreedyMissesSaving()
+        {
+            // A wins individually, but B+C are disjoint and save more.
+            var a = TwoGroupSelection(0, 1, 16);
+            var b = TwoGroupSelection(0, 2, 24);
+            var c = TwoGroupSelection(1, 3, 24);
+            Assert.That(a.PredictedSavingBytes, Is.GreaterThan(b.PredictedSavingBytes));
+            Assert.That(a.PredictedSavingBytes, Is.LessThan(
+                b.PredictedSavingBytes + c.PredictedSavingBytes));
+
+            var selected = AutoAtlasTextureMergePlanner
+                .SelectTwoDimensionalMerges(new[] { a, b, c });
+
+            Assert.That(selected, Is.EquivalentTo(new[] { b, c }));
+            Assert.That(selected[0], Is.SameAs(b));
+            Assert.That(selected[1], Is.SameAs(c));
+        }
+
+        [Test]
+        public void ExactSelectionPreservesGreedyOnEqualTotalSaving()
+        {
+            var a = TwoGroupSelection(0, 1, 16);
+            var b = TwoGroupSelection(0, 2, 16);
+            var independent = TwoGroupSelection(3, 4, 16);
+
+            var selected = AutoAtlasTextureMergePlanner
+                .SelectTwoDimensionalMerges(new[] { a, b, independent });
+
+            Assert.That(selected, Is.EqualTo(new[] { a, independent }));
+        }
+
+        [Test]
+        public void LargeCandidateSetKeepsBoundedGreedySelection()
+        {
+            var candidates = new List<AutoAtlasTextureMergePlanner.MergeSelection>();
+            for (var id = 1; id <= 17; id++)
+                candidates.Add(TwoGroupSelection(0, id, id % 2 == 0 ? 16 : 24));
+
+            var selected = AutoAtlasTextureMergePlanner
+                .SelectTwoDimensionalMerges(candidates);
+
+            Assert.That(selected.Count, Is.EqualTo(1));
+            Assert.That(selected[0], Is.SameAs(candidates[1]));
+        }
+
+        private static AutoAtlasTextureMergePlanner.MergeSelection
+            TwoGroupSelection(int left, int right, int mergedWidth)
+        {
+            var baseline = Plan(new[]
+            {
+                Entry(32, 32, 1, false, new[] { left }),
+                Entry(32, 32, 1, false, new[] { right }),
+            });
+            var merged = Plan(new[]
+            {
+                Entry(mergedWidth, mergedWidth, 1, false,
+                    new[] { left, right }),
+            });
+            var candidate = Candidate(baseline, merged, new[] { left, right });
+            Assert.That(candidate.IsAdoptable, Is.True);
+            return new AutoAtlasTextureMergePlanner.MergeSelection(
+                candidate,
+                new Dictionary<int, RectInt>
+                {
+                    [left] = new RectInt(0, 0, 32, 32),
+                    [right] = new RectInt(32, 0, 32, 32),
+                });
+        }
+
+        [Test]
         public void VisibilityAnimationDetectorFindsParentActiveToggleAndRendererToggle()
         {
             var root = new GameObject("Avatar");

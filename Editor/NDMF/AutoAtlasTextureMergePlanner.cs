@@ -743,17 +743,89 @@ namespace net.rs64.TexTransTool.NDMF
         internal static List<MergeSelection> SelectTwoDimensionalMerges(
             IEnumerable<MergeSelection> candidates)
         {
-            var selected = new List<MergeSelection>();
+            var ranked = candidates
+                .Where(candidate => candidate.PackedRegions != null)
+                .OrderByDescending(candidate => candidate.PredictedSavingBytes)
+                .ThenByDescending(candidate => candidate.PredictedSavingRate)
+                .ThenByDescending(candidate => candidate.GroupIds.Length)
+                .ToArray();
+
+            // Preserve the established Greedy result when the candidate set is
+            // large. The exact solver below examines at most 2^16 subsets.
+            var greedy = new List<MergeSelection>();
             var consumed = new HashSet<int>();
-            foreach (var candidate in candidates
-                         .Where(candidate => candidate.PackedRegions != null)
-                         .OrderByDescending(candidate => candidate.PredictedSavingBytes)
-                         .ThenByDescending(candidate => candidate.PredictedSavingRate)
-                         .ThenByDescending(candidate => candidate.GroupIds.Length))
+            foreach (var candidate in ranked)
             {
                 if (candidate.GroupIds.Any(consumed.Contains)) continue;
-                selected.Add(candidate);
+                greedy.Add(candidate);
                 consumed.UnionWith(candidate.GroupIds);
+            }
+
+            const int exactCandidateLimit = 16;
+            if (ranked.Length <= 1 || ranked.Length > exactCandidateLimit)
+                return greedy;
+
+            // Set packing: two independent merges may save more memory than a
+            // higher-ranked merge overlapping both. The candidate safety gates
+            // and packed regions are unchanged; only disjoint plans are combined.
+            var memberSets = ranked
+                .Select(candidate => candidate.GroupIds.ToHashSet())
+                .ToArray();
+            var conflictMasks = new int[ranked.Length];
+            for (var i = 0; i < ranked.Length; i++)
+            {
+                var mask = 1 << i;
+                for (var j = 0; j < ranked.Length; j++)
+                {
+                    if (i != j
+                        && ranked[j].GroupIds.Any(memberSets[i].Contains))
+                        mask |= 1 << j;
+                }
+                conflictMasks[i] = mask;
+            }
+
+            var memo = new long[1 << ranked.Length];
+            for (var mask = 1; mask < memo.Length; mask++)
+                memo[mask] = -1;
+
+            long BestSaving(int available)
+            {
+                if (available == 0) return 0;
+                if (memo[available] >= 0) return memo[available];
+
+                var first = 0;
+                while ((available & (1 << first)) == 0) first++;
+                var withoutFirst = available & ~(1 << first);
+                var skipped = BestSaving(withoutFirst);
+                var taken = ranked[first].PredictedSavingBytes
+                    + BestSaving(available & ~conflictMasks[first]);
+                return memo[available] = Math.Max(skipped, taken);
+            }
+
+            var remaining = memo.Length - 1;
+            var optimum = BestSaving(remaining);
+            // On equal predicted savings, retain the previously validated
+            // Greedy selection and its original execution order.
+            if (optimum <= greedy.Sum(candidate => candidate.PredictedSavingBytes))
+                return greedy;
+
+            var selected = new List<MergeSelection>();
+            while (remaining != 0)
+            {
+                var first = 0;
+                while ((remaining & (1 << first)) == 0) first++;
+                var withoutFirst = remaining & ~(1 << first);
+                var taken = ranked[first].PredictedSavingBytes
+                    + BestSaving(remaining & ~conflictMasks[first]);
+                if (taken >= BestSaving(withoutFirst))
+                {
+                    selected.Add(ranked[first]);
+                    remaining &= ~conflictMasks[first];
+                }
+                else
+                {
+                    remaining = withoutFirst;
+                }
             }
 
             return selected;
