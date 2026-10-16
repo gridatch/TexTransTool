@@ -500,6 +500,129 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Is.False);
         }
 
+
+        [Test]
+        public void TwoDimensionalPackingTranslatesMeasuredRightEdgeOverflow()
+        {
+            // Seiran_ShuwashuwaPearl g5 measured box. Include a second
+            // island on the left to verify the complete group moves together.
+            var islands = new[]
+            {
+                new net.rs64.TexTransCore.UVIsland.IslandTransform
+                {
+                    Position = new System.Numerics.Vector2(
+                        0.9964194f, 0.7842883f),
+                    Size = new System.Numerics.Vector2(
+                        0.9970903f - 0.9964194f,
+                        0.7842968f - 0.7842883f),
+                },
+                new net.rs64.TexTransCore.UVIsland.IslandTransform
+                {
+                    Position = new System.Numerics.Vector2(0.51f, 0.745f),
+                    Size = new System.Numerics.Vector2(0.05f, 0.025f),
+                },
+            };
+            var region = new RectInt(512, 751, 512, 83);
+            var beforeDistance = islands[0].Position - islands[1].Position;
+            var originalSize = islands[0].Size;
+            Assert.That(AutoAtlas2DMergeIslandRelocator.IsWithinPlannedRegion(
+                islands[0], region, 1024, 0.01f), Is.False);
+
+            Assert.That(
+                AutoAtlas2DMergeIslandRelocator.TryTranslateIslandsWithinPlannedRegion(
+                    islands, region, 1024, 0.01f), Is.True);
+            foreach (var island in islands)
+                Assert.That(
+                    AutoAtlas2DMergeIslandRelocator.IsWithinPlannedRegion(
+                        island, region, 1024, 0.01f), Is.True);
+            Assert.That((islands[0].Position - islands[1].Position).X,
+                Is.EqualTo(beforeDistance.X).Within(0.000001f));
+            Assert.That((islands[0].Position - islands[1].Position).Y,
+                Is.EqualTo(beforeDistance.Y).Within(0.000001f));
+            Assert.That(islands[0].Size.X, Is.EqualTo(originalSize.X));
+            Assert.That(islands[0].Size.Y, Is.EqualTo(originalSize.Y));
+        }
+
+        [Test]
+        public void TwoDimensionalPackingLeavesValidGroupUnchanged()
+        {
+            var island = new net.rs64.TexTransCore.UVIsland.IslandTransform
+            {
+                Position = new System.Numerics.Vector2(0.55f, 0.75f),
+                Size = new System.Numerics.Vector2(0.1f, 0.025f),
+            };
+            var previous = island.Position;
+            Assert.That(
+                AutoAtlas2DMergeIslandRelocator.TryTranslateIslandsWithinPlannedRegion(
+                    new[] { island }, new RectInt(512, 751, 512, 83),
+                    1024, 0.01f), Is.True);
+            Assert.That(island.Position, Is.EqualTo(previous));
+        }
+
+        [Test]
+        public void TwoDimensionalPackingRejectsUntranslatableGroupWithoutMutation()
+        {
+            var islands = new[]
+            {
+                new net.rs64.TexTransCore.UVIsland.IslandTransform
+                {
+                    Position = new System.Numerics.Vector2(0.507f, 0.75f),
+                    Size = new System.Numerics.Vector2(0.01f, 0.01f),
+                },
+                new net.rs64.TexTransCore.UVIsland.IslandTransform
+                {
+                    Position = new System.Numerics.Vector2(0.995f, 0.75f),
+                    Size = new System.Numerics.Vector2(0.004f, 0.01f),
+                },
+            };
+            var before0 = islands[0].Position;
+            var before1 = islands[1].Position;
+            Assert.That(
+                AutoAtlas2DMergeIslandRelocator.TryTranslateIslandsWithinPlannedRegion(
+                    islands, new RectInt(512, 751, 512, 83),
+                    1024, 0.01f), Is.False);
+            Assert.That(islands[0].Position, Is.EqualTo(before0));
+            Assert.That(islands[1].Position, Is.EqualTo(before1));
+        }
+
+        [Test]
+        public void TwoDimensionalPackingTranslatesRotatedIslandWithoutChangingRotation()
+        {
+            var island = new net.rs64.TexTransCore.UVIsland.IslandTransform
+            {
+                Position = new System.Numerics.Vector2(0.994f, 0.77f),
+                Size = new System.Numerics.Vector2(0.006f, 0.003f),
+                Rotation = -(float)System.Math.PI / 2f,
+            };
+            var originalSize = island.Size;
+            var originalRotation = island.Rotation;
+            var region = new RectInt(512, 751, 512, 83);
+            Assert.That(
+                AutoAtlas2DMergeIslandRelocator.TryTranslateIslandsWithinPlannedRegion(
+                    new[] { island }, region, 1024, 0.01f), Is.True);
+            Assert.That(AutoAtlas2DMergeIslandRelocator.IsWithinPlannedRegion(
+                island, region, 1024, 0.01f), Is.True);
+            Assert.That(island.Size.X, Is.EqualTo(originalSize.X));
+            Assert.That(island.Size.Y, Is.EqualTo(originalSize.Y));
+            Assert.That(island.Rotation, Is.EqualTo(originalRotation));
+        }
+
+        [Test]
+        public void TwoDimensionalPackingRejectsExcessiveHeightWithoutMutation()
+        {
+            var island = new net.rs64.TexTransCore.UVIsland.IslandTransform
+            {
+                Position = new System.Numerics.Vector2(0.52f, 0.735f),
+                Size = new System.Numerics.Vector2(0.1f, 0.076f),
+            };
+            var originalPosition = island.Position;
+            Assert.That(
+                AutoAtlas2DMergeIslandRelocator.TryTranslateIslandsWithinPlannedRegion(
+                    new[] { island }, new RectInt(512, 751, 512, 83),
+                    1024, 0.01f), Is.False);
+            Assert.That(island.Position, Is.EqualTo(originalPosition));
+        }
+
         [Test]
         public void TwoDimensionalSelectionCarriesPlannedRegions()
         {

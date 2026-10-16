@@ -179,17 +179,86 @@ namespace net.rs64.TexTransTool.NDMF
                     island.Position /= localScale;
                     island.Position.X += minX;
                     island.Position.Y += minY;
+                }
 
-                    if (!IsWithinPlannedRegion(
-                            island, region, _atlasWidth, context.Padding))
+                // NFDH can succeed while leaving less than half-padding at
+                // a region edge. Shift the entire group without changing
+                // island size, rotation, or relative placement.
+                var invalidIsland = localIslands.FirstOrDefault(island =>
+                    !IsWithinPlannedRegion(
+                        island, region, _atlasWidth, context.Padding));
+                if (invalidIsland != null)
+                {
+                    if (!TryTranslateIslandsWithinPlannedRegion(
+                            localIslands, region, _atlasWidth, context.Padding)
+                        || localIslands.Any(island =>
+                            !IsWithinPlannedRegion(
+                                island, region, _atlasWidth, context.Padding)))
                     {
-                        var box = island.GetBox();
+                        var unresolved = localIslands.FirstOrDefault(island =>
+                            !IsWithinPlannedRegion(
+                                island, region, _atlasWidth, context.Padding))
+                            ?? invalidIsland;
+                        var box = unresolved.GetBox();
                         return Fail($"g{group.Key}の実配置が矩形境界の必要余白を満たさない: region={region}, box=({box.X},{box.Y},{box.Z},{box.W}), globalPadding={context.Padding}, perSideMargin={context.Padding * 0.5f}");
                     }
                 }
             }
 
             return new RelocationResult(true, true);
+        }
+
+
+        // NFDH's edge allowance can differ from the reserved region's
+        // half-padding requirement. A translation preserves all inter-island
+        // distances and rotations; never scale or relax the boundary check.
+        internal static bool TryTranslateIslandsWithinPlannedRegion(
+            IReadOnlyList<IslandTransform> islands, RectInt region,
+            int atlasWidth, float padding)
+        {
+            if (islands.Count == 0 || atlasWidth <= 0
+                || region.width <= 0 || region.height <= 0
+                || region.xMin < 0 || region.yMin < 0
+                || region.xMax > atlasWidth || region.yMax > atlasWidth
+                || padding < 0f
+                || float.IsNaN(padding) || float.IsInfinity(padding))
+                return false;
+
+            var minX = float.PositiveInfinity;
+            var minY = float.PositiveInfinity;
+            var maxX = float.NegativeInfinity;
+            var maxY = float.NegativeInfinity;
+            foreach (var island in islands)
+            {
+                var box = island.GetBox();
+                if (float.IsNaN(box.X) || float.IsNaN(box.Y)
+                    || float.IsNaN(box.Z) || float.IsNaN(box.W)
+                    || float.IsInfinity(box.X) || float.IsInfinity(box.Y)
+                    || float.IsInfinity(box.Z) || float.IsInfinity(box.W))
+                    return false;
+
+                minX = Math.Min(minX, box.X);
+                minY = Math.Min(minY, box.Y);
+                maxX = Math.Max(maxX, box.Z);
+                maxY = Math.Max(maxY, box.W);
+            }
+
+            var halfPadding = padding * 0.5f;
+            var shiftMinX = (float)region.xMin / atlasWidth + halfPadding - minX;
+            var shiftMinY = (float)region.yMin / atlasWidth + halfPadding - minY;
+            var shiftMaxX = (float)region.xMax / atlasWidth - halfPadding - maxX;
+            var shiftMaxY = (float)region.yMax / atlasWidth - halfPadding - maxY;
+            if (shiftMinX > shiftMaxX || shiftMinY > shiftMaxY)
+                return false;
+
+            // Keep an already-valid axis unchanged. Otherwise select the
+            // smallest translation that fits within all four boundaries.
+            var shiftX = Math.Max(shiftMinX, Math.Min(0f, shiftMaxX));
+            var shiftY = Math.Max(shiftMinY, Math.Min(0f, shiftMaxY));
+            foreach (var island in islands)
+                island.Position += new System.Numerics.Vector2(shiftX, shiftY);
+
+            return true;
         }
 
         internal static bool IsWithinPlannedRegion(
