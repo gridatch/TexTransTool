@@ -662,13 +662,16 @@ namespace net.rs64.TexTransTool.NDMF
                     layoutSize);
             }
 
-            foreach (var group in groups)
+            // Excluded atomic groups always run independently. Their
+            // standalone DoAtlasTexture execution does not use any planner
+            // profiles, so avoid preparing and probing them in advance.
+            foreach (var group in mergeGroups)
             {
                 group.StandaloneMetrics = AnalyzeAtlas(
                     domain, settings, group, out _, out _, out _);
             }
 
-            foreach (var group in groups)
+            foreach (var group in mergeGroups)
             {
                 if (group.StandaloneMetrics is not { } metrics)
                     continue;
