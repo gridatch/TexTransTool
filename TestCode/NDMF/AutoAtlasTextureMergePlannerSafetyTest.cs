@@ -272,69 +272,6 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void StreamingVisibilityDiagnosticRecordsSharedRendererAndSourceMesh()
-        {
-            var root = new GameObject("AvatarRoot");
-            var sharedMesh = new Mesh { name = "SameSourceMesh" };
-            try
-            {
-                var child = new GameObject("Clothes");
-                child.transform.SetParent(root.transform);
-                var sharedRenderer = child.AddComponent<MeshRenderer>();
-                sharedRenderer.enabled = false;
-
-                var separate = new GameObject("Accessories");
-                separate.transform.SetParent(root.transform);
-                var separateRenderer = separate.AddComponent<MeshRenderer>();
-
-                var g3 = new AutoAtlasTextureMergePlanner.PreparedGroup
-                {
-                    Id = 3,
-                    Renderers = new Renderer[] { sharedRenderer },
-                };
-                var g6 = new AutoAtlasTextureMergePlanner.PreparedGroup
-                {
-                    Id = 6,
-                    Renderers = new Renderer[]
-                    {
-                        sharedRenderer, separateRenderer,
-                    },
-                };
-                var candidate = new AutoAtlasTextureMergePlanner.Candidate(
-                    new[] { 3, 6 },
-                    Plan(new AutoAtlasTextureMergePlanner.TextureCostEntry[0]),
-                    Plan(new AutoAtlasTextureMergePlanner.TextureCostEntry[0]),
-                    new Vector2Int(1024, 1024),
-                    new Dictionary<string, Vector2Int>());
-                var example =
-                    new AutoAtlasTextureMergePlanner.StreamingRegressionExample(
-                        candidate, 3, -16d, 100, 200, "", "");
-
-                var report =
-                    AutoAtlasTextureProcessor.DescribeStreamingVisibilityRelations(
-                        new[] { g3, g6 },
-                        example,
-                        renderer => new Material[0],
-                        renderer => sharedMesh,
-                        material => material.name,
-                        root.transform);
-
-                Assert.That(report, Does.Contain("g3"));
-                Assert.That(report, Does.Contain("g6"));
-                Assert.That(report, Does.Contain("Clothes"));
-                Assert.That(report, Does.Contain("Accessories"));
-                Assert.That(report, Does.Contain("SameSourceMesh"));
-                Assert.That(report, Does.Contain("Renderer.enabled=False"));
-                Assert.That(report, Does.Contain("GO.activeSelf=True"));
-            }
-            finally
-            {
-                Object.DestroyImmediate(sharedMesh);
-                Object.DestroyImmediate(root);
-            }
-        }
-
-        [Test]
         public void TextureMergingExclusionAppliesToRendererWithoutRemovingGroup()
         {
             var root = new GameObject("TextureMergingExclusionTest");

@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Linq;
 using nadena.dev.ndmf;
 using nadena.dev.ndmf.animator;
-using nadena.dev.ndmf.localization;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
@@ -12,9 +11,7 @@ using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.Editor;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using net.rs64.TexTransTool.Utils;
-using UnityEditor;
 using UnityEngine;
-using UnityEngine.UIElements;
 using UnityEngine.Experimental.Rendering;
 
 namespace net.rs64.TexTransTool.NDMF
@@ -58,41 +55,6 @@ namespace net.rs64.TexTransTool.NDMF
                 context.AvatarRootTransform);
         }
     }
-
-    internal sealed class AutoAtlasTextureTemporaryDiagnosticError : SimpleError
-    {
-        private readonly string _message;
-
-        internal AutoAtlasTextureTemporaryDiagnosticError(string message)
-        {
-            _message = message;
-        }
-
-        public override Localizer Localizer => TTTLog.NDMFLocalizer;
-        public override ErrorSeverity Severity => ErrorSeverity.Information;
-        public override string TitleKey =>
-            "AutoAtlasTexture:info:TemporaryDiagnosticMessage";
-        public override string[] TitleSubst => new[] { _message };
-
-        public override VisualElement CreateVisualElement(ErrorReport report)
-        {
-            var root = new VisualElement();
-            root.style.flexGrow = 1;
-            root.Add(base.CreateVisualElement(report));
-
-            var copyButton = new Button(() =>
-                EditorGUIUtility.systemCopyBuffer = _message)
-            {
-                text = "AutoAtlasTexture:button:CopyDiagnostics"
-                    .GetLocalize(),
-            };
-            copyButton.style.alignSelf = Align.FlexEnd;
-            root.Add(copyButton);
-
-            return root;
-        }
-    }
-
 
     /// <summary>
     /// Detects visibility animation on renderers and their parent GameObjects.
@@ -257,19 +219,6 @@ namespace net.rs64.TexTransTool.NDMF
             // Store only the NDMF console summary for this build.
             var completed = new List<string>();
 
-            // Temporary diagnostics for validating the extra merge-planning cost.
-            long executionDoAtlasTimeMilliseconds = 0;
-            long executionRelocationTimeMilliseconds = 0;
-            var executionDoAtlasCount = 0;
-            long executionPreserveSetupMilliseconds = 0;
-            long executionAtlasContextMilliseconds = 0;
-            long executionIslandNormalizeMilliseconds = 0;
-            long executionRelocationStageMilliseconds = 0;
-            long executionResolutionPlanMilliseconds = 0;
-            long executionMeshGenerationMilliseconds = 0;
-            long executionTextureGenerationMilliseconds = 0;
-            var twoDimensionalExecutionSucceeded = 0;
-            var twoDimensionalExecutionFallback = 0;
             var twoDimensionalFallbackReasons = new List<string>();
 
             string OriginalMaterialName(Material material)
@@ -432,19 +381,6 @@ namespace net.rs64.TexTransTool.NDMF
                 propertyTextures,
                 preparedGroups);
 
-            // Capture the original renderer/material relationships before
-            // standalone atlas execution mutates domain meshes and materials.
-            var streamingVisibilityDiagnostic =
-                mergePlan.ShadowStreamingExample is { } visibilityStreamingExample
-                    ? DescribeStreamingVisibilityRelations(
-                        preparedGroups,
-                        visibilityStreamingExample,
-                        domain.GetMaterials,
-                        domain.GetMesh,
-                        OriginalMaterialName,
-                        configuration.transform.root)
-                    : null;
-
             var selectedIds = mergePlan.Selections
                 .SelectMany(selection => selection.GroupIds)
                 .ToHashSet();
@@ -558,9 +494,6 @@ namespace net.rs64.TexTransTool.NDMF
                 AutoAtlas2DMergeIslandRelocator? twoDimensionalRelocator = null;
                 string? twoDimensionalSizeRejection = null;
                 var executionMetrics = default(AtlasTexture.AtlasExecutionMetrics);
-                var executionPhaseTiming =
-                    default(AtlasTexture.AtlasExecutionTimingDiagnostic);
-                var executionTimer = System.Diagnostics.Stopwatch.StartNew();
                 var atlasResult = AtlasTexture.DoAtlasTexture(
                     domain,
                     engine,
@@ -572,7 +505,6 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         RequireLossless = true,
                         ReportProgressInfo = false,
-                        TimingDiagnostic = value => executionPhaseTiming = value,
                         IslandRelocatorFactory = mergeAtomicGroupByMaterial != null
                             ? atlasContext =>
                             {
@@ -648,34 +580,12 @@ namespace net.rs64.TexTransTool.NDMF
                             return metrics.OutputTexturePixelCount > 0;
                         },
                     });
-                executionTimer.Stop();
-                executionDoAtlasCount += 1;
-                executionDoAtlasTimeMilliseconds +=
-                    executionTimer.ElapsedMilliseconds;
-                executionRelocationTimeMilliseconds +=
-                    executionMetrics.RelocationTimeMilliseconds;
-                executionPreserveSetupMilliseconds +=
-                    executionPhaseTiming.PreserveSetupMilliseconds;
-                executionAtlasContextMilliseconds +=
-                    executionPhaseTiming.AtlasContextConstructionMilliseconds;
-                executionIslandNormalizeMilliseconds +=
-                    executionPhaseTiming.IslandNormalizeMilliseconds;
-                executionRelocationStageMilliseconds +=
-                    executionPhaseTiming.RelocationStageMilliseconds;
-                executionResolutionPlanMilliseconds +=
-                    executionPhaseTiming.ResolutionPlanMilliseconds;
-                executionMeshGenerationMilliseconds +=
-                    executionPhaseTiming.MeshGenerationMilliseconds;
-                executionTextureGenerationMilliseconds +=
-                    executionPhaseTiming.TextureGenerationMilliseconds;
-
                 if (!atlasResult.IsSuccess)
                 {
                     if (execution.MergeSelection is { } failedMerge)
                     {
                         if (failedMerge.PackedRegions != null)
                         {
-                            twoDimensionalExecutionFallback += 1;
                             var reason = twoDimensionalRelocator?.FailureDetail;
                             if (string.IsNullOrEmpty(reason))
                                 reason = twoDimensionalSizeRejection
@@ -737,7 +647,6 @@ namespace net.rs64.TexTransTool.NDMF
 
                     if (memoryCheckedMerge.PackedRegions != null)
                     {
-                        twoDimensionalExecutionFallback += 1;
                         var reason = !hasExecutionTextureMemory
                             ? "最終テクスチャメモリを計算できない"
                             : $"最終テクスチャメモリが削減されない: actual={executionTextureMemoryBytes} bytes, baseline={memoryCheckedMerge.BaselineBytes} bytes";
@@ -747,9 +656,6 @@ namespace net.rs64.TexTransTool.NDMF
                     EnqueueStandaloneFallback(memoryCheckedMerge);
                     continue;
                 }
-
-                if (execution.MergeSelection?.PackedRegions != null)
-                    twoDimensionalExecutionSucceeded += 1;
 
                 var resultingTextures = tuningResult.RenderTextures.ToDictionary(
                     item => item.Key,
@@ -801,325 +707,27 @@ namespace net.rs64.TexTransTool.NDMF
 
             processingTimer.Stop();
 
-            var temporaryTimingDiagnostic = string.Format(
-                "AutoAtlasTexture:info:TemporaryTimingDiagnostic".GetLocalize(),
-                mergePlan.PlanningTimeMilliseconds,
-                mergePlan.StandaloneAnalysisTimeMilliseconds,
-                mergePlan.StandaloneAnalysisCount,
-                executionDoAtlasTimeMilliseconds,
-                executionDoAtlasCount,
-                mergePlan.PreparedGroupCount,
-                mergePlan.Selections.Count,
-                mergePlan.ShadowProfileCount,
-                mergePlan.ShadowGroupsWithMultipleProfiles,
-                mergePlan.ShadowHostCount,
-                mergePlan.ShadowEvaluatedCandidateCount,
-                mergePlan.ShadowEvaluatedUsingWiderProfileCount,
-                mergePlan.ShadowAdoptableCandidateCount,
-                mergePlan.ShadowAdoptableUsingWiderProfileCount,
-                mergePlan.ShadowSelectedCount,
-                mergePlan.ShadowRejectedPixelCount,
-                mergePlan.ShadowRejectedMemoryCount,
-                mergePlan.ShadowRejectedMaxDimensionCount,
-                mergePlan.ShadowRejectedSamplingCount,
-                mergePlan.Shadow2DPlanningMilliseconds,
-                mergePlan.ShadowStateSelectionMilliseconds,
-                mergePlan.ShadowPlacementAttemptCount,
-                mergePlan.ShadowUniqueGeneratedStateCount,
-                mergePlan.ShadowScoreStateCallCount,
-                mergePlan.ShadowProjectionEvaluationCount,
-                mergePlan.ShadowSafetyEvaluationCount,
-                mergePlan.PropertyRequirementBuildCount,
-                mergePlan.PropertyRequirementBuildMilliseconds,
-                mergePlan.ShadowOptimisticExhaustive,
-                mergePlan.ShadowOptimisticLowerBoundMilliseconds,
-                mergePlan.ShadowOptimisticPixelViableCount,
-                mergePlan.ShadowBestBaselinePixels,
-                mergePlan.ShadowBestMergedPixels,
-                mergePlan.ShadowBestRejectionReason);
 
-            if (mergePlan.BudgetComparison is { } budgetComparison)
-                temporaryTimingDiagnostic += "\n" + string.Format(
-                    "AutoAtlasTexture:info:TemporarySearchBudgetComparison".GetLocalize(),
-                    mergePlan.Shadow2DPlanningMilliseconds,
-                    mergePlan.ShadowAdoptableCandidateCount,
-                    mergePlan.Selections.Count,
-                    mergePlan.Selections.Sum(item => item.PredictedSavingBytes),
-                    mergePlan.ShadowPlacementAttemptCount,
-                    mergePlan.ShadowUniqueGeneratedStateCount,
-                    mergePlan.ShadowStateSelectionMilliseconds,
-                    budgetComparison.SearchMilliseconds,
-                    budgetComparison.AdoptableCandidateCount,
-                    budgetComparison.SelectedCount,
-                    budgetComparison.PredictedSavingBytes,
-                    budgetComparison.PlacementAttempts,
-                    budgetComparison.UniqueStates,
-                    budgetComparison.StateSelectionMilliseconds,
-                    budgetComparison.SameSelectedGroupLayouts,
-                    budgetComparison.ProductionSummary,
-                    budgetComparison.ComparisonSummary,
-                    budgetComparison.ProductionRetentionDiagnostic,
-                    budgetComparison.ComparisonRetentionDiagnostic);
-
-            if (mergePlan.RetentionAblations.Count != 0)
-            {
-                temporaryTimingDiagnostic += "\n"
-                    + "AutoAtlasTexture:info:TemporaryRetentionAblationHeader"
-                        .GetLocalize();
-                foreach (var ablation in mergePlan.RetentionAblations)
-                {
-                    temporaryTimingDiagnostic += "\n" + string.Format(
-                        "AutoAtlasTexture:info:TemporaryRetentionAblation"
-                            .GetLocalize(),
-                        ablation.Name,
-                        ablation.PlanningMilliseconds,
-                        ablation.EvaluatedCandidateCount,
-                        ablation.AdoptableCandidateCount,
-                        ablation.SelectedCount,
-                        ablation.SelectedSavingBytes,
-                        ablation.StateSelectionMilliseconds,
-                        ablation.PlacementAttemptCount,
-                        ablation.SameSelectedPlan,
-                        ablation.AddedSafeCandidateCount,
-                        ablation.LostSafeCandidateCount,
-                        ablation.SelectedPlan,
-                        ablation.AddedSafeCandidates,
-                        ablation.LostSafeCandidates);
-                }
-            }
-
-            temporaryTimingDiagnostic += "\n" + string.Format(
-                "AutoAtlasTexture:info:Temporary2DProduction".GetLocalize(),
-                mergePlan.Selections.Count(selection =>
-                    selection.PackedRegions != null),
-                twoDimensionalExecutionSucceeded,
-                twoDimensionalExecutionFallback);
             if (twoDimensionalFallbackReasons.Count != 0)
-                temporaryTimingDiagnostic += "\n" + string.Format(
-                    "AutoAtlasTexture:info:Temporary2DFallbackReason".GetLocalize(),
-                    string.Join("\n", twoDimensionalFallbackReasons));
-
-            if (configuration.EnableAdditionalAtlasMerging
-                && configuration.ExcludeVisibilityAnimatedItemsFromTextureMerging)
             {
-                var affectedGroups = preparedGroups
-                    .Where(group => group.Renderers.Any(
-                        animatedVisibilityRenderers.Contains))
-                    .ToArray();
-                var affectedMaterials = affectedGroups
-                    .SelectMany(group => group.Materials)
-                    .Select(OriginalMaterialName)
-                    .Distinct()
-                    .OrderBy(name => name, StringComparer.Ordinal);
-                temporaryTimingDiagnostic += "\n" + string.Format(
-                    "AutoAtlasTexture:info:TemporaryVisibilityAnimationExclusion".GetLocalize(),
-                    affectedGroups.Length,
-                    string.Join(", ", affectedMaterials));
-            }
-
-            // The project directory name is useful when comparing logs
-            // from several Unity projects. Never include its absolute path.
-            var projectDirectory = System.IO.Path.GetDirectoryName(
-                Application.dataPath) ?? Application.dataPath;
-            var projectName = new System.IO.DirectoryInfo(projectDirectory).Name;
-            temporaryTimingDiagnostic = string.Format(
-                "AutoAtlasTexture:info:TemporaryProjectName".GetLocalize(),
-                projectName)
-                + "\n" + temporaryTimingDiagnostic;
-
-            temporaryTimingDiagnostic += "\n" + string.Format(
-                "AutoAtlasTexture:info:TemporaryStreamingImpactCount".GetLocalize(),
-                mergePlan.ShadowStreamingRegressingCandidateCount);
-
-            if (mergePlan.ShadowStreamingExample is { } streamingExample)
-            {
-                var candidate = streamingExample.Candidate;
-                temporaryTimingDiagnostic += "\n" + string.Format(
-                    "AutoAtlasTexture:info:TemporaryStreamingDiagnostic"
-                        .GetLocalize(),
-                    string.Join(", ", candidate.GroupIds.Select(id => $"g{id}")),
-                    candidate.LayoutSize.x,
-                    candidate.LayoutSize.y,
-                    streamingExample.ActiveGroupId,
-                    streamingExample.CameraBias,
-                    streamingExample.BaselineBytes,
-                    streamingExample.MergedBytes,
-                    streamingExample.MergedBytes
-                        - streamingExample.BaselineBytes,
-                    streamingExample.BaselineEntries,
-                    streamingExample.MergedEntries);
-
-                if (streamingVisibilityDiagnostic != null)
-                    temporaryTimingDiagnostic += "\n"
-                        + streamingVisibilityDiagnostic;
+                TTTLog.ReportingObject(configuration, () =>
+                    TTTLog.Info(
+                        "AutoAtlasTexture:info:TwoDimensionalFallback",
+                        string.Join("\n", twoDimensionalFallbackReasons)));
             }
 
             if (completed.Count == 0)
             {
-                var fullDiagnostic = string.Format(
-                    "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming"
-                        .GetLocalize(),
-                    processingTimer.ElapsedMilliseconds,
-                    temporaryTimingDiagnostic);
-
                 TTTLog.ReportingObject(configuration, () =>
-                    ErrorReport.ReportError(
-                        new AutoAtlasTextureTemporaryDiagnosticError(
-                            fullDiagnostic)));
+                    TTTLog.Info("AutoAtlasTexture:info:TargetNotFound",
+                        processingTimer.ElapsedMilliseconds));
                 return;
             }
 
-            var completedBlocks = string.Join("\n\n", completed);
-            var fullResultDiagnostic = string.Format(
-                "AutoAtlasTexture:info:RelocateResultWithTemporaryTiming"
-                    .GetLocalize(),
-                completedBlocks,
-                processingTimer.ElapsedMilliseconds,
-                temporaryTimingDiagnostic);
-
             TTTLog.ReportingObject(configuration, () =>
-                ErrorReport.ReportError(
-                    new AutoAtlasTextureTemporaryDiagnosticError(
-                        fullResultDiagnostic)));
-        }
-
-        /// <summary>
-        /// Temporary diagnostic only. Snapshot which source renderers/material
-        /// slots belong to the rejected atomic groups. Shared renderers have
-        /// coupled Renderer/GameObject activation, but this cannot prove that
-        /// distinct renderers will or will not be animated independently.
-        /// </summary>
-        internal static string DescribeStreamingVisibilityRelations(
-            IReadOnlyList<AutoAtlasTextureMergePlanner.PreparedGroup> groups,
-            AutoAtlasTextureMergePlanner.StreamingRegressionExample example,
-            Func<Renderer, Material?[]> getMaterials,
-            Func<Renderer, Mesh?> getMesh,
-            Func<Material, string> originalMaterialName,
-            Transform root)
-        {
-            string SafeName(string? name) =>
-                (name ?? "(unnamed)").Replace("\r", " ").Replace("\n", " ");
-
-            string RendererPath(Renderer renderer)
-            {
-                var parts = new Stack<string>();
-                for (var t = renderer.transform; t != null; t = t.parent)
-                {
-                    parts.Push(SafeName(t.name) + "[" + t.GetSiblingIndex() + "]");
-                    if (t == root) break;
-                }
-
-                return string.Join("/", parts);
-            }
-
-            var byId = groups.ToDictionary(group => group.Id);
-            var selected = example.Candidate.GroupIds.Select(id => byId[id])
-                .ToArray();
-
-            var groupRendererSets = selected.Select(group =>
-                group.Renderers.Where(renderer => renderer != null).ToHashSet())
-                .ToArray();
-
-            var commonRenderers = groupRendererSets.Length == 0
-                ? new HashSet<Renderer>()
-                : new HashSet<Renderer>(groupRendererSets[0]);
-            foreach (var renderers in groupRendererSets.Skip(1))
-                commonRenderers.IntersectWith(renderers);
-
-            HashSet<Mesh> GroupMeshes(
-                HashSet<Renderer> renderers)
-            {
-                return renderers.Select(getMesh)
-                    .Where(mesh => mesh != null)
-                    .Select(mesh => mesh!)
-                    .ToHashSet();
-            }
-
-            var groupMeshes = groupRendererSets.Select(GroupMeshes).ToArray();
-            var commonMeshes = groupMeshes.Length == 0
-                ? new HashSet<Mesh>()
-                : new HashSet<Mesh>(groupMeshes[0]);
-            foreach (var meshes in groupMeshes.Skip(1))
-                commonMeshes.IntersectWith(meshes);
-
-            var groupDetails = new List<string>();
-            foreach (var group in selected)
-            {
-                var materialNames = group.Materials
-                    .Select(originalMaterialName)
-                    .Select(SafeName)
-                    .Distinct(StringComparer.Ordinal)
-                    .OrderBy(name => name, StringComparer.Ordinal)
-                    .ToArray();
-
-                var rendererDescriptions = group.Renderers
-                    .Where(renderer => renderer != null)
-                    .Distinct()
-                    .OrderBy(RendererPath, StringComparer.Ordinal)
-                    .ThenBy(renderer => renderer.GetType().Name,
-                        StringComparer.Ordinal)
-                    .Select(renderer =>
-                    {
-                        var slots = getMaterials(renderer);
-                        var matchedSlots = new List<string>();
-                        for (var index = 0; index < slots.Length; index += 1)
-                        {
-                            var material = slots[index];
-                            if (material == null || !group.Materials.Contains(material))
-                                continue;
-
-                            matchedSlots.Add(index + ":"
-                                + SafeName(originalMaterialName(material)));
-                        }
-
-                        var mesh = getMesh(renderer);
-                        return string.Format(
-                            "AutoAtlasTexture:info:TemporaryStreamingRenderer"
-                                .GetLocalize(),
-                            RendererPath(renderer),
-                            renderer.GetType().Name,
-                            matchedSlots.Count == 0
-                                ? "(none)" : string.Join(", ", matchedSlots),
-                            mesh == null ? "(none)" : SafeName(mesh.name),
-                            renderer.enabled,
-                            renderer.gameObject.activeSelf,
-                            renderer.gameObject.activeInHierarchy);
-                    })
-                    .ToArray();
-
-                groupDetails.Add(string.Format(
-                    "AutoAtlasTexture:info:TemporaryStreamingGroup"
-                        .GetLocalize(),
-                    group.Id,
-                    materialNames.Length == 0
-                        ? "(none)" : string.Join(", ", materialNames),
-                    rendererDescriptions.Length,
-                    rendererDescriptions.Length == 0
-                        ? "  (none)"
-                        : string.Join("\n", rendererDescriptions)));
-            }
-
-            var commonRendererNames = commonRenderers
-                .Select(renderer => RendererPath(renderer)
-                    + " [" + renderer.GetType().Name + "]")
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToArray();
-            var commonMeshNames = commonMeshes
-                .Select(mesh => SafeName(mesh.name))
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToArray();
-
-            return string.Format(
-                "AutoAtlasTexture:info:TemporaryStreamingVisibilityDiagnostic"
-                    .GetLocalize(),
-                string.Join(", ", selected.Select(group => "g" + group.Id)),
-                commonRendererNames.Length,
-                commonRendererNames.Length == 0
-                    ? "(none)" : string.Join(", ", commonRendererNames),
-                commonMeshNames.Length,
-                commonMeshNames.Length == 0
-                    ? "(none)" : string.Join(", ", commonMeshNames),
-                string.Join("\n", groupDetails));
+                TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
+                    string.Join("\n\n", completed),
+                    processingTimer.ElapsedMilliseconds));
         }
 
         internal static bool IsExcludedFromTextureMerging(

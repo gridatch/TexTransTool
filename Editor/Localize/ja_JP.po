@@ -144,56 +144,11 @@ msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応
 msgid "AtlasTexture:info:RelocateResultWithResolutionAndMemory"
 msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応じた縮小: {1}倍\n全体的な縮小: {2}倍\n{3}\n対象テクスチャメモリ: {4} → {5}\n累計再配置計算回数: {6}回\n再配置実行時間: {7}ms"
 
-msgid "AutoAtlasTexture:info:RelocateResult"
+msgid "AutoAtlasTexture:info:TwoDimensionalFallback"\nmsgstr "2Dテクスチャ統合が成立せず、単体処理へ復帰しました。\n{0}"\n\nmsgid "AutoAtlasTexture:info:RelocateResult"
 msgstr "自動アトラス再配置結果\n{0}\n自動アトラス総処理時間: {1}ms"
 
 msgid "AutoAtlasTexture:info:TargetNotFound"
 msgstr "アトラス化対象が存在しません！\n自動アトラス総処理時間: {0}ms"
-
-msgid "AutoAtlasTexture:info:RelocateResultWithTemporaryTiming"
-msgstr "自動アトラス再配置結果\n{0}\n自動アトラス総処理時間: {1}ms\n{2}"
-
-msgid "AutoAtlasTexture:info:TargetNotFoundWithTemporaryTiming"
-msgstr "アトラス化対象が存在しません！\n自動アトラス総処理時間: {0}ms\n{1}"
-
-msgid "AutoAtlasTexture:info:TemporaryProjectName"
-msgstr "Unityプロジェクト名: {0}"
-
-msgid "AutoAtlasTexture:info:TemporaryStreamingDiagnostic"
-msgstr "一時診断（Streamingメモリ増加の詳細・代表候補）\n対象group: {0} / layout={1}×{2}\n最大退行条件: g{3}のみ表示 / mipバイアス={4}\n必要テクスチャメモリ（モデル）: {5}→{6} bytes / 増加={7} bytes\n統合前の該当テクスチャ（mipとメモリ）:\n{8}\n統合後の該当テクスチャ（mipとメモリ）:\n{9}\n注: mipバイアスは比較用のモデル値です。Streaming設定とMipmap必要量は推定であり、実機で測定した値ではありません。"
-
-msgid "AutoAtlasTexture:info:TemporaryStreamingVisibilityDiagnostic"
-msgstr "一時診断（Streamingメモリ増加候補のRenderer・表示関係）\n対象group: {0}\n両group共通のRenderer: {1}件 / {2}\n両group共通の元Mesh: {3}件 / {4}\n{5}\n注: Optimizing時点のRenderer参照・初期有効状態です。実行時のGameObject/Rendererアニメーション、マテリアル切替、BlendShape等による可視性は判定していません。元Meshの共有だけでは表示の連動を意味しません。"
-
-msgid "AutoAtlasTexture:info:TemporaryStreamingGroup"
-msgstr "g{0}: 所属マテリアル={1}\nRenderer: {2}件\n{3}"
-
-msgid "AutoAtlasTexture:info:TemporaryStreamingRenderer"
-msgstr "  - {0} [{1}] / groupのmaterial slot={2} / 元Mesh={3} / Renderer.enabled={4} / GO.activeSelf={5} / GO.activeInHierarchy={6}"
-
-msgid "AutoAtlasTexture:info:TemporaryStreamingImpactCount"
-msgstr "2D統合候補のStreamingメモリ増加: {0}件"
-
-msgid "AutoAtlasTexture:info:Temporary2DFallbackReason"
-msgstr "2Dテクスチャ統合（本番失敗の詳細）\n{0}"
-
-msgid "AutoAtlasTexture:info:TemporaryVisibilityAnimationExclusion"
-msgstr "表示切替アニメーションによるテクスチャ統合の除外: {0}グループ / 対象マテリアル: {1}"
-
-msgid "AutoAtlasTexture:info:Temporary2DProduction"
-msgstr "2Dテクスチャ統合（本番）: 計画={0}件 / 成功={1}件 / 単体処理へ復帰={2}件"
-
-msgid "AutoAtlasTexture:info:TemporarySearchBudgetComparison"
-msgstr "一時診断（状態数上限の同一ビルド比較・1024は計画のみ）\n512状態: 探索={0}ms / 安全候補={1} / 想定採用={2} / 想定削減={3} bytes / 配置試行={4} / unique state={5} / state選別={6}ms\n1024状態: 探索={7}ms / 安全候補={8} / 想定採用={9} / 想定削減={10} bytes / 配置試行={11} / unique state={12} / state選別={13}ms\n採用グループ・出力サイズ・予測削減量の一致={14}\n512案: {15}\n1024案: {16}\n保持枠の寄与（512）: {17}\n保持枠の寄与（1024）: {18}\n注: assignedは各DP段階の保持イベント数（状態の重複あり）、sole/sharedは実際に調べた上位順位枠の一致状況、selectedPathsは採用候補の途中経路に記録された保持理由の種類数です。因果的な必要性を示すものではありません。\n注: 本番で適用するのは512案のみ。1024案の本番実行は未検証です。"
-
-msgid "AutoAtlasTexture:info:TemporaryRetentionAblationHeader"
-msgstr "一時診断（512状態固定・評価枠除外／再配分、本番には反映しません）\n基準案: P256/M128/H64/B64。安全候補の増減はGroup集合と出力サイズの組み合わせで比較しています。"
-
-msgid "AutoAtlasTexture:info:TemporaryRetentionAblation"
-msgstr "{0}: 探索={1}ms / 評価候補={2} / 安全候補={3} / 想定採用={4} / 想定削減={5} bytes / 状態選別={6}ms / 配置試行={7}\n基準案と採用構成・予測削減量が一致={8} / 追加安全候補={9} / 消失安全候補={10}\n採用案: {11}\n追加安全候補: {12}\n消失安全候補: {13}"
-
-msgid "AutoAtlasTexture:info:TemporaryTimingDiagnostic"
-msgstr "一時診断（2D統合）\nplanner総時間: {0}ms / standalone解析: {1}ms（{2}回） / 本番DoAtlasTexture: {3}ms（{4}回）\natomic group: {5} / 採用された統合: {6}\nLayoutProfile: {7} / 複数profile group: {8} / 2D対象幅: {9}\n2D評価候補: {10} / standaloneより広いprofile: {11}\n安全条件通過: {12} / 広いprofileで通過: {13} / 想定採用数: {14}\n棄却理由: pixels={15} / memory={16} / 最大辺={17} / sampling={18}\nplanner詳細: 2D={19}ms / state選別={20}ms / 配置試行={21} / unique state={22} / score={23}\n投影評価: {24} / safety評価: {25} / property要件構築: {26}（{27}ms）\n理論下限: 全subset評価={28} / 計算={29}ms / pixels条件通過={30}\n最良ピクセル候補: {31}→{32} / 棄却理由: {33}"
 
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
@@ -203,12 +158,6 @@ msgstr "対象テクスチャメモリ: {0} → {1}"
 
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2}件"
-
-msgid "AutoAtlasTexture:info:TemporaryDiagnosticMessage"
-msgstr "{0}"
-
-msgid "AutoAtlasTexture:button:CopyDiagnostics"
-msgstr "診断ログをコピー"
 
 msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
 msgstr "余白を利用してテクスチャを統合"
