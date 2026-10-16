@@ -83,298 +83,10 @@ namespace net.rs64.TexTransTool.NDMF
         internal sealed class PlanResult
         {
             internal readonly IReadOnlyList<MergeSelection> Selections;
-            // Temporary diagnostics for validating AutoAtlas processing cost.
-            internal readonly long PlanningTimeMilliseconds;
-            internal readonly long StandaloneAnalysisTimeMilliseconds;
-            internal readonly long StandaloneRelocationTimeMilliseconds;
-            internal readonly int StandaloneAnalysisCount;
-            internal readonly long StandalonePreserveSetupMilliseconds;
-            internal readonly long StandaloneAtlasContextMilliseconds;
-            internal readonly long StandaloneIslandNormalizeMilliseconds;
-            internal readonly long StandaloneRelocationStageMilliseconds;
-            internal readonly long StandaloneAllProfileRelocatorMilliseconds;
-            internal readonly long StandaloneCloneAndScaleMilliseconds;
-            internal readonly long StandaloneReferenceIslandMilliseconds;
-            internal readonly long StandaloneIslandDescriptionMilliseconds;
-            internal readonly long StandaloneSizePriorityMilliseconds;
-            internal readonly long StandalonePostProcessMilliseconds;
-            internal readonly long StandaloneResolutionPlanMilliseconds;
 
-            internal readonly long Shadow2DPlanningMilliseconds;
-            internal readonly int PropertyRequirementBuildCount;
-            internal readonly long PropertyRequirementBuildMilliseconds;
-
-            // Temporary diagnostics for evaluating whether the standalone
-            // preprocessing state can be safely reused later in the pass.
-            internal readonly int PreparedGroupCount;
-            internal readonly int SharedRendererCount;
-            internal readonly int GroupsWithSharedRendererCount;
-            internal readonly int GroupPairsSharingRendererCount;
-            internal readonly int GroupPairsSharingSourceMeshCount;
-            internal readonly int CrossAtomicMaterialGroupCount;
-
-            // Temporary diagnostics for determining why practical merge
-            // opportunities are or are not selected.
-
-
-            // Temporary shadow 2D-packing diagnostics. These do not affect the
-            // currently selected band-based merge plan.
-            internal readonly int ShadowProfileCount;
-            internal readonly int ShadowGroupsWithMultipleProfiles;
-            internal readonly int ShadowHostCount;
-            internal readonly int ShadowEvaluatedCandidateCount;
-
-            internal readonly int ShadowEvaluatedUsingWiderProfileCount;
-            internal readonly int ShadowAdoptableCandidateCount;
-
-            internal readonly int ShadowAdoptableUsingWiderProfileCount;
-            internal readonly int ShadowSelectedCount;
-
-            internal readonly int ShadowRejectedPixelCount;
-            internal readonly int ShadowRejectedMemoryCount;
-            internal readonly int ShadowRejectedMaxDimensionCount;
-            internal readonly int ShadowRejectedSamplingCount;
-            internal readonly int ShadowRejectedStreamingCount;
-            internal readonly int ShadowPixelRejectedEqualCount;
-            internal readonly int ShadowPixelRejectedGreaterCount;
-            internal readonly int ShadowPixelGateOnlyCount;
-            internal readonly int ShadowPixelRejectedAlsoMemoryCount;
-            internal readonly int ShadowPixelRejectedAlsoMaxDimensionCount;
-            internal readonly int ShadowPixelRejectedAlsoSamplingCount;
-            internal readonly int ShadowPixelRejectedAlsoStreamingCount;
-            internal readonly long ShadowBestBaselinePixels;
-            internal readonly long ShadowBestBaselineBytes;
-            internal readonly long ShadowBestMergedBytes;
-            internal readonly long ShadowBestMergedPixels;
-            internal readonly int ShadowBestGroupCount;
-            internal readonly Vector2Int ShadowBestLayoutSize;
-            internal readonly string ShadowBestBaselineSizeSummary;
-            internal readonly string ShadowBestPropertySizeSummary;
-            internal readonly string ShadowBestRejectionReason;
-            internal readonly int ShadowOptimisticSourceGroupCount;
-            internal readonly bool ShadowOptimisticExhaustive;
-            internal readonly long ShadowOptimisticLowerBoundMilliseconds;
-            internal readonly int ShadowOptimisticEvaluatedCount;
-            internal readonly int ShadowOptimisticPixelViableCount;
-            internal readonly long ShadowOptimisticBestBaselinePixels;
-            internal readonly long ShadowOptimisticBestMergedPixels;
-            internal readonly int ShadowOptimisticBestGroupCount;
-            internal readonly Vector2Int ShadowOptimisticBestLayoutSize;
-            internal readonly int ShadowProjectionEvaluationCount;
-            internal readonly int ShadowSafetyEvaluationCount;
-            internal readonly long ShadowProjectionEvaluationMilliseconds;
-            internal readonly long ShadowStateSelectionMilliseconds;
-            internal readonly long ShadowPlacementAttemptCount;
-            internal readonly long ShadowUniqueGeneratedStateCount;
-            internal readonly long ShadowScoreStateCallCount;
-            internal readonly string ShadowBestSamplingSummary;
-            internal readonly StreamingRegressionExample? ShadowStreamingExample;
-            internal readonly int ShadowStreamingRegressingCandidateCount;
-
-            internal PlanResult(
-                IReadOnlyList<MergeSelection> selections,
-                long planningTimeMilliseconds = 0,
-                long standaloneAnalysisTimeMilliseconds = 0,
-                long standaloneRelocationTimeMilliseconds = 0,
-                int standaloneAnalysisCount = 0,
-                long standalonePreserveSetupMilliseconds = 0,
-                long standaloneAtlasContextMilliseconds = 0,
-                long standaloneIslandNormalizeMilliseconds = 0,
-                long standaloneRelocationStageMilliseconds = 0,
-                long standaloneAllProfileRelocatorMilliseconds = 0,
-                long standaloneCloneAndScaleMilliseconds = 0,
-                long standaloneReferenceIslandMilliseconds = 0,
-                long standaloneIslandDescriptionMilliseconds = 0,
-                long standaloneSizePriorityMilliseconds = 0,
-                long standalonePostProcessMilliseconds = 0,
-                long standaloneResolutionPlanMilliseconds = 0,
-
-                long shadow2DPlanningMilliseconds = 0,
-                int propertyRequirementBuildCount = 0,
-                long propertyRequirementBuildMilliseconds = 0,
-                int preparedGroupCount = 0,
-                int sharedRendererCount = 0,
-                int groupsWithSharedRendererCount = 0,
-                int groupPairsSharingRendererCount = 0,
-                int groupPairsSharingSourceMeshCount = 0,
-                int crossAtomicMaterialGroupCount = 0,
-
-                int shadowProfileCount = 0,
-                int shadowGroupsWithMultipleProfiles = 0,
-                int shadowHostCount = 0,
-                int shadowEvaluatedCandidateCount = 0,
-
-                int shadowEvaluatedUsingWiderProfileCount = 0,
-                int shadowAdoptableCandidateCount = 0,
-
-                int shadowAdoptableUsingWiderProfileCount = 0,
-                int shadowSelectedCount = 0,
-
-                int shadowRejectedPixelCount = 0,
-                int shadowRejectedMemoryCount = 0,
-                int shadowRejectedMaxDimensionCount = 0,
-                int shadowRejectedSamplingCount = 0,
-                int shadowRejectedStreamingCount = 0,
-                int shadowPixelRejectedEqualCount = 0,
-                int shadowPixelRejectedGreaterCount = 0,
-                int shadowPixelGateOnlyCount = 0,
-                int shadowPixelRejectedAlsoMemoryCount = 0,
-                int shadowPixelRejectedAlsoMaxDimensionCount = 0,
-                int shadowPixelRejectedAlsoSamplingCount = 0,
-                int shadowPixelRejectedAlsoStreamingCount = 0,
-                long shadowBestBaselinePixels = 0,
-                long shadowBestMergedPixels = 0,
-                long shadowBestBaselineBytes = 0,
-                long shadowBestMergedBytes = 0,
-                int shadowBestGroupCount = 0,
-                Vector2Int shadowBestLayoutSize = default,
-                string shadowBestBaselineSizeSummary = "",
-                string shadowBestPropertySizeSummary = "",
-                string shadowBestRejectionReason = "",
-                int shadowOptimisticSourceGroupCount = 0,
-                bool shadowOptimisticExhaustive = false,
-                long shadowOptimisticLowerBoundMilliseconds = 0,
-                int shadowOptimisticEvaluatedCount = 0,
-                int shadowOptimisticPixelViableCount = 0,
-                long shadowOptimisticBestBaselinePixels = 0,
-                long shadowOptimisticBestMergedPixels = 0,
-                int shadowOptimisticBestGroupCount = 0,
-                Vector2Int shadowOptimisticBestLayoutSize = default,
-                int shadowProjectionEvaluationCount = 0,
-                int shadowSafetyEvaluationCount = 0,
-                long shadowProjectionEvaluationMilliseconds = 0,
-                long shadowStateSelectionMilliseconds = 0,
-                long shadowPlacementAttemptCount = 0,
-                long shadowUniqueGeneratedStateCount = 0,
-                long shadowScoreStateCallCount = 0,
-                string shadowBestSamplingSummary = "",
-                StreamingRegressionExample? shadowStreamingExample = null,
-                int shadowStreamingRegressingCandidateCount = 0)
+            internal PlanResult(IReadOnlyList<MergeSelection> selections)
             {
                 Selections = selections;
-                ShadowStreamingExample = shadowStreamingExample;
-                ShadowStreamingRegressingCandidateCount =
-                    shadowStreamingRegressingCandidateCount;
-                PlanningTimeMilliseconds = planningTimeMilliseconds;
-                StandaloneAnalysisTimeMilliseconds =
-                    standaloneAnalysisTimeMilliseconds;
-                StandaloneRelocationTimeMilliseconds =
-                    standaloneRelocationTimeMilliseconds;
-                StandaloneAnalysisCount = standaloneAnalysisCount;
-                StandalonePreserveSetupMilliseconds =
-                    standalonePreserveSetupMilliseconds;
-                StandaloneAtlasContextMilliseconds =
-                    standaloneAtlasContextMilliseconds;
-                StandaloneIslandNormalizeMilliseconds =
-                    standaloneIslandNormalizeMilliseconds;
-                StandaloneRelocationStageMilliseconds =
-                    standaloneRelocationStageMilliseconds;
-                StandaloneAllProfileRelocatorMilliseconds =
-                    standaloneAllProfileRelocatorMilliseconds;
-                StandaloneCloneAndScaleMilliseconds =
-                    standaloneCloneAndScaleMilliseconds;
-                StandaloneReferenceIslandMilliseconds =
-                    standaloneReferenceIslandMilliseconds;
-                StandaloneIslandDescriptionMilliseconds =
-                    standaloneIslandDescriptionMilliseconds;
-                StandaloneSizePriorityMilliseconds =
-                    standaloneSizePriorityMilliseconds;
-                StandalonePostProcessMilliseconds =
-                    standalonePostProcessMilliseconds;
-                StandaloneResolutionPlanMilliseconds =
-                    standaloneResolutionPlanMilliseconds;
-
-                Shadow2DPlanningMilliseconds =
-                    shadow2DPlanningMilliseconds;
-                PropertyRequirementBuildCount =
-                    propertyRequirementBuildCount;
-                PropertyRequirementBuildMilliseconds =
-                    propertyRequirementBuildMilliseconds;
-                PreparedGroupCount = preparedGroupCount;
-                SharedRendererCount = sharedRendererCount;
-                GroupsWithSharedRendererCount = groupsWithSharedRendererCount;
-                GroupPairsSharingRendererCount = groupPairsSharingRendererCount;
-                GroupPairsSharingSourceMeshCount =
-                    groupPairsSharingSourceMeshCount;
-                CrossAtomicMaterialGroupCount = crossAtomicMaterialGroupCount;
-
-                ShadowProfileCount = shadowProfileCount;
-                ShadowGroupsWithMultipleProfiles =
-                    shadowGroupsWithMultipleProfiles;
-                ShadowHostCount = shadowHostCount;
-                ShadowEvaluatedCandidateCount =
-                    shadowEvaluatedCandidateCount;
-
-                ShadowEvaluatedUsingWiderProfileCount =
-                    shadowEvaluatedUsingWiderProfileCount;
-                ShadowAdoptableCandidateCount =
-                    shadowAdoptableCandidateCount;
-
-                ShadowAdoptableUsingWiderProfileCount =
-                    shadowAdoptableUsingWiderProfileCount;
-                ShadowSelectedCount = shadowSelectedCount;
-
-                ShadowRejectedPixelCount = shadowRejectedPixelCount;
-                ShadowRejectedMemoryCount = shadowRejectedMemoryCount;
-                ShadowRejectedMaxDimensionCount =
-                    shadowRejectedMaxDimensionCount;
-                ShadowRejectedSamplingCount = shadowRejectedSamplingCount;
-                ShadowRejectedStreamingCount = shadowRejectedStreamingCount;
-                ShadowPixelRejectedEqualCount = shadowPixelRejectedEqualCount;
-                ShadowPixelRejectedGreaterCount =
-                    shadowPixelRejectedGreaterCount;
-                ShadowPixelGateOnlyCount = shadowPixelGateOnlyCount;
-                ShadowPixelRejectedAlsoMemoryCount =
-                    shadowPixelRejectedAlsoMemoryCount;
-                ShadowPixelRejectedAlsoMaxDimensionCount =
-                    shadowPixelRejectedAlsoMaxDimensionCount;
-                ShadowPixelRejectedAlsoSamplingCount =
-                    shadowPixelRejectedAlsoSamplingCount;
-                ShadowPixelRejectedAlsoStreamingCount =
-                    shadowPixelRejectedAlsoStreamingCount;
-                ShadowBestBaselinePixels = shadowBestBaselinePixels;
-                ShadowBestMergedPixels = shadowBestMergedPixels;
-                ShadowBestBaselineBytes = shadowBestBaselineBytes;
-                ShadowBestMergedBytes = shadowBestMergedBytes;
-                ShadowBestGroupCount = shadowBestGroupCount;
-                ShadowBestLayoutSize = shadowBestLayoutSize;
-                ShadowBestBaselineSizeSummary =
-                    shadowBestBaselineSizeSummary;
-                ShadowBestPropertySizeSummary =
-                    shadowBestPropertySizeSummary;
-                ShadowBestRejectionReason = shadowBestRejectionReason;
-                ShadowOptimisticSourceGroupCount =
-                    shadowOptimisticSourceGroupCount;
-                ShadowOptimisticExhaustive = shadowOptimisticExhaustive;
-                ShadowOptimisticLowerBoundMilliseconds =
-                    shadowOptimisticLowerBoundMilliseconds;
-                ShadowOptimisticEvaluatedCount =
-                    shadowOptimisticEvaluatedCount;
-                ShadowOptimisticPixelViableCount =
-                    shadowOptimisticPixelViableCount;
-                ShadowOptimisticBestBaselinePixels =
-                    shadowOptimisticBestBaselinePixels;
-                ShadowOptimisticBestMergedPixels =
-                    shadowOptimisticBestMergedPixels;
-                ShadowOptimisticBestGroupCount =
-                    shadowOptimisticBestGroupCount;
-                ShadowOptimisticBestLayoutSize =
-                    shadowOptimisticBestLayoutSize;
-                ShadowProjectionEvaluationCount =
-                    shadowProjectionEvaluationCount;
-                ShadowSafetyEvaluationCount =
-                    shadowSafetyEvaluationCount;
-                ShadowProjectionEvaluationMilliseconds =
-                    shadowProjectionEvaluationMilliseconds;
-                ShadowStateSelectionMilliseconds =
-                    shadowStateSelectionMilliseconds;
-                ShadowPlacementAttemptCount =
-                    shadowPlacementAttemptCount;
-                ShadowUniqueGeneratedStateCount =
-                    shadowUniqueGeneratedStateCount;
-                ShadowScoreStateCallCount =
-                    shadowScoreStateCallCount;
-                ShadowBestSamplingSummary = shadowBestSamplingSummary;
             }
         }
 
@@ -729,174 +441,12 @@ namespace net.rs64.TexTransTool.NDMF
 
         private readonly struct ShadowPackingDiagnostics
         {
-            internal readonly int ProfileCount;
-            internal readonly int GroupsWithMultipleProfiles;
-            internal readonly int HostCount;
-            internal readonly int EvaluatedCandidateCount;
-
-            internal readonly int EvaluatedUsingWiderProfileCount;
-            internal readonly int AdoptableCandidateCount;
-
-            internal readonly int AdoptableUsingWiderProfileCount;
-            internal readonly int SelectedCount;
-
-            internal readonly int RejectedPixelCount;
-            internal readonly int RejectedMemoryCount;
-            internal readonly int RejectedMaxDimensionCount;
-            internal readonly int RejectedSamplingCount;
-            internal readonly int RejectedStreamingCount;
-            internal readonly int PixelRejectedEqualCount;
-            internal readonly int PixelRejectedGreaterCount;
-            internal readonly int PixelGateOnlyCount;
-            internal readonly int PixelRejectedAlsoMemoryCount;
-            internal readonly int PixelRejectedAlsoMaxDimensionCount;
-            internal readonly int PixelRejectedAlsoSamplingCount;
-            internal readonly int PixelRejectedAlsoStreamingCount;
-            internal readonly long BestBaselinePixels;
-            internal readonly long BestBaselineBytes;
-            internal readonly long BestMergedBytes;
-            internal readonly long BestMergedPixels;
-            internal readonly int BestGroupCount;
-            internal readonly Vector2Int BestLayoutSize;
-            internal readonly string BestBaselineSizeSummary;
-            internal readonly string BestPropertySizeSummary;
-            internal readonly string BestRejectionReason;
-            internal readonly int OptimisticSourceGroupCount;
-            internal readonly bool OptimisticExhaustive;
-            internal readonly long OptimisticLowerBoundMilliseconds;
-            internal readonly int OptimisticEvaluatedCount;
-            internal readonly int OptimisticPixelViableCount;
-            internal readonly long OptimisticBestBaselinePixels;
-            internal readonly long OptimisticBestMergedPixels;
-            internal readonly int OptimisticBestGroupCount;
-            internal readonly Vector2Int OptimisticBestLayoutSize;
-            internal readonly int ProjectionEvaluationCount;
-            internal readonly int SafetyEvaluationCount;
-            internal readonly long ProjectionEvaluationMilliseconds;
-            internal readonly long StateSelectionMilliseconds;
-            internal readonly long PlacementAttemptCount;
-            internal readonly long UniqueGeneratedStateCount;
-            internal readonly long ScoreStateCallCount;
-            internal readonly string BestSamplingSummary;
-            internal readonly StreamingRegressionExample? StreamingExample;
-            internal readonly int StreamingRegressingCandidateCount;
             internal readonly IReadOnlyList<MergeSelection> ProductionCandidates;
 
             internal ShadowPackingDiagnostics(
-                int profileCount,
-                int groupsWithMultipleProfiles,
-                int hostCount,
-                int evaluatedCandidateCount,
-
-                int evaluatedUsingWiderProfileCount,
-                int adoptableCandidateCount,
-
-                int adoptableUsingWiderProfileCount,
-                int selectedCount,
-
-                int rejectedPixelCount,
-                int rejectedMemoryCount,
-                int rejectedMaxDimensionCount,
-                int rejectedSamplingCount,
-                int rejectedStreamingCount,
-                int pixelRejectedEqualCount,
-                int pixelRejectedGreaterCount,
-                int pixelGateOnlyCount,
-                int pixelRejectedAlsoMemoryCount,
-                int pixelRejectedAlsoMaxDimensionCount,
-                int pixelRejectedAlsoSamplingCount,
-                int pixelRejectedAlsoStreamingCount,
-                long bestBaselinePixels,
-                long bestMergedPixels,
-                long bestBaselineBytes,
-                long bestMergedBytes,
-                int bestGroupCount,
-                Vector2Int bestLayoutSize,
-                string bestBaselineSizeSummary,
-                string bestPropertySizeSummary,
-                string bestRejectionReason,
-                int optimisticSourceGroupCount,
-                bool optimisticExhaustive,
-                long optimisticLowerBoundMilliseconds,
-                int optimisticEvaluatedCount,
-                int optimisticPixelViableCount,
-                long optimisticBestBaselinePixels,
-                long optimisticBestMergedPixels,
-                int optimisticBestGroupCount,
-                Vector2Int optimisticBestLayoutSize,
-                int projectionEvaluationCount,
-                int safetyEvaluationCount,
-                long projectionEvaluationMilliseconds,
-                long stateSelectionMilliseconds,
-                long placementAttemptCount,
-                long uniqueGeneratedStateCount,
-                long scoreStateCallCount,
-                string bestSamplingSummary,
-                StreamingRegressionExample? streamingExample,
-                int streamingRegressingCandidateCount,
                 IReadOnlyList<MergeSelection> productionCandidates)
             {
                 ProductionCandidates = productionCandidates;
-                ProfileCount = profileCount;
-                GroupsWithMultipleProfiles = groupsWithMultipleProfiles;
-                HostCount = hostCount;
-                EvaluatedCandidateCount = evaluatedCandidateCount;
-
-                EvaluatedUsingWiderProfileCount =
-                    evaluatedUsingWiderProfileCount;
-                AdoptableCandidateCount = adoptableCandidateCount;
-
-                AdoptableUsingWiderProfileCount =
-                    adoptableUsingWiderProfileCount;
-                SelectedCount = selectedCount;
-
-                RejectedPixelCount = rejectedPixelCount;
-                RejectedMemoryCount = rejectedMemoryCount;
-                RejectedMaxDimensionCount = rejectedMaxDimensionCount;
-                RejectedSamplingCount = rejectedSamplingCount;
-                RejectedStreamingCount = rejectedStreamingCount;
-                PixelRejectedEqualCount = pixelRejectedEqualCount;
-                PixelRejectedGreaterCount = pixelRejectedGreaterCount;
-                PixelGateOnlyCount = pixelGateOnlyCount;
-                PixelRejectedAlsoMemoryCount =
-                    pixelRejectedAlsoMemoryCount;
-                PixelRejectedAlsoMaxDimensionCount =
-                    pixelRejectedAlsoMaxDimensionCount;
-                PixelRejectedAlsoSamplingCount =
-                    pixelRejectedAlsoSamplingCount;
-                PixelRejectedAlsoStreamingCount =
-                    pixelRejectedAlsoStreamingCount;
-                BestBaselinePixels = bestBaselinePixels;
-                BestMergedPixels = bestMergedPixels;
-                BestBaselineBytes = bestBaselineBytes;
-                BestMergedBytes = bestMergedBytes;
-                BestGroupCount = bestGroupCount;
-                BestLayoutSize = bestLayoutSize;
-                BestBaselineSizeSummary = bestBaselineSizeSummary;
-                BestPropertySizeSummary = bestPropertySizeSummary;
-                BestRejectionReason = bestRejectionReason;
-                OptimisticSourceGroupCount = optimisticSourceGroupCount;
-                OptimisticExhaustive = optimisticExhaustive;
-                OptimisticLowerBoundMilliseconds =
-                    optimisticLowerBoundMilliseconds;
-                OptimisticEvaluatedCount = optimisticEvaluatedCount;
-                OptimisticPixelViableCount = optimisticPixelViableCount;
-                OptimisticBestBaselinePixels = optimisticBestBaselinePixels;
-                OptimisticBestMergedPixels = optimisticBestMergedPixels;
-                OptimisticBestGroupCount = optimisticBestGroupCount;
-                OptimisticBestLayoutSize = optimisticBestLayoutSize;
-                ProjectionEvaluationCount = projectionEvaluationCount;
-                SafetyEvaluationCount = safetyEvaluationCount;
-                ProjectionEvaluationMilliseconds =
-                    projectionEvaluationMilliseconds;
-                StateSelectionMilliseconds = stateSelectionMilliseconds;
-                PlacementAttemptCount = placementAttemptCount;
-                UniqueGeneratedStateCount = uniqueGeneratedStateCount;
-                ScoreStateCallCount = scoreStateCallCount;
-                BestSamplingSummary = bestSamplingSummary;
-                StreamingExample = streamingExample;
-                StreamingRegressingCandidateCount =
-                    streamingRegressingCandidateCount;
             }
         }
 
@@ -927,7 +477,6 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long SavingBytes;
             internal readonly float SavingRate;
             internal readonly bool IsAdoptable;
-            internal readonly bool StreamingWouldRegress;
             internal readonly CandidateRejectionReason RejectionReason;
 
             internal Candidate(
@@ -962,41 +511,6 @@ namespace net.rs64.TexTransTool.NDMF
 
                 IsAdoptable =
                     RejectionReason == CandidateRejectionReason.None;
-                // A potential singleton-view memory increase is a diagnostic,
-                // not a condition for rejecting texture merging.
-                StreamingWouldRegress = IsAdoptable
-                    && HasStreamingRegression(baseline, merged, groupIds);
-            }
-        }
-
-        // Only constructed for one viable candidate with a potential
-        // single-group Streaming memory increase. Not used for selection.
-        internal sealed class StreamingRegressionExample
-        {
-            internal readonly Candidate Candidate;
-            internal readonly int ActiveGroupId;
-            internal readonly double CameraBias;
-            internal readonly long BaselineBytes;
-            internal readonly long MergedBytes;
-            internal readonly string BaselineEntries;
-            internal readonly string MergedEntries;
-
-            internal StreamingRegressionExample(
-                Candidate candidate,
-                int activeGroupId,
-                double cameraBias,
-                long baselineBytes,
-                long mergedBytes,
-                string baselineEntries,
-                string mergedEntries)
-            {
-                Candidate = candidate;
-                ActiveGroupId = activeGroupId;
-                CameraBias = cameraBias;
-                BaselineBytes = baselineBytes;
-                MergedBytes = mergedBytes;
-                BaselineEntries = baselineEntries;
-                MergedEntries = mergedEntries;
             }
         }
 
@@ -1108,70 +622,10 @@ namespace net.rs64.TexTransTool.NDMF
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
             IReadOnlyList<PreparedGroup> groups)
         {
-            var planningTimer = System.Diagnostics.Stopwatch.StartNew();
-            long standaloneAnalysisTimeMilliseconds = 0;
-            long standaloneRelocationTimeMilliseconds = 0;
-            var standaloneAnalysisCount = 0;
-            long standalonePreserveSetupMilliseconds = 0;
-            long standaloneAtlasContextMilliseconds = 0;
-            long standaloneIslandNormalizeMilliseconds = 0;
-            long standaloneRelocationStageMilliseconds = 0;
-            long standaloneAllProfileRelocatorMilliseconds = 0;
-            long standaloneCloneAndScaleMilliseconds = 0;
-            long standaloneReferenceIslandMilliseconds = 0;
-            long standaloneIslandDescriptionMilliseconds = 0;
-            long standaloneSizePriorityMilliseconds = 0;
-            long standalonePostProcessMilliseconds = 0;
-            long standaloneResolutionPlanMilliseconds = 0;
-
-            var sharedRenderers = groups
-                .SelectMany(group => group.Renderers)
-                .Where(renderer => renderer != null)
-                .GroupBy(renderer => renderer)
-                .Where(group => group.Count() > 1)
-                .Select(group => group.Key)
-                .ToHashSet();
-            var groupsWithSharedRendererCount = groups.Count(group =>
-                group.Renderers.Any(sharedRenderers.Contains));
-
-            var groupPairsSharingRendererCount = 0;
-            var groupPairsSharingSourceMeshCount = 0;
-            for (var left = 0; left < groups.Count; left += 1)
-            {
-                var leftRenderers = groups[left].Renderers.ToHashSet();
-                var leftMeshes = groups[left].Renderers
-                    .Select(domain.GetMesh)
-                    .Where(mesh => mesh != null)
-                    .ToHashSet();
-
-                for (var right = left + 1; right < groups.Count; right += 1)
-                {
-                    if (groups[right].Renderers.Any(leftRenderers.Contains))
-                        groupPairsSharingRendererCount += 1;
-
-                    if (groups[right].Renderers
-                        .Select(domain.GetMesh)
-                        .Any(mesh => mesh != null && leftMeshes.Contains(mesh)))
-                    {
-                        groupPairsSharingSourceMeshCount += 1;
-                    }
-                }
-            }
-
             if (!configuration.EnableAdditionalAtlasMerging
                 || groups.Count(group => !group.ExcludedFromTextureMerging) < 2)
             {
-                planningTimer.Stop();
-                return new PlanResult(
-                    Array.Empty<MergeSelection>(),
-                    planningTimer.ElapsedMilliseconds,
-                    preparedGroupCount: groups.Count,
-                    sharedRendererCount: sharedRenderers.Count,
-                    groupsWithSharedRendererCount: groupsWithSharedRendererCount,
-                    groupPairsSharingRendererCount:
-                        groupPairsSharingRendererCount,
-                    groupPairsSharingSourceMeshCount:
-                        groupPairsSharingSourceMeshCount);
+                return new PlanResult(Array.Empty<MergeSelection>());
             }
 
             var mergeGroups = groups
@@ -1182,9 +636,6 @@ namespace net.rs64.TexTransTool.NDMF
             var propertyRequirementCache =
                 new Dictionary<string, PropertyResolutionRequirements>(
                     StringComparer.Ordinal);
-            var propertyRequirementBuildCount = 0;
-            long propertyRequirementBuildMilliseconds = 0;
-
             IReadOnlyDictionary<string, Vector2Int>
                 GetPredictedPropertySizes(
                     int[] ids,
@@ -1200,65 +651,21 @@ namespace net.rs64.TexTransTool.NDMF
                         .Select(id => groups[id])
                         .SelectMany(group => group.Materials)
                         .ToHashSet();
-                    var requirementTimer =
-                        System.Diagnostics.Stopwatch.StartNew();
                     requirements = BuildPredictedPropertyRequirements(
                         materials,
                         propertyTextures);
-                    requirementTimer.Stop();
-                    propertyRequirementBuildMilliseconds +=
-                        requirementTimer.ElapsedMilliseconds;
                     propertyRequirementCache[key] = requirements;
-                    propertyRequirementBuildCount += 1;
                 }
 
                 return BuildPredictedPropertySizes(
                     requirements,
                     layoutSize);
+                group.StandaloneMetrics = AnalyzeAtlas(
+                    domain, settings, group, out _, out _, out _);
             }
 
             foreach (var group in groups)
             {
-                var analysisTimer = System.Diagnostics.Stopwatch.StartNew();
-                group.StandaloneMetrics = AnalyzeAtlas(
-                    domain,
-                    settings,
-                    group,
-                    out var phaseTiming,
-                    out var allProfileRelocatorMilliseconds,
-                    out var islandProcessingTiming);
-                analysisTimer.Stop();
-
-                standaloneAnalysisCount += 1;
-                standalonePreserveSetupMilliseconds +=
-                    phaseTiming.PreserveSetupMilliseconds;
-                standaloneAtlasContextMilliseconds +=
-                    phaseTiming.AtlasContextConstructionMilliseconds;
-                standaloneIslandNormalizeMilliseconds +=
-                    phaseTiming.IslandNormalizeMilliseconds;
-                standaloneRelocationStageMilliseconds +=
-                    phaseTiming.RelocationStageMilliseconds;
-                standaloneAllProfileRelocatorMilliseconds +=
-                    allProfileRelocatorMilliseconds;
-                standaloneCloneAndScaleMilliseconds +=
-                    islandProcessingTiming.CloneAndScaleMilliseconds;
-                standaloneReferenceIslandMilliseconds +=
-                    islandProcessingTiming.ReferenceIslandMilliseconds;
-                standaloneIslandDescriptionMilliseconds +=
-                    islandProcessingTiming.IslandDescriptionMilliseconds;
-                standaloneSizePriorityMilliseconds +=
-                    islandProcessingTiming.SizePriorityMilliseconds;
-                standalonePostProcessMilliseconds +=
-                    islandProcessingTiming.PostProcessMilliseconds;
-                standaloneResolutionPlanMilliseconds +=
-                    phaseTiming.ResolutionPlanMilliseconds;
-                standaloneAnalysisTimeMilliseconds +=
-                    analysisTimer.ElapsedMilliseconds;
-                if (group.StandaloneMetrics is { } standaloneMetrics)
-                {
-                    standaloneRelocationTimeMilliseconds +=
-                        standaloneMetrics.RelocationTimeMilliseconds;
-                }
             }
 
             foreach (var group in groups)
@@ -1286,13 +693,7 @@ namespace net.rs64.TexTransTool.NDMF
                     if (usageSources.Count == 0) continue;
 
                     group.PropertyUseCount[property] = 1;
-                    group.PropertyDemandLog2[property] =
-                        FindPropertyDemandLog2(
-                            domain,
-                            group,
-                            property,
-                            usageSources,
-                            propertyTextures);
+                    group.PropertyDemandLog2[property] = UnknownDemandLog2;
                 }
 
                 var standaloneGeneratedCost = BuildGeneratedCost(
@@ -1322,8 +723,6 @@ namespace net.rs64.TexTransTool.NDMF
 
             var byId = groups.ToDictionary(group => group.Id);
 
-            var shadowPlanningTimer =
-                System.Diagnostics.Stopwatch.StartNew();
             var shadow2D = EvaluateShadow2DPacking(
                 mergeGroups,
                 byId,
@@ -1332,107 +731,10 @@ namespace net.rs64.TexTransTool.NDMF
                 alphaCache,
                 GetPredictedPropertySizes,
                 ShadowPackingStatesPerHost);
-            shadowPlanningTimer.Stop();
-            var shadow2DPlanningMilliseconds =
-                shadowPlanningTimer.ElapsedMilliseconds;
-
             var selected = SelectTwoDimensionalMerges(
                 shadow2D.ProductionCandidates);
 
-            var crossAtomicMaterialGroupCount = 0;
-            foreach (var selection in selected)
-            {
-                var selectedGroups = selection.GroupIds
-                    .Select(id => byId[id]).ToArray();
-                var atomicGroupByMaterial = selectedGroups
-                    .SelectMany(group => group.Materials.Select(
-                        material => (material, group.Id)))
-                    .ToDictionary(pair => pair.material, pair => pair.Id);
-                var grouping = new MaterialGroupingContext(
-                    selectedGroups.SelectMany(group => group.Materials).ToHashSet(),
-                    settings.AtlasTargetUVChannel,
-                    null);
-                crossAtomicMaterialGroupCount += grouping.GroupMaterials.Count(
-                    materialGroup => materialGroup
-                        .Select(material => atomicGroupByMaterial[material])
-                        .Distinct().Skip(1).Any());
-            }
-
-            planningTimer.Stop();
-            return new PlanResult(
-                selected,
-                planningTimer.ElapsedMilliseconds,
-                standaloneAnalysisTimeMilliseconds,
-                standaloneRelocationTimeMilliseconds,
-                standaloneAnalysisCount,
-                standalonePreserveSetupMilliseconds,
-                standaloneAtlasContextMilliseconds,
-                standaloneIslandNormalizeMilliseconds,
-                standaloneRelocationStageMilliseconds,
-                standaloneAllProfileRelocatorMilliseconds,
-                standaloneCloneAndScaleMilliseconds,
-                standaloneReferenceIslandMilliseconds,
-                standaloneIslandDescriptionMilliseconds,
-                standaloneSizePriorityMilliseconds,
-                standalonePostProcessMilliseconds,
-                standaloneResolutionPlanMilliseconds,
-                shadow2DPlanningMilliseconds,
-                propertyRequirementBuildCount,
-                propertyRequirementBuildMilliseconds,
-                groups.Count,
-                sharedRenderers.Count,
-                groupsWithSharedRendererCount,
-                groupPairsSharingRendererCount,
-                groupPairsSharingSourceMeshCount,
-                crossAtomicMaterialGroupCount,
-                shadow2D.ProfileCount,
-                shadow2D.GroupsWithMultipleProfiles,
-                shadow2D.HostCount,
-                shadow2D.EvaluatedCandidateCount,
-                shadow2D.EvaluatedUsingWiderProfileCount,
-                shadow2D.AdoptableCandidateCount,
-                shadow2D.AdoptableUsingWiderProfileCount,
-                shadow2D.SelectedCount,
-                shadow2D.RejectedPixelCount,
-                shadow2D.RejectedMemoryCount,
-                shadow2D.RejectedMaxDimensionCount,
-                shadow2D.RejectedSamplingCount,
-                shadow2D.RejectedStreamingCount,
-                shadow2D.PixelRejectedEqualCount,
-                shadow2D.PixelRejectedGreaterCount,
-                shadow2D.PixelGateOnlyCount,
-                shadow2D.PixelRejectedAlsoMemoryCount,
-                shadow2D.PixelRejectedAlsoMaxDimensionCount,
-                shadow2D.PixelRejectedAlsoSamplingCount,
-                shadow2D.PixelRejectedAlsoStreamingCount,
-                shadow2D.BestBaselinePixels,
-                shadow2D.BestMergedPixels,
-                shadow2D.BestBaselineBytes,
-                shadow2D.BestMergedBytes,
-                shadow2D.BestGroupCount,
-                shadow2D.BestLayoutSize,
-                shadow2D.BestBaselineSizeSummary,
-                shadow2D.BestPropertySizeSummary,
-                shadow2D.BestRejectionReason,
-                shadow2D.OptimisticSourceGroupCount,
-                shadow2D.OptimisticExhaustive,
-                shadow2D.OptimisticLowerBoundMilliseconds,
-                shadow2D.OptimisticEvaluatedCount,
-                shadow2D.OptimisticPixelViableCount,
-                shadow2D.OptimisticBestBaselinePixels,
-                shadow2D.OptimisticBestMergedPixels,
-                shadow2D.OptimisticBestGroupCount,
-                shadow2D.OptimisticBestLayoutSize,
-                shadow2D.ProjectionEvaluationCount,
-                shadow2D.SafetyEvaluationCount,
-                shadow2D.ProjectionEvaluationMilliseconds,
-                shadow2D.StateSelectionMilliseconds,
-                shadow2D.PlacementAttemptCount,
-                shadow2D.UniqueGeneratedStateCount,
-                shadow2D.ScoreStateCallCount,
-                shadow2D.BestSamplingSummary,
-                shadow2D.StreamingExample,
-                shadow2D.StreamingRegressingCandidateCount);
+            return new PlanResult(selected);
         }
 
         internal static List<MergeSelection> SelectTwoDimensionalMerges(
@@ -1468,60 +770,8 @@ namespace net.rs64.TexTransTool.NDMF
         {
             if (stateBudget < 8 || stateBudget % 8 != 0)
                 throw new ArgumentOutOfRangeException(nameof(stateBudget));
-            var profileCount = groups.Sum(
-                group => group.TwoDimensionalProfileHeights.Count);
-            var groupsWithMultipleProfiles = groups.Count(
-                group => group.TwoDimensionalProfileHeights.Count > 1);
-            var targetWidthCount = 0;
-            var evaluatedCandidateCount = 0;
-            var evaluatedUsingWiderProfileCount = 0;
-            var rejectedPixelCount = 0;
-            var rejectedMemoryCount = 0;
-            var rejectedMaxDimensionCount = 0;
-            var rejectedSamplingCount = 0;
-            var rejectedStreamingCount = 0;
-            var pixelRejectedEqualCount = 0;
-            var pixelRejectedGreaterCount = 0;
-            var pixelGateOnlyCount = 0;
-            var pixelRejectedAlsoMemoryCount = 0;
-            var pixelRejectedAlsoMaxDimensionCount = 0;
-            var pixelRejectedAlsoSamplingCount = 0;
-            var pixelRejectedAlsoStreamingCount = 0;
-            long bestBaselinePixels = 0;
-            long bestMergedPixels = 0;
-            long bestBaselineBytes = 0;
-            long bestMergedBytes = 0;
-            var bestGroupCount = 0;
-            var bestLayoutSize = default(Vector2Int);
-            var bestBaselineSizeSummary = "";
-            var bestPropertySizeSummary = "";
-            var bestRejectionReason = "";
-            var bestPixelRatio = double.PositiveInfinity;
-            var optimisticSourceGroupCount = 0;
-            var optimisticExhaustive = false;
-            long optimisticLowerBoundMilliseconds = 0;
-            var optimisticEvaluatedCount = 0;
-            var optimisticPixelViableCount = 0;
-            long optimisticBestBaselinePixels = 0;
-            long optimisticBestMergedPixels = 0;
-            var optimisticBestGroupCount = 0;
-            var optimisticBestLayoutSize = default(Vector2Int);
-            var optimisticBestPixelRatio = double.PositiveInfinity;
-            var projectionEvaluationCount = 0;
-            var safetyEvaluationCount = 0;
-            long projectionEvaluationMilliseconds = 0;
-            long stateSelectionMilliseconds = 0;
-            long placementAttemptCount = 0;
-            long uniqueGeneratedStateCount = 0;
-            long scoreStateCallCount = 0;
-            var bestSamplingSummary = "";
-            Candidate? bestStreamingCandidate = null;
-            var bestStreamingRatio = double.PositiveInfinity;
-            var streamingRegressingCandidateCount = 0;
             var shadowAdoptable =
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
-            var shadowUsesWiderProfile =
-                new Dictionary<string, bool>(StringComparer.Ordinal);
             var shadowPackedRegions =
                 new Dictionary<string, IReadOnlyDictionary<int, RectInt>>(
                     StringComparer.Ordinal);
@@ -1543,8 +793,6 @@ namespace net.rs64.TexTransTool.NDMF
                 if (projectionCache.TryGetValue(layoutKey, out var cached))
                     return cached;
 
-                var projectionTimer =
-                    System.Diagnostics.Stopwatch.StartNew();
                 var selectedGroups = ids
                     .Select(id => byId[id])
                     .ToArray();
@@ -1560,11 +808,6 @@ namespace net.rs64.TexTransTool.NDMF
                     propertySizes,
                     alphaCache,
                     UnknownAlphaAssumption.AssumePresent);
-                projectionTimer.Stop();
-
-                projectionEvaluationCount += 1;
-                projectionEvaluationMilliseconds +=
-                    projectionTimer.ElapsedMilliseconds;
                 var projection = new ShadowCostProjection(
                     baseline,
                     merged,
@@ -1583,7 +826,6 @@ namespace net.rs64.TexTransTool.NDMF
                     return cached;
 
                 var projection = GetProjection(ids, layoutSize);
-                safetyEvaluationCount += 1;
                 var candidate = new Candidate(
                     ids,
                     projection.Baseline,
@@ -1594,150 +836,10 @@ namespace net.rs64.TexTransTool.NDMF
                 return candidate;
             }
 
-            // Exact subset enumeration is bounded to the same maximum group count
-            // already supported by merge execution. Geometry is deliberately
-            // optimistic here: for each group, independently use its smallest
-            // available profile area/height and derive only an area lower bound.
-            // If even this lower bound cannot reduce pixel count, no real 2D
-            // placement of that subset can satisfy the strict pixel gate.
-            var lowerBoundGroups = groups
-                .Where(group =>
-                    group.StandaloneMetrics != null
-                    && group.BaselineCostKnown
-                    && group.LayoutProfiles.Count != 0)
-                .OrderBy(group => group.Id)
-                .ToArray();
-
-            optimisticSourceGroupCount = lowerBoundGroups.Length;
-            optimisticExhaustive =
-                lowerBoundGroups.Length <= MaxMergeGroupCount;
-            var optimisticTimer = System.Diagnostics.Stopwatch.StartNew();
-
-            if (optimisticExhaustive)
-            {
-                var seenLowerBoundLayouts =
-                    new HashSet<string>(StringComparer.Ordinal);
-                var subsetCount = 1 << lowerBoundGroups.Length;
-                for (var mask = 1; mask < subsetCount; mask += 1)
-                {
-                    var selectedGroups = new List<PreparedGroup>();
-                    for (var bit = 0; bit < lowerBoundGroups.Length; bit += 1)
-                    {
-                        if ((mask & (1 << bit)) != 0)
-                            selectedGroups.Add(lowerBoundGroups[bit]);
-                    }
-
-                    if (selectedGroups.Count < 2
-                        || selectedGroups.Count > MaxMergeGroupCount)
-                    {
-                        continue;
-                    }
-
-                    var ids = selectedGroups
-                        .Select(group => group.Id)
-                        .OrderBy(id => id)
-                        .ToArray();
-
-                    foreach (var targetWidth in
-                             AtlasTexture.AutoAtlasTextureSizeCandidates)
-                    {
-                        long minimumArea = 0;
-                        var minimumHeight = 0;
-                        var allGroupsFitWidth = true;
-
-                        foreach (var group in selectedGroups)
-                        {
-                            var profiles = group.TwoDimensionalProfileHeights
-                                .Where(profile =>
-                                    profile.Key.AtlasWidth == targetWidth
-                                    && profile.Key.RegionWidth % PackingGridUnit == 0)
-                                .Select(profile => (
-                                    Width: profile.Key.RegionWidth,
-                                    Height: profile.Value))
-                                .Where(profile =>
-                                    profile.Height <= targetWidth)
-                                .ToArray();
-
-                            if (profiles.Length == 0)
-                            {
-                                allGroupsFitWidth = false;
-                                break;
-                            }
-
-                            minimumArea += profiles.Min(profile =>
-                                (long)profile.Width * profile.Height);
-                            minimumHeight = Math.Max(
-                                minimumHeight,
-                                profiles.Min(profile => profile.Height));
-                        }
-
-                        if (!allGroupsFitWidth)
-                            continue;
-
-                        var areaHeight = (int)Math.Min(
-                            int.MaxValue,
-                            (minimumArea + targetWidth - 1)
-                                / targetWidth);
-                        var lowerBoundUsedHeight = Math.Max(
-                            minimumHeight,
-                            areaHeight);
-                        if (lowerBoundUsedHeight <= 0
-                            || lowerBoundUsedHeight > targetWidth)
-                        {
-                            continue;
-                        }
-
-                        var layoutSize = new Vector2Int(
-                            targetWidth,
-                            GetCroppedHeight(
-                                targetWidth,
-                                lowerBoundUsedHeight));
-                        var lowerBoundKey =
-                            string.Join(",", ids)
-                            + "@"
-                            + layoutSize.x
-                            + "x"
-                            + layoutSize.y;
-                        if (!seenLowerBoundLayouts.Add(lowerBoundKey))
-                            continue;
-
-                        var projection = GetProjection(ids, layoutSize);
-                        optimisticEvaluatedCount += 1;
-                        if (projection.Merged.PixelCount
-                            < projection.Baseline.PixelCount)
-                        {
-                            optimisticPixelViableCount += 1;
-                        }
-
-                        if (projection.Baseline.PixelCount > 0)
-                        {
-                            var ratio =
-                                (double)projection.Merged.PixelCount
-                                / projection.Baseline.PixelCount;
-                            if (ratio < optimisticBestPixelRatio)
-                            {
-                                optimisticBestPixelRatio = ratio;
-                                optimisticBestBaselinePixels =
-                                    projection.Baseline.PixelCount;
-                                optimisticBestMergedPixels =
-                                    projection.Merged.PixelCount;
-                                optimisticBestGroupCount = ids.Length;
-                                optimisticBestLayoutSize = layoutSize;
-                            }
-                        }
-                    }
-                }
-            }
-
-            optimisticTimer.Stop();
-            optimisticLowerBoundMilliseconds =
-                optimisticTimer.ElapsedMilliseconds;
-
             void ScoreState(
                 ShadowPackingState state,
                 int targetWidth)
             {
-                scoreStateCallCount += 1;
                 if (state.GroupIds.Length == 0)
                 {
                     state.ProjectedPixelDelta = 0;
@@ -1921,7 +1023,6 @@ namespace net.rs64.TexTransTool.NDMF
                 if (eligibleGroups.Length < 2)
                     continue;
 
-                targetWidthCount += 1;
                 var columnCount = targetWidth / PackingGridUnit;
                 var states = new List<ShadowPackingState>
                 {
@@ -1969,7 +1070,6 @@ namespace net.rs64.TexTransTool.NDMF
                                  x + widthColumns <= columnCount;
                                  x += 1)
                             {
-                                placementAttemptCount += 1;
                                 var y = 0;
                                 for (var column = x;
                                      column < x + widthColumns;
@@ -2039,23 +1139,13 @@ namespace net.rs64.TexTransTool.NDMF
                     if (generated.Count == 0)
                         continue;
 
-                    uniqueGeneratedStateCount += generated.Count;
-                    var selectionTimer =
-                        System.Diagnostics.Stopwatch.StartNew();
                     var undominated = RemoveDominatedSkylineStates(
                         generated.Values);
-                    selectionTimer.Stop();
-                    stateSelectionMilliseconds +=
-                        selectionTimer.ElapsedMilliseconds;
                     foreach (var generatedState in undominated)
                         ScoreState(generatedState, targetWidth);
 
                     states.AddRange(undominated);
-                    selectionTimer.Restart();
                     states = SelectPropertyAwareStates(states);
-                    selectionTimer.Stop();
-                    stateSelectionMilliseconds +=
-                        selectionTimer.ElapsedMilliseconds;
                 }
 
                 foreach (var state in states.Where(
@@ -2076,152 +1166,7 @@ namespace net.rs64.TexTransTool.NDMF
                         continue;
 
                     var candidate = GetCandidate(ids, layoutSize);
-                    var baseline = candidate.Baseline;
-                    var merged = candidate.Merged;
-                    var propertySizes = candidate.PropertySizes;
-
-                    if (baseline.PixelCount > 0)
-                    {
-                        var ratio =
-                            (double)merged.PixelCount / baseline.PixelCount;
-                        if (ratio < bestPixelRatio)
-                        {
-                            bestPixelRatio = ratio;
-                            bestBaselinePixels = baseline.PixelCount;
-                            bestMergedPixels = merged.PixelCount;
-                            bestBaselineBytes = baseline.FullResidentBytes;
-                            bestMergedBytes = merged.FullResidentBytes;
-                            bestGroupCount = ids.Length;
-                            bestLayoutSize = layoutSize;
-                            bestBaselineSizeSummary = string.Join(
-                                ", ",
-                                baseline.Entries
-                                    .GroupBy(entry =>
-                                        (entry.Width, entry.Height))
-                                    .OrderByDescending(group =>
-                                        (long)group.Key.Width
-                                            * group.Key.Height)
-                                    .ThenByDescending(group =>
-                                        group.Count())
-                                    .Select(group =>
-                                        $"{group.Key.Width}×{group.Key.Height}×{group.Count()}"));
-                            bestPropertySizeSummary = string.Join(
-                                ", ",
-                                propertySizes
-                                    .OrderBy(pair => pair.Key,
-                                        StringComparer.Ordinal)
-                                    .Select(pair =>
-                                        $"{pair.Key}={pair.Value.x}×{pair.Value.y}"));
-                            bestSamplingSummary = string.Join(
-                                ", ",
-                                ids.Select(id =>
-                                {
-                                    var before = baseline
-                                        .SamplingBytesPerTexel
-                                        .GetValueOrDefault(id);
-                                    var after = merged
-                                        .SamplingBytesPerTexel
-                                        .GetValueOrDefault(id);
-                                    return $"g{id}:{before:0.###}→{after:0.###}";
-                                }));
-                            bestRejectionReason =
-                                candidate.RejectionReason switch
-                                {
-                                    CandidateRejectionReason.None => "none",
-                                    CandidateRejectionReason.PixelCount => "pixels",
-                                    CandidateRejectionReason.FullResidentMemory => "memory",
-                                    CandidateRejectionReason.MaxTextureDimension => "max dimension",
-                                    CandidateRejectionReason.Sampling => "sampling",
-                                    CandidateRejectionReason.Streaming => "streaming",
-                                    _ => "unknown",
-                                };
-                        }
-                    }
-
-                    if (merged.PixelCount >= baseline.PixelCount)
-                    {
-                        if (merged.PixelCount == baseline.PixelCount)
-                            pixelRejectedEqualCount += 1;
-                        else
-                            pixelRejectedGreaterCount += 1;
-
-                        var alsoMemory =
-                            merged.FullResidentBytes
-                                >= baseline.FullResidentBytes;
-                        var alsoMaxDimension =
-                            merged.MaxTextureDimension
-                                > baseline.MaxTextureDimension;
-                        var alsoSampling =
-                            HasSamplingRegression(
-                                baseline, merged, ids);
-                        var alsoStreaming =
-                            HasStreamingRegression(
-                                baseline, merged, ids);
-
-                        if (alsoMemory)
-                            pixelRejectedAlsoMemoryCount += 1;
-                        if (alsoMaxDimension)
-                            pixelRejectedAlsoMaxDimensionCount += 1;
-                        if (alsoSampling)
-                            pixelRejectedAlsoSamplingCount += 1;
-                        if (alsoStreaming)
-                            pixelRejectedAlsoStreamingCount += 1;
-
-                        if (!alsoMemory
-                            && !alsoMaxDimension
-                            && !alsoSampling
-                            && !alsoStreaming)
-                        {
-                            pixelGateOnlyCount += 1;
-                        }
-                    }
-
-                    evaluatedCandidateCount += 1;
-                    if (state.UsesWiderProfile)
-                        evaluatedUsingWiderProfileCount += 1;
-
-                    if (!candidate.IsAdoptable)
-                    {
-                        switch (candidate.RejectionReason)
-                        {
-                            case CandidateRejectionReason.PixelCount:
-                                rejectedPixelCount += 1;
-                                break;
-                            case CandidateRejectionReason.FullResidentMemory:
-                                rejectedMemoryCount += 1;
-                                break;
-                            case CandidateRejectionReason.MaxTextureDimension:
-                                rejectedMaxDimensionCount += 1;
-                                break;
-                            case CandidateRejectionReason.Sampling:
-                                rejectedSamplingCount += 1;
-                                break;
-                            case CandidateRejectionReason.Streaming:
-                                rejectedStreamingCount += 1;
-                                break;
-                        }
-
-                        continue;
-                    }
-
-                    // Keep Streaming implications separate from the adoption
-                    // gates. Analyze only viable candidates, retaining the
-                    // best pixel-saving example for the temporary console log.
-                    if (candidate.StreamingWouldRegress)
-                    {
-                        streamingRegressingCandidateCount += 1;
-                        var ratio = (double)merged.PixelCount
-                            / baseline.PixelCount;
-                        if (ratio < bestStreamingRatio
-                            || (ratio == bestStreamingRatio
-                                && (bestStreamingCandidate == null
-                                    || candidate.SavingBytes
-                                        > bestStreamingCandidate.SavingBytes)))
-                        {
-                            bestStreamingRatio = ratio;
-                            bestStreamingCandidate = candidate;
-                        }
-                    }
+                    if (!candidate.IsAdoptable) continue;
 
                     if (!shadowAdoptable.TryGetValue(
                             key,
@@ -2240,96 +1185,11 @@ namespace net.rs64.TexTransTool.NDMF
                              placement = placement.Previous)
                             regions.Add(placement.GroupId, placement.Region);
                         shadowPackedRegions[key] = regions;
-                        shadowUsesWiderProfile[key] =
-                            state.UsesWiderProfile;
-                    }
-                    else if (candidate.SavingBytes
-                                == priorCandidate.SavingBytes
-                             && candidate.LayoutSize.y
-                                == priorCandidate.LayoutSize.y
-                             && state.UsesWiderProfile)
-                    {
-                        shadowUsesWiderProfile[key] = true;
                     }
                 }
             }
 
-            var adoptableUsingWiderProfileCount =
-                shadowUsesWiderProfile.Count(pair =>
-                    pair.Value && shadowAdoptable.ContainsKey(pair.Key));
-
-            var selectedCount = 0;
-            var consumed = new HashSet<int>();
-            foreach (var pair in shadowAdoptable
-                         .OrderByDescending(
-                             pair => pair.Value.SavingBytes)
-                         .ThenByDescending(
-                             pair => pair.Value.SavingRate)
-                         .ThenByDescending(
-                             pair => pair.Value.GroupIds.Length))
-            {
-                var candidate = pair.Value;
-                if (candidate.GroupIds.Any(consumed.Contains))
-                    continue;
-
-                selectedCount += 1;
-                consumed.UnionWith(candidate.GroupIds);
-            }
-
-            // Diagnostics are calculated once, after the bounded search.
-            var streamingExample = bestStreamingCandidate == null
-                ? null
-                : DiagnoseStreamingRegression(bestStreamingCandidate);
-
             return new ShadowPackingDiagnostics(
-                profileCount,
-                groupsWithMultipleProfiles,
-                targetWidthCount,
-                evaluatedCandidateCount,
-                evaluatedUsingWiderProfileCount,
-                shadowAdoptable.Count,
-                adoptableUsingWiderProfileCount,
-                selectedCount,
-                rejectedPixelCount,
-                rejectedMemoryCount,
-                rejectedMaxDimensionCount,
-                rejectedSamplingCount,
-                rejectedStreamingCount,
-                pixelRejectedEqualCount,
-                pixelRejectedGreaterCount,
-                pixelGateOnlyCount,
-                pixelRejectedAlsoMemoryCount,
-                pixelRejectedAlsoMaxDimensionCount,
-                pixelRejectedAlsoSamplingCount,
-                pixelRejectedAlsoStreamingCount,
-                bestBaselinePixels,
-                bestMergedPixels,
-                bestBaselineBytes,
-                bestMergedBytes,
-                bestGroupCount,
-                bestLayoutSize,
-                bestBaselineSizeSummary,
-                bestPropertySizeSummary,
-                bestRejectionReason,
-                optimisticSourceGroupCount,
-                optimisticExhaustive,
-                optimisticLowerBoundMilliseconds,
-                optimisticEvaluatedCount,
-                optimisticPixelViableCount,
-                optimisticBestBaselinePixels,
-                optimisticBestMergedPixels,
-                optimisticBestGroupCount,
-                optimisticBestLayoutSize,
-                projectionEvaluationCount,
-                safetyEvaluationCount,
-                projectionEvaluationMilliseconds,
-                stateSelectionMilliseconds,
-                placementAttemptCount,
-                uniqueGeneratedStateCount,
-                scoreStateCallCount,
-                bestSamplingSummary,
-                streamingExample,
-                streamingRegressingCandidateCount,
                 shadowAdoptable.Select(pair => new MergeSelection(
                     pair.Value, shadowPackedRegions[pair.Key])).ToArray());
         }
@@ -2931,161 +1791,6 @@ namespace net.rs64.TexTransTool.NDMF
             return false;
         }
 
-        internal static StreamingRegressionExample? DiagnoseStreamingRegression(
-            Candidate candidate)
-        {
-            long worstExcess = 0;
-            var worstGroup = -1;
-            var worstBiasStep = 0;
-            long worstBaselineBytes = 0;
-            long worstMergedBytes = 0;
-
-            foreach (var groupId in candidate.GroupIds)
-            {
-                var active = new HashSet<int> { groupId };
-                for (var biasStep = -32; biasStep <= 40; biasStep += 1)
-                {
-                    var bias = biasStep * 0.5d;
-                    var baselineBytes = CalculateScenarioBytes(
-                        candidate.Baseline, active, bias);
-                    var mergedBytes = CalculateScenarioBytes(
-                        candidate.Merged, active, bias);
-                    var excess = mergedBytes - baselineBytes;
-                    if (excess <= worstExcess) continue;
-
-                    worstExcess = excess;
-                    worstGroup = groupId;
-                    worstBiasStep = biasStep;
-                    worstBaselineBytes = baselineBytes;
-                    worstMergedBytes = mergedBytes;
-                }
-            }
-
-            if (worstGroup < 0) return null;
-
-            var worstBias = worstBiasStep * 0.5d;
-            return new StreamingRegressionExample(
-                candidate,
-                worstGroup,
-                worstBias,
-                worstBaselineBytes,
-                worstMergedBytes,
-                DescribeScenarioEntries(candidate.Baseline, worstGroup, worstBias),
-                DescribeScenarioEntries(candidate.Merged, worstGroup, worstBias));
-        }
-
-        private static string DescribeScenarioEntries(
-            TextureCostPlan plan, int groupId, double cameraBias)
-        {
-            var lines = new List<string>();
-            for (var index = 0; index < plan.Entries.Length; index += 1)
-            {
-                var entry = plan.Entries[index];
-                if (!entry.Contributors.Contains(groupId)) continue;
-
-                var demand = entry.DemandLog2.TryGetValue(
-                    groupId, out var logC) ? logC : UnknownDemandLog2;
-                var mip = 0;
-                if (entry.Streaming && entry.MipCount > 1)
-                {
-                    var desiredMip = (int)Math.Floor(demand + cameraBias);
-                    mip = Math.Max(0,
-                        Math.Min(entry.MipCount - 1, desiredMip));
-                }
-
-                var name = string.IsNullOrEmpty(entry.DiagnosticName)
-                    ? "(unidentified)"
-                    : entry.DiagnosticName.Replace("\r", " ").Replace("\n", " ");
-                var detail = demand == UnknownDemandLog2
-                    ? "unknown"
-                    : demand.ToString("0.###",
-                        System.Globalization.CultureInfo.InvariantCulture);
-                lines.Add(
-                    $"  [{index}] {name}: {entry.Width}×{entry.Height}, "
-                    + $"mip={mip}/{entry.MipCount - 1}, "
-                    + $"bytes={CalculateBytes(entry, mip)}, "
-                    + $"streaming(model)={entry.Streaming}, "
-                    + $"block={entry.BlockWidth}×{entry.BlockHeight}/{entry.BlockSize}B, "
-                    + $"demandLog2={detail}");
-            }
-
-            return lines.Count == 0 ? "  (none)" : string.Join("\n", lines);
-        }
-
-        private static bool HasStreamingRegression(
-            TextureCostPlan baseline,
-            TextureCostPlan merged,
-            int[] groupIds)
-        {
-            // Cross-group atlasing can make a texture shared by groups that are
-            // not visible at the same time. Checking only the all-active case can
-            // hide that regression because the standalone baseline then includes
-            // every group's independent texture cost.
-            //
-            // Check every atomic group in isolation instead. For a shared atlas
-            // entry, any multi-group scenario needs the most detailed mip required
-            // by one of its active contributors, while the standalone baseline is
-            // the sum of those groups' independent costs. Therefore, if the merge
-            // does not regress any singleton scenario, adding more active groups
-            // cannot create a worse aggregate mip-memory case.
-            foreach (var groupId in groupIds)
-            {
-                var activeGroups = new HashSet<int> { groupId };
-
-                // Camera distance/FOV are represented as a normalized logarithmic
-                // bias. Sweep the range instead of assuming one viewing distance.
-                for (var biasStep = -32; biasStep <= 40; biasStep += 1)
-                {
-                    var bias = biasStep * 0.5d;
-                    var baselineBytes = CalculateScenarioBytes(
-                        baseline, activeGroups, bias);
-                    var mergedBytes = CalculateScenarioBytes(
-                        merged, activeGroups, bias);
-                    if (mergedBytes > baselineBytes)
-                        return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static long CalculateScenarioBytes(
-            TextureCostPlan plan,
-            HashSet<int> activeGroups,
-            double cameraBias)
-        {
-            long total = 0;
-            foreach (var entry in plan.Entries)
-            {
-                var activeContributors = entry.Contributors
-                    .Where(activeGroups.Contains)
-                    .ToArray();
-                if (activeContributors.Length == 0) continue;
-
-                if (!entry.Streaming || entry.MipCount <= 1)
-                {
-                    total += entry.FullResidentBytes;
-                    continue;
-                }
-
-                var requiredMip = entry.MipCount - 1;
-                foreach (var contributor in activeContributors)
-                {
-                    var logC = entry.DemandLog2.TryGetValue(
-                        contributor, out var value)
-                        ? value
-                        : UnknownDemandLog2;
-                    var desiredMip = (int)Math.Floor(logC + cameraBias);
-                    desiredMip = Math.Max(0,
-                        Math.Min(entry.MipCount - 1, desiredMip));
-                    requiredMip = Math.Min(requiredMip, desiredMip);
-                }
-
-                total += CalculateBytes(entry, requiredMip);
-            }
-            return total;
-        }
-
         private static double FindTextureDemandLog2(
             PreparedGroup group,
             Texture texture,
@@ -3108,128 +1813,6 @@ namespace net.rs64.TexTransTool.NDMF
             return values.Count == 0 ? UnknownDemandLog2 : values.Min();
         }
 
-        private static double FindPropertyDemandLog2(
-            IDomain domain,
-            PreparedGroup group,
-            string property,
-            HashSet<Texture> textures,
-            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures)
-        {
-            var best = double.PositiveInfinity;
-            var uvUsageCache =
-                new Dictionary<Material, IReadOnlyDictionary<string, TextureUVUsage>>();
-
-            foreach (var renderer in group.Renderers)
-            {
-                var mesh = domain.GetMesh(renderer);
-                if (mesh == null || mesh.subMeshCount == 0) continue;
-                var materials = domain.GetMaterials(renderer);
-
-                for (var subMesh = 0;
-                     subMesh < materials.Length && subMesh < mesh.subMeshCount;
-                     subMesh += 1)
-                {
-                    if (materials[subMesh] is not Material material
-                        || !group.Materials.Contains(material)
-                        || !propertyTextures.TryGetValue(material, out var properties)
-                        || !properties.TryGetValue(property, out var texture)
-                        || texture == null
-                        || !textures.Contains(texture))
-                    {
-                        continue;
-                    }
-
-                    if (!uvUsageCache.TryGetValue(material, out var uvUsages))
-                    {
-                        uvUsages =
-                            TTShaderTextureUsageInformationUtil
-                                .GetContainsUVTransformUsage(material);
-                        uvUsageCache[material] = uvUsages;
-                    }
-
-                    if (!uvUsages.TryGetValue(property, out var uvUsage)
-                        || uvUsage.UVMatrix is not { } uvMatrix)
-                    {
-                        // Unknown shader-side UV transforms can increase the
-                        // required mip arbitrarily. Keep the conservative
-                        // full-resolution demand instead of guessing from _ST.
-                        best = Math.Min(best, UnknownDemandLog2);
-                        continue;
-                    }
-
-                    var metric = CalculateUvDistributionMetric(
-                        mesh, subMesh, renderer.transform.lossyScale,
-                        uvMatrix);
-                    if (!(metric > Epsilon) || double.IsNaN(metric)
-                        || double.IsInfinity(metric))
-                    {
-                        continue;
-                    }
-
-                    var texelCount = (double)texture.width * texture.height;
-                    var logC = 0.5d * Math.Log(texelCount / metric, 2d);
-                    best = Math.Min(best, logC);
-                }
-            }
-
-            return double.IsPositiveInfinity(best) ? UnknownDemandLog2 : best;
-        }
-
-        private static double CalculateUvDistributionMetric(
-            Mesh mesh,
-            int subMesh,
-            Vector3 lossyScale,
-            TextureAtlas.AAOCode.Matrix2x3 uvMatrix)
-        {
-            var vertices = mesh.vertices;
-            var uv = mesh.uv;
-            if (uv == null || uv.Length != vertices.Length) return 0d;
-
-            var triangles = mesh.GetTriangles(subMesh);
-            double worldArea = 0d;
-            double uvArea = 0d;
-            var scale = new Vector3(
-                Math.Abs(lossyScale.x),
-                Math.Abs(lossyScale.y),
-                Math.Abs(lossyScale.z));
-
-            for (var index = 0; index + 2 < triangles.Length; index += 3)
-            {
-                var i0 = triangles[index];
-                var i1 = triangles[index + 1];
-                var i2 = triangles[index + 2];
-
-                var p0 = Vector3.Scale(vertices[i0], scale);
-                var p1 = Vector3.Scale(vertices[i1], scale);
-                var p2 = Vector3.Scale(vertices[i2], scale);
-                var triangleWorldArea =
-                    Vector3.Cross(p1 - p0, p2 - p0).magnitude * 0.5d;
-
-                var uv0 = uv[i0];
-                var uv1 = uv[i1];
-                var uv2 = uv[i2];
-                var a = uv1 - uv0;
-                var b = uv2 - uv0;
-                var triangleUvArea =
-                    Math.Abs((double)a.x * b.y - (double)a.y * b.x) * 0.5d;
-
-                if (triangleWorldArea <= Epsilon || triangleUvArea <= Epsilon)
-                    continue;
-
-                worldArea += triangleWorldArea;
-                uvArea += triangleUvArea;
-            }
-
-            if (worldArea <= Epsilon || uvArea <= Epsilon) return 0d;
-
-            var uvTransformArea = Math.Abs(
-                (double)uvMatrix.M00 * uvMatrix.M11
-                - (double)uvMatrix.M01 * uvMatrix.M10);
-            if (uvTransformArea <= Epsilon)
-                return 0d;
-
-            return (worldArea / uvArea) / uvTransformArea;
-        }
 
 
     }
