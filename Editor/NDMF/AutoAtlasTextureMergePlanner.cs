@@ -660,12 +660,12 @@ namespace net.rs64.TexTransTool.NDMF
                 return BuildPredictedPropertySizes(
                     requirements,
                     layoutSize);
-                group.StandaloneMetrics = AnalyzeAtlas(
-                    domain, settings, group, out _, out _, out _);
             }
 
             foreach (var group in groups)
             {
+                group.StandaloneMetrics = AnalyzeAtlas(
+                    domain, settings, group, out _, out _, out _);
             }
 
             foreach (var group in groups)
