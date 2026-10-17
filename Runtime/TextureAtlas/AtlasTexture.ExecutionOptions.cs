@@ -37,63 +37,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal int? ForcedAutoAtlasWidth;
             internal Func<AtlasContext, IIslandRelocator>? IslandRelocatorFactory;
             internal Func<AtlasContext, Vector2Int, AtlasExecutionMetrics, bool>? AcceptAtlasSize;
-            internal Action<AtlasExecutionTimingDiagnostic>? TimingDiagnostic;
-        }
-
-        internal readonly struct AtlasIslandProcessingTimingDiagnostic
-        {
-            internal readonly long CloneAndScaleMilliseconds;
-            internal readonly long ReferenceIslandMilliseconds;
-            internal readonly long IslandDescriptionMilliseconds;
-            internal readonly long SizePriorityMilliseconds;
-            internal readonly long RelocatorMilliseconds;
-            internal readonly long PostProcessMilliseconds;
-
-            internal AtlasIslandProcessingTimingDiagnostic(
-                long cloneAndScaleMilliseconds,
-                long referenceIslandMilliseconds,
-                long islandDescriptionMilliseconds,
-                long sizePriorityMilliseconds,
-                long relocatorMilliseconds,
-                long postProcessMilliseconds)
-            {
-                CloneAndScaleMilliseconds = cloneAndScaleMilliseconds;
-                ReferenceIslandMilliseconds = referenceIslandMilliseconds;
-                IslandDescriptionMilliseconds = islandDescriptionMilliseconds;
-                SizePriorityMilliseconds = sizePriorityMilliseconds;
-                RelocatorMilliseconds = relocatorMilliseconds;
-                PostProcessMilliseconds = postProcessMilliseconds;
-            }
-        }
-
-        internal readonly struct AtlasExecutionTimingDiagnostic
-        {
-            internal readonly long PreserveSetupMilliseconds;
-            internal readonly long AtlasContextConstructionMilliseconds;
-            internal readonly long IslandNormalizeMilliseconds;
-            internal readonly long RelocationStageMilliseconds;
-            internal readonly long ResolutionPlanMilliseconds;
-            internal readonly long MeshGenerationMilliseconds;
-            internal readonly long TextureGenerationMilliseconds;
-
-            internal AtlasExecutionTimingDiagnostic(
-                long preserveSetupMilliseconds,
-                long atlasContextConstructionMilliseconds,
-                long islandNormalizeMilliseconds,
-                long relocationStageMilliseconds,
-                long resolutionPlanMilliseconds,
-                long meshGenerationMilliseconds,
-                long textureGenerationMilliseconds)
-            {
-                PreserveSetupMilliseconds = preserveSetupMilliseconds;
-                AtlasContextConstructionMilliseconds =
-                    atlasContextConstructionMilliseconds;
-                IslandNormalizeMilliseconds = islandNormalizeMilliseconds;
-                RelocationStageMilliseconds = relocationStageMilliseconds;
-                ResolutionPlanMilliseconds = resolutionPlanMilliseconds;
-                MeshGenerationMilliseconds = meshGenerationMilliseconds;
-                TextureGenerationMilliseconds = textureGenerationMilliseconds;
-            }
         }
 
         internal readonly struct AtlasRelocationMetrics

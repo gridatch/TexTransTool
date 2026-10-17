@@ -36,8 +36,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         texture,
                         alphaCache,
                         out var block,
-                        out var mipCount,
-                        out _))
+                        out var mipCount))
                 {
                     return false;
                 }
@@ -151,12 +150,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
             Texture texture,
             Dictionary<Texture, bool> alphaCache,
             out (uint Width, uint Height, uint Size) block,
-            out int mipCount,
-            out bool streaming)
+            out int mipCount)
         {
             block = default;
             mipCount = 1;
-            streaming = false;
 
             switch (texture)
             {
@@ -188,7 +185,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         ? CalculateMemoryMipCount(
                             texture2D.width, texture2D.height)
                         : 1;
-                    streaming = mipCount > 1;
                     return true;
                 }
 
@@ -212,7 +208,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             ? CalculateMemoryMipCount(
                                 renderTexture.width, renderTexture.height)
                             : 1;
-                        streaming = false;
                         return true;
                     }
 
@@ -231,7 +226,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         ? CalculateMemoryMipCount(
                             renderTexture.width, renderTexture.height)
                         : 1;
-                    streaming = mipCount > 1;
                     return true;
                 }
 

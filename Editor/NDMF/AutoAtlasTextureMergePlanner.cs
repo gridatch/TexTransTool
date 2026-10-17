@@ -24,7 +24,6 @@ namespace net.rs64.TexTransTool.NDMF
         // only bound cheap integer-DP state retention, not expensive atlas probes.
         private const int ShadowPackingStatesPerHost = 512;
         private const int PackingGridUnit = 256;
-        private const double UnknownDemandLog2 = -32d;
         private const double Epsilon = 1e-8;
 
         internal sealed class PreparedGroup
@@ -37,15 +36,10 @@ namespace net.rs64.TexTransTool.NDMF
             internal long OriginalPixels;
 
             internal AtlasTexture.AtlasExecutionMetrics? StandaloneMetrics;
-            internal readonly Dictionary<int, AtlasTexture.AtlasExecutionMetrics>
-                LayoutProfiles = new();
             // Heights include the final atlas's required padding, expressed
             // in pixels at the atomic group's own profile width.
             internal readonly Dictionary<(int AtlasWidth, int RegionWidth), int>
                 TwoDimensionalProfileHeights = new();
-            internal int StandaloneWidthPixels;
-            internal readonly Dictionary<string, double> PropertyDemandLog2 =
-                new(StringComparer.Ordinal);
             internal readonly Dictionary<string, int> PropertyUseCount =
                 new(StringComparer.Ordinal);
             internal TextureCostPlan BaselineCost = TextureCostPlan.Empty;
@@ -343,7 +337,6 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int[] Skyline;
             internal readonly int[] GroupIds;
             internal readonly long BaselineBytes;
-            internal readonly bool UsesWiderProfile;
             internal readonly int MaxHeight;
             internal readonly int SkylineArea;
             internal readonly ShadowPackingStateKey StateKey;
@@ -355,14 +348,12 @@ namespace net.rs64.TexTransTool.NDMF
                 int[] skyline,
                 int[] groupIds,
                 long baselineBytes,
-                bool usesWiderProfile,
                 ShadowPackingPlacement? placementTail = null)
             {
                 PlacementTail = placementTail;
                 Skyline = skyline;
                 GroupIds = groupIds;
                 BaselineBytes = baselineBytes;
-                UsesWiderProfile = usesWiderProfile;
 
                 var maxHeight = 0;
                 var skylineArea = 0;
@@ -485,9 +476,7 @@ namespace net.rs64.TexTransTool.NDMF
             None,
             PixelCount,
             FullResidentMemory,
-            MaxTextureDimension,
             Sampling,
-            Streaming,
         }
 
         internal sealed class Candidate
@@ -525,13 +514,10 @@ namespace net.rs64.TexTransTool.NDMF
                         ? CandidateRejectionReason.PixelCount
                         : merged.FullResidentBytes >= baseline.FullResidentBytes
                             ? CandidateRejectionReason.FullResidentMemory
-                            : merged.MaxTextureDimension
-                                > baseline.MaxTextureDimension
-                                ? CandidateRejectionReason.MaxTextureDimension
-                                : HasSamplingRegression(
-                                    baseline, merged, groupIds)
-                                    ? CandidateRejectionReason.Sampling
-                                    : CandidateRejectionReason.None;
+                            : HasSamplingRegression(
+                                baseline, merged, groupIds)
+                                ? CandidateRejectionReason.Sampling
+                                : CandidateRejectionReason.None;
 
                 IsAdoptable =
                     RejectionReason == CandidateRejectionReason.None;
@@ -545,7 +531,6 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly TextureCostEntry[] Entries;
             internal readonly long FullResidentBytes;
             internal readonly long PixelCount;
-            internal readonly int MaxTextureDimension;
             internal readonly Dictionary<int, double> SamplingBytesPerTexel;
 
             internal TextureCostPlan(
@@ -555,9 +540,6 @@ namespace net.rs64.TexTransTool.NDMF
                 Entries = entries.ToArray();
                 FullResidentBytes = Entries.Sum(entry => entry.FullResidentBytes);
                 PixelCount = Entries.Sum(entry => (long)entry.Width * entry.Height);
-                MaxTextureDimension = Entries.Length == 0
-                    ? 0
-                    : Entries.Max(entry => Math.Max(entry.Width, entry.Height));
                 SamplingBytesPerTexel = samplingBytesPerTexel == null
                     ? new Dictionary<int, double>()
                     : samplingBytesPerTexel.ToDictionary(pair => pair.Key, pair => pair.Value);
@@ -588,30 +570,14 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly uint BlockHeight;
             internal readonly uint BlockSize;
             internal readonly int MipCount;
-            internal readonly bool Streaming;
-            internal readonly HashSet<int> Contributors;
-            internal readonly Dictionary<int, double> DemandLog2;
             internal readonly long FullResidentBytes;
-            internal readonly string DiagnosticName;
 
             internal TextureCostEntry(
                 int width,
                 int height,
                 TextureFormat format,
-                int mipCount,
-                bool streaming,
-                IEnumerable<int> contributors,
-                Dictionary<int, double> demandLog2,
-                string diagnosticName = "")
-                : this(
-                    width,
-                    height,
-                    GetBlockLayout(format),
-                    mipCount,
-                    streaming,
-                    contributors,
-                    demandLog2,
-                    diagnosticName)
+                int mipCount)
+                : this(width, height, GetBlockLayout(format), mipCount)
             {
             }
 
@@ -619,11 +585,7 @@ namespace net.rs64.TexTransTool.NDMF
                 int width,
                 int height,
                 (uint Width, uint Height, uint Size) block,
-                int mipCount,
-                bool streaming,
-                IEnumerable<int> contributors,
-                Dictionary<int, double> demandLog2,
-                string diagnosticName = "")
+                int mipCount)
             {
                 Width = width;
                 Height = height;
@@ -631,11 +593,7 @@ namespace net.rs64.TexTransTool.NDMF
                 BlockHeight = block.Height;
                 BlockSize = block.Size;
                 MipCount = Math.Max(1, mipCount);
-                Streaming = streaming;
-                Contributors = contributors.ToHashSet();
-                DemandLog2 = demandLog2;
-                DiagnosticName = diagnosticName;
-                FullResidentBytes = CalculateBytes(this, 0);
+                FullResidentBytes = CalculateBytes(this);
             }
         }
 
@@ -692,7 +650,7 @@ namespace net.rs64.TexTransTool.NDMF
             foreach (var group in mergeGroups)
             {
                 group.StandaloneMetrics = AnalyzeAtlas(
-                    domain, settings, group, out _, out _, out _);
+                    domain, settings, group);
             }
 
             foreach (var group in mergeGroups)
@@ -700,27 +658,12 @@ namespace net.rs64.TexTransTool.NDMF
                 if (group.StandaloneMetrics is not { } metrics)
                     continue;
 
-                group.StandaloneWidthPixels = Math.Max(1, metrics.LayoutSize.x);
-
                 foreach (var property in group.Materials
                              .Where(propertyTextures.ContainsKey)
                              .SelectMany(material => propertyTextures[material].Keys)
                              .Distinct(StringComparer.Ordinal))
                 {
-                    var usageSources = group.Materials
-                        .Where(propertyTextures.ContainsKey)
-                        .SelectMany(material =>
-                            propertyTextures[material].TryGetValue(
-                                property, out var texture)
-                                && texture != null
-                                ? new[] { texture }
-                                : Array.Empty<Texture>())
-                        .ToHashSet();
-
-                    if (usageSources.Count == 0) continue;
-
                     group.PropertyUseCount[property] = 1;
-                    group.PropertyDemandLog2[property] = UnknownDemandLog2;
                 }
 
                 var standaloneGeneratedCost = BuildGeneratedCost(
@@ -1140,8 +1083,7 @@ namespace net.rs64.TexTransTool.NDMF
                     new(
                         new int[columnCount],
                         Array.Empty<int>(),
-                        0,
-                        false),
+                        0),
                 };
 
                 foreach (var group in eligibleGroups)
@@ -1219,9 +1161,6 @@ namespace net.rs64.TexTransTool.NDMF
                                     state.BaselineBytes
                                         + group.BaselineCost
                                             .FullResidentBytes,
-                                    state.UsesWiderProfile
-                                        || profileWidth
-                                            > group.StandaloneWidthPixels,
                                     new ShadowPackingPlacement(
                                         group.Id,
                                         new RectInt(
@@ -1235,11 +1174,7 @@ namespace net.rs64.TexTransTool.NDMF
                                 // skyline, therefore the same projected layout
                                 // and property cost. Deduplicate geometry before
                                 // running the property-cost projection.
-                                if (!generated.TryGetValue(
-                                        next.StateKey,
-                                        out var prior)
-                                    || (next.UsesWiderProfile
-                                        && !prior.UsesWiderProfile))
+                                if (!generated.ContainsKey(next.StateKey))
                                 {
                                     generated[next.StateKey] = next;
                                 }
@@ -1448,38 +1383,20 @@ namespace net.rs64.TexTransTool.NDMF
         private static AtlasTexture.AtlasExecutionMetrics? AnalyzeAtlas(
             IDomain domain,
             AtlasSetting settings,
-            PreparedGroup group,
-            out AtlasTexture.AtlasExecutionTimingDiagnostic timing,
-            out long allProfileRelocatorMilliseconds,
-            out AtlasTexture.AtlasIslandProcessingTimingDiagnostic
-                islandProcessingTiming)
+            PreparedGroup group)
         {
-            timing = default;
-            allProfileRelocatorMilliseconds = 0;
-            islandProcessingTiming = default;
-            group.LayoutProfiles.Clear();
             group.TwoDimensionalProfileHeights.Clear();
 
             var prepared = AtlasTexture.PrepareAtlasContext(
                 domain,
                 group.Materials,
                 group.Renderers,
-                settings,
-                out var preserveSetupMilliseconds,
-                out var atlasContextConstructionMilliseconds,
-                out var islandNormalizeMilliseconds);
+                settings);
             if (prepared is null)
                 return null;
 
             using (prepared)
             {
-                long relocationStageMilliseconds = 0;
-                long resolutionPlanMilliseconds = 0;
-                long cloneAndScaleMilliseconds = 0;
-                long referenceIslandMilliseconds = 0;
-                long islandDescriptionMilliseconds = 0;
-                long sizePriorityMilliseconds = 0;
-                long postProcessMilliseconds = 0;
                 AtlasTexture.AtlasExecutionMetrics? standalone = null;
 
                 foreach (var size in AtlasTexture.AutoAtlasTextureSizeCandidates)
@@ -1492,43 +1409,11 @@ namespace net.rs64.TexTransTool.NDMF
                                 new List<IIslandSizePriorityTuner?>(),
                                 settings,
                                 size,
-                                out var metrics,
-                                out var relocationStage,
-                                out var relocatorMilliseconds,
-                                out var profileTiming,
-                                out var resolutionPlan))
+                                out var metrics))
                         {
-                            relocationStageMilliseconds += relocationStage;
-                            allProfileRelocatorMilliseconds +=
-                                relocatorMilliseconds;
-                            cloneAndScaleMilliseconds +=
-                                profileTiming.CloneAndScaleMilliseconds;
-                            referenceIslandMilliseconds +=
-                                profileTiming.ReferenceIslandMilliseconds;
-                            islandDescriptionMilliseconds +=
-                                profileTiming.IslandDescriptionMilliseconds;
-                            sizePriorityMilliseconds +=
-                                profileTiming.SizePriorityMilliseconds;
-                            postProcessMilliseconds +=
-                                profileTiming.PostProcessMilliseconds;
                             continue;
                         }
 
-                        relocationStageMilliseconds += relocationStage;
-                        allProfileRelocatorMilliseconds +=
-                            relocatorMilliseconds;
-                        cloneAndScaleMilliseconds +=
-                            profileTiming.CloneAndScaleMilliseconds;
-                        referenceIslandMilliseconds +=
-                            profileTiming.ReferenceIslandMilliseconds;
-                        islandDescriptionMilliseconds +=
-                            profileTiming.IslandDescriptionMilliseconds;
-                        sizePriorityMilliseconds +=
-                            profileTiming.SizePriorityMilliseconds;
-                        postProcessMilliseconds +=
-                            profileTiming.PostProcessMilliseconds;
-                        resolutionPlanMilliseconds += resolutionPlan;
-                        group.LayoutProfiles[size] = metrics;
                         group.TwoDimensionalProfileHeights[(size, size)] =
                             GetUsedHeightPixels(metrics);
                         standalone ??= metrics;
@@ -1561,11 +1446,7 @@ namespace net.rs64.TexTransTool.NDMF
                                         new List<IIslandSizePriorityTuner?>(),
                                         profileSettings,
                                         size,
-                                        out var paddedMetrics,
-                                        out _,
-                                        out _,
-                                        out _,
-                                        out _))
+                                        out var paddedMetrics))
                                 {
                                     group.TwoDimensionalProfileHeights[
                                         (atlasWidth, size)] =
@@ -1591,22 +1472,6 @@ namespace net.rs64.TexTransTool.NDMF
                     }
                 }
 
-                timing = new AtlasTexture.AtlasExecutionTimingDiagnostic(
-                    preserveSetupMilliseconds,
-                    atlasContextConstructionMilliseconds,
-                    islandNormalizeMilliseconds,
-                    relocationStageMilliseconds,
-                    resolutionPlanMilliseconds,
-                    0,
-                    0);
-                islandProcessingTiming =
-                    new AtlasTexture.AtlasIslandProcessingTimingDiagnostic(
-                        cloneAndScaleMilliseconds,
-                        referenceIslandMilliseconds,
-                        islandDescriptionMilliseconds,
-                        sizePriorityMilliseconds,
-                        allProfileRelocatorMilliseconds,
-                        postProcessMilliseconds);
                 return standalone;
             }
         }
@@ -1627,27 +1492,16 @@ namespace net.rs64.TexTransTool.NDMF
                         texture,
                         alphaCache,
                         out var block,
-                        out var mipCount,
-                        out var streaming))
+                        out var mipCount))
                 {
                     return null;
                 }
-
-                var demands = new Dictionary<int, double>
-                {
-                    [group.Id] = FindTextureDemandLog2(
-                        group, texture, propertyTextures),
-                };
 
                 entries.Add(new TextureCostEntry(
                     texture.width,
                     texture.height,
                     block,
-                    mipCount,
-                    streaming,
-                    new[] { group.Id },
-                    demands,
-                    diagnosticName: texture.name));
+                    mipCount));
                 bytesPerTexel[texture] =
                     (double)block.Size / (block.Width * block.Height);
             }
@@ -1692,9 +1546,7 @@ namespace net.rs64.TexTransTool.NDMF
                     ? new[] { "_MainTex", "_BaseMap", "_BaseColorMap" }
                     : new[] { property.Key };
 
-                var contributors = new HashSet<int>();
                 var pixelSources = new HashSet<Texture>();
-                var demand = new Dictionary<int, double>();
                 var usedPropertyCount = new Dictionary<int, int>();
 
                 foreach (var group in groups)
@@ -1709,7 +1561,6 @@ namespace net.rs64.TexTransTool.NDMF
                         .ToHashSet();
                     pixelSources.UnionWith(rootSources);
 
-                    var groupDemand = double.PositiveInfinity;
                     var groupUsedProperties = 0;
                     foreach (var usageProperty in usageProperties)
                     {
@@ -1721,23 +1572,14 @@ namespace net.rs64.TexTransTool.NDMF
                         }
 
                         groupUsedProperties += useCount;
-                        var propertyDemand =
-                            group.PropertyDemandLog2.GetValueOrDefault(
-                                usageProperty, UnknownDemandLog2);
-                        groupDemand = Math.Min(
-                            groupDemand, propertyDemand);
                     }
 
                     if (groupUsedProperties == 0) continue;
 
-                    contributors.Add(group.Id);
                     usedPropertyCount[group.Id] = groupUsedProperties;
-                    demand[group.Id] = double.IsPositiveInfinity(groupDemand)
-                        ? UnknownDemandLog2
-                        : groupDemand;
                 }
 
-                if (contributors.Count == 0) continue;
+                if (usedPropertyCount.Count == 0) continue;
 
                 var hasAlpha = pixelSources.Count == 0
                     || pixelSources.Any(texture =>
@@ -1759,13 +1601,7 @@ namespace net.rs64.TexTransTool.NDMF
                     property.Value.x,
                     property.Value.y,
                     format,
-                    CalculateMipCount(property.Value.x, property.Value.y),
-                    // Generated atlas textures are downloaded through TTT's
-                    // deferred compressor, which enables Streaming Mipmaps.
-                    streaming: true,
-                    contributors,
-                    demand,
-                    diagnosticName: property.Key));
+                    CalculateMipCount(property.Value.x, property.Value.y)));
             }
 
             return new TextureCostPlan(entries, sampling);
@@ -1824,23 +1660,19 @@ namespace net.rs64.TexTransTool.NDMF
             return count;
         }
 
-        private static long CalculateBytes(TextureCostEntry entry, int firstMip)
+        private static long CalculateBytes(TextureCostEntry entry)
         {
-            firstMip = Math.Max(0, Math.Min(firstMip, entry.MipCount - 1));
             long total = 0;
             var width = entry.Width;
             var height = entry.Height;
 
             for (var mip = 0; mip < entry.MipCount; mip += 1)
             {
-                if (mip >= firstMip)
-                {
-                    var blocksX =
-                        ((long)width + entry.BlockWidth - 1) / entry.BlockWidth;
-                    var blocksY =
-                        ((long)height + entry.BlockHeight - 1) / entry.BlockHeight;
-                    total += blocksX * blocksY * entry.BlockSize;
-                }
+                var blocksX =
+                    ((long)width + entry.BlockWidth - 1) / entry.BlockWidth;
+                var blocksY =
+                    ((long)height + entry.BlockHeight - 1) / entry.BlockHeight;
+                total += blocksX * blocksY * entry.BlockSize;
 
                 width = Math.Max(1, width >> 1);
                 height = Math.Max(1, height >> 1);
@@ -1851,22 +1683,6 @@ namespace net.rs64.TexTransTool.NDMF
 
         private static (uint Width, uint Height, uint Size) GetBlockLayout(
             TextureFormat format)
-        {
-            try
-            {
-                return (
-                    Math.Max(1u, GraphicsFormatUtility.GetBlockWidth(format)),
-                    Math.Max(1u, GraphicsFormatUtility.GetBlockHeight(format)),
-                    Math.Max(1u, GraphicsFormatUtility.GetBlockSize(format)));
-            }
-            catch
-            {
-                return (1u, 1u, 4u);
-            }
-        }
-
-        private static (uint Width, uint Height, uint Size) GetBlockLayout(
-            GraphicsFormat format)
         {
             try
             {
@@ -1901,29 +1717,6 @@ namespace net.rs64.TexTransTool.NDMF
             }
             return false;
         }
-
-        private static double FindTextureDemandLog2(
-            PreparedGroup group,
-            Texture texture,
-            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures)
-        {
-            var values = new List<double>();
-            foreach (var material in group.Materials)
-            {
-                if (!propertyTextures.TryGetValue(material, out var properties))
-                    continue;
-
-                foreach (var property in properties)
-                {
-                    if (!ReferenceEquals(property.Value, texture)) continue;
-                    values.Add(group.PropertyDemandLog2.GetValueOrDefault(
-                        property.Key, UnknownDemandLog2));
-                }
-            }
-
-            return values.Count == 0 ? UnknownDemandLog2 : values.Min();
-        }
-
 
 
     }
