@@ -24,6 +24,7 @@ namespace net.rs64.TexTransTool.NDMF
         // only bound cheap integer-DP state retention, not expensive atlas probes.
         private const int ShadowPackingStatesPerHost = 512;
         private const int PackingGridUnit = 256;
+        private const double UnknownDemandLog2 = -32d;
         private const double Epsilon = 1e-8;
 
         internal sealed class PreparedGroup
@@ -43,6 +44,8 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Dictionary<(int AtlasWidth, int RegionWidth), int>
                 TwoDimensionalProfileHeights = new();
             internal int StandaloneWidthPixels;
+            internal readonly Dictionary<string, double> PropertyDemandLog2 =
+                new(StringComparer.Ordinal);
             internal readonly Dictionary<string, int> PropertyUseCount =
                 new(StringComparer.Ordinal);
             internal TextureCostPlan BaselineCost = TextureCostPlan.Empty;
@@ -484,6 +487,7 @@ namespace net.rs64.TexTransTool.NDMF
             FullResidentMemory,
             MaxTextureDimension,
             Sampling,
+            Streaming,
         }
 
         internal sealed class Candidate
@@ -584,15 +588,42 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly uint BlockHeight;
             internal readonly uint BlockSize;
             internal readonly int MipCount;
+            internal readonly bool Streaming;
+            internal readonly HashSet<int> Contributors;
+            internal readonly Dictionary<int, double> DemandLog2;
             internal readonly long FullResidentBytes;
+            internal readonly string DiagnosticName;
 
-            internal TextureCostEntry(int width, int height, TextureFormat format, int mipCount)
-                : this(width, height, GetBlockLayout(format), mipCount)
+            internal TextureCostEntry(
+                int width,
+                int height,
+                TextureFormat format,
+                int mipCount,
+                bool streaming,
+                IEnumerable<int> contributors,
+                Dictionary<int, double> demandLog2,
+                string diagnosticName = "")
+                : this(
+                    width,
+                    height,
+                    GetBlockLayout(format),
+                    mipCount,
+                    streaming,
+                    contributors,
+                    demandLog2,
+                    diagnosticName)
             {
             }
 
             internal TextureCostEntry(
-                int width, int height, (uint Width, uint Height, uint Size) block, int mipCount)
+                int width,
+                int height,
+                (uint Width, uint Height, uint Size) block,
+                int mipCount,
+                bool streaming,
+                IEnumerable<int> contributors,
+                Dictionary<int, double> demandLog2,
+                string diagnosticName = "")
             {
                 Width = width;
                 Height = height;
@@ -600,6 +631,10 @@ namespace net.rs64.TexTransTool.NDMF
                 BlockHeight = block.Height;
                 BlockSize = block.Size;
                 MipCount = Math.Max(1, mipCount);
+                Streaming = streaming;
+                Contributors = contributors.ToHashSet();
+                DemandLog2 = demandLog2;
+                DiagnosticName = diagnosticName;
                 FullResidentBytes = CalculateBytes(this, 0);
             }
         }
@@ -685,6 +720,7 @@ namespace net.rs64.TexTransTool.NDMF
                     if (usageSources.Count == 0) continue;
 
                     group.PropertyUseCount[property] = 1;
+                    group.PropertyDemandLog2[property] = UnknownDemandLog2;
                 }
 
                 var standaloneGeneratedCost = BuildGeneratedCost(
@@ -1592,15 +1628,26 @@ namespace net.rs64.TexTransTool.NDMF
                         alphaCache,
                         out var block,
                         out var mipCount,
-                        out _))
+                        out var streaming))
                 {
                     return null;
                 }
 
+                var demands = new Dictionary<int, double>
+                {
+                    [group.Id] = FindTextureDemandLog2(
+                        group, texture, propertyTextures),
+                };
+
                 entries.Add(new TextureCostEntry(
                     texture.width,
                     texture.height,
-                    block, mipCount));
+                    block,
+                    mipCount,
+                    streaming,
+                    new[] { group.Id },
+                    demands,
+                    diagnosticName: texture.name));
                 bytesPerTexel[texture] =
                     (double)block.Size / (block.Width * block.Height);
             }
@@ -1647,6 +1694,7 @@ namespace net.rs64.TexTransTool.NDMF
 
                 var contributors = new HashSet<int>();
                 var pixelSources = new HashSet<Texture>();
+                var demand = new Dictionary<int, double>();
                 var usedPropertyCount = new Dictionary<int, int>();
 
                 foreach (var group in groups)
@@ -1661,6 +1709,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ToHashSet();
                     pixelSources.UnionWith(rootSources);
 
+                    var groupDemand = double.PositiveInfinity;
                     var groupUsedProperties = 0;
                     foreach (var usageProperty in usageProperties)
                     {
@@ -1672,12 +1721,20 @@ namespace net.rs64.TexTransTool.NDMF
                         }
 
                         groupUsedProperties += useCount;
+                        var propertyDemand =
+                            group.PropertyDemandLog2.GetValueOrDefault(
+                                usageProperty, UnknownDemandLog2);
+                        groupDemand = Math.Min(
+                            groupDemand, propertyDemand);
                     }
 
                     if (groupUsedProperties == 0) continue;
 
                     contributors.Add(group.Id);
                     usedPropertyCount[group.Id] = groupUsedProperties;
+                    demand[group.Id] = double.IsPositiveInfinity(groupDemand)
+                        ? UnknownDemandLog2
+                        : groupDemand;
                 }
 
                 if (contributors.Count == 0) continue;
@@ -1702,7 +1759,13 @@ namespace net.rs64.TexTransTool.NDMF
                     property.Value.x,
                     property.Value.y,
                     format,
-                    CalculateMipCount(property.Value.x, property.Value.y)));
+                    CalculateMipCount(property.Value.x, property.Value.y),
+                    // Generated atlas textures are downloaded through TTT's
+                    // deferred compressor, which enables Streaming Mipmaps.
+                    streaming: true,
+                    contributors,
+                    demand,
+                    diagnosticName: property.Key));
             }
 
             return new TextureCostPlan(entries, sampling);
@@ -1839,6 +1902,27 @@ namespace net.rs64.TexTransTool.NDMF
             return false;
         }
 
+        private static double FindTextureDemandLog2(
+            PreparedGroup group,
+            Texture texture,
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures)
+        {
+            var values = new List<double>();
+            foreach (var material in group.Materials)
+            {
+                if (!propertyTextures.TryGetValue(material, out var properties))
+                    continue;
+
+                foreach (var property in properties)
+                {
+                    if (!ReferenceEquals(property.Value, texture)) continue;
+                    values.Add(group.PropertyDemandLog2.GetValueOrDefault(
+                        property.Key, UnknownDemandLog2));
+                }
+            }
+
+            return values.Count == 0 ? UnknownDemandLog2 : values.Min();
+        }
 
 
 
