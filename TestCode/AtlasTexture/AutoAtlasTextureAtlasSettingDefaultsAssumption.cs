@@ -37,7 +37,7 @@ namespace net.rs64.TexTransTool.TestCode
 
                 // Simulate an existing component with merging explicitly disabled.
                 UnityEditor.EditorJsonUtility.FromJsonOverwrite(
-                    "{\\"EnableAdditionalAtlasMerging\\":false}", autoAtlas);
+                    @"{""EnableAdditionalAtlasMerging"":false}", autoAtlas);
                 Assert.That(autoAtlas.EnableAdditionalAtlasMerging, Is.False);
             }
             finally
