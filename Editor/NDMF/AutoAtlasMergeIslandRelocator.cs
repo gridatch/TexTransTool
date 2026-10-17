@@ -132,10 +132,6 @@ namespace net.rs64.TexTransTool.NDMF
                 foreach (var island in localIslands)
                     island.Size *= localScale;
 
-                // Diagnostic only; never used as the actual placement.
-                var profilePaddingProbe = localIslands
-                    .Select(island => island.Clone()).ToArray();
-
                 RelocationResult localResult;
                 try
                 {
@@ -152,23 +148,7 @@ namespace net.rs64.TexTransTool.NDMF
                 }
 
                 if (!localResult.IsSuccess)
-                {
-                    // Check if using the standalone-profile padding would fit.
-                    // This is solely to diagnose any padding-model mismatch.
-                    string probeResult;
-                    try
-                    {
-                        var trial = new NFDHPlasFC().Relocation(
-                            new RelocationContext(1f, context.Padding),
-                            profilePaddingProbe);
-                        probeResult = trial.IsSuccess.ToString();
-                    }
-                    catch (Exception)
-                    {
-                        probeResult = "error";
-                    }
-                    return Fail($"g{group.Key}の矩形内NFDH配置に失敗: region={region}, islands={localIslands.Length}, globalPadding={context.Padding}, localPadding={context.Padding * localScale}, standalonePaddingFit={probeResult}");
-                }
+                    return Fail($"g{group.Key}の矩形内NFDH配置に失敗: region={region}, islands={localIslands.Length}, globalPadding={context.Padding}, localPadding={context.Padding * localScale}");
 
                 var minX = (float)region.xMin / _atlasWidth;
                 var minY = (float)region.yMin / _atlasWidth;
