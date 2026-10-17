@@ -146,6 +146,9 @@ msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOvera
 msgid "AutoAtlasTexture:info:SelectionImprovement"
 msgstr "2D atlas merge selection improvement (planning estimates)\nExact selection outperformed Greedy.\nEligible candidates: {0}\nPredicted additional savings: {1} bytes → {2} bytes (difference: {3} bytes)\nGreedy selection:\n{4}\nExact selection:\n{5}"
 
+msgid "AutoAtlasTexture:info:TemporaryUnboundedSearchComparison"
+msgstr "Temporary diagnostic (512-state limit vs unbounded search; unbounded is planning-only)\n512 states: search={0}ms / safe candidates={1} / planned selections={2} / predicted savings={3} bytes / max states before retention={4} / cumulative pruned={5}\nUnbounded: search={6}ms / safe candidates={7} / planned selections={8} / predicted savings={9} bytes / max states={10}\nSame final selected plan={11}\n512 plan:\n{12}\nUnbounded plan:\n{13}\nSafe candidates added or improved by unbounded search={14} (showing up to 20)\n{15}\nCandidates only in 512 or better in 512={16} (showing up to 20)\n{17}\nNote: only the 512-state plan is applied. The unbounded search removes only the 512-state retention cap; skyline dominance, 12-group maximum, candidate widths, and cost/safety gates are unchanged. Total Auto Atlas processing time includes this diagnostic search."
+
 msgid "AutoAtlasTexture:info:TwoDimensionalFallback"
 msgstr "2D texture merging could not complete; individual atlas processing was retried.\n{0}"
 

@@ -802,6 +802,45 @@ namespace net.rs64.TexTransTool.NDMF
                         FormatMergeSelections(mergePlan.Selections)));
             }
 
+            if (mergePlan.SearchLimitComparison is { } searchComparison)
+            {
+                string FormatDiagnosticSelections(
+                    IEnumerable<AutoAtlasTextureMergePlanner.MergeSelection>
+                        selections)
+                {
+                    var formatted = FormatMergeSelections(selections);
+                    return string.IsNullOrEmpty(formatted)
+                        ? "(none)"
+                        : formatted;
+                }
+
+                TTTLog.ReportingObject(configuration, () =>
+                    TTTLog.Info(
+                        "AutoAtlasTexture:info:TemporaryUnboundedSearchComparison",
+                        searchComparison.BoundedSearchMilliseconds,
+                        searchComparison.BoundedCandidateCount,
+                        mergePlan.Selections.Count,
+                        mergePlan.Selections.Sum(
+                            selection => selection.PredictedSavingBytes),
+                        searchComparison.BoundedMaxStatesBeforeRetention,
+                        searchComparison.BoundedPrunedStateCount,
+                        searchComparison.UnboundedSearchMilliseconds,
+                        searchComparison.UnboundedCandidateCount,
+                        searchComparison.UnboundedSelections.Count,
+                        searchComparison.UnboundedPredictedSavingBytes,
+                        searchComparison.UnboundedMaxStateCount,
+                        searchComparison.SameSelectedPlan,
+                        FormatDiagnosticSelections(mergePlan.Selections),
+                        FormatDiagnosticSelections(
+                            searchComparison.UnboundedSelections),
+                        searchComparison.AdditionalOrChangedCandidateCount,
+                        FormatDiagnosticSelections(
+                            searchComparison.AdditionalOrChangedCandidates),
+                        searchComparison.MissingOrChangedCandidateCount,
+                        FormatDiagnosticSelections(
+                            searchComparison.MissingOrChangedCandidates)));
+            }
+
             if (twoDimensionalFallbackReasons.Count != 0)
             {
                 TTTLog.ReportingObject(configuration, () =>

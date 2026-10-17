@@ -94,17 +94,75 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        internal sealed class SearchLimitComparison
+        {
+            internal readonly long BoundedSearchMilliseconds;
+            internal readonly long UnboundedSearchMilliseconds;
+            internal readonly int BoundedCandidateCount;
+            internal readonly int UnboundedCandidateCount;
+            internal readonly int BoundedMaxStatesBeforeRetention;
+            internal readonly long BoundedPrunedStateCount;
+            internal readonly int UnboundedMaxStateCount;
+            internal readonly IReadOnlyList<MergeSelection> UnboundedSelections;
+            internal readonly long UnboundedPredictedSavingBytes;
+            internal readonly bool SameSelectedPlan;
+            internal readonly int AdditionalOrChangedCandidateCount;
+            internal readonly IReadOnlyList<MergeSelection>
+                AdditionalOrChangedCandidates;
+            internal readonly int MissingOrChangedCandidateCount;
+            internal readonly IReadOnlyList<MergeSelection>
+                MissingOrChangedCandidates;
+
+            internal SearchLimitComparison(
+                long boundedSearchMilliseconds,
+                long unboundedSearchMilliseconds,
+                int boundedCandidateCount,
+                int unboundedCandidateCount,
+                int boundedMaxStatesBeforeRetention,
+                long boundedPrunedStateCount,
+                int unboundedMaxStateCount,
+                IReadOnlyList<MergeSelection> unboundedSelections,
+                bool sameSelectedPlan,
+                IReadOnlyList<MergeSelection> additionalOrChangedCandidates,
+                IReadOnlyList<MergeSelection> missingOrChangedCandidates)
+            {
+                BoundedSearchMilliseconds = boundedSearchMilliseconds;
+                UnboundedSearchMilliseconds = unboundedSearchMilliseconds;
+                BoundedCandidateCount = boundedCandidateCount;
+                UnboundedCandidateCount = unboundedCandidateCount;
+                BoundedMaxStatesBeforeRetention =
+                    boundedMaxStatesBeforeRetention;
+                BoundedPrunedStateCount = boundedPrunedStateCount;
+                UnboundedMaxStateCount = unboundedMaxStateCount;
+                UnboundedSelections = unboundedSelections;
+                UnboundedPredictedSavingBytes = unboundedSelections.Sum(
+                    selection => selection.PredictedSavingBytes);
+                SameSelectedPlan = sameSelectedPlan;
+                AdditionalOrChangedCandidateCount =
+                    additionalOrChangedCandidates.Count;
+                AdditionalOrChangedCandidates =
+                    additionalOrChangedCandidates.Take(20).ToArray();
+                MissingOrChangedCandidateCount =
+                    missingOrChangedCandidates.Count;
+                MissingOrChangedCandidates =
+                    missingOrChangedCandidates.Take(20).ToArray();
+            }
+        }
+
         internal sealed class PlanResult
         {
             internal readonly IReadOnlyList<MergeSelection> Selections;
             internal readonly SelectionImprovement? Improvement;
+            internal readonly SearchLimitComparison? SearchLimitComparison;
 
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
-                SelectionImprovement? improvement = null)
+                SelectionImprovement? improvement = null,
+                SearchLimitComparison? searchLimitComparison = null)
             {
                 Selections = selections;
                 Improvement = improvement;
+                SearchLimitComparison = searchLimitComparison;
             }
         }
 
@@ -457,11 +515,17 @@ namespace net.rs64.TexTransTool.NDMF
         private readonly struct ShadowPackingDiagnostics
         {
             internal readonly IReadOnlyList<MergeSelection> ProductionCandidates;
+            internal readonly int MaxStatesBeforeRetention;
+            internal readonly long PrunedStateCount;
 
             internal ShadowPackingDiagnostics(
-                IReadOnlyList<MergeSelection> productionCandidates)
+                IReadOnlyList<MergeSelection> productionCandidates,
+                int maxStatesBeforeRetention,
+                long prunedStateCount)
             {
                 ProductionCandidates = productionCandidates;
+                MaxStatesBeforeRetention = maxStatesBeforeRetention;
+                PrunedStateCount = prunedStateCount;
             }
         }
 
@@ -693,6 +757,8 @@ namespace net.rs64.TexTransTool.NDMF
 
             var byId = groups.ToDictionary(group => group.Id);
 
+            var boundedTimer =
+                System.Diagnostics.Stopwatch.StartNew();
             var shadow2D = EvaluateShadow2DPacking(
                 mergeGroups,
                 byId,
@@ -701,11 +767,100 @@ namespace net.rs64.TexTransTool.NDMF
                 alphaCache,
                 GetPredictedPropertySizes,
                 ShadowPackingStatesPerHost);
+            boundedTimer.Stop();
+
+            // Temporary validation run: remove only the 512-state retention
+            // limit. Geometry dominance, group-count limit, candidate widths,
+            // cost model and safety gates remain identical to production.
+            var unboundedTimer =
+                System.Diagnostics.Stopwatch.StartNew();
+            var unbounded2D = EvaluateShadow2DPacking(
+                mergeGroups,
+                byId,
+                propertyTextures,
+                settings,
+                alphaCache,
+                GetPredictedPropertySizes,
+                stateBudget: null);
+            unboundedTimer.Stop();
+
             var selected = SelectTwoDimensionalMerges(
                 shadow2D.ProductionCandidates, out var improvement);
+            var unboundedSelected = SelectTwoDimensionalMerges(
+                unbounded2D.ProductionCandidates);
 
-            return new PlanResult(selected, improvement);
+            var boundedByGroupSet = shadow2D.ProductionCandidates
+                .ToDictionary(
+                    SelectionGroupSetKey,
+                    selection => SelectionSignature(selection),
+                    StringComparer.Ordinal);
+            var unboundedByGroupSet = unbounded2D.ProductionCandidates
+                .ToDictionary(
+                    SelectionGroupSetKey,
+                    selection => SelectionSignature(selection),
+                    StringComparer.Ordinal);
+
+            var additionalOrChanged = unbounded2D.ProductionCandidates
+                .Where(selection =>
+                    !boundedByGroupSet.TryGetValue(
+                        SelectionGroupSetKey(selection),
+                        out var boundedSignature)
+                    || !string.Equals(
+                        boundedSignature,
+                        SelectionSignature(selection),
+                        StringComparison.Ordinal))
+                .OrderByDescending(selection =>
+                    selection.PredictedSavingBytes)
+                .ThenBy(SelectionGroupSetKey, StringComparer.Ordinal)
+                .ToArray();
+            var missingOrChanged = shadow2D.ProductionCandidates
+                .Where(selection =>
+                    !unboundedByGroupSet.TryGetValue(
+                        SelectionGroupSetKey(selection),
+                        out var unboundedSignature)
+                    || !string.Equals(
+                        unboundedSignature,
+                        SelectionSignature(selection),
+                        StringComparison.Ordinal))
+                .OrderByDescending(selection =>
+                    selection.PredictedSavingBytes)
+                .ThenBy(SelectionGroupSetKey, StringComparer.Ordinal)
+                .ToArray();
+
+            var comparison = new SearchLimitComparison(
+                boundedTimer.ElapsedMilliseconds,
+                unboundedTimer.ElapsedMilliseconds,
+                shadow2D.ProductionCandidates.Count,
+                unbounded2D.ProductionCandidates.Count,
+                shadow2D.MaxStatesBeforeRetention,
+                shadow2D.PrunedStateCount,
+                unbounded2D.MaxStatesBeforeRetention,
+                unboundedSelected,
+                SelectionPlanSignature(selected)
+                    == SelectionPlanSignature(unboundedSelected),
+                additionalOrChanged,
+                missingOrChanged);
+
+            return new PlanResult(selected, improvement, comparison);
         }
+
+        private static string SelectionGroupSetKey(
+            MergeSelection selection) =>
+            string.Join(",", selection.GroupIds.OrderBy(id => id));
+
+        private static string SelectionSignature(
+            MergeSelection selection) =>
+            SelectionGroupSetKey(selection)
+            + "@" + selection.PlannedLayoutSize.x
+            + "x" + selection.PlannedLayoutSize.y
+            + ":" + selection.PredictedSavingBytes;
+
+        private static string SelectionPlanSignature(
+            IEnumerable<MergeSelection> selections) =>
+            string.Join(";",
+                selections
+                    .Select(SelectionSignature)
+                    .OrderBy(value => value, StringComparer.Ordinal));
 
         internal static List<MergeSelection> SelectTwoDimensionalMerges(
             IEnumerable<MergeSelection> candidates)
@@ -820,10 +975,16 @@ namespace net.rs64.TexTransTool.NDMF
             Func<int[], Vector2Int,
                 IReadOnlyDictionary<string, Vector2Int>>
                 propertySizeProvider,
-            int stateBudget)
+            int? stateBudget)
         {
-            if (stateBudget < 8 || stateBudget % 8 != 0)
+            if (stateBudget is { } boundedBudget
+                && (boundedBudget < 8 || boundedBudget % 8 != 0))
+            {
                 throw new ArgumentOutOfRangeException(nameof(stateBudget));
+            }
+
+            var maxStatesBeforeRetention = 0;
+            long prunedStateCount = 0;
             var shadowAdoptable =
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
             var shadowPackedRegions =
@@ -924,8 +1085,11 @@ namespace net.rs64.TexTransTool.NDMF
                 // expanded, while generated states always do. generated itself
                 // is deduplicated by StateKey, so the union is already unique.
                 var unique = source.ToArray();
+                maxStatesBeforeRetention = Math.Max(
+                    maxStatesBeforeRetention, unique.Length);
 
-                if (unique.Length <= stateBudget)
+                if (stateBudget is not { } budget
+                    || unique.Length <= budget)
                 {
                     return unique
                         .OrderBy(
@@ -958,7 +1122,7 @@ namespace net.rs64.TexTransTool.NDMF
                     foreach (var state in ordered)
                     {
                         if (selected.Count
-                                >= stateBudget
+                                >= budget
                             || added >= count)
                         {
                             break;
@@ -986,7 +1150,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    stateBudget / 2);
+                    budget / 2);
                 Retain(
                     unique
                         .OrderBy(
@@ -997,7 +1161,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    stateBudget / 4);
+                    budget / 4);
                 Retain(
                     unique
                         .OrderBy(state => state.MaxHeight)
@@ -1007,7 +1171,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    stateBudget / 8);
+                    budget / 8);
                 Retain(
                     unique
                         .OrderByDescending(
@@ -1018,9 +1182,9 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    stateBudget / 8);
+                    budget / 8);
 
-                if (selected.Count < stateBudget)
+                if (selected.Count < budget)
                 {
                     Retain(
                         unique
@@ -1035,8 +1199,10 @@ namespace net.rs64.TexTransTool.NDMF
                             .ThenBy(
                                 state => state,
                                 ShadowPackingStateStableComparer.Instance),
-                        stateBudget);
+                        budget);
                 }
+
+                prunedStateCount += unique.Length - selected.Count;
 
                 return selected
                     .OrderBy(
@@ -1237,7 +1403,9 @@ namespace net.rs64.TexTransTool.NDMF
 
             return new ShadowPackingDiagnostics(
                 shadowAdoptable.Select(pair => new MergeSelection(
-                    pair.Value, shadowPackedRegions[pair.Key])).ToArray());
+                    pair.Value, shadowPackedRegions[pair.Key])).ToArray(),
+                maxStatesBeforeRetention,
+                prunedStateCount);
         }
 
         private static int GetUsedHeightPixels(

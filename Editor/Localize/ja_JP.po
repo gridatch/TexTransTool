@@ -147,6 +147,9 @@ msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応
 msgid "AutoAtlasTexture:info:SelectionImprovement"
 msgstr "2Dテクスチャ統合の組合せ最適化（計画段階の予測値）\n厳密選択がGreedy方式を上回りました。\n安全候補数: {0}件\n予測追加削減量: {1} bytes → {2} bytes（差: {3} bytes）\nGreedy方式:\n{4}\n厳密選択方式:\n{5}"
 
+msgid "AutoAtlasTexture:info:TemporaryUnboundedSearchComparison"
+msgstr "一時診断（512状態上限 vs 無制限探索・無制限側は計画のみ）\n512状態: 探索={0}ms / 安全候補={1} / 想定採用={2} / 予測削減={3} bytes / 保持前最大状態={4} / 剪定累計={5}\n無制限: 探索={6}ms / 安全候補={7} / 想定採用={8} / 予測削減={9} bytes / 最大状態={10}\n最終採用案一致={11}\n512案:\n{12}\n無制限案:\n{13}\n無制限側で追加または改善された安全候補={14}件（最大20件表示）\n{15}\n512側にのみ存在または512側の方が良い候補={16}件（最大20件表示）\n{17}\n注: 本番適用は512案のみです。無制限探索では512-state保持上限だけを外し、skyline dominance・最大12group・候補幅・cost/safety判定は同一です。自動アトラス総処理時間にはこの診断探索時間も含まれます。"
+
 msgid "AutoAtlasTexture:info:TwoDimensionalFallback"
 msgstr "2Dテクスチャ統合が成立せず、単体処理へ復帰しました。\n{0}"
 
