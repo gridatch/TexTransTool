@@ -12,8 +12,8 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             var baseline = Plan(
                 new[]
                 {
-                    Entry(64, 64, 1, false, new[] { 0 }),
-                    Entry(64, 64, 1, false, new[] { 1 }),
+                    Entry(64, 64, 1),
+                    Entry(64, 64, 1),
                 },
                 new Dictionary<int, double>
                 {
@@ -23,7 +23,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             var merged = Plan(
                 new[]
                 {
-                    Entry(64, 64, 1, false, new[] { 0, 1 }),
+                    Entry(64, 64, 1),
                 },
                 new Dictionary<int, double>
                 {
@@ -39,13 +39,13 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         {
             var baseline = Plan(new[]
             {
-                Entry(64, 64, 1, false, new[] { 0 }, blockSize: 4),
-                Entry(64, 64, 1, false, new[] { 1 }, blockSize: 4),
+                Entry(64, 64, 1, blockSize: 4),
+                Entry(64, 64, 1, blockSize: 4),
             });
             var merged = Plan(new[]
             {
-                Entry(64, 64, 1, false, new[] { 0 }, blockSize: 2),
-                Entry(64, 64, 1, false, new[] { 1 }, blockSize: 2),
+                Entry(64, 64, 1, blockSize: 2),
+                Entry(64, 64, 1, blockSize: 2),
             });
 
             Assert.That(Candidate(baseline, merged).IsAdoptable, Is.False);
@@ -56,12 +56,12 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         {
             var baseline = Plan(new[]
             {
-                Entry(64, 64, 1, false, new[] { 0 }, blockSize: 2),
-                Entry(64, 64, 1, false, new[] { 1 }, blockSize: 2),
+                Entry(64, 64, 1, blockSize: 2),
+                Entry(64, 64, 1, blockSize: 2),
             });
             var merged = Plan(new[]
             {
-                Entry(64, 64, 1, false, new[] { 0, 1 }, blockSize: 4),
+                Entry(64, 64, 1, blockSize: 4),
             });
 
             Assert.That(Candidate(baseline, merged).IsAdoptable, Is.False);
@@ -72,12 +72,12 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         {
             var baseline = Plan(new[]
             {
-                Entry(128, 128, 1, false, new[] { 0 }),
-                Entry(128, 128, 1, false, new[] { 1 }),
+                Entry(128, 128, 1),
+                Entry(128, 128, 1),
             });
             var merged = Plan(new[]
             {
-                Entry(256, 32, 1, false, new[] { 0, 1 }),
+                Entry(256, 32, 1),
             });
 
             Assert.That(Candidate(baseline, merged).IsAdoptable, Is.False);
@@ -89,8 +89,8 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             var baseline = Plan(
                 new[]
                 {
-                    Entry(64, 64, 1, false, new[] { 0 }),
-                    Entry(64, 64, 1, false, new[] { 1 }),
+                    Entry(64, 64, 1),
+                    Entry(64, 64, 1),
                 },
                 new Dictionary<int, double>
                 {
@@ -100,7 +100,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             var merged = Plan(
                 new[]
                 {
-                    Entry(64, 64, 1, false, new[] { 0, 1 }),
+                    Entry(64, 64, 1),
                 },
                 new Dictionary<int, double>
                 {
@@ -119,15 +119,15 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             // raises both generated property textures to the larger envelope.
             var baseline = Plan(new[]
             {
-                Entry(64, 64, 1, false, new[] { 0 }),
-                Entry(32, 32, 1, false, new[] { 0 }),
-                Entry(32, 32, 1, false, new[] { 1 }),
-                Entry(64, 64, 1, false, new[] { 1 }),
+                Entry(64, 64, 1),
+                Entry(32, 32, 1),
+                Entry(32, 32, 1),
+                Entry(64, 64, 1),
             });
             var merged = Plan(new[]
             {
-                Entry(128, 64, 1, false, new[] { 0, 1 }),
-                Entry(128, 64, 1, false, new[] { 0, 1 }),
+                Entry(128, 64, 1),
+                Entry(128, 64, 1),
             });
 
             Assert.That(merged.PixelCount, Is.GreaterThan(baseline.PixelCount));
@@ -142,12 +142,12 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             // output strictly cheaper than keeping all three independently.
             var pairBaseline = Plan(new[]
             {
-                Entry(64, 64, 1, false, new[] { 0 }),
-                Entry(64, 64, 1, false, new[] { 1 }),
+                Entry(64, 64, 1),
+                Entry(64, 64, 1),
             });
             var pairMerged = Plan(new[]
             {
-                Entry(128, 64, 1, false, new[] { 0, 1 }),
+                Entry(128, 64, 1),
             });
 
             Assert.That(
@@ -156,13 +156,13 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 
             var tripleBaseline = Plan(new[]
             {
-                Entry(64, 64, 1, false, new[] { 0 }),
-                Entry(64, 64, 1, false, new[] { 1 }),
-                Entry(128, 64, 1, false, new[] { 2 }),
+                Entry(64, 64, 1),
+                Entry(64, 64, 1),
+                Entry(128, 64, 1),
             });
             var tripleMerged = Plan(new[]
             {
-                Entry(128, 64, 1, false, new[] { 0, 1, 2 }),
+                Entry(128, 64, 1),
             });
 
             Assert.That(
@@ -470,12 +470,12 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         {
             var baseline = Plan(new[]
             {
-                Entry(64, 64, 1, false, new[] { 3 }),
-                Entry(64, 64, 1, false, new[] { 6 }),
+                Entry(64, 64, 1),
+                Entry(64, 64, 1),
             });
             var merged = Plan(new[]
             {
-                Entry(64, 64, 1, false, new[] { 3, 6 }),
+                Entry(64, 64, 1),
             });
             var candidate = Candidate(baseline, merged, new[] { 3, 6 });
             var regions = new Dictionary<int, RectInt>
@@ -497,12 +497,12 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         {
             var baseline = Plan(new[]
             {
-                Entry(128, 128, 1, false, new[] { 1 }),
-                Entry(128, 128, 1, false, new[] { 2 }),
+                Entry(128, 128, 1),
+                Entry(128, 128, 1),
             });
             var merged = Plan(new[]
             {
-                Entry(128, 128, 1, false, new[] { 1, 2 }),
+                Entry(128, 128, 1),
             });
             var candidate = Candidate(baseline, merged, new[] { 1, 2 });
             var band = new AutoAtlasTextureMergePlanner.MergeSelection(candidate);
@@ -594,8 +594,8 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         {
             var baseline = Plan(new[]
             {
-                Entry(32, 32, 1, false, new[] { left }),
-                Entry(32, 32, 1, false, new[] { right }),
+                Entry(32, 32, 1),
+                Entry(32, 32, 1),
             });
             var merged = Plan(new[]
             {
@@ -944,23 +944,10 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         private static AutoAtlasTextureMergePlanner.TextureCostEntry Entry(
-            int width,
-            int height,
-            int mipCount,
-            bool streaming,
-            IEnumerable<int> contributors,
-            int blockSize = 4,
-            Dictionary<int, double> demandLog2 = null)
+            int width, int height, int mipCount, int blockSize = 4)
         {
-            demandLog2 ??= new Dictionary<int, double>();
             return new AutoAtlasTextureMergePlanner.TextureCostEntry(
-                width,
-                height,
-                (1u, 1u, (uint)blockSize),
-                mipCount,
-                streaming,
-                contributors,
-                demandLog2);
+                width, height, (1u, 1u, (uint)blockSize), mipCount);
         }
     }
 }
