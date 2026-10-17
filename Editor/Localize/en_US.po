@@ -150,10 +150,10 @@ msgid "AutoAtlasTexture:info:TwoDimensionalFallback"
 msgstr "2D texture merging could not complete; individual atlas processing was retried.\n{0}"
 
 msgid "AutoAtlasTexture:info:RelocateResult"
-msgstr "Auto Atlas Relocate Result\n{0}\nTotal Auto Atlas processing time: {1}ms"
+msgstr "Auto Atlas Relocate Result\n{0}"
 
 msgid "AutoAtlasTexture:info:TargetNotFound"
-msgstr "Atlas target not found!\nTotal Auto Atlas processing time: {0}ms"
+msgstr "Atlas target not found!"
 
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"

@@ -151,10 +151,10 @@ msgid "AutoAtlasTexture:info:TwoDimensionalFallback"
 msgstr "2Dテクスチャ統合が成立せず、単体処理へ復帰しました。\n{0}"
 
 msgid "AutoAtlasTexture:info:RelocateResult"
-msgstr "自動アトラス再配置結果\n{0}\n自動アトラス総処理時間: {1}ms"
+msgstr "自動アトラス再配置結果\n{0}"
 
 msgid "AutoAtlasTexture:info:TargetNotFound"
-msgstr "アトラス化対象が存在しません！\n自動アトラス総処理時間: {0}ms"
+msgstr "アトラス化対象が存在しません！"
 
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"

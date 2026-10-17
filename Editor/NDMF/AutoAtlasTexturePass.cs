@@ -286,8 +286,6 @@ namespace net.rs64.TexTransTool.NDMF
             ObjectPathRemapper? objectPathRemapper = null,
             Transform? avatarRoot = null)
         {
-            var processingTimer = System.Diagnostics.Stopwatch.StartNew();
-
             // Store only the NDMF console summary for this build.
             var completed = new List<string>();
 
@@ -314,11 +312,8 @@ namespace net.rs64.TexTransTool.NDMF
             var allReferencedMaterials = domain.GetAllMaterials();
             if (allMaterials.Count == 0)
             {
-                processingTimer.Stop();
                 TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info(
-                        "AutoAtlasTexture:info:TargetNotFound",
-                        processingTimer.ElapsedMilliseconds));
+                    TTTLog.Info("AutoAtlasTexture:info:TargetNotFound"));
                 return;
             }
 
@@ -754,8 +749,6 @@ namespace net.rs64.TexTransTool.NDMF
                 completed.Add(block);
             }
 
-            processingTimer.Stop();
-
 
             if (mergePlan.Improvement is { } improvement)
             {
@@ -782,15 +775,13 @@ namespace net.rs64.TexTransTool.NDMF
             if (completed.Count == 0)
             {
                 TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info("AutoAtlasTexture:info:TargetNotFound",
-                        processingTimer.ElapsedMilliseconds));
+                    TTTLog.Info("AutoAtlasTexture:info:TargetNotFound"));
                 return;
             }
 
             TTTLog.ReportingObject(configuration, () =>
                 TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
-                    string.Join("\n\n", completed),
-                    processingTimer.ElapsedMilliseconds));
+                    string.Join("\n\n", completed)));
         }
 
         internal static bool IsExcludedFromTextureMerging(
