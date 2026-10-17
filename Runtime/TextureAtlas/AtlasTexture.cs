@@ -695,9 +695,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     manualSize,
                     islandRelocatorOverride,
                     executionOptions?.RequireLossless == true,
-                    out var manualTime,
-                    out _
-                );
+                    out var manualTime);
                 return (manualSize, manualIslands, manualResult, manualTime);
             }
 
@@ -733,9 +731,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     candidateSize,
                     islandRelocatorOverride,
                     executionOptions?.RequireLossless == true,
-                    out var candidateTime,
-                    out _
-                );
+                    out var candidateTime);
 
                 totalRelocationTime += candidateTime;
                 selectedSize = candidateSize;
