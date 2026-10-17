@@ -802,7 +802,7 @@ namespace net.rs64.TexTransTool.NDMF
                         FormatMergeSelections(mergePlan.Selections)));
             }
 
-            if (mergePlan.SearchLimitComparison is { } searchComparison)
+            if (mergePlan.SearchBudgetComparison is { } searchComparison)
             {
                 string FormatDiagnosticSelections(
                     IEnumerable<AutoAtlasTextureMergePlanner.MergeSelection>
@@ -816,29 +816,48 @@ namespace net.rs64.TexTransTool.NDMF
 
                 TTTLog.ReportingObject(configuration, () =>
                     TTTLog.Info(
-                        "AutoAtlasTexture:info:TemporaryUnboundedSearchComparison",
-                        searchComparison.BoundedSearchMilliseconds,
-                        searchComparison.BoundedCandidateCount,
+                        "AutoAtlasTexture:info:TemporarySearchBudgetHeader",
+                        searchComparison.ProductionSearchMilliseconds,
+                        searchComparison.ProductionCandidateCount,
                         mergePlan.Selections.Count,
                         mergePlan.Selections.Sum(
                             selection => selection.PredictedSavingBytes),
-                        searchComparison.BoundedMaxStatesBeforeRetention,
-                        searchComparison.BoundedPrunedStateCount,
-                        searchComparison.UnboundedSearchMilliseconds,
-                        searchComparison.UnboundedCandidateCount,
-                        searchComparison.UnboundedSelections.Count,
-                        searchComparison.UnboundedPredictedSavingBytes,
-                        searchComparison.UnboundedMaxStateCount,
-                        searchComparison.SameSelectedPlan,
-                        FormatDiagnosticSelections(mergePlan.Selections),
-                        FormatDiagnosticSelections(
-                            searchComparison.UnboundedSelections),
-                        searchComparison.AdditionalOrChangedCandidateCount,
-                        FormatDiagnosticSelections(
-                            searchComparison.AdditionalOrChangedCandidates),
-                        searchComparison.MissingOrChangedCandidateCount,
-                        FormatDiagnosticSelections(
-                            searchComparison.MissingOrChangedCandidates)));
+                        searchComparison.ProductionMaxStatesBeforeRetention,
+                        searchComparison.ProductionPrunedStateCount,
+                        FormatDiagnosticSelections(mergePlan.Selections)));
+
+                foreach (var probe in searchComparison.Probes)
+                {
+                    if (probe.Aborted)
+                    {
+                        TTTLog.ReportingObject(configuration, () =>
+                            TTTLog.Info(
+                                "AutoAtlasTexture:info:TemporarySearchBudgetAborted",
+                                probe.StateBudget,
+                                probe.SearchMilliseconds,
+                                probe.AbortReason));
+                        continue;
+                    }
+
+                    TTTLog.ReportingObject(configuration, () =>
+                        TTTLog.Info(
+                            "AutoAtlasTexture:info:TemporarySearchBudgetProbe",
+                            probe.StateBudget,
+                            probe.SearchMilliseconds,
+                            probe.CandidateCount,
+                            probe.SelectedCount,
+                            probe.PredictedSavingBytes,
+                            probe.MaxStatesBeforeRetention,
+                            probe.PrunedStateCount,
+                            probe.SameSelectedPlan,
+                            FormatDiagnosticSelections(probe.Selections),
+                            probe.AdditionalOrChangedCandidateCount,
+                            FormatDiagnosticSelections(
+                                probe.AdditionalOrChangedCandidates),
+                            probe.MissingOrChangedCandidateCount,
+                            FormatDiagnosticSelections(
+                                probe.MissingOrChangedCandidates)));
+                }
             }
 
             if (twoDimensionalFallbackReasons.Count != 0)

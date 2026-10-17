@@ -23,6 +23,12 @@ namespace net.rs64.TexTransTool.NDMF
         // Candidate exploration below never calls DoAtlasTexture. These limits
         // only bound cheap integer-DP state retention, not expensive atlas probes.
         private const int ShadowPackingStatesPerHost = 512;
+        private static readonly int[] DiagnosticStateBudgets =
+            { 1024, 2048, 4096 };
+        // Prevent a diagnostic expansion from destabilizing the Unity process.
+        // This limit applies to one generated-state dictionary, before any
+        // property-aware retention. Production search is not subject to it.
+        private const int DiagnosticGeneratedStateLimit = 200_000;
         private const int PackingGridUnit = 256;
         private const double Epsilon = 1e-8;
 
@@ -94,18 +100,19 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        internal sealed class SearchLimitComparison
+        internal sealed class SearchBudgetProbe
         {
-            internal readonly long BoundedSearchMilliseconds;
-            internal readonly long UnboundedSearchMilliseconds;
-            internal readonly int BoundedCandidateCount;
-            internal readonly int UnboundedCandidateCount;
-            internal readonly int BoundedMaxStatesBeforeRetention;
-            internal readonly long BoundedPrunedStateCount;
-            internal readonly int UnboundedMaxStateCount;
-            internal readonly IReadOnlyList<MergeSelection> UnboundedSelections;
-            internal readonly long UnboundedPredictedSavingBytes;
+            internal readonly int StateBudget;
+            internal readonly long SearchMilliseconds;
+            internal readonly bool Aborted;
+            internal readonly string AbortReason;
+            internal readonly int CandidateCount;
+            internal readonly int SelectedCount;
+            internal readonly long PredictedSavingBytes;
+            internal readonly int MaxStatesBeforeRetention;
+            internal readonly long PrunedStateCount;
             internal readonly bool SameSelectedPlan;
+            internal readonly IReadOnlyList<MergeSelection> Selections;
             internal readonly int AdditionalOrChangedCandidateCount;
             internal readonly IReadOnlyList<MergeSelection>
                 AdditionalOrChangedCandidates;
@@ -113,39 +120,69 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly IReadOnlyList<MergeSelection>
                 MissingOrChangedCandidates;
 
-            internal SearchLimitComparison(
-                long boundedSearchMilliseconds,
-                long unboundedSearchMilliseconds,
-                int boundedCandidateCount,
-                int unboundedCandidateCount,
-                int boundedMaxStatesBeforeRetention,
-                long boundedPrunedStateCount,
-                int unboundedMaxStateCount,
-                IReadOnlyList<MergeSelection> unboundedSelections,
-                bool sameSelectedPlan,
-                IReadOnlyList<MergeSelection> additionalOrChangedCandidates,
-                IReadOnlyList<MergeSelection> missingOrChangedCandidates)
+            internal SearchBudgetProbe(
+                int stateBudget,
+                long searchMilliseconds,
+                bool aborted,
+                string abortReason,
+                int candidateCount = 0,
+                IReadOnlyList<MergeSelection>? selections = null,
+                int maxStatesBeforeRetention = 0,
+                long prunedStateCount = 0,
+                bool sameSelectedPlan = false,
+                IReadOnlyList<MergeSelection>?
+                    additionalOrChangedCandidates = null,
+                IReadOnlyList<MergeSelection>?
+                    missingOrChangedCandidates = null)
             {
-                BoundedSearchMilliseconds = boundedSearchMilliseconds;
-                UnboundedSearchMilliseconds = unboundedSearchMilliseconds;
-                BoundedCandidateCount = boundedCandidateCount;
-                UnboundedCandidateCount = unboundedCandidateCount;
-                BoundedMaxStatesBeforeRetention =
-                    boundedMaxStatesBeforeRetention;
-                BoundedPrunedStateCount = boundedPrunedStateCount;
-                UnboundedMaxStateCount = unboundedMaxStateCount;
-                UnboundedSelections = unboundedSelections;
-                UnboundedPredictedSavingBytes = unboundedSelections.Sum(
+                StateBudget = stateBudget;
+                SearchMilliseconds = searchMilliseconds;
+                Aborted = aborted;
+                AbortReason = abortReason;
+                CandidateCount = candidateCount;
+                Selections = selections ?? Array.Empty<MergeSelection>();
+                SelectedCount = Selections.Count;
+                PredictedSavingBytes = Selections.Sum(
                     selection => selection.PredictedSavingBytes);
+                MaxStatesBeforeRetention = maxStatesBeforeRetention;
+                PrunedStateCount = prunedStateCount;
                 SameSelectedPlan = sameSelectedPlan;
-                AdditionalOrChangedCandidateCount =
-                    additionalOrChangedCandidates.Count;
                 AdditionalOrChangedCandidates =
-                    additionalOrChangedCandidates.Take(20).ToArray();
-                MissingOrChangedCandidateCount =
-                    missingOrChangedCandidates.Count;
+                    (additionalOrChangedCandidates
+                        ?? Array.Empty<MergeSelection>())
+                    .Take(20).ToArray();
+                AdditionalOrChangedCandidateCount =
+                    additionalOrChangedCandidates?.Count ?? 0;
                 MissingOrChangedCandidates =
-                    missingOrChangedCandidates.Take(20).ToArray();
+                    (missingOrChangedCandidates
+                        ?? Array.Empty<MergeSelection>())
+                    .Take(20).ToArray();
+                MissingOrChangedCandidateCount =
+                    missingOrChangedCandidates?.Count ?? 0;
+            }
+        }
+
+        internal sealed class SearchBudgetComparison
+        {
+            internal readonly long ProductionSearchMilliseconds;
+            internal readonly int ProductionCandidateCount;
+            internal readonly int ProductionMaxStatesBeforeRetention;
+            internal readonly long ProductionPrunedStateCount;
+            internal readonly IReadOnlyList<SearchBudgetProbe> Probes;
+
+            internal SearchBudgetComparison(
+                long productionSearchMilliseconds,
+                int productionCandidateCount,
+                int productionMaxStatesBeforeRetention,
+                long productionPrunedStateCount,
+                IReadOnlyList<SearchBudgetProbe> probes)
+            {
+                ProductionSearchMilliseconds = productionSearchMilliseconds;
+                ProductionCandidateCount = productionCandidateCount;
+                ProductionMaxStatesBeforeRetention =
+                    productionMaxStatesBeforeRetention;
+                ProductionPrunedStateCount = productionPrunedStateCount;
+                Probes = probes;
             }
         }
 
@@ -153,16 +190,16 @@ namespace net.rs64.TexTransTool.NDMF
         {
             internal readonly IReadOnlyList<MergeSelection> Selections;
             internal readonly SelectionImprovement? Improvement;
-            internal readonly SearchLimitComparison? SearchLimitComparison;
+            internal readonly SearchBudgetComparison? SearchBudgetComparison;
 
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
                 SelectionImprovement? improvement = null,
-                SearchLimitComparison? searchLimitComparison = null)
+                SearchBudgetComparison? searchBudgetComparison = null)
             {
                 Selections = selections;
                 Improvement = improvement;
-                SearchLimitComparison = searchLimitComparison;
+                SearchBudgetComparison = searchBudgetComparison;
             }
         }
 
@@ -529,6 +566,22 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        private sealed class DiagnosticSearchStateLimitExceededException
+            : Exception
+        {
+            internal DiagnosticSearchStateLimitExceededException(
+                int stateBudget,
+                int targetWidth,
+                int groupId,
+                int generatedStateLimit)
+                : base(
+                    $"budget={stateBudget}, width={targetWidth}, "
+                    + $"expanding=g{groupId}, generated-state limit="
+                    + generatedStateLimit)
+            {
+            }
+        }
+
         private enum UnknownAlphaAssumption
         {
             AssumeAbsent,
@@ -757,7 +810,7 @@ namespace net.rs64.TexTransTool.NDMF
 
             var byId = groups.ToDictionary(group => group.Id);
 
-            var boundedTimer =
+            var productionTimer =
                 System.Diagnostics.Stopwatch.StartNew();
             var shadow2D = EvaluateShadow2DPacking(
                 mergeGroups,
@@ -767,79 +820,118 @@ namespace net.rs64.TexTransTool.NDMF
                 alphaCache,
                 GetPredictedPropertySizes,
                 ShadowPackingStatesPerHost);
-            boundedTimer.Stop();
-
-            // Temporary validation run: remove only the 512-state retention
-            // limit. Geometry dominance, group-count limit, candidate widths,
-            // cost model and safety gates remain identical to production.
-            var unboundedTimer =
-                System.Diagnostics.Stopwatch.StartNew();
-            var unbounded2D = EvaluateShadow2DPacking(
-                mergeGroups,
-                byId,
-                propertyTextures,
-                settings,
-                alphaCache,
-                GetPredictedPropertySizes,
-                stateBudget: null);
-            unboundedTimer.Stop();
+            productionTimer.Stop();
 
             var selected = SelectTwoDimensionalMerges(
                 shadow2D.ProductionCandidates, out var improvement);
-            var unboundedSelected = SelectTwoDimensionalMerges(
-                unbounded2D.ProductionCandidates);
-
-            var boundedByGroupSet = shadow2D.ProductionCandidates
-                .ToDictionary(
-                    SelectionGroupSetKey,
-                    selection => SelectionSignature(selection),
-                    StringComparer.Ordinal);
-            var unboundedByGroupSet = unbounded2D.ProductionCandidates
+            var productionPlanSignature =
+                SelectionPlanSignature(selected);
+            var productionByGroupSet = shadow2D.ProductionCandidates
                 .ToDictionary(
                     SelectionGroupSetKey,
                     selection => SelectionSignature(selection),
                     StringComparer.Ordinal);
 
-            var additionalOrChanged = unbounded2D.ProductionCandidates
-                .Where(selection =>
-                    !boundedByGroupSet.TryGetValue(
-                        SelectionGroupSetKey(selection),
-                        out var boundedSignature)
-                    || !string.Equals(
-                        boundedSignature,
-                        SelectionSignature(selection),
-                        StringComparison.Ordinal))
-                .OrderByDescending(selection =>
-                    selection.PredictedSavingBytes)
-                .ThenBy(SelectionGroupSetKey, StringComparer.Ordinal)
-                .ToArray();
-            var missingOrChanged = shadow2D.ProductionCandidates
-                .Where(selection =>
-                    !unboundedByGroupSet.TryGetValue(
-                        SelectionGroupSetKey(selection),
-                        out var unboundedSignature)
-                    || !string.Equals(
-                        unboundedSignature,
-                        SelectionSignature(selection),
-                        StringComparison.Ordinal))
-                .OrderByDescending(selection =>
-                    selection.PredictedSavingBytes)
-                .ThenBy(SelectionGroupSetKey, StringComparer.Ordinal)
-                .ToArray();
+            // Diagnostic-only widening. A true unbounded run can grow
+            // combinatorially before skyline dominance is reached, so compare
+            // progressively larger retention budgets instead. Abort a probe
+            // before its per-step generated-state dictionary can exhaust Unity.
+            var probes = new List<SearchBudgetProbe>();
+            foreach (var diagnosticBudget in DiagnosticStateBudgets)
+            {
+                var diagnosticTimer =
+                    System.Diagnostics.Stopwatch.StartNew();
+                try
+                {
+                    var diagnostic = EvaluateShadow2DPacking(
+                        mergeGroups,
+                        byId,
+                        propertyTextures,
+                        settings,
+                        alphaCache,
+                        GetPredictedPropertySizes,
+                        diagnosticBudget,
+                        DiagnosticGeneratedStateLimit);
+                    diagnosticTimer.Stop();
 
-            var comparison = new SearchLimitComparison(
-                boundedTimer.ElapsedMilliseconds,
-                unboundedTimer.ElapsedMilliseconds,
+                    var diagnosticSelected =
+                        SelectTwoDimensionalMerges(
+                            diagnostic.ProductionCandidates);
+                    var diagnosticByGroupSet =
+                        diagnostic.ProductionCandidates.ToDictionary(
+                            SelectionGroupSetKey,
+                            selection => SelectionSignature(selection),
+                            StringComparer.Ordinal);
+
+                    var additionalOrChanged =
+                        diagnostic.ProductionCandidates
+                            .Where(selection =>
+                                !productionByGroupSet.TryGetValue(
+                                    SelectionGroupSetKey(selection),
+                                    out var productionSignature)
+                                || !string.Equals(
+                                    productionSignature,
+                                    SelectionSignature(selection),
+                                    StringComparison.Ordinal))
+                            .OrderByDescending(selection =>
+                                selection.PredictedSavingBytes)
+                            .ThenBy(
+                                SelectionGroupSetKey,
+                                StringComparer.Ordinal)
+                            .ToArray();
+                    var missingOrChanged =
+                        shadow2D.ProductionCandidates
+                            .Where(selection =>
+                                !diagnosticByGroupSet.TryGetValue(
+                                    SelectionGroupSetKey(selection),
+                                    out var diagnosticSignature)
+                                || !string.Equals(
+                                    diagnosticSignature,
+                                    SelectionSignature(selection),
+                                    StringComparison.Ordinal))
+                            .OrderByDescending(selection =>
+                                selection.PredictedSavingBytes)
+                            .ThenBy(
+                                SelectionGroupSetKey,
+                                StringComparer.Ordinal)
+                            .ToArray();
+
+                    probes.Add(new SearchBudgetProbe(
+                        diagnosticBudget,
+                        diagnosticTimer.ElapsedMilliseconds,
+                        false,
+                        "",
+                        diagnostic.ProductionCandidates.Count,
+                        diagnosticSelected,
+                        diagnostic.MaxStatesBeforeRetention,
+                        diagnostic.PrunedStateCount,
+                        productionPlanSignature
+                            == SelectionPlanSignature(
+                                diagnosticSelected),
+                        additionalOrChanged,
+                        missingOrChanged));
+                }
+                catch (DiagnosticSearchStateLimitExceededException exception)
+                {
+                    diagnosticTimer.Stop();
+                    probes.Add(new SearchBudgetProbe(
+                        diagnosticBudget,
+                        diagnosticTimer.ElapsedMilliseconds,
+                        true,
+                        exception.Message));
+                    // Do not attempt a still wider probe after the raw-state
+                    // safety ceiling is reached; the diagnostic must never
+                    // destabilize the normal 512-state build.
+                    break;
+                }
+            }
+
+            var comparison = new SearchBudgetComparison(
+                productionTimer.ElapsedMilliseconds,
                 shadow2D.ProductionCandidates.Count,
-                unbounded2D.ProductionCandidates.Count,
                 shadow2D.MaxStatesBeforeRetention,
                 shadow2D.PrunedStateCount,
-                unbounded2D.MaxStatesBeforeRetention,
-                unboundedSelected,
-                SelectionPlanSignature(selected)
-                    == SelectionPlanSignature(unboundedSelected),
-                additionalOrChanged,
-                missingOrChanged);
+                probes);
 
             return new PlanResult(selected, improvement, comparison);
         }
@@ -975,13 +1067,14 @@ namespace net.rs64.TexTransTool.NDMF
             Func<int[], Vector2Int,
                 IReadOnlyDictionary<string, Vector2Int>>
                 propertySizeProvider,
-            int? stateBudget)
+            int stateBudget,
+            int? generatedStateLimit = null)
         {
-            if (stateBudget is { } boundedBudget
-                && (boundedBudget < 8 || boundedBudget % 8 != 0))
-            {
+            if (stateBudget < 8 || stateBudget % 8 != 0)
                 throw new ArgumentOutOfRangeException(nameof(stateBudget));
-            }
+            if (generatedStateLimit is <= 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(generatedStateLimit));
 
             var maxStatesBeforeRetention = 0;
             long prunedStateCount = 0;
@@ -1088,8 +1181,7 @@ namespace net.rs64.TexTransTool.NDMF
                 maxStatesBeforeRetention = Math.Max(
                     maxStatesBeforeRetention, unique.Length);
 
-                if (stateBudget is not { } budget
-                    || unique.Length <= budget)
+                if (unique.Length <= stateBudget)
                 {
                     return unique
                         .OrderBy(
@@ -1122,7 +1214,7 @@ namespace net.rs64.TexTransTool.NDMF
                     foreach (var state in ordered)
                     {
                         if (selected.Count
-                                >= budget
+                                >= stateBudget
                             || added >= count)
                         {
                             break;
@@ -1150,7 +1242,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    budget / 2);
+                    stateBudget / 2);
                 Retain(
                     unique
                         .OrderBy(
@@ -1161,7 +1253,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    budget / 4);
+                    stateBudget / 4);
                 Retain(
                     unique
                         .OrderBy(state => state.MaxHeight)
@@ -1171,7 +1263,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    budget / 8);
+                    stateBudget / 8);
                 Retain(
                     unique
                         .OrderByDescending(
@@ -1182,9 +1274,9 @@ namespace net.rs64.TexTransTool.NDMF
                         .ThenBy(
                             state => state,
                             ShadowPackingStateStableComparer.Instance),
-                    budget / 8);
+                    stateBudget / 8);
 
-                if (selected.Count < budget)
+                if (selected.Count < stateBudget)
                 {
                     Retain(
                         unique
@@ -1199,7 +1291,7 @@ namespace net.rs64.TexTransTool.NDMF
                             .ThenBy(
                                 state => state,
                                 ShadowPackingStateStableComparer.Instance),
-                        budget);
+                        stateBudget);
                 }
 
                 prunedStateCount += unique.Length - selected.Count;
@@ -1289,6 +1381,17 @@ namespace net.rs64.TexTransTool.NDMF
                                  x + widthColumns <= columnCount;
                                  x += 1)
                             {
+                                if (generatedStateLimit is { } limit
+                                    && generated.Count >= limit)
+                                {
+                                    throw new
+                                        DiagnosticSearchStateLimitExceededException(
+                                            stateBudget,
+                                            targetWidth,
+                                            group.Id,
+                                            limit);
+                                }
+
                                 var y = 0;
                                 for (var column = x;
                                      column < x + widthColumns;
