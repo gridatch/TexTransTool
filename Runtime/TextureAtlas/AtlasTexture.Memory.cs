@@ -27,14 +27,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
             out long bytes)
         {
             bytes = 0;
-            var alphaCache = new Dictionary<Texture, bool>();
-
             foreach (var texture in textures.Distinct())
             {
                 if (!TryGetOriginalTextureCostInfo(
                         domain,
                         texture,
-                        alphaCache,
                         out var block,
                         out var mipCount))
                 {
@@ -148,7 +145,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal static bool TryGetOriginalTextureCostInfo(
             IDomain domain,
             Texture texture,
-            Dictionary<Texture, bool> alphaCache,
             out (uint Width, uint Height, uint Size) block,
             out int mipCount)
         {

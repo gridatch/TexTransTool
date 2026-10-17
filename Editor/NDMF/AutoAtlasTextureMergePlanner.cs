@@ -682,7 +682,7 @@ namespace net.rs64.TexTransTool.NDMF
                 else
                 {
                     var originalCost = TryBuildOriginalCost(
-                        domain, group, propertyTextures, alphaCache);
+                        domain, group, propertyTextures);
                     if (originalCost != null)
                     {
                         group.BaselineCost = originalCost;
@@ -1479,8 +1479,7 @@ namespace net.rs64.TexTransTool.NDMF
         private static TextureCostPlan? TryBuildOriginalCost(
             IDomain domain,
             PreparedGroup group,
-            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
-            Dictionary<Texture, bool> alphaCache)
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures)
         {
             var entries = new List<TextureCostEntry>();
             var bytesPerTexel = new Dictionary<Texture, double>();
@@ -1490,7 +1489,6 @@ namespace net.rs64.TexTransTool.NDMF
                 if (!AtlasTexture.TryGetOriginalTextureCostInfo(
                         domain,
                         texture,
-                        alphaCache,
                         out var block,
                         out var mipCount))
                 {
