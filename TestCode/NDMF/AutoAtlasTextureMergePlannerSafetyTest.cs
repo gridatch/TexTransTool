@@ -178,6 +178,46 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void LiveTargetSubMeshIgnoresEmptyMaterialSlot()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+            var target = new Material(shader);
+            var mesh = new Mesh();
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.subMeshCount = 1;
+                mesh.SetTriangles(System.Array.Empty<int>(), 0);
+
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasLiveTargetSubMesh(
+                        mesh,
+                        new[] { target },
+                        new HashSet<Material> { target }),
+                    Is.False);
+
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasLiveTargetSubMesh(
+                        mesh,
+                        new[] { target },
+                        new HashSet<Material> { target }),
+                    Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(target);
+            }
+        }
+
+        [Test]
         public void TextureMergingExclusionAppliesToRendererWithoutRemovingGroup()
         {
             var root = new GameObject("TextureMergingExclusionTest");

@@ -256,6 +256,29 @@ namespace net.rs64.TexTransTool.NDMF
                     null));
             }
         }
+
+        internal static bool HasLiveTargetSubMesh(
+            Mesh mesh,
+            Material[] materials,
+            HashSet<Material> targetMaterials)
+        {
+            if (mesh == null || mesh.subMeshCount <= 0)
+                return false;
+
+            for (var slot = 0; slot < materials.Length; slot += 1)
+            {
+                var material = materials[slot];
+                if (material == null || !targetMaterials.Contains(material))
+                    continue;
+
+                var subMeshIndex = Math.Clamp(
+                    slot, 0, mesh.subMeshCount - 1);
+                if (mesh.GetSubMesh(subMeshIndex).indexCount != 0)
+                    return true;
+            }
+
+            return false;
+        }
         internal static AutoAtlasTexture[] GetActiveConfigurations(GameObject root)
         {
             return root.GetComponentsInChildren<AutoAtlasTexture>(true)
@@ -480,53 +503,51 @@ namespace net.rs64.TexTransTool.NDMF
                 var execution = executionGroups.Dequeue();
                 var group = execution.Materials;
 
-                // Renderer/material/mesh state can change between planning and
-                // execution. Material replacement is domain-wide, so never
-                // continue with only a subset of the renderers validated during
-                // planning: doing so could replace a shared material without
-                // updating every renderer's UVs.
-                bool IsExecutionRendererCompatible(Renderer renderer)
+                // Material replacement is domain-wide. Only renderers that
+                // actually draw one of the target materials need atlas UVs;
+                // references on empty submeshes are harmless. Fail closed when
+                // any live consumer cannot be transformed, or when the live
+                // consumer set has changed since planning.
+                bool IsLiveTargetRenderer(Renderer renderer)
+                {
+                    var mesh = domain.GetMesh(renderer);
+                    return mesh != null
+                        && HasLiveTargetSubMesh(
+                            mesh, domain.GetMaterials(renderer), group);
+                }
+
+                bool CanAtlasRenderer(Renderer renderer)
                 {
                     if (!AtlasTexture.IsAtlasAllowedRenderer(renderer))
-                    {
                         return false;
-                    }
 
                     var mesh = domain.GetMesh(renderer);
-                    if (mesh == null
-                        || mesh.subMeshCount <= 0
-                        || !mesh.HasUV((int)UVChannel.UV0))
-                    {
-                        return false;
-                    }
-
-                    var materials = domain.GetMaterials(renderer);
-                    for (var slot = 0; slot < materials.Length; slot += 1)
-                    {
-                        var material = materials[slot];
-                        if (material == null || !group.Contains(material))
-                            continue;
-
-                        var subMeshIndex = Math.Clamp(
-                            slot, 0, mesh.subMeshCount - 1);
-                        if (mesh.GetSubMesh(subMeshIndex).indexCount != 0)
-                            return true;
-                    }
-
-                    return false;
+                    return mesh != null
+                        && mesh.subMeshCount > 0
+                        && mesh.HasUV((int)UVChannel.UV0);
                 }
 
                 var atlasRenderers = execution.Renderers
                     .Where(renderer => renderer != null)
+                    .Where(IsLiveTargetRenderer)
                     .Distinct()
                     .ToArray();
+                var currentLiveRenderers = domain
+                    .RendererFilterForMaterialFromDomains(group)
+                    .Where(renderer => renderer != null)
+                    .Where(IsLiveTargetRenderer)
+                    .Distinct()
+                    .ToHashSet();
+
                 if (atlasRenderers.Length == 0
-                    || atlasRenderers.Length != execution.Renderers.Length
                     || atlasRenderers.Any(
-                        renderer => !IsExecutionRendererCompatible(renderer)))
+                        renderer => !CanAtlasRenderer(renderer))
+                    || !currentLiveRenderers.SetEquals(atlasRenderers))
                 {
                     if (execution.MergeSelection is { } invalidMerge)
                     {
+                        twoDimensionalFallbackReasons.Add(
+                            $"groups={string.Join(",", invalidMerge.GroupIds.Select(id => "g" + id))}: 実行時の描画対象Renderer集合が計画時と一致しない");
                         EnqueueStandaloneFallback(
                             executionGroups, invalidMerge, preparedGroups);
                     }
