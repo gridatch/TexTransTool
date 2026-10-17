@@ -513,8 +513,16 @@ namespace net.rs64.TexTransTool.NDMF
                         return false;
                     })
                     .ToArray();
-                if (atlasRenderers.Length == 0)
+                // Replacing a material affects all of its consumers. Never
+                // convert only part of the renderer set when references have
+                // changed since planning.
+                if (atlasRenderers.Length != execution.Renderers.Length
+                    || !domain.RendererFilterForMaterialFromDomains(group)
+                        .ToHashSet().SetEquals(atlasRenderers))
                 {
+                    if (execution.MergeSelection is { } changedMerge)
+                        EnqueueStandaloneFallback(
+                            executionGroups, changedMerge, preparedGroups);
                     continue;
                 }
 
@@ -646,6 +654,24 @@ namespace net.rs64.TexTransTool.NDMF
 
                 using var atlasContext = atlasResult.AtlasContext!;
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
+
+                // Mesh replacement may be partial if a renderer's material
+                // subset cannot be resolved. Reject the entire operation
+                // before material replacement can leave unmatched UVs.
+                if (atlasRenderers.Any(renderer =>
+                        AtlasTexture.ResolveAtlasedMeshForRenderer(
+                            domain, renderer, atlasContext,
+                            atlasResult.AtlasedMeshes!) is null))
+                {
+                    foreach (var rt in compiledTextures.Values.Distinct())
+                        rt.Dispose();
+
+                    if (execution.MergeSelection is { } unresolvedMerge)
+                        EnqueueStandaloneFallback(
+                            executionGroups, unresolvedMerge, preparedGroups);
+                    continue;
+                }
+
                 var tuningResult = AtlasTexture.DoTextureFinTuning(
                     engine, atlasContext, settings, compiledTextures, null);
 
