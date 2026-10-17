@@ -10,6 +10,43 @@ namespace net.rs64.TexTransTool.TestCode
     internal class AutoAtlasTextureAtlasSettingDefaultsAssumption
     {
         [Test]
+        public void NewAutoAtlasTextureEnablesAdditionalMergingByDefault()
+        {
+            var gameObject = new UnityEngine.GameObject("AutoAtlasTexture Defaults");
+            try
+            {
+                var autoAtlas = gameObject.AddComponent<AutoAtlasTexture>();
+                Assert.That(autoAtlas.EnableAdditionalAtlasMerging, Is.True);
+                Assert.That(autoAtlas.ExcludeVisibilityAnimatedItemsFromTextureMerging,
+                    Is.False);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
+        public void SerializedDisabledMergingRemainsDisabled()
+        {
+            var gameObject = new UnityEngine.GameObject("AutoAtlasTexture Serialization");
+            try
+            {
+                var autoAtlas = gameObject.AddComponent<AutoAtlasTexture>();
+                Assert.That(autoAtlas.EnableAdditionalAtlasMerging, Is.True);
+
+                // Simulate an existing component with merging explicitly disabled.
+                UnityEditor.EditorJsonUtility.FromJsonOverwrite(
+                    "{\\"EnableAdditionalAtlasMerging\\":false}", autoAtlas);
+                Assert.That(autoAtlas.EnableAdditionalAtlasMerging, Is.False);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
         public void AtlasSettingDefaultsRemainCompatibleWithAutoAtlasTexture()
         {
             // AutoAtlasTexture intentionally inherits these regular AtlasTexture
