@@ -150,7 +150,10 @@ msgid "AutoAtlasTexture:info:TemporarySearchBudgetHeader"
 msgstr "Temporary diagnostic (512 states vs wider searches; wider searches are planning-only)\n512 states: search={0}ms / safe candidates={1} / planned selections={2} / predicted savings={3} bytes / max states before retention={4} / cumulative pruned={5}\n512 plan:\n{6}\nNote: only the 512-state plan is applied. Wider searches use the same geometry, cost, and safety rules."
 
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetProbe"
-msgstr "{0} states: search={1}ms / safe candidates={2} / planned selections={3} / predicted savings={4} bytes / max states before retention={5} / cumulative pruned={6}\nSame final selected plan as 512={7}\nSelected plan:\n{8}\nSafe candidates added or improved vs 512={9} (showing up to 20)\n{10}\nCandidates only in 512 or better in 512={11} (showing up to 20)\n{12}"
+msgstr "{0} states: search={1}ms / safe candidates={2} / planned selections={3} / predicted savings={4} bytes / max states before retention={5} / cumulative pruned={6}\nSame final selected plan as 512={7}\nSelected plan:\n{8}"
+
+msgid "AutoAtlasTexture:info:TemporarySearchBudgetDifferences"
+msgstr "Candidate differences between {0} states and 512 states\nSafe candidates added or improved vs 512={1} (showing up to 20)\n{2}\nCandidates only in 512 or better in 512={3} (showing up to 20)\n{4}"
 
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetAborted"
 msgstr "{0} states: diagnostic search stopped after {1}ms. {2}\nThe raw-state safety limit was reached, so larger comparisons were skipped. The normal 512-state production plan is unaffected."

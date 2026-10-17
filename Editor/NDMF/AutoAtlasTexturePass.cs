@@ -850,7 +850,12 @@ namespace net.rs64.TexTransTool.NDMF
                             probe.MaxStatesBeforeRetention,
                             probe.PrunedStateCount,
                             probe.SameSelectedPlan,
-                            FormatDiagnosticSelections(probe.Selections),
+                            FormatDiagnosticSelections(probe.Selections)));
+
+                    TTTLog.ReportingObject(configuration, () =>
+                        TTTLog.Info(
+                            "AutoAtlasTexture:info:TemporarySearchBudgetDifferences",
+                            probe.StateBudget,
                             probe.AdditionalOrChangedCandidateCount,
                             FormatDiagnosticSelections(
                                 probe.AdditionalOrChangedCandidates),
