@@ -286,6 +286,8 @@ namespace net.rs64.TexTransTool.NDMF
             ObjectPathRemapper? objectPathRemapper = null,
             Transform? avatarRoot = null)
         {
+            var processingTimer = System.Diagnostics.Stopwatch.StartNew();
+
             // Store only the NDMF console summary for this build.
             var completed = new List<string>();
 
@@ -312,8 +314,11 @@ namespace net.rs64.TexTransTool.NDMF
             var allReferencedMaterials = domain.GetAllMaterials();
             if (allMaterials.Count == 0)
             {
+                processingTimer.Stop();
                 TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info("AutoAtlasTexture:info:TargetNotFound"));
+                    TTTLog.Info(
+                        "AutoAtlasTexture:info:TargetNotFound",
+                        processingTimer.ElapsedMilliseconds));
                 return;
             }
 
@@ -513,16 +518,8 @@ namespace net.rs64.TexTransTool.NDMF
                         return false;
                     })
                     .ToArray();
-                // Replacing a material affects all of its consumers. Never
-                // convert only part of the renderer set when references have
-                // changed since planning.
-                if (atlasRenderers.Length != execution.Renderers.Length
-                    || !domain.RendererFilterForMaterialFromDomains(group)
-                        .ToHashSet().SetEquals(atlasRenderers))
+                if (atlasRenderers.Length == 0)
                 {
-                    if (execution.MergeSelection is { } changedMerge)
-                        EnqueueStandaloneFallback(
-                            executionGroups, changedMerge, preparedGroups);
                     continue;
                 }
 
@@ -654,24 +651,6 @@ namespace net.rs64.TexTransTool.NDMF
 
                 using var atlasContext = atlasResult.AtlasContext!;
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
-
-                // Mesh replacement may be partial if a renderer's material
-                // subset cannot be resolved. Reject the entire operation
-                // before material replacement can leave unmatched UVs.
-                if (atlasRenderers.Any(renderer =>
-                        AtlasTexture.ResolveAtlasedMeshForRenderer(
-                            domain, renderer, atlasContext,
-                            atlasResult.AtlasedMeshes!) is null))
-                {
-                    foreach (var rt in compiledTextures.Values.Distinct())
-                        rt.Dispose();
-
-                    if (execution.MergeSelection is { } unresolvedMerge)
-                        EnqueueStandaloneFallback(
-                            executionGroups, unresolvedMerge, preparedGroups);
-                    continue;
-                }
-
                 var tuningResult = AtlasTexture.DoTextureFinTuning(
                     engine, atlasContext, settings, compiledTextures, null);
 
@@ -775,6 +754,8 @@ namespace net.rs64.TexTransTool.NDMF
                 completed.Add(block);
             }
 
+            processingTimer.Stop();
+
 
             if (mergePlan.Improvement is { } improvement)
             {
@@ -801,13 +782,15 @@ namespace net.rs64.TexTransTool.NDMF
             if (completed.Count == 0)
             {
                 TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info("AutoAtlasTexture:info:TargetNotFound"));
+                    TTTLog.Info("AutoAtlasTexture:info:TargetNotFound",
+                        processingTimer.ElapsedMilliseconds));
                 return;
             }
 
             TTTLog.ReportingObject(configuration, () =>
                 TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
-                    string.Join("\n\n", completed)));
+                    string.Join("\n\n", completed),
+                    processingTimer.ElapsedMilliseconds));
         }
 
         internal static bool IsExcludedFromTextureMerging(

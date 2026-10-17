@@ -657,7 +657,7 @@ namespace net.rs64.TexTransTool.NDMF
             foreach (var group in mergeGroups)
             {
                 group.StandaloneMetrics = AnalyzeAtlas(
-                    domain, settings, group);
+                    domain, settings, group, out _, out _, out _);
             }
 
             foreach (var group in mergeGroups)
@@ -1412,8 +1412,15 @@ namespace net.rs64.TexTransTool.NDMF
         private static AtlasTexture.AtlasExecutionMetrics? AnalyzeAtlas(
             IDomain domain,
             AtlasSetting settings,
-            PreparedGroup group)
+            PreparedGroup group,
+            out AtlasTexture.AtlasExecutionTimingDiagnostic timing,
+            out long allProfileRelocatorMilliseconds,
+            out AtlasTexture.AtlasIslandProcessingTimingDiagnostic
+                islandProcessingTiming)
         {
+            timing = default;
+            allProfileRelocatorMilliseconds = 0;
+            islandProcessingTiming = default;
             group.LayoutProfiles.Clear();
             group.TwoDimensionalProfileHeights.Clear();
 
@@ -1422,14 +1429,21 @@ namespace net.rs64.TexTransTool.NDMF
                 group.Materials,
                 group.Renderers,
                 settings,
-                out _,
-                out _,
-                out _);
+                out var preserveSetupMilliseconds,
+                out var atlasContextConstructionMilliseconds,
+                out var islandNormalizeMilliseconds);
             if (prepared is null)
                 return null;
 
             using (prepared)
             {
+                long relocationStageMilliseconds = 0;
+                long resolutionPlanMilliseconds = 0;
+                long cloneAndScaleMilliseconds = 0;
+                long referenceIslandMilliseconds = 0;
+                long islandDescriptionMilliseconds = 0;
+                long sizePriorityMilliseconds = 0;
+                long postProcessMilliseconds = 0;
                 AtlasTexture.AtlasExecutionMetrics? standalone = null;
 
                 foreach (var size in AtlasTexture.AutoAtlasTextureSizeCandidates)
@@ -1443,14 +1457,41 @@ namespace net.rs64.TexTransTool.NDMF
                                 settings,
                                 size,
                                 out var metrics,
-                                out _,
-                                out _,
-                                out _,
-                                out _))
+                                out var relocationStage,
+                                out var relocatorMilliseconds,
+                                out var profileTiming,
+                                out var resolutionPlan))
                         {
+                            relocationStageMilliseconds += relocationStage;
+                            allProfileRelocatorMilliseconds +=
+                                relocatorMilliseconds;
+                            cloneAndScaleMilliseconds +=
+                                profileTiming.CloneAndScaleMilliseconds;
+                            referenceIslandMilliseconds +=
+                                profileTiming.ReferenceIslandMilliseconds;
+                            islandDescriptionMilliseconds +=
+                                profileTiming.IslandDescriptionMilliseconds;
+                            sizePriorityMilliseconds +=
+                                profileTiming.SizePriorityMilliseconds;
+                            postProcessMilliseconds +=
+                                profileTiming.PostProcessMilliseconds;
                             continue;
                         }
 
+                        relocationStageMilliseconds += relocationStage;
+                        allProfileRelocatorMilliseconds +=
+                            relocatorMilliseconds;
+                        cloneAndScaleMilliseconds +=
+                            profileTiming.CloneAndScaleMilliseconds;
+                        referenceIslandMilliseconds +=
+                            profileTiming.ReferenceIslandMilliseconds;
+                        islandDescriptionMilliseconds +=
+                            profileTiming.IslandDescriptionMilliseconds;
+                        sizePriorityMilliseconds +=
+                            profileTiming.SizePriorityMilliseconds;
+                        postProcessMilliseconds +=
+                            profileTiming.PostProcessMilliseconds;
+                        resolutionPlanMilliseconds += resolutionPlan;
                         group.LayoutProfiles[size] = metrics;
                         group.TwoDimensionalProfileHeights[(size, size)] =
                             GetUsedHeightPixels(metrics);
@@ -1514,6 +1555,22 @@ namespace net.rs64.TexTransTool.NDMF
                     }
                 }
 
+                timing = new AtlasTexture.AtlasExecutionTimingDiagnostic(
+                    preserveSetupMilliseconds,
+                    atlasContextConstructionMilliseconds,
+                    islandNormalizeMilliseconds,
+                    relocationStageMilliseconds,
+                    resolutionPlanMilliseconds,
+                    0,
+                    0);
+                islandProcessingTiming =
+                    new AtlasTexture.AtlasIslandProcessingTimingDiagnostic(
+                        cloneAndScaleMilliseconds,
+                        referenceIslandMilliseconds,
+                        islandDescriptionMilliseconds,
+                        sizePriorityMilliseconds,
+                        allProfileRelocatorMilliseconds,
+                        postProcessMilliseconds);
                 return standalone;
             }
         }
