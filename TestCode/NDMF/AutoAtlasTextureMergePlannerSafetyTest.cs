@@ -600,8 +600,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             });
             var merged = Plan(new[]
             {
-                Entry(mergedWidth, mergedWidth, 1, false,
-                    new[] { left, right }),
+                Entry(mergedWidth, mergedWidth, 1),
             });
             var candidate = Candidate(baseline, merged, new[] { left, right });
             Assert.That(candidate.IsAdoptable, Is.True);
