@@ -73,9 +73,13 @@ namespace net.rs64.TexTransTool.NDMF
                 animationIndex,
                 avatarRoot,
                 renderers,
-                transform => new[]
+                transform =>
                 {
-                    pathRemapper.GetVirtualPathForObject(transform),
+                    // An NDMF ReplaceObject can map multiple historical animation
+                    // paths to the same current object. Inspect every alias.
+                    // Register new objects first, just as the original lookup did.
+                    pathRemapper.GetVirtualPathForObject(transform);
+                    return pathRemapper.GetAllPathsForObject(transform);
                 });
         }
 

@@ -773,6 +773,68 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void VisibilityAnimationDetectorChecksAllMappedAliases()
+        {
+            var root = new GameObject("Avatar");
+            var clothing = new GameObject("NewClothing");
+            var clothingPart = new GameObject("Part");
+            var accessory = new GameObject("NewAccessory");
+            var untouched = new GameObject("Untouched");
+            try
+            {
+                clothing.transform.SetParent(root.transform);
+                clothingPart.transform.SetParent(clothing.transform);
+                accessory.transform.SetParent(root.transform);
+                untouched.transform.SetParent(root.transform);
+
+                var clothingRenderer = clothingPart.AddComponent<MeshRenderer>();
+                var accessoryRenderer = accessory.AddComponent<MeshRenderer>();
+                var untouchedRenderer = untouched.AddComponent<MeshRenderer>();
+
+                // The old virtual aliases remain in the AnimationIndex after
+                // NDMF replaces objects whose current paths differ.
+                var clip = nadena.dev.ndmf.animator.VirtualClip.Create("old-aliases");
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "OldClothing", typeof(GameObject), "m_IsActive"),
+                    AnimationCurve.Constant(0f, 1f, 0f));
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "OldAccessory", typeof(MeshRenderer), "m_Enabled"),
+                    AnimationCurve.Constant(0f, 1f, 0f));
+                var index = new nadena.dev.ndmf.animator.AnimationIndex(
+                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
+                var paths = new Dictionary<Transform, string[]>
+                {
+                    [root.transform] = new[] { "" },
+                    [clothing.transform] = new[] { "NewClothing", "OldClothing" },
+                    [clothingPart.transform] = new[] { "NewClothing/Part" },
+                    [accessory.transform] = new[] { "NewAccessory", "OldAccessory" },
+                    [untouched.transform] = new[] { "Untouched" },
+                };
+
+                var renderers = new Renderer[]
+                {
+                    clothingRenderer, accessoryRenderer, untouchedRenderer,
+                };
+                var firstPathsOnly = AutoAtlasTextureVisibilityAnimationDetector
+                    .Detect(index, root.transform, renderers,
+                        transform => paths[transform].Take(1));
+                Assert.That(firstPathsOnly, Is.Empty);
+
+                var withAliases = AutoAtlasTextureVisibilityAnimationDetector
+                    .Detect(index, root.transform, renderers,
+                        transform => paths[transform]);
+                Assert.That(withAliases, Is.EquivalentTo(
+                    new Renderer[] { clothingRenderer, accessoryRenderer }));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
         public void VisibilityAnimationDetectorIgnoresConstantCurrentState()
         {
             var clip = nadena.dev.ndmf.animator.VirtualClip.Create("always-on");
