@@ -84,6 +84,30 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             }
         }
 
+        private sealed class OtherUvShaderTextureUsageInformation
+            : ITTShaderTextureUsageInformation
+        {
+            private readonly UsingUVChannels _otherUvUsage;
+
+            internal OtherUvShaderTextureUsageInformation(
+                UsingUVChannels otherUvUsage)
+            {
+                _otherUvUsage = otherUvUsage;
+            }
+
+            public void GetMaterialTextureUVUsage(
+                ITTTextureUVUsageWriter writer)
+            {
+                var translator = new MaterialInformationTranslator(writer);
+                translator.RegisterTextureUVUsage(
+                    "_MainTex",
+                    SamplerStateInformation.LinearRepeatSampler,
+                    UsingUVChannels.UV0,
+                    Matrix2x3.Identity);
+                translator.RegisterOtherUVUsage(_otherUvUsage);
+            }
+        }
+
         private static Shader RequireStandardShaderUsageInformation()
         {
             var shader = Shader.Find("Standard");
@@ -1519,6 +1543,78 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     TTShaderTextureUsageInformationRegistry
                         .s_information.Remove(shader);
 
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
+        public void AutoAtlasRejectsNonTextureUsageOfTargetUv()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var texture = new Texture2D(4, 4);
+            var material = new Material(shader);
+            try
+            {
+                material.SetTexture("_MainTex", texture);
+                var materials = new HashSet<Material> { material };
+
+                TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                    new OtherUvShaderTextureUsageInformation(
+                        UsingUVChannels.UV1);
+                var uv1Grouping = new MaterialGroupingContext(
+                    materials,
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+                Assert.That(
+                    TTShaderTextureUsageInformationUtil
+                        .GetOtherUVUsage(material),
+                    Is.EqualTo(UsingUVChannels.UV1));
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsupportedTextureUvSampling(
+                            materials,
+                            uv1Grouping.ContainsTextureDictionaries,
+                            UVChannel.UV0),
+                    Is.False,
+                    "Non-texture use of another UV channel must not block UV0 AutoAtlas.");
+
+                TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                    new OtherUvShaderTextureUsageInformation(
+                        UsingUVChannels.UV0);
+                var uv0Grouping = new MaterialGroupingContext(
+                    materials,
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsupportedTextureUvSampling(
+                            materials,
+                            uv0Grouping.ContainsTextureDictionaries,
+                            UVChannel.UV0),
+                    Is.True,
+                    "Non-texture shader use of the rewritten UV channel must fail closed.");
+
+                TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                    new OtherUvShaderTextureUsageInformation(
+                        UsingUVChannels.Unknown);
+                var unknownGrouping = new MaterialGroupingContext(
+                    materials,
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsupportedTextureUvSampling(
+                            materials,
+                            unknownGrouping.ContainsTextureDictionaries,
+                            UVChannel.UV0),
+                    Is.True,
+                    "Unknown non-texture UV usage must fail closed.");
+            }
+            finally
+            {
                 Object.DestroyImmediate(material);
                 Object.DestroyImmediate(texture);
             }
