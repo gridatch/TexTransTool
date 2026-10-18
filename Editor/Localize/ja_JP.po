@@ -147,8 +147,8 @@ msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応
 msgid "AutoAtlasTexture:info:SelectionImprovement"
 msgstr "2Dテクスチャ統合の組合せ最適化（計画段階の予測値）\n厳密選択がGreedy方式を上回りました。\n安全候補数: {0}件\n予測追加削減量: {1} bytes → {2} bytes（差: {3} bytes）\nGreedy方式:\n{4}\n厳密選択方式:\n{5}"
 
-msgid "AutoAtlasTexture:info:TemporaryDiagnosticMessage"
-msgstr "{0}"
+msgid "AutoAtlasTexture:info:DiagnosticTitle"
+msgstr "AutoAtlas診断"
 
 msgid "AutoAtlasTexture:button:CopyDiagnostics"
 msgstr "診断結果をすべてコピー"

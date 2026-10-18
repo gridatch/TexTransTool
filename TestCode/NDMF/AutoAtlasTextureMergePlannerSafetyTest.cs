@@ -2,11 +2,37 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace net.rs64.TexTransTool.NDMF.TestCode
 {
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
+        [Test]
+        public void DiagnosticConsoleRendersExactCopyText()
+        {
+            const string message =
+                "Unityプロジェクト名: Test\n\n"
+                + "section\n"
+                + "  indented value=1  value=2";
+
+            var error =
+                new AutoAtlasTextureTemporaryDiagnosticError(message);
+            var root = error.CreateVisualElement(null);
+
+            var diagnosticText =
+                root.Q<TextField>("auto-atlas-diagnostic-message");
+            var copyButton =
+                root.Q<Button>("auto-atlas-copy-diagnostics");
+
+            Assert.That(diagnosticText, Is.Not.Null);
+            Assert.That(diagnosticText.value, Is.EqualTo(message));
+            Assert.That(diagnosticText.multiline, Is.True);
+            Assert.That(diagnosticText.isReadOnly, Is.True);
+            Assert.That(copyButton, Is.Not.Null);
+            Assert.That(error.TitleSubst, Is.Empty);
+        }
+
         [Test]
         public void CandidateAcceptsStrictlyBetterNonRegressingMerge()
         {

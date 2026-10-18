@@ -59,10 +59,11 @@ namespace net.rs64.TexTransTool.NDMF
         }
     }
 
-    // Temporary diagnostic UI. This intentionally mirrors the previously
-    // validated NDMF Console implementation: wrap SimpleError's normal UI and
-    // append the copy button as a direct child instead of depending on NDMF's
-    // internal button-container structure.
+    // Diagnostic UI deliberately does not put the complete report into
+    // SimpleError.TitleSubst. NDMF's title renderer is intended for ordinary
+    // error titles and does not lay out a large preformatted report reliably.
+    // Render the report as one plain-text element and copy that exact element's
+    // text so the Console view and clipboard cannot diverge.
     internal sealed class AutoAtlasTextureTemporaryDiagnosticError : SimpleError
     {
         private readonly string _message;
@@ -75,18 +76,32 @@ namespace net.rs64.TexTransTool.NDMF
         public override Localizer Localizer => TTTLog.NDMFLocalizer;
         public override ErrorSeverity Severity => ErrorSeverity.Information;
         public override string TitleKey =>
-            "AutoAtlasTexture:info:TemporaryDiagnosticMessage";
-        public override string[] TitleSubst => new[] { _message };
+            "AutoAtlasTexture:info:DiagnosticTitle";
+        public override string[] TitleSubst => Array.Empty<string>();
 
         public override VisualElement CreateVisualElement(ErrorReport report)
         {
             var root = new VisualElement();
             root.style.flexGrow = 1;
-            root.Add(base.CreateVisualElement(report));
+            root.style.minWidth = 0;
+
+            var diagnosticText = new TextField
+            {
+                name = "auto-atlas-diagnostic-message",
+                multiline = true,
+                isReadOnly = true,
+                value = _message,
+            };
+            diagnosticText.style.flexGrow = 1;
+            diagnosticText.style.minWidth = 0;
+            diagnosticText.style.minHeight = 120;
+            diagnosticText.style.height = 560;
+            root.Add(diagnosticText);
 
             var copyButton = new Button(() =>
-                EditorGUIUtility.systemCopyBuffer = _message)
+                EditorGUIUtility.systemCopyBuffer = diagnosticText.value)
             {
+                name = "auto-atlas-copy-diagnostics",
                 text = "AutoAtlasTexture:button:CopyDiagnostics"
                     .GetLocalize(),
             };
