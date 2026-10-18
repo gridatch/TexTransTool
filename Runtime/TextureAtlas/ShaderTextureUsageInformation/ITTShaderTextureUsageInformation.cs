@@ -27,11 +27,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
     {
         public readonly UsageUVChannel UVChannel;
         public readonly Matrix2x3? UVMatrix;
+        public readonly bool UVMatrixExplicitlyReported;
 
-        public TextureUVUsage(UsageUVChannel uvChannel, Matrix2x3? uvMatrix)
+        public TextureUVUsage(
+            UsageUVChannel uvChannel,
+            Matrix2x3? uvMatrix,
+            bool uvMatrixExplicitlyReported = true)
         {
             UVChannel = uvChannel;
             UVMatrix = uvMatrix;
+            UVMatrixExplicitlyReported = uvMatrixExplicitlyReported;
         }
     }
 
@@ -109,13 +114,24 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         public void WriteTextureUVUsage(string propertyName, UsageUVChannel uVChannel)
         {
-            WriteTextureUVUsage(propertyName, uVChannel, Matrix2x3.Identity);
+            if (_material.HasTexture(propertyName) is false) { return; }
+            // Preserve the legacy channel-only API's historical identity
+            // behavior for manual AtlasTexture while remembering that the
+            // transform was not actually reported. AutoAtlas can then fail
+            // closed without changing manual AtlasTexture semantics.
+            _uvUsage[propertyName] = new TextureUVUsage(
+                uVChannel,
+                Matrix2x3.Identity,
+                uvMatrixExplicitlyReported: false);
         }
 
         public void WriteTextureUVUsage(string propertyName, UsageUVChannel uVChannel, Matrix2x3? uvMatrix)
         {
             if (_material.HasTexture(propertyName) is false) { return; }
-            _uvUsage[propertyName] = new TextureUVUsage(uVChannel, uvMatrix);
+            _uvUsage[propertyName] = new TextureUVUsage(
+                uVChannel,
+                uvMatrix,
+                uvMatrixExplicitlyReported: true);
         }
     }
 }
