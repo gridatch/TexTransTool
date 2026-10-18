@@ -50,6 +50,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
         void WriteOtherUVUsage(UsingUVChannels uvChannels);
     }
 
+    internal interface ITTVertexIndexUsageWriter
+    {
+        void WriteVertexIndexUsage();
+    }
+
     public enum UsageUVChannel
     {
         Unknown = 0,
@@ -72,14 +77,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
     class MaterialUVUsageProvider :
         ITTTextureUVUsageWriter,
         ITTTextureUVTransformUsageWriter,
-        ITTTextureOtherUVUsageWriter
+        ITTTextureOtherUVUsageWriter,
+        ITTVertexIndexUsageWriter
     {
         Material _material;
         readonly HashSet<string> _texturePropertyNames;
         Dictionary<string, TextureUVUsage> _uvUsage = new();
         private UsingUVChannels _otherUVUsage;
+        private bool _usesVertexIndex;
         public IReadOnlyDictionary<string, TextureUVUsage> UVUsageWithTransform => _uvUsage;
         internal UsingUVChannels OtherUVUsage => _otherUVUsage;
+        internal bool UsesVertexIndex => _usesVertexIndex;
         public MaterialUVUsageProvider(Material material)
         {
             _material = material;
@@ -147,6 +155,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
         public void WriteOtherUVUsage(UsingUVChannels uvChannels)
         {
             _otherUVUsage |= uvChannels;
+        }
+
+        public void WriteVertexIndexUsage()
+        {
+            _usesVertexIndex = true;
         }
     }
 }
