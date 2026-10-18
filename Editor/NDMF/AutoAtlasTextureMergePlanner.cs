@@ -21,6 +21,7 @@ namespace net.rs64.TexTransTool.NDMF
     {
         private const int MaxMergeGroupCount = 12;
         internal const int ExactSelectionCandidateLimit = 16;
+        internal const int ExactSelectionGroupLimit = 20;
         // Candidate exploration below never calls DoAtlasTexture. These limits
         // only bound cheap integer-DP state retention, not expensive atlas probes.
         private const int ShadowPackingStatesPerHost = 1024;
@@ -43,6 +44,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal long OriginalPixels;
 
             internal AtlasTexture.AtlasExecutionMetrics? StandaloneMetrics;
+            internal readonly List<string> StandaloneAnalysisDiagnostics = new();
             // Heights include the atomic group's standalone padding,
             // expressed in pixels at that group's profile width.
             internal readonly Dictionary<(int AtlasWidth, int RegionWidth), int>
@@ -104,6 +106,36 @@ namespace net.rs64.TexTransTool.NDMF
                 GreedySelections = greedySelections;
                 GreedySavingBytes = greedySavingBytes;
                 ExactSavingBytes = exactSavingBytes;
+            }
+        }
+
+        internal enum SelectionSolverKind
+        {
+            Greedy,
+            ExactCandidateSubset,
+            ExactGroupMask,
+        }
+
+        internal sealed class SelectionDiagnostics
+        {
+            internal readonly int CandidateCount;
+            internal readonly int DistinctGroupCount;
+            internal readonly SelectionSolverKind Solver;
+            internal readonly long GreedySavingBytes;
+            internal readonly long SelectedSavingBytes;
+
+            internal SelectionDiagnostics(
+                int candidateCount,
+                int distinctGroupCount,
+                SelectionSolverKind solver,
+                long greedySavingBytes,
+                long selectedSavingBytes)
+            {
+                CandidateCount = candidateCount;
+                DistinctGroupCount = distinctGroupCount;
+                Solver = solver;
+                GreedySavingBytes = greedySavingBytes;
+                SelectedSavingBytes = selectedSavingBytes;
             }
         }
 
@@ -304,15 +336,18 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly IReadOnlyList<MergeSelection> Selections;
             internal readonly SelectionImprovement? Improvement;
             internal readonly SearchBudgetComparison? SearchBudgetComparison;
+            internal readonly SelectionDiagnostics? SelectionDiagnostics;
 
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
                 SelectionImprovement? improvement = null,
-                SearchBudgetComparison? searchBudgetComparison = null)
+                SearchBudgetComparison? searchBudgetComparison = null,
+                SelectionDiagnostics? selectionDiagnostics = null)
             {
                 Selections = selections;
                 Improvement = improvement;
                 SearchBudgetComparison = searchBudgetComparison;
+                SelectionDiagnostics = selectionDiagnostics;
             }
         }
 
@@ -966,7 +1001,9 @@ namespace net.rs64.TexTransTool.NDMF
             productionTimer.Stop();
 
             var selected = SelectTwoDimensionalMerges(
-                shadow2D.ProductionCandidates, out var improvement);
+                shadow2D.ProductionCandidates,
+                out var improvement,
+                out var selectionDiagnostics);
             var productionPlanSignature =
                 SelectionPlanSignature(selected);
             var productionByGroupSet = shadow2D.ProductionCandidates
@@ -1094,7 +1131,11 @@ namespace net.rs64.TexTransTool.NDMF
                 productionTopCandidates,
                 probes);
 
-            return new PlanResult(selected, improvement, comparison);
+            return new PlanResult(
+                selected,
+                improvement,
+                comparison,
+                selectionDiagnostics);
         }
 
         private static string SelectionGroupSetKey(
@@ -1118,12 +1159,21 @@ namespace net.rs64.TexTransTool.NDMF
         internal static List<MergeSelection> SelectTwoDimensionalMerges(
             IEnumerable<MergeSelection> candidates)
         {
-            return SelectTwoDimensionalMerges(candidates, out _);
+            return SelectTwoDimensionalMerges(candidates, out _, out _);
         }
 
         internal static List<MergeSelection> SelectTwoDimensionalMerges(
             IEnumerable<MergeSelection> candidates,
             out SelectionImprovement? improvement)
+        {
+            return SelectTwoDimensionalMerges(
+                candidates, out improvement, out _);
+        }
+
+        internal static List<MergeSelection> SelectTwoDimensionalMerges(
+            IEnumerable<MergeSelection> candidates,
+            out SelectionImprovement? improvement,
+            out SelectionDiagnostics diagnostics)
         {
             improvement = null;
             var ranked = candidates
@@ -1133,8 +1183,6 @@ namespace net.rs64.TexTransTool.NDMF
                 .ThenByDescending(candidate => candidate.GroupIds.Length)
                 .ToArray();
 
-            // Preserve the established Greedy result when the candidate set is
-            // large. The exact solver below examines at most 2^16 subsets.
             var greedy = new List<MergeSelection>();
             var consumed = new HashSet<int>();
             foreach (var candidate in ranked)
@@ -1144,13 +1192,183 @@ namespace net.rs64.TexTransTool.NDMF
                 consumed.UnionWith(candidate.GroupIds);
             }
 
-            if (ranked.Length <= 1
-                || ranked.Length > ExactSelectionCandidateLimit)
-                return greedy;
+            var greedySaving = greedy.Sum(
+                candidate => candidate.PredictedSavingBytes);
+            var distinctGroupIds = ranked
+                .SelectMany(candidate => candidate.GroupIds)
+                .Distinct()
+                .OrderBy(id => id)
+                .ToArray();
 
-            // Set packing: two independent merges may save more memory than a
-            // higher-ranked merge overlapping both. The candidate safety gates
-            // and packed regions are unchanged; only disjoint plans are combined.
+            if (ranked.Length <= 1)
+            {
+                diagnostics = new SelectionDiagnostics(
+                    ranked.Length,
+                    distinctGroupIds.Length,
+                    SelectionSolverKind.Greedy,
+                    greedySaving,
+                    greedySaving);
+                return greedy;
+            }
+
+            List<MergeSelection> exact;
+            long optimum;
+            SelectionSolverKind solver;
+
+            // Candidate count can be large even when all candidates are
+            // combinations of a small number of atomic groups. Solve weighted
+            // set packing over the group-usage mask in that common case instead
+            // of falling back to greedy solely because candidates > 16.
+            if (distinctGroupIds.Length <= ExactSelectionGroupLimit)
+            {
+                exact = SelectExactByGroupMask(
+                    ranked, distinctGroupIds, out optimum);
+                solver = SelectionSolverKind.ExactGroupMask;
+            }
+            else if (ranked.Length <= ExactSelectionCandidateLimit)
+            {
+                exact = SelectExactByCandidateSubset(
+                    ranked, out optimum);
+                solver = SelectionSolverKind.ExactCandidateSubset;
+            }
+            else
+            {
+                diagnostics = new SelectionDiagnostics(
+                    ranked.Length,
+                    distinctGroupIds.Length,
+                    SelectionSolverKind.Greedy,
+                    greedySaving,
+                    greedySaving);
+                return greedy;
+            }
+
+            // On equal predicted savings, retain the established Greedy
+            // selection and execution order.
+            if (optimum <= greedySaving)
+            {
+                diagnostics = new SelectionDiagnostics(
+                    ranked.Length,
+                    distinctGroupIds.Length,
+                    solver,
+                    greedySaving,
+                    greedySaving);
+                return greedy;
+            }
+
+            improvement = new SelectionImprovement(
+                ranked.Length, greedy, greedySaving, optimum);
+            diagnostics = new SelectionDiagnostics(
+                ranked.Length,
+                distinctGroupIds.Length,
+                solver,
+                greedySaving,
+                optimum);
+            return exact;
+        }
+
+        private static List<MergeSelection> SelectExactByGroupMask(
+            MergeSelection[] ranked,
+            int[] distinctGroupIds,
+            out long optimum)
+        {
+            var bitByGroup = distinctGroupIds
+                .Select((groupId, bit) => (groupId, bit))
+                .ToDictionary(pair => pair.groupId, pair => pair.bit);
+            var candidateMasks = new ulong[ranked.Length];
+            var candidatesByBit = Enumerable.Range(
+                    0, distinctGroupIds.Length)
+                .Select(_ => new List<int>())
+                .ToArray();
+
+            for (var candidateIndex = 0;
+                 candidateIndex < ranked.Length;
+                 candidateIndex += 1)
+            {
+                ulong mask = 0;
+                foreach (var groupId in ranked[candidateIndex].GroupIds)
+                {
+                    var bit = bitByGroup[groupId];
+                    mask |= 1UL << bit;
+                    candidatesByBit[bit].Add(candidateIndex);
+                }
+                candidateMasks[candidateIndex] = mask;
+            }
+
+            var memo = new Dictionary<ulong, long>
+            {
+                [0] = 0,
+            };
+            var choice = new Dictionary<ulong, int>();
+
+            int FirstSetBit(ulong mask)
+            {
+                var bit = 0;
+                while ((mask & (1UL << bit)) == 0)
+                    bit += 1;
+                return bit;
+            }
+
+            long BestSaving(ulong available)
+            {
+                if (memo.TryGetValue(available, out var cached))
+                    return cached;
+
+                var firstBit = FirstSetBit(available);
+                var firstMask = 1UL << firstBit;
+                var best = BestSaving(available & ~firstMask);
+                var bestCandidate = -1;
+
+                foreach (var candidateIndex in candidatesByBit[firstBit])
+                {
+                    var candidateMask = candidateMasks[candidateIndex];
+                    if ((candidateMask & available) != candidateMask)
+                        continue;
+
+                    var taken =
+                        ranked[candidateIndex].PredictedSavingBytes
+                        + BestSaving(available & ~candidateMask);
+                    if (taken <= best)
+                        continue;
+
+                    best = taken;
+                    bestCandidate = candidateIndex;
+                }
+
+                memo[available] = best;
+                choice[available] = bestCandidate;
+                return best;
+            }
+
+            var fullMask =
+                (1UL << distinctGroupIds.Length) - 1UL;
+            optimum = BestSaving(fullMask);
+
+            var selectedIndices = new List<int>();
+            for (var available = fullMask;
+                 available != 0;)
+            {
+                var candidateIndex = choice.GetValueOrDefault(
+                    available, -1);
+                if (candidateIndex >= 0)
+                {
+                    selectedIndices.Add(candidateIndex);
+                    available &= ~candidateMasks[candidateIndex];
+                    continue;
+                }
+
+                available &= ~(1UL << FirstSetBit(available));
+            }
+
+            selectedIndices.Sort();
+            return selectedIndices
+                .Select(index => ranked[index])
+                .ToList();
+        }
+
+        private static List<MergeSelection> SelectExactByCandidateSubset(
+            MergeSelection[] ranked,
+            out long optimum)
+        {
             var memberSets = ranked
                 .Select(candidate => candidate.GroupIds.ToHashSet())
                 .ToArray();
@@ -1186,14 +1404,7 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             var remaining = memo.Length - 1;
-            var optimum = BestSaving(remaining);
-            // On equal predicted savings, retain the previously validated
-            // Greedy selection and its original execution order.
-            var greedySaving = greedy.Sum(
-                candidate => candidate.PredictedSavingBytes);
-            if (optimum <= greedySaving)
-                return greedy;
-
+            optimum = BestSaving(remaining);
             var selected = new List<MergeSelection>();
             while (remaining != 0)
             {
@@ -1213,8 +1424,6 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
-            improvement = new SelectionImprovement(
-                ranked.Length, greedy, greedySaving, optimum);
             return selected;
         }
 
@@ -2028,6 +2237,7 @@ namespace net.rs64.TexTransTool.NDMF
             PreparedGroup group)
         {
             group.TwoDimensionalProfileHeights.Clear();
+            group.StandaloneAnalysisDiagnostics.Clear();
 
             var prepared = AtlasTexture.PrepareAtlasContext(
                 domain,
@@ -2035,7 +2245,14 @@ namespace net.rs64.TexTransTool.NDMF
                 group.Renderers,
                 settings);
             if (prepared is null)
+            {
+                group.StandaloneAnalysisDiagnostics.Add(
+                    "prepare=failed");
                 return null;
+            }
+
+            group.StandaloneAnalysisDiagnostics.Add(
+                "prepare=ok");
 
             using (prepared)
             {
@@ -2053,10 +2270,17 @@ namespace net.rs64.TexTransTool.NDMF
                                 size,
                                 out var metrics))
                         {
+                            group.StandaloneAnalysisDiagnostics.Add(
+                                $"{size}=lossless-relocation-failed");
                             continue;
                         }
 
                         var usedHeight = GetUsedHeightPixels(metrics);
+                        group.StandaloneAnalysisDiagnostics.Add(
+                            $"{size}=success("
+                            + $"{metrics.LayoutSize.x}x"
+                            + $"{metrics.LayoutSize.y},"
+                            + $"usedHeight={usedHeight})");
                         group.TwoDimensionalProfileHeights[(size, size)] =
                             usedHeight;
                         standalone ??= metrics;
@@ -2078,6 +2302,8 @@ namespace net.rs64.TexTransTool.NDMF
                         when (AutoAtlas2DMergeIslandRelocator.IsNfdhComparerFailure(
                             exception))
                     {
+                        group.StandaloneAnalysisDiagnostics.Add(
+                            $"{size}=nfdh-comparer-failure");
                         // A profile that cannot be relocated reliably at one
                         // candidate width is unavailable. Wider widths can still
                         // produce a valid lossless profile.
