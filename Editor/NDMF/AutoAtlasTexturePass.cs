@@ -405,6 +405,13 @@ namespace net.rs64.TexTransTool.NDMF
             var groups = MakeTextureConnectedGroups(allMaterials, propertyTextures);
             var preparedGroups = new List<AutoAtlasTextureMergePlanner.PreparedGroup>();
             var preparationDiagnostics = new List<string>();
+            var diagnosticSections = new List<string>();
+
+            void AppendDiagnostic(string key, params object[] args)
+            {
+                diagnosticSections.Add(
+                    string.Format(key.GetLocalize(), args));
+            }
 
             string DescribeGroupMaterials(HashSet<Material> group) =>
                 string.Join(", ",
@@ -865,6 +872,17 @@ namespace net.rs64.TexTransTool.NDMF
 
             if (mergePlan.Improvement is { } improvement)
             {
+                var improvementText = string.Format(
+                    "AutoAtlasTexture:info:SelectionImprovement".GetLocalize(),
+                    improvement.CandidateCount,
+                    improvement.GreedySavingBytes,
+                    improvement.ExactSavingBytes,
+                    improvement.ExactSavingBytes
+                        - improvement.GreedySavingBytes,
+                    FormatMergeSelections(improvement.GreedySelections),
+                    FormatMergeSelections(mergePlan.Selections));
+                diagnosticSections.Add(improvementText);
+
                 TTTLog.ReportingObject(configuration, () =>
                     TTTLog.Info(
                         "AutoAtlasTexture:info:SelectionImprovement",
@@ -877,10 +895,9 @@ namespace net.rs64.TexTransTool.NDMF
                         FormatMergeSelections(mergePlan.Selections)));
             }
 
-            TTTLog.ReportingObject(configuration, () =>
-                TTTLog.Info(
-                    "AutoAtlasTexture:info:TemporaryPreparationDiagnostic",
-                    string.Join("\n", preparationDiagnostics)));
+            AppendDiagnostic(
+                "AutoAtlasTexture:info:TemporaryPreparationDiagnostic",
+                string.Join("\n", preparationDiagnostics));
 
             if (mergePlan.SearchBudgetComparison is { } searchComparison)
             {
@@ -894,74 +911,98 @@ namespace net.rs64.TexTransTool.NDMF
                         : formatted;
                 }
 
-                TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info(
-                        "AutoAtlasTexture:info:TemporarySearchBudgetHeader",
-                        searchComparison.ProductionSearchMilliseconds,
-                        searchComparison.ProductionCandidateCount,
-                        mergePlan.Selections.Count,
-                        mergePlan.Selections.Sum(
-                            selection => selection.PredictedSavingBytes),
-                        searchComparison.ProductionMaxStatesBeforeRetention,
-                        searchComparison.ProductionPrunedStateCount,
-                        FormatDiagnosticSelections(mergePlan.Selections)));
+                AppendDiagnostic(
+                    "AutoAtlasTexture:info:TemporarySearchBudgetHeader",
+                    searchComparison.ProductionSearchMilliseconds,
+                    searchComparison.ProductionCandidateCount,
+                    mergePlan.Selections.Count,
+                    mergePlan.Selections.Sum(
+                        selection => selection.PredictedSavingBytes),
+                    searchComparison.ProductionMaxStatesBeforeRetention,
+                    searchComparison.ProductionPrunedStateCount,
+                    FormatDiagnosticSelections(mergePlan.Selections));
 
                 foreach (var probe in searchComparison.Probes)
                 {
                     if (probe.Aborted)
                     {
-                        TTTLog.ReportingObject(configuration, () =>
-                            TTTLog.Info(
-                                "AutoAtlasTexture:info:TemporarySearchBudgetAborted",
-                                probe.StateBudget,
-                                probe.SearchMilliseconds,
-                                probe.AbortReason));
+                        AppendDiagnostic(
+                            "AutoAtlasTexture:info:TemporarySearchBudgetAborted",
+                            probe.StateBudget,
+                            probe.SearchMilliseconds,
+                            probe.AbortReason);
                         continue;
                     }
 
-                    TTTLog.ReportingObject(configuration, () =>
-                        TTTLog.Info(
-                            "AutoAtlasTexture:info:TemporarySearchBudgetProbe",
-                            probe.StateBudget,
-                            probe.SearchMilliseconds,
-                            probe.CandidateCount,
-                            probe.SelectedCount,
-                            probe.PredictedSavingBytes,
-                            probe.MaxStatesBeforeRetention,
-                            probe.PrunedStateCount,
-                            probe.SameSelectedPlan,
-                            FormatDiagnosticSelections(probe.Selections)));
+                    AppendDiagnostic(
+                        "AutoAtlasTexture:info:TemporarySearchBudgetProbe",
+                        probe.StateBudget,
+                        probe.SearchMilliseconds,
+                        probe.CandidateCount,
+                        probe.SelectedCount,
+                        probe.PredictedSavingBytes,
+                        probe.MaxStatesBeforeRetention,
+                        probe.PrunedStateCount,
+                        probe.SameSelectedPlan,
+                        FormatDiagnosticSelections(probe.Selections));
 
-                    TTTLog.ReportingObject(configuration, () =>
-                        TTTLog.Info(
-                            "AutoAtlasTexture:info:TemporarySearchBudgetDifferences",
-                            probe.StateBudget,
-                            probe.AdditionalOrChangedCandidateCount,
-                            FormatDiagnosticSelections(
-                                probe.AdditionalOrChangedCandidates),
-                            probe.MissingOrChangedCandidateCount,
-                            FormatDiagnosticSelections(
-                                probe.MissingOrChangedCandidates)));
+                    AppendDiagnostic(
+                        "AutoAtlasTexture:info:TemporarySearchBudgetDifferences",
+                        probe.StateBudget,
+                        probe.AdditionalOrChangedCandidateCount,
+                        FormatDiagnosticSelections(
+                            probe.AdditionalOrChangedCandidates),
+                        probe.MissingOrChangedCandidateCount,
+                        FormatDiagnosticSelections(
+                            probe.MissingOrChangedCandidates));
 
                     if (probe.Rejected4096Candidates.Count != 0)
                     {
-                        TTTLog.ReportingObject(configuration, () =>
-                            TTTLog.Info(
-                                "AutoAtlasTexture:info:TemporaryRejected4096Candidates",
-                                probe.StateBudget,
-                                FormatRejectedCandidates(
-                                    probe.Rejected4096Candidates)));
+                        AppendDiagnostic(
+                            "AutoAtlasTexture:info:TemporaryRejected4096Candidates",
+                            probe.StateBudget,
+                            FormatRejectedCandidates(
+                                probe.Rejected4096Candidates));
                     }
                 }
             }
 
+            string? fallbackText = null;
             if (twoDimensionalFallbackReasons.Count != 0)
             {
+                fallbackText = string.Format(
+                    "AutoAtlasTexture:info:TwoDimensionalFallback".GetLocalize(),
+                    string.Join("\n", twoDimensionalFallbackReasons));
                 TTTLog.ReportingObject(configuration, () =>
                     TTTLog.Info(
                         "AutoAtlasTexture:info:TwoDimensionalFallback",
                         string.Join("\n", twoDimensionalFallbackReasons)));
             }
+
+            var resultText = completed.Count == 0
+                ? string.Format(
+                    "AutoAtlasTexture:info:TargetNotFound".GetLocalize(),
+                    processingTimer.ElapsedMilliseconds)
+                : string.Format(
+                    "AutoAtlasTexture:info:RelocateResult".GetLocalize(),
+                    string.Join("\n\n", completed),
+                    processingTimer.ElapsedMilliseconds);
+
+            var copySections = new List<string>(diagnosticSections);
+            if (!string.IsNullOrEmpty(fallbackText))
+                copySections.Add(fallbackText);
+            copySections.Add(resultText);
+            var completeDiagnosticText =
+                string.Join("\n\n", copySections);
+
+            TTTLog.ReportingObject(configuration, () =>
+                TTTLog.CopyableInfo(
+                    "AutoAtlasTexture:info:TemporaryDiagnosticBundleTitle"
+                        .GetLocalize(),
+                    completeDiagnosticText,
+                    completeDiagnosticText,
+                    "AutoAtlasTexture:button:CopyAllDiagnostics"
+                        .GetLocalize()));
 
             if (completed.Count == 0)
             {
