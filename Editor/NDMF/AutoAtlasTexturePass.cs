@@ -748,6 +748,38 @@ namespace net.rs64.TexTransTool.NDMF
                 using var atlasContext = atlasResult.AtlasContext!;
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
 
+                if (execution.MergeSelection is { } atomicMerge)
+                {
+                    var atomicGroups = atomicMerge.GroupIds
+                        .Select(id => preparedGroups[id])
+                        .ToArray();
+                    if (!AutoAtlasTextureMergePlanner
+                            .PreservesAtomicGroupBoundaries(
+                                atomicGroups,
+                                atlasContext.MaterialGroupingCtx))
+                    {
+                        foreach (var rt in compiledTextures.Values.Distinct())
+                            rt.Dispose();
+                        DestroyUnappliedAtlasedMeshes(
+                            atlasResult.AtlasedMeshes);
+
+                        if (atomicMerge.PackedRegions != null)
+                        {
+                            twoDimensionalFallbackReasons.Add(
+                                $"groups={string.Join(",", atomicMerge.GroupIds.Select(id => "g" + id))}, "
+                                + $"layout={atomicMerge.PlannedLayoutSize.x}×{atomicMerge.PlannedLayoutSize.y}: "
+                                + FormatLocalized(
+                                    "AutoAtlasTexture:fallback:AtomicGroupMappingMismatch"));
+                        }
+
+                        EnqueueStandaloneFallback(
+                            executionGroups,
+                            atomicMerge,
+                            preparedGroups);
+                        continue;
+                    }
+                }
+
                 // Revalidate generated-property application against
                 // the actual MaterialGroupingContext. A merge can introduce a
                 // property name that did not exist in another atomic group's
