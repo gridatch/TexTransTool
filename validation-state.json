@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.17+wdt.ttt.1.0.2",
-  "lastDebugSerial": 660,
-  "currentDebugVersion": "0.1.17+wdt.ttt.1.0.2.debug.660.auto-atlas-merge-planner.b975b79",
+  "lastDebugSerial": 661,
+  "currentDebugVersion": "0.1.17+wdt.ttt.1.0.2.debug.661.auto-atlas-merge-planner.6542f9b",
   "currentDebugChange": "auto-atlas-merge-planner",
   "currentDebugBranch": "feat/auto-atlas-merge-planner",
-  "currentDebugCommit": "b975b798b499435e182e566daea5259780a679fb",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.17+wdt.ttt.1.0.2.debug.660.auto-atlas-merge-planner.b975b79.zip"
+  "currentDebugCommit": "6542f9b2a45c3ecefb3634b76541b3a2ae3cc521",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.17+wdt.ttt.1.0.2.debug.661.auto-atlas-merge-planner.6542f9b.zip"
 }
