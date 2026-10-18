@@ -700,9 +700,6 @@ namespace net.rs64.TexTransTool.NDMF
 
             string FormatSelectionRationale()
             {
-                if (mergePlan.Selections.Count == 0)
-                    return "(none)";
-
                 var lines = new List<string>();
                 var candidateCount =
                     mergePlan.SearchBudgetComparison?.ProductionCandidateCount
@@ -733,6 +730,9 @@ namespace net.rs64.TexTransTool.NDMF
                         $"selection-policy: candidates={candidateCount}, "
                         + "solver=(not evaluated)");
                 }
+
+                if (mergePlan.Selections.Count == 0)
+                    lines.Add("(none)");
 
                 foreach (var selection in mergePlan.Selections)
                 {
