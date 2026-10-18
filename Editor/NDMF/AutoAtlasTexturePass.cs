@@ -506,6 +506,22 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
+                // GenerateAtlasMat applies every generated atlas property
+                // to every target material that exposes that property. If a
+                // material's same-named texture was excluded from atlas
+                // generation (different UV channel, unknown usage, etc.), that
+                // global application would overwrite a texture whose sampling
+                // was never transformed. Fail closed for automatic selection;
+                // _Bump2ndMap's explicit original-UV preservation is the only
+                // supported exception.
+                if (HasUnsafeGeneratedPropertyApplication(
+                        group,
+                        propertyTextures,
+                        settings.AtlasTargetUVChannel))
+                {
+                    continue;
+                }
+
                 // Default AtlasTexture fine tuning can ReferenceCopy one
                 // texture property onto another (for example _MainTex onto
                 // _BaseMap). AutoAtlas is automatic, so process an atomic group
@@ -1012,6 +1028,75 @@ namespace net.rs64.TexTransTool.NDMF
                 TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
                     string.Join("\n\n", completed),
                     processingTimer.ElapsedMilliseconds));
+        }
+
+        internal static bool HasUnsafeGeneratedPropertyApplication(
+            IReadOnlyCollection<Material> materials,
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>>
+                propertyTextures,
+            UVChannel atlasTargetUvChannel)
+        {
+            var generatedProperties = materials
+                .Where(propertyTextures.ContainsKey)
+                .SelectMany(material => propertyTextures[material].Keys)
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var material in materials)
+            {
+                if (material == null)
+                    continue;
+
+                propertyTextures.TryGetValue(
+                    material,
+                    out var atlasProperties);
+                var usages =
+                    TTShaderTextureUsageInformationUtil
+                        .GetContainsUVTransformUsage(material);
+
+                foreach (var property in generatedProperties)
+                {
+                    if (!material.HasTexture(property))
+                        continue;
+
+                    var currentTexture = material.GetTexture(property);
+                    if (currentTexture == null
+                        || currentTexture is not Texture2D
+                            and not RenderTexture)
+                    {
+                        // ForceSetTexture is false for AutoAtlas, so
+                        // GenerateAtlasMat leaves null/non-2D properties alone.
+                        continue;
+                    }
+
+                    if (atlasProperties != null
+                        && atlasProperties.TryGetValue(
+                            property,
+                            out var atlasTexture)
+                        && atlasTexture == currentTexture)
+                    {
+                        continue;
+                    }
+
+                    if (property == "_Bump2ndMap"
+                        && usages.TryGetValue(property, out var usage)
+                        && TTShaderTextureUsageInformationUtil
+                            .RequiresBump2ndOriginalUVPreservation(
+                                property,
+                                usage,
+                                atlasTargetUvChannel))
+                    {
+                        // GenerateAtlasMat deliberately keeps this texture and
+                        // switches the material to the preserved original UV.
+                        continue;
+                    }
+
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool HasUnsupportedTextureUvTransform(
