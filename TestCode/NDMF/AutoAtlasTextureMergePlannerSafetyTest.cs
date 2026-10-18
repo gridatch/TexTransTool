@@ -26,6 +26,41 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void RetainedSourceTextureIsDetectedBeforeMaterialReplacement()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var source = new Texture2D(4, 4);
+            var replacement = new Texture2D(4, 4);
+            var material = new Material(shader);
+            try
+            {
+                material.SetTexture("_MainTex", source);
+                var sourceTextures = new HashSet<Texture> { source };
+
+                Assert.That(
+                    AutoAtlasTextureProcessor.RetainsAnySourceTexture(
+                        new[] { material },
+                        sourceTextures),
+                    Is.True);
+
+                material.SetTexture("_MainTex", replacement);
+                Assert.That(
+                    AutoAtlasTextureProcessor.RetainsAnySourceTexture(
+                        new[] { material },
+                        sourceTextures),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(replacement);
+            }
+        }
+
+        [Test]
         public void UnknownMemoryBlockLayoutsFailClosed()
         {
             Assert.That(
