@@ -143,9 +143,6 @@ msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOvera
 msgid "AtlasTexture:info:RelocateResultWithResolutionAndMemory"
 msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOverall shrink: {2}x\n{3}\nTarget texture memory: {4} → {5}\nTotal relocate count: {6}\nTime taken relocate: {7}ms"
 
-msgid "AutoAtlasTexture:info:SelectionImprovement"
-msgstr "2D atlas merge selection improvement (planning estimates)\nExact selection outperformed Greedy.\nEligible candidates: {0}\nPredicted additional savings: {1} bytes → {2} bytes (difference: {3} bytes)\nGreedy selection:\n{4}\nExact selection:\n{5}"
-
 msgid "AutoAtlasTexture:info:TwoDimensionalFallback"
 msgstr "2D texture merging could not complete; individual atlas processing was retried.\n{0}"
 
@@ -816,3 +813,45 @@ msgstr "PropertyNameAsPath"
 
 msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "SelectTexturePreview"
+
+msgid "AutoAtlasTexture:fallback:RendererSetChanged"
+msgstr "the AtlasTexture target renderer set changed between planning and execution"
+
+msgid "AutoAtlasTexture:fallback:LayoutMismatch"
+msgstr "output layout mismatch: actual={0}×{1}, planned={2}×{3}, outputPixels={4}"
+
+msgid "AutoAtlasTexture:fallback:PropertyResolutionMismatch"
+msgstr "property resolution mismatch: {0} actual={1}×{2}, planned={3}×{4}"
+
+msgid "AutoAtlasTexture:fallback:AtlasExecutionFailed"
+msgstr "DoAtlasTexture failed without a detailed placement or size reason"
+
+msgid "AutoAtlasTexture:fallback:FinalMemoryUnknown"
+msgstr "final texture memory could not be calculated"
+
+msgid "AutoAtlasTexture:fallback:FinalMemoryNotReduced"
+msgstr "final texture memory is not reduced: actual={0} bytes, baseline={1} bytes"
+
+msgid "AutoAtlasTexture:fallback:InvalidPlannedRegions"
+msgstr "planned regions overlap, are out of bounds, or are incomplete"
+
+msgid "AutoAtlasTexture:fallback:AtomicGroupMappingMismatch"
+msgstr "source UV islands do not map consistently to atomic groups"
+
+msgid "AutoAtlasTexture:fallback:InvalidIslandContext"
+msgstr "invalid island count or target height: islands={0}, map={1}, targetHeight={2}"
+
+msgid "AutoAtlasTexture:fallback:GroupCountMismatch"
+msgstr "runtime group count mismatch: actual={0}, planned={1}"
+
+msgid "AutoAtlasTexture:fallback:MissingGroupRegion"
+msgstr "g{0} has no planned region"
+
+msgid "AutoAtlasTexture:fallback:NfdhComparerFailure"
+msgstr "g{0} NFDH comparison failed: {1}"
+
+msgid "AutoAtlasTexture:fallback:RegionPackingFailed"
+msgstr "g{0} NFDH placement failed inside region: region={1}, islands={2}, profilePadding={3}"
+
+msgid "AutoAtlasTexture:fallback:RegionPaddingFailed"
+msgstr "g{0} placement does not preserve required region padding: region={1}, box=({2},{3},{4},{5}), profilePadding={6}, regionPadding={7}"
