@@ -83,7 +83,6 @@ For a merge, actual post-FineTuning output is authoritative for execution accept
 - Merge memory revalidation.
 - Merge final pixel-count revalidation.
 - Generated-material retained-source rejection.
-- Automatic exclusion of atomic groups containing Animator/Modular Avatar additional material references.
 - Common Atlas renderer rejection for meshes with zero submeshes before normalization.
 - Rejected output cleanup.
 - Standalone acceptance.
