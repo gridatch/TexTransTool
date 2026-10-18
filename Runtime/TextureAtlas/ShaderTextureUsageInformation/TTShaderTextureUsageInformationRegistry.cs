@@ -47,12 +47,24 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         public static IReadOnlyDictionary<string, TextureUVUsage> GetContainsUVTransformUsage(Material material)
         {
+            return GetMaterialUVUsageProvider(material)
+                .UVUsageWithTransform;
+        }
+
+        internal static UsingUVChannels GetOtherUVUsage(Material material)
+        {
+            return GetMaterialUVUsageProvider(material).OtherUVUsage;
+        }
+
+        private static MaterialUVUsageProvider GetMaterialUVUsageProvider(
+            Material material)
+        {
             if (TTShaderTextureUsageInformationRegistry.s_information.TryGetValue(material.shader, out var info) is false)
                 info = new FallbackShaderTextureUsage();
 
             var provider = new MaterialUVUsageProvider(material);
             info.GetMaterialTextureUVUsage(provider);
-            return provider.UVUsageWithTransform;
+            return provider;
         }
 
         public static bool RequiresBump2ndOriginalUVPreservation(string propertyName, TextureUVUsage usage, UVChannel atlasTargetUVChannel)
