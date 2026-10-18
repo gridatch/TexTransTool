@@ -404,11 +404,21 @@ namespace net.rs64.TexTransTool.NDMF
             };
             var groups = MakeTextureConnectedGroups(allMaterials, propertyTextures);
             var preparedGroups = new List<AutoAtlasTextureMergePlanner.PreparedGroup>();
+            var preparationDiagnostics = new List<string>();
+
+            string DescribeGroupMaterials(HashSet<Material> group) =>
+                string.Join(", ",
+                    group.Select(OriginalMaterialName)
+                        .OrderBy(name => name, StringComparer.Ordinal));
+
             foreach (var group in groups)
             {
+                var diagnosticMaterials = DescribeGroupMaterials(group);
                 if (group.Any(material => excludedMaterials.Contains(material)
                     || manuallySelectedMaterials.Contains(material)))
                 {
+                    preparationDiagnostics.Add(
+                        $"SKIP exclusion/manual: {diagnosticMaterials}");
                     continue;
                 }
 
@@ -422,6 +432,9 @@ namespace net.rs64.TexTransTool.NDMF
                     || referencingRenderers.Any(
                         renderer => !allowedRenderers.Contains(renderer)))
                 {
+                    preparationDiagnostics.Add(
+                        $"SKIP renderer eligibility: {diagnosticMaterials} "
+                        + $"refs={referencingRenderers.Length}");
                     continue;
                 }
 
@@ -429,6 +442,10 @@ namespace net.rs64.TexTransTool.NDMF
                     domain, referencingRenderers, UVChannel.UV0);
                 if (atlasRenderers.Length != referencingRenderers.Length)
                 {
+                    preparationDiagnostics.Add(
+                        $"SKIP missing UV0: {diagnosticMaterials} "
+                        + $"refs={referencingRenderers.Length} "
+                        + $"uv0={atlasRenderers.Length}");
                     continue;
                 }
 
@@ -438,6 +455,8 @@ namespace net.rs64.TexTransTool.NDMF
                     .ToHashSet();
                 if (texturesToReplace.Count == 0)
                 {
+                    preparationDiagnostics.Add(
+                        $"SKIP no source texture: {diagnosticMaterials}");
                     continue;
                 }
 
@@ -451,6 +470,9 @@ namespace net.rs64.TexTransTool.NDMF
                         propertyTextures,
                         texturesToReplace))
                 {
+                    preparationDiagnostics.Add(
+                        $"SKIP non-exclusive source texture: "
+                        + diagnosticMaterials);
                     continue;
                 }
 
@@ -476,6 +498,30 @@ namespace net.rs64.TexTransTool.NDMF
                 propertyTextures,
                 preparedGroups);
 
+            foreach (var preparedGroup in preparedGroups)
+            {
+                var profiles = preparedGroup.TwoDimensionalProfileHeights
+                    .OrderBy(profile => profile.Key.AtlasWidth)
+                    .ThenBy(profile => profile.Key.RegionWidth)
+                    .Select(profile =>
+                        $"{profile.Key.AtlasWidth}/{profile.Key.RegionWidth}"
+                        + $"={profile.Value}")
+                    .ToArray();
+                var standalone = preparedGroup.StandaloneMetrics is { } metrics
+                    ? $"{metrics.LayoutSize.x}x{metrics.LayoutSize.y}"
+                    : "(none)";
+                preparationDiagnostics.Add(
+                    $"g{preparedGroup.Id} PREPARED: "
+                    + $"{DescribeGroupMaterials(preparedGroup.Materials)} "
+                    + $"sources={preparedGroup.SourceTextures.Count} "
+                    + $"renderers={preparedGroup.Renderers.Length} "
+                    + $"mergeExcluded="
+                    + preparedGroup.ExcludedFromTextureMerging
+                    + $" standalone={standalone} "
+                    + $"baselineKnown={preparedGroup.BaselineCostKnown} "
+                    + $"profiles=[{string.Join(", ", profiles)}]");
+            }
+
             string FormatMergeSelections(
                 IEnumerable<AutoAtlasTextureMergePlanner.MergeSelection> selections)
             {
@@ -492,6 +538,35 @@ namespace net.rs64.TexTransTool.NDMF
                     return $"{ids} [{selection.PlannedLayoutSize.x}×{selection.PlannedLayoutSize.y}] " +
                            $"{selection.PredictedSavingBytes} bytes: {materials}";
                 }));
+            }
+
+            string FormatRejectedCandidates(
+                IEnumerable<AutoAtlasTextureMergePlanner
+                    .RejectedCandidateDiagnostic> candidates)
+            {
+                var lines = candidates.Select(candidate =>
+                {
+                    var ids = string.Join("+",
+                        candidate.GroupIds.Select(id => "g" + id));
+                    var materials = string.Join(", ",
+                        candidate.GroupIds
+                            .SelectMany(id => preparedGroups[id].Materials)
+                            .Select(OriginalMaterialName)
+                            .Distinct()
+                            .OrderBy(name => name, StringComparer.Ordinal));
+                    return $"{ids} "
+                        + $"[{candidate.LayoutSize.x}x{candidate.LayoutSize.y}] "
+                        + $"reason={candidate.RejectionReason} "
+                        + $"pixels={candidate.BaselinePixels}"
+                        + $"->{candidate.MergedPixels} "
+                        + $"memory={candidate.BaselineBytes}"
+                        + $"->{candidate.MergedBytes} "
+                        + $"saving={candidate.SavingBytes} bytes: "
+                        + materials;
+                }).ToArray();
+                return lines.Length == 0
+                    ? "(none)"
+                    : string.Join("\n", lines);
             }
 
             var executionGroups = CreateExecutionGroups(
@@ -802,6 +877,11 @@ namespace net.rs64.TexTransTool.NDMF
                         FormatMergeSelections(mergePlan.Selections)));
             }
 
+            TTTLog.ReportingObject(configuration, () =>
+                TTTLog.Info(
+                    "AutoAtlasTexture:info:TemporaryPreparationDiagnostic",
+                    string.Join("\n", preparationDiagnostics)));
+
             if (mergePlan.SearchBudgetComparison is { } searchComparison)
             {
                 string FormatDiagnosticSelections(
@@ -862,6 +942,16 @@ namespace net.rs64.TexTransTool.NDMF
                             probe.MissingOrChangedCandidateCount,
                             FormatDiagnosticSelections(
                                 probe.MissingOrChangedCandidates)));
+
+                    if (probe.Rejected4096Candidates.Count != 0)
+                    {
+                        TTTLog.ReportingObject(configuration, () =>
+                            TTTLog.Info(
+                                "AutoAtlasTexture:info:TemporaryRejected4096Candidates",
+                                probe.StateBudget,
+                                FormatRejectedCandidates(
+                                    probe.Rejected4096Candidates)));
+                    }
                 }
             }
 

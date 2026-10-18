@@ -146,6 +146,12 @@ msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOvera
 msgid "AutoAtlasTexture:info:SelectionImprovement"
 msgstr "2D atlas merge selection improvement (planning estimates)\nExact selection outperformed Greedy.\nEligible candidates: {0}\nPredicted additional savings: {1} bytes → {2} bytes (difference: {3} bytes)\nGreedy selection:\n{4}\nExact selection:\n{5}"
 
+msgid "AutoAtlasTexture:info:TemporaryPreparationDiagnostic"
+msgstr "Temporary diagnostic (AutoAtlas group preparation)\n{0}"
+
+msgid "AutoAtlasTexture:info:TemporaryRejected4096Candidates"
+msgstr "Temporary diagnostic ({0}-state search; top rejected candidates at width 4096)\n{1}"
+
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetHeader"
 msgstr "Temporary diagnostic (512 states vs wider searches; wider searches are planning-only)\n512 states: search={0}ms / safe candidates={1} / planned selections={2} / predicted savings={3} bytes / max states before retention={4} / cumulative pruned={5}\n512 plan:\n{6}\nNote: only the 512-state plan is applied. Wider searches use the same geometry, cost, and safety rules."
 

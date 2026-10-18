@@ -100,6 +100,30 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        internal sealed class RejectedCandidateDiagnostic
+        {
+            internal readonly int[] GroupIds;
+            internal readonly Vector2Int LayoutSize;
+            internal readonly CandidateRejectionReason RejectionReason;
+            internal readonly long BaselinePixels;
+            internal readonly long MergedPixels;
+            internal readonly long BaselineBytes;
+            internal readonly long MergedBytes;
+            internal readonly long SavingBytes;
+
+            internal RejectedCandidateDiagnostic(Candidate candidate)
+            {
+                GroupIds = candidate.GroupIds.OrderBy(id => id).ToArray();
+                LayoutSize = candidate.LayoutSize;
+                RejectionReason = candidate.RejectionReason;
+                BaselinePixels = candidate.Baseline.PixelCount;
+                MergedPixels = candidate.Merged.PixelCount;
+                BaselineBytes = candidate.Baseline.FullResidentBytes;
+                MergedBytes = candidate.Merged.FullResidentBytes;
+                SavingBytes = candidate.SavingBytes;
+            }
+        }
+
         internal sealed class SearchBudgetProbe
         {
             internal readonly int StateBudget;
@@ -119,6 +143,8 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int MissingOrChangedCandidateCount;
             internal readonly IReadOnlyList<MergeSelection>
                 MissingOrChangedCandidates;
+            internal readonly IReadOnlyList<RejectedCandidateDiagnostic>
+                Rejected4096Candidates;
 
             internal SearchBudgetProbe(
                 int stateBudget,
@@ -133,7 +159,9 @@ namespace net.rs64.TexTransTool.NDMF
                 IReadOnlyList<MergeSelection>?
                     additionalOrChangedCandidates = null,
                 IReadOnlyList<MergeSelection>?
-                    missingOrChangedCandidates = null)
+                    missingOrChangedCandidates = null,
+                IReadOnlyList<RejectedCandidateDiagnostic>?
+                    rejected4096Candidates = null)
             {
                 StateBudget = stateBudget;
                 SearchMilliseconds = searchMilliseconds;
@@ -159,6 +187,9 @@ namespace net.rs64.TexTransTool.NDMF
                     .Take(20).ToArray();
                 MissingOrChangedCandidateCount =
                     missingOrChangedCandidates?.Count ?? 0;
+                Rejected4096Candidates =
+                    rejected4096Candidates
+                    ?? Array.Empty<RejectedCandidateDiagnostic>();
             }
         }
 
@@ -554,15 +585,20 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly IReadOnlyList<MergeSelection> ProductionCandidates;
             internal readonly int MaxStatesBeforeRetention;
             internal readonly long PrunedStateCount;
+            internal readonly IReadOnlyList<RejectedCandidateDiagnostic>
+                Rejected4096Candidates;
 
             internal ShadowPackingDiagnostics(
                 IReadOnlyList<MergeSelection> productionCandidates,
                 int maxStatesBeforeRetention,
-                long prunedStateCount)
+                long prunedStateCount,
+                IReadOnlyList<RejectedCandidateDiagnostic>
+                    rejected4096Candidates)
             {
                 ProductionCandidates = productionCandidates;
                 MaxStatesBeforeRetention = maxStatesBeforeRetention;
                 PrunedStateCount = prunedStateCount;
+                Rejected4096Candidates = rejected4096Candidates;
             }
         }
 
@@ -909,7 +945,8 @@ namespace net.rs64.TexTransTool.NDMF
                             == SelectionPlanSignature(
                                 diagnosticSelected),
                         additionalOrChanged,
-                        missingOrChanged));
+                        missingOrChanged,
+                        diagnostic.Rejected4096Candidates));
                 }
                 catch (DiagnosticSearchStateLimitExceededException exception)
                 {
@@ -1089,6 +1126,33 @@ namespace net.rs64.TexTransTool.NDMF
                 new Dictionary<GroupLayoutKey, ShadowCostProjection>();
             var candidateCache =
                 new Dictionary<GroupLayoutKey, Candidate>();
+            var rejected4096Candidates =
+                new List<RejectedCandidateDiagnostic>();
+
+            void RecordRejected4096(Candidate candidate)
+            {
+                if (candidate.LayoutSize.x != 4096)
+                    return;
+
+                rejected4096Candidates.Add(
+                    new RejectedCandidateDiagnostic(candidate));
+                if (rejected4096Candidates.Count <= 40)
+                    return;
+
+                rejected4096Candidates.Sort((left, right) =>
+                {
+                    var saving = right.SavingBytes.CompareTo(left.SavingBytes);
+                    if (saving != 0) return saving;
+                    var groupCount =
+                        right.GroupIds.Length.CompareTo(left.GroupIds.Length);
+                    if (groupCount != 0) return groupCount;
+                    return string.CompareOrdinal(
+                        string.Join(",", left.GroupIds),
+                        string.Join(",", right.GroupIds));
+                });
+                rejected4096Candidates.RemoveRange(
+                    40, rejected4096Candidates.Count - 40);
+            }
 
             ShadowCostProjection GetProjection(
                 int[] ids,
@@ -1481,7 +1545,11 @@ namespace net.rs64.TexTransTool.NDMF
                         continue;
 
                     var candidate = GetCandidate(ids, layoutSize);
-                    if (!candidate.IsAdoptable) continue;
+                    if (!candidate.IsAdoptable)
+                    {
+                        RecordRejected4096(candidate);
+                        continue;
+                    }
 
                     if (!shadowAdoptable.TryGetValue(
                             key,
@@ -1504,11 +1572,21 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
+            var rejectedDiagnostics = rejected4096Candidates
+                .OrderByDescending(candidate => candidate.SavingBytes)
+                .ThenByDescending(candidate => candidate.GroupIds.Length)
+                .ThenBy(candidate =>
+                    string.Join(",", candidate.GroupIds),
+                    StringComparer.Ordinal)
+                .Take(20)
+                .ToArray();
+
             return new ShadowPackingDiagnostics(
                 shadowAdoptable.Select(pair => new MergeSelection(
                     pair.Value, shadowPackedRegions[pair.Key])).ToArray(),
                 maxStatesBeforeRetention,
-                prunedStateCount);
+                prunedStateCount,
+                rejectedDiagnostics);
         }
 
         private static int GetUsedHeightPixels(

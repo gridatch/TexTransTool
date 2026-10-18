@@ -147,6 +147,12 @@ msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応
 msgid "AutoAtlasTexture:info:SelectionImprovement"
 msgstr "2Dテクスチャ統合の組合せ最適化（計画段階の予測値）\n厳密選択がGreedy方式を上回りました。\n安全候補数: {0}件\n予測追加削減量: {1} bytes → {2} bytes（差: {3} bytes）\nGreedy方式:\n{4}\n厳密選択方式:\n{5}"
 
+msgid "AutoAtlasTexture:info:TemporaryPreparationDiagnostic"
+msgstr "一時診断（AutoAtlas group準備状況）\n{0}"
+
+msgid "AutoAtlasTexture:info:TemporaryRejected4096Candidates"
+msgstr "一時診断（{0}状態探索・4096幅で棄却された上位候補）\n{1}"
+
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetHeader"
 msgstr "一時診断（512状態と拡張探索の比較・拡張側は計画のみ）\n512状態: 探索={0}ms / 安全候補={1} / 想定採用={2} / 予測削減={3} bytes / 保持前最大状態={4} / 剪定累計={5}\n512案:\n{6}\n注: 本番適用は512案のみです。拡張探索も同じgeometry・cost・safety判定を使用します。"
 
