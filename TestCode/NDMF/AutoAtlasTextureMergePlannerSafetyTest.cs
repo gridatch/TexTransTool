@@ -958,65 +958,69 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             var shader = Shader.Find("Standard");
             Assert.That(shader, Is.Not.Null);
 
+            var sharedMain = new Texture2D(4, 4);
             var generatedSource = new Texture2D(4, 4);
             var excludedSource = new Texture2D(4, 4);
             var generatedMaterial = new Material(shader);
             var excludedMaterial = new Material(shader);
             try
             {
-                generatedMaterial.SetTexture("_BumpMap", generatedSource);
-                excludedMaterial.SetTexture("_BumpMap", excludedSource);
+                // Keep both materials in the same texture-connected atomic
+                // group while making only the detail property's UV channel
+                // differ.
+                generatedMaterial.SetTexture("_MainTex", sharedMain);
+                excludedMaterial.SetTexture("_MainTex", sharedMain);
+                generatedMaterial.SetTexture(
+                    "_DetailNormalMap",
+                    generatedSource);
+                excludedMaterial.SetTexture(
+                    "_DetailNormalMap",
+                    excludedSource);
+                generatedMaterial.SetFloat("_UVSec", 0f);
+                excludedMaterial.SetFloat("_UVSec", 1f);
 
                 var materials = new HashSet<Material>
                 {
                     generatedMaterial,
                     excludedMaterial,
                 };
-                var unsafeProperties =
-                    new Dictionary<
-                        Material,
-                        IReadOnlyDictionary<string, Texture>>
-                    {
-                        [generatedMaterial] =
-                            new Dictionary<string, Texture>
-                            {
-                                ["_BumpMap"] = generatedSource,
-                            },
-                        [excludedMaterial] =
-                            new Dictionary<string, Texture>(),
-                    };
+                var unsafeGrouping = new MaterialGroupingContext(
+                    materials,
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+
+                Assert.That(
+                    unsafeGrouping.ContainsTextureDictionaries[
+                        generatedMaterial].ContainsKey(
+                        "_DetailNormalMap"),
+                    Is.True);
+                Assert.That(
+                    unsafeGrouping.ContainsTextureDictionaries[
+                        excludedMaterial].ContainsKey(
+                        "_DetailNormalMap"),
+                    Is.False,
+                    "Standard _UVSec=1 must exclude the detail map from a UV0 atlas.");
 
                 Assert.That(
                     AutoAtlasTextureProcessor
                         .HasUnsafeGeneratedPropertyApplication(
                             materials,
-                            unsafeProperties,
+                            unsafeGrouping.ContainsTextureDictionaries,
                             UVChannel.UV0),
                     Is.True,
                     "A generated property must not overwrite a material property whose UV usage was excluded from atlas generation.");
 
-                var safeProperties =
-                    new Dictionary<
-                        Material,
-                        IReadOnlyDictionary<string, Texture>>
-                    {
-                        [generatedMaterial] =
-                            new Dictionary<string, Texture>
-                            {
-                                ["_BumpMap"] = generatedSource,
-                            },
-                        [excludedMaterial] =
-                            new Dictionary<string, Texture>
-                            {
-                                ["_BumpMap"] = excludedSource,
-                            },
-                    };
+                excludedMaterial.SetFloat("_UVSec", 0f);
+                var safeGrouping = new MaterialGroupingContext(
+                    materials,
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
 
                 Assert.That(
                     AutoAtlasTextureProcessor
                         .HasUnsafeGeneratedPropertyApplication(
                             materials,
-                            safeProperties,
+                            safeGrouping.ContainsTextureDictionaries,
                             UVChannel.UV0),
                     Is.False);
             }
@@ -1024,6 +1028,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             {
                 Object.DestroyImmediate(generatedMaterial);
                 Object.DestroyImmediate(excludedMaterial);
+                Object.DestroyImmediate(sharedMain);
                 Object.DestroyImmediate(generatedSource);
                 Object.DestroyImmediate(excludedSource);
             }
