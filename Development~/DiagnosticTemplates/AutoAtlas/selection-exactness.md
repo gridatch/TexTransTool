@@ -33,7 +33,7 @@ The old `candidateCount <= 16` exact-subset path may remain as bounded fallback/
   - selected saving
   - delta.
 
-`SelectionImprovement` may be retained if production/user-facing behavior still needs it; otherwise classify its consumers before removal.
+`SelectionImprovement` was classified during the post-implementation audit as diagnostic/reporting state only and removed from production. The exact solver itself remains permanent production behavior.
 
 ## Patch sources
 
@@ -99,9 +99,13 @@ If reporting was removed but needs to be restored:
 
 ## removal_contract
 
-Safe to remove:
-- `SelectionDiagnostics` DTO/state if it has no non-diagnostic consumer.
+Removed from production after the captured investigation:
+- `SelectionDiagnostics` DTO/state.
+- `SelectionImprovement` DTO/state.
 - solver/greedy/selected/delta report formatting.
+- the user-facing exact-vs-greedy comparison log.
+
+These are restored only when this diagnostic template is activated.
 
 Must preserve:
 - exact group-mask production solver.
