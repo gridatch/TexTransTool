@@ -406,24 +406,7 @@ namespace net.rs64.TexTransTool.NDMF
                 return;
             }
 
-            HashSet<Material> additionalReferencedMaterials;
-            HashSet<Material> allReferencedMaterials;
-            if (domain is NDMFDomain ndmfDomain)
-            {
-                additionalReferencedMaterials =
-                    ndmfDomain.GetAdditionalReferencedMaterials();
-                allReferencedMaterials = allRenderers
-                    .SelectMany(domain.GetMaterials)
-                    .UOfType<Material>()
-                    .ToHashSet();
-                allReferencedMaterials.UnionWith(
-                    additionalReferencedMaterials);
-            }
-            else
-            {
-                additionalReferencedMaterials = new HashSet<Material>();
-                allReferencedMaterials = domain.GetAllMaterials();
-            }
+            var allReferencedMaterials = domain.GetAllMaterials();
 
             // Material grouping remains shader/property-aware, but it is now
             // scoped to the same renderer-selected materials as AtlasTexture.
@@ -476,20 +459,6 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 if (group.Any(material => excludedMaterials.Contains(material)
                     || manuallySelectedMaterials.Contains(material)))
-                {
-                    continue;
-                }
-
-                // NDMF material replacement also rewrites references held by
-                // animation object curves and Modular Avatar material setters.
-                // AutoAtlas cannot infer that every future material assignment
-                // will use a mesh slot transformed for this atlas, so automatic
-                // processing must fail closed for any such material. Explicit
-                // manual AtlasTexture behavior is intentionally unchanged.
-                if (HasAdditionalMaterialReference(
-                        group,
-                        additionalReferencedMaterials,
-                        domain.OriginEqual))
                 {
                     continue;
                 }
@@ -1151,16 +1120,6 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             return false;
-        }
-
-        internal static bool HasAdditionalMaterialReference(
-            IReadOnlyCollection<Material> materials,
-            HashSet<Material> additionalReferencedMaterials,
-            OriginEqual originEqual)
-        {
-            return materials.Any(material =>
-                additionalReferencedMaterials.Any(reference =>
-                    originEqual(material, reference)));
         }
 
         internal static bool IsExcludedFromTextureMerging(
