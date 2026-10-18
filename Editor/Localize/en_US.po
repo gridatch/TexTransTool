@@ -873,3 +873,6 @@ msgstr "required atlased mesh could not be resolved for renderer: {0}"
 
 msgid "AutoAtlasTexture:fallback:ActiveUntransformedConsumer"
 msgstr "a currently active material consumer cannot receive the corresponding atlas mesh/UV rewrite"
+
+msgid "AutoAtlasTexture:fallback:VertexIndexReindexing"
+msgstr "atlas mesh normalization would change vertex indices used by the shader"
