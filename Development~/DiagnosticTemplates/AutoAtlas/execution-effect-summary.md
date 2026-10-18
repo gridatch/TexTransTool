@@ -83,7 +83,10 @@ For a merge, actual post-FineTuning output is authoritative for execution accept
 - Merge memory revalidation.
 - Merge final pixel-count revalidation.
 - Generated-material retained-source rejection.
-- Common Atlas renderer rejection for meshes with zero submeshes before normalization.
+- Target-UV transform / texture-dimension safety.
+- Atomic-group, generated-property, and ReferenceCopy semantic revalidation before FineTuning.
+- Required-renderer atlased-mesh resolution before mutation.
+- Common Atlas renderer rejection for unsupported mesh topology or no drawable triangles.
 - Rejected output cleanup.
 - Standalone acceptance.
 - Mesh/material mutation ordering.
@@ -122,6 +125,8 @@ Preserve:
 - final FineTuning memory checks
 - final merge pixel checks
 - retained-source material checks
+- UV/property/ReferenceCopy semantic checks
+- required-mesh resolution checks
 - rejected output cleanup
 - normal relocation result output
 - total AutoAtlas processing-time user-facing log.
