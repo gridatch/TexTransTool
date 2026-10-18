@@ -467,7 +467,7 @@ namespace net.rs64.TexTransTool.NDMF
                 // atlas-eligible texture sampling applies a static or unknown
                 // UV transform. The common AtlasTexture transfer path operates
                 // on mesh UVs and does not bake those matrices into the atlas.
-                if (HasUnsupportedTextureUvTransform(
+                if (HasUnsupportedTextureUvSampling(
                         group,
                         propertyTextures,
                         settings.AtlasTargetUVChannel))
@@ -1105,7 +1105,7 @@ namespace net.rs64.TexTransTool.NDMF
             return false;
         }
 
-        internal static bool HasUnsupportedTextureUvTransform(
+        internal static bool HasUnsupportedTextureUvSampling(
             IReadOnlyCollection<Material> materials,
             IReadOnlyDictionary<
                 Material,
@@ -1115,42 +1115,74 @@ namespace net.rs64.TexTransTool.NDMF
         {
             foreach (var material in materials)
             {
-                if (material == null
-                    || !propertyTextures.TryGetValue(
-                        material,
-                        out var atlasProperties))
-                {
+                if (material == null)
                     continue;
-                }
 
+                propertyTextures.TryGetValue(
+                    material,
+                    out var atlasProperties);
                 var usages =
                     TTShaderTextureUsageInformationUtil
                         .GetContainsUVTransformUsage(material);
-                foreach (var property in atlasProperties)
+
+                foreach (var propertyName
+                         in material.GetTexturePropertyNames())
                 {
-                    if (property.Value == null
-                        || !usages.TryGetValue(
-                            property.Key,
-                            out var usage))
+                    var texture = material.GetTexture(propertyName);
+                    if (texture == null
+                        || texture is not Texture2D
+                            and not RenderTexture)
                     {
                         continue;
                     }
 
-                    if ((((int)usage.UVChannel) - 1)
-                            != (int)atlasTargetUvChannel)
+                    if (!usages.TryGetValue(
+                            propertyName,
+                            out var usage)
+                        || usage.UVChannel == UsageUVChannel.Unknown)
                     {
+                        // Automatic atlasing rewrites mesh UVs. If shader
+                        // metadata cannot prove which UV channel a sampled 2D
+                        // texture uses, retaining that texture is unsafe.
+                        return true;
+                    }
+
+                    var usageChannel =
+                        ((int)usage.UVChannel) - 1;
+                    if (usageChannel != (int)atlasTargetUvChannel)
+                    {
+                        // Sampling through another known UV channel is
+                        // unaffected by rewriting the atlas target UV.
                         continue;
                     }
 
-                    // Non-identity/unknown UV matrices are not baked by the
-                    // current AtlasTexture island and texture-transfer path.
-                    // _Bump2ndMap with an independent transform is already
-                    // excluded from atlasProperties by MaterialGroupingContext
-                    // and handled by the dedicated original-UV preservation
-                    // path, so every property reaching here must be identity.
+                    if (propertyName == "_Bump2ndMap"
+                        && TTShaderTextureUsageInformationUtil
+                            .RequiresBump2ndOriginalUVPreservation(
+                                propertyName,
+                                usage,
+                                atlasTargetUvChannel))
+                    {
+                        // The common AtlasTexture path preserves the original
+                        // UV in a spare channel and remaps this property.
+                        continue;
+                    }
+
                     if (!TTShaderTextureUsageInformationUtil
                             .IsIdentityUVMatrix(usage.UVMatrix))
                     {
+                        return true;
+                    }
+
+                    if (atlasProperties == null
+                        || !atlasProperties.TryGetValue(
+                            propertyName,
+                            out var atlasTexture)
+                        || atlasTexture != texture)
+                    {
+                        // A target-UV texture that will not be regenerated
+                        // would sample transformed atlas UVs against its old
+                        // texture after the mesh rewrite.
                         return true;
                     }
                 }
