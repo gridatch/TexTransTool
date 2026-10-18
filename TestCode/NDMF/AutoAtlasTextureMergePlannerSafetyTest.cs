@@ -211,8 +211,8 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             public IEnumerable<Renderer> EnumerateRenderer() => _renderers;
 
             public bool OriginEqual(
-                UnityEngine.Object? left,
-                UnityEngine.Object? right)
+                UnityEngine.Object left,
+                UnityEngine.Object right)
             {
                 return left == right;
             }
