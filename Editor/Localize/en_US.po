@@ -864,3 +864,6 @@ msgstr "final output pixel count is invalid or not reduced: actual={0}, baseline
 
 msgid "AutoAtlasTexture:fallback:SourceTextureRetained"
 msgstr "generated atlased materials still reference one or more source textures"
+
+msgid "AutoAtlasTexture:fallback:GeneratedPropertyApplicationMismatch"
+msgstr "combined atlas properties would overwrite a material texture property that was not transformed for this atlas"
