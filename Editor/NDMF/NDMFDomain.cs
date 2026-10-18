@@ -41,6 +41,11 @@ namespace net.rs64.TexTransTool.NDMF
             _additionalMaterialsProvider = new AdditionalMaterialsProvider(b);
         }
 
+        internal HashSet<Material> GetAdditionalReferencedMaterials()
+        {
+            return _additionalMaterialsProvider.GetReferencedMaterials();
+        }
+
         public HashSet<Material> GetAllMaterials()
         {
             var matHash = new HashSet<Material>();
