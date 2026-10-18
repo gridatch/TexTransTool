@@ -45,6 +45,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
         void WriteTextureUVUsage(string propertyName, UsageUVChannel uvChannel, Matrix2x3? uvMatrix);
     }
 
+    internal interface ITTTextureOtherUVUsageWriter
+    {
+        void WriteOtherUVUsage(UsingUVChannels uvChannels);
+    }
+
     public enum UsageUVChannel
     {
         Unknown = 0,
@@ -64,12 +69,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
         /// </summary>
         NonMesh = 9,
     }
-    class MaterialUVUsageProvider : ITTTextureUVUsageWriter, ITTTextureUVTransformUsageWriter
+    class MaterialUVUsageProvider :
+        ITTTextureUVUsageWriter,
+        ITTTextureUVTransformUsageWriter,
+        ITTTextureOtherUVUsageWriter
     {
         Material _material;
         readonly HashSet<string> _texturePropertyNames;
         Dictionary<string, TextureUVUsage> _uvUsage = new();
+        private UsingUVChannels _otherUVUsage;
         public IReadOnlyDictionary<string, TextureUVUsage> UVUsageWithTransform => _uvUsage;
+        internal UsingUVChannels OtherUVUsage => _otherUVUsage;
         public MaterialUVUsageProvider(Material material)
         {
             _material = material;
@@ -132,6 +142,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 uVChannel,
                 uvMatrix,
                 uvMatrixExplicitlyReported: true);
+        }
+
+        public void WriteOtherUVUsage(UsingUVChannels uvChannels)
+        {
+            _otherUVUsage |= uvChannels;
         }
     }
 }
