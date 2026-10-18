@@ -9,6 +9,22 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 {
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
+        [TestCase(1L, 2L, true)]
+        [TestCase(0L, 2L, false)]
+        [TestCase(2L, 2L, false)]
+        [TestCase(3L, 2L, false)]
+        public void FinalPixelBenefitRequiresStrictReduction(
+            long finalPixels,
+            long baselinePixels,
+            bool expected)
+        {
+            Assert.That(
+                AutoAtlasTextureProcessor.HasStrictPixelReduction(
+                    finalPixels,
+                    baselinePixels),
+                Is.EqualTo(expected));
+        }
+
         [Test]
         public void UnknownMemoryBlockLayoutsFailClosed()
         {
