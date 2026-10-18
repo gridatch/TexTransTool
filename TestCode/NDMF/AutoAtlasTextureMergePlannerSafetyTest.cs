@@ -570,6 +570,21 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     Is.True,
                     "ReferenceCopy is safe when the target property already uses exactly the source pixels.");
 
+                targetMaterial.SetTextureScale(
+                    "_BumpMap",
+                    new Vector2(2f, 1f));
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            materials,
+                            compatible,
+                            settings),
+                    Is.False,
+                    "ReferenceCopy must reject a target property that samples the same texture through a different UV transform.");
+                targetMaterial.SetTextureScale(
+                    "_BumpMap",
+                    Vector2.one);
+
                 targetMaterial.SetTexture("_BumpMap", targetTexture);
                 var targetExcludedFromAtlasGeneration =
                     new Dictionary<
