@@ -855,3 +855,6 @@ msgstr "g{0} NFDH placement failed inside region: region={1}, islands={2}, profi
 
 msgid "AutoAtlasTexture:fallback:RegionPaddingFailed"
 msgstr "g{0} placement does not preserve required region padding: region={1}, box=({2},{3},{4},{5}), profilePadding={6}, regionPadding={7}"
+
+msgid "AutoAtlasTexture:fallback:FinalPixelsNotReduced"
+msgstr "final output pixel count is invalid or not reduced: actual={0}, baseline={1}"
