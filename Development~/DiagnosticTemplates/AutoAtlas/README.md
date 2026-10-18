@@ -90,7 +90,7 @@ All listed projects completed with `mergeFallbacks=0`.
 
 | Project | 1024 safe candidates | 2048 | 4096 | production merge saving | final plan changes above 1024 |
 | --- | ---: | ---: | ---: | ---: | --- |
-| Seiran | 141 | 188 | 188 | 5,592,520 B | none |
+| Seiran_Test_Atlas | 141 | 188 | 188 | 5,592,520 B | none |
 | Koiboshi | 2 | 2 | 2 | 117,432 B | none |
 | ShuwashuwaPearl | 2 | 2 | 2 | 196,960 B | none |
 | FrillNyantic | 6 | 6 | 6 | 393,280 B | none |
