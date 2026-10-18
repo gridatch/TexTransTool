@@ -542,6 +542,42 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void AdditionalMaterialReferenceExcludesEntireAutoAtlasGroup()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var referenced = new Material(shader);
+            var unreferenced = new Material(shader);
+            try
+            {
+                var group = new HashSet<Material>
+                {
+                    referenced,
+                    unreferenced,
+                };
+                var additional = new HashSet<Material>
+                {
+                    referenced,
+                };
+
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasAdditionalMaterialReference(
+                        group, additional),
+                    Is.True);
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasAdditionalMaterialReference(
+                        new HashSet<Material> { unreferenced }, additional),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(referenced);
+                Object.DestroyImmediate(unreferenced);
+            }
+        }
+
+        [Test]
         public void TextureMergingExclusionAppliesToRendererWithoutRemovingGroup()
         {
             var root = new GameObject("TextureMergingExclusionTest");
