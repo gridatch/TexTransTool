@@ -82,37 +82,13 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        internal sealed class SelectionImprovement
-        {
-            internal readonly int CandidateCount;
-            internal readonly IReadOnlyList<MergeSelection> GreedySelections;
-            internal readonly long GreedySavingBytes;
-            internal readonly long ExactSavingBytes;
-
-            internal SelectionImprovement(
-                int candidateCount,
-                IReadOnlyList<MergeSelection> greedySelections,
-                long greedySavingBytes,
-                long exactSavingBytes)
-            {
-                CandidateCount = candidateCount;
-                GreedySelections = greedySelections;
-                GreedySavingBytes = greedySavingBytes;
-                ExactSavingBytes = exactSavingBytes;
-            }
-        }
-
         internal sealed class PlanResult
         {
             internal readonly IReadOnlyList<MergeSelection> Selections;
-            internal readonly SelectionImprovement? Improvement;
 
-            internal PlanResult(
-                IReadOnlyList<MergeSelection> selections,
-                SelectionImprovement? improvement = null)
+            internal PlanResult(IReadOnlyList<MergeSelection> selections)
             {
                 Selections = selections;
-                Improvement = improvement;
             }
         }
 
@@ -710,22 +686,14 @@ namespace net.rs64.TexTransTool.NDMF
                 GetPredictedPropertySizes,
                 ShadowPackingStatesPerHost);
             var selected = SelectTwoDimensionalMerges(
-                shadow2D.ProductionCandidates, out var improvement);
+                shadow2D.ProductionCandidates);
 
-            return new PlanResult(selected, improvement);
+            return new PlanResult(selected);
         }
 
         internal static List<MergeSelection> SelectTwoDimensionalMerges(
             IEnumerable<MergeSelection> candidates)
         {
-            return SelectTwoDimensionalMerges(candidates, out _);
-        }
-
-        internal static List<MergeSelection> SelectTwoDimensionalMerges(
-            IEnumerable<MergeSelection> candidates,
-            out SelectionImprovement? improvement)
-        {
-            improvement = null;
             var ranked = candidates
                 .Where(candidate => candidate.PackedRegions != null)
                 .OrderByDescending(candidate => candidate.PredictedSavingBytes)
@@ -780,8 +748,6 @@ namespace net.rs64.TexTransTool.NDMF
             if (optimum <= greedySaving)
                 return greedy;
 
-            improvement = new SelectionImprovement(
-                ranked.Length, greedy, greedySaving, optimum);
             return exact;
         }
 
