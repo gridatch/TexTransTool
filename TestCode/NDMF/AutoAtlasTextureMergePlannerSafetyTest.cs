@@ -605,12 +605,39 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 
                 Assert.That(
                     AutoAtlasTextureProcessor.HasAdditionalMaterialReference(
-                        group, additional),
+                        group,
+                        additional,
+                        (left, right) => left == right),
                     Is.True);
                 Assert.That(
                     AutoAtlasTextureProcessor.HasAdditionalMaterialReference(
-                        new HashSet<Material> { unreferenced }, additional),
+                        new HashSet<Material> { unreferenced },
+                        additional,
+                        (left, right) => left == right),
                     Is.False);
+
+                var replacement = new Material(shader)
+                {
+                    name = referenced.name,
+                };
+                try
+                {
+                    Assert.That(
+                        AutoAtlasTextureProcessor.HasAdditionalMaterialReference(
+                            new HashSet<Material> { replacement },
+                            additional,
+                            (left, right) =>
+                                left == right
+                                || (left is Material leftMaterial
+                                    && right is Material rightMaterial
+                                    && leftMaterial.name == rightMaterial.name)),
+                        Is.True,
+                        "Additional material safety must use domain origin identity, not only object reference identity.");
+                }
+                finally
+                {
+                    Object.DestroyImmediate(replacement);
+                }
             }
             finally
             {
