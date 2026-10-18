@@ -71,6 +71,42 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void SourceTextureMemoryUsesActualMipCount()
+        {
+            var texture = new Texture2D(
+                16,
+                16,
+                TextureFormat.RGBA32,
+                mipCount: 2,
+                linear: false);
+            try
+            {
+                Assert.That(texture.mipmapCount, Is.EqualTo(2));
+
+                var descriptor = new TexTransToolTextureDescriptor
+                {
+                    UseMipMap = true,
+                };
+                Assert.That(
+                    AtlasTexture.GetSourceTextureMipCount(
+                        texture,
+                        descriptor),
+                    Is.EqualTo(2));
+
+                descriptor.UseMipMap = false;
+                Assert.That(
+                    AtlasTexture.GetSourceTextureMipCount(
+                        texture,
+                        descriptor),
+                    Is.EqualTo(1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
         public void UnknownMemoryBlockLayoutsFailClosed()
         {
             Assert.That(
