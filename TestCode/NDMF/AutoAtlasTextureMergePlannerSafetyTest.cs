@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 
@@ -332,6 +333,178 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Is.EqualTo(
                     baseline.FullResidentBytes
                     - merged.FullResidentBytes));
+        }
+
+        [Test]
+        public void CandidateRejectsUnsafeReferenceCopySemantics()
+        {
+            var baseline = Plan(new[]
+            {
+                Entry(64, 64, 1),
+                Entry(64, 64, 1),
+            });
+            var merged = Plan(new[]
+            {
+                Entry(64, 64, 1),
+            });
+
+            var candidate = new AutoAtlasTextureMergePlanner.Candidate(
+                new[] { 0, 1 },
+                baseline,
+                merged,
+                new Vector2Int(64, 64),
+                new Dictionary<string, Vector2Int>(),
+                preservesReferenceCopySemantics: false);
+
+            Assert.That(candidate.IsAdoptable, Is.False);
+            Assert.That(
+                candidate.RejectionReason,
+                Is.EqualTo(
+                    AutoAtlasTextureMergePlanner
+                        .CandidateRejectionReason
+                        .ReferenceCopySemantics));
+        }
+
+        [Test]
+        public void ReferenceCopySafetyRequiresEquivalentSourcePixels()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var sourceTexture = new Texture2D(4, 4);
+            var targetTexture = new Texture2D(4, 4);
+            var sourceMaterial = new Material(shader);
+            var targetMaterial = new Material(shader);
+            try
+            {
+                sourceMaterial.SetTexture("_MainTex", sourceTexture);
+                targetMaterial.SetTexture("_BumpMap", targetTexture);
+
+                var materials = new HashSet<Material>
+                {
+                    sourceMaterial,
+                    targetMaterial,
+                };
+                var settings = new AtlasSetting
+                {
+                    TextureFineTuning = new List<ITextureFineTuning>
+                    {
+                        new ReferenceCopy(
+                            new PropertyName("_MainTex"),
+                            new List<PropertyName>
+                            {
+                                new PropertyName("_BumpMap"),
+                            }),
+                    },
+                };
+
+                var incompatible =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [sourceMaterial] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_MainTex"] = sourceTexture,
+                            },
+                        [targetMaterial] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_BumpMap"] = targetTexture,
+                            },
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            materials,
+                            incompatible,
+                            settings),
+                    Is.False,
+                    "ReferenceCopy must not redirect a target property to an atlas drawn from different source pixels.");
+
+                targetMaterial.SetTexture("_BumpMap", sourceTexture);
+                var compatible =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [sourceMaterial] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_MainTex"] = sourceTexture,
+                            },
+                        [targetMaterial] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_BumpMap"] = sourceTexture,
+                            },
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            materials,
+                            compatible,
+                            settings),
+                    Is.True,
+                    "ReferenceCopy is safe when the target property already uses exactly the source pixels.");
+
+                targetMaterial.SetTexture("_BumpMap", targetTexture);
+                var targetExcludedFromAtlasGeneration =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [sourceMaterial] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_MainTex"] = sourceTexture,
+                            },
+                        [targetMaterial] =
+                            new Dictionary<string, Texture>(),
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            materials,
+                            targetExcludedFromAtlasGeneration,
+                            settings),
+                    Is.False,
+                    "A non-atlased target property would still be overwritten by ReferenceCopy during material generation.");
+
+                var sourceNotGenerated =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [sourceMaterial] =
+                            new Dictionary<string, Texture>(),
+                        [targetMaterial] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_BumpMap"] = targetTexture,
+                            },
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            materials,
+                            sourceNotGenerated,
+                            settings),
+                    Is.True,
+                    "ReferenceCopy is a no-op when its source atlas property is absent.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(sourceMaterial);
+                Object.DestroyImmediate(targetMaterial);
+                Object.DestroyImmediate(sourceTexture);
+                Object.DestroyImmediate(targetTexture);
+            }
         }
 
         [Test]
