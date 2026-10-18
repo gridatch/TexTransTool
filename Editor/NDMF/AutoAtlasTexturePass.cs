@@ -487,7 +487,9 @@ namespace net.rs64.TexTransTool.NDMF
                 // processing must fail closed for any such material. Explicit
                 // manual AtlasTexture behavior is intentionally unchanged.
                 if (HasAdditionalMaterialReference(
-                        group, additionalReferencedMaterials))
+                        group,
+                        additionalReferencedMaterials,
+                        domain.OriginEqual))
                 {
                     continue;
                 }
@@ -953,9 +955,12 @@ namespace net.rs64.TexTransTool.NDMF
 
         internal static bool HasAdditionalMaterialReference(
             IReadOnlyCollection<Material> materials,
-            HashSet<Material> additionalReferencedMaterials)
+            HashSet<Material> additionalReferencedMaterials,
+            OriginEqual originEqual)
         {
-            return materials.Any(additionalReferencedMaterials.Contains);
+            return materials.Any(material =>
+                additionalReferencedMaterials.Any(reference =>
+                    originEqual(material, reference)));
         }
 
         internal static bool IsExcludedFromTextureMerging(
