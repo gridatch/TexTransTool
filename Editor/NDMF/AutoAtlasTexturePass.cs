@@ -257,6 +257,31 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        internal static bool RendererRequiresAtlasMesh(
+            IRendererTargeting targeting,
+            Renderer renderer,
+            HashSet<Material> targetMaterials)
+        {
+            var mesh = targeting.GetMesh(renderer);
+            if (mesh == null || mesh.subMeshCount == 0)
+                return false;
+
+            var materials = targeting.GetMaterials(renderer);
+            for (var slot = 0; slot < materials.Length; slot += 1)
+            {
+                var material = materials[slot];
+                if (material == null || !targetMaterials.Contains(material))
+                    continue;
+
+                var effectiveSubMesh = Math.Clamp(
+                    slot, 0, mesh.subMeshCount - 1);
+                if (mesh.GetSubMesh(effectiveSubMesh).indexCount != 0)
+                    return true;
+            }
+
+            return false;
+        }
+
         internal static bool HasStrictPixelReduction(
             long finalPixels,
             long baselinePixels)
@@ -747,6 +772,43 @@ namespace net.rs64.TexTransTool.NDMF
 
                 using var atlasContext = atlasResult.AtlasContext!;
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
+
+                var unresolvedRequiredRenderer =
+                    atlasRenderers.FirstOrDefault(renderer =>
+                        RendererRequiresAtlasMesh(
+                            domain, renderer, group)
+                        && AtlasTexture.ResolveAtlasedMeshForRenderer(
+                            domain,
+                            renderer,
+                            atlasContext,
+                            atlasResult.AtlasedMeshes!) is null);
+                if (unresolvedRequiredRenderer != null)
+                {
+                    foreach (var rt in compiledTextures.Values.Distinct())
+                        rt.Dispose();
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes);
+
+                    if (execution.MergeSelection is { } unresolvedMerge)
+                    {
+                        if (unresolvedMerge.PackedRegions != null)
+                        {
+                            twoDimensionalFallbackReasons.Add(
+                                $"groups={string.Join(",", unresolvedMerge.GroupIds.Select(id => "g" + id))}, "
+                                + $"layout={unresolvedMerge.PlannedLayoutSize.x}×{unresolvedMerge.PlannedLayoutSize.y}: "
+                                + FormatLocalized(
+                                    "AutoAtlasTexture:fallback:RequiredMeshResolutionFailed",
+                                    unresolvedRequiredRenderer.name));
+                        }
+
+                        EnqueueStandaloneFallback(
+                            executionGroups,
+                            unresolvedMerge,
+                            preparedGroups);
+                    }
+
+                    continue;
+                }
 
                 if (execution.MergeSelection is { } atomicMerge)
                 {
