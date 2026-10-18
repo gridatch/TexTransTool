@@ -3,11 +3,47 @@ using System.Linq;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 
 namespace net.rs64.TexTransTool.NDMF.TestCode
 {
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
+        [Test]
+        public void UnknownMemoryBlockLayoutsFailClosed()
+        {
+            Assert.That(
+                AtlasTexture.TryGetMemoryBlockLayout(
+                    (TextureFormat)int.MaxValue,
+                    out _),
+                Is.False);
+            Assert.That(
+                AtlasTexture.TryGetMemoryBlockLayout(
+                    (GraphicsFormat)int.MaxValue,
+                    out _),
+                Is.False);
+
+            Assert.That(
+                AtlasTexture.TryGetMemoryBlockLayout(
+                    TextureFormat.RGBA32,
+                    out var rgbaBlock),
+                Is.True);
+            Assert.That(rgbaBlock, Is.EqualTo((1u, 1u, 4u)));
+        }
+
+        [Test]
+        public void DestroyUnappliedAtlasedMeshesDestroysTemporaryMeshes()
+        {
+            var first = new Mesh();
+            var second = new Mesh();
+
+            AutoAtlasTextureProcessor.DestroyUnappliedAtlasedMeshes(
+                new[] { first, first, second });
+
+            Assert.That(first == null, Is.True);
+            Assert.That(second == null, Is.True);
+        }
+
         [Test]
         public void AtlasSubSetIgnoresTargetMaterialOnEmptySubMesh()
         {
@@ -796,19 +832,6 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             Assert.That(selected[0], Is.SameAs(b));
             Assert.That(selected[1], Is.SameAs(c));
 
-            var verified = AutoAtlasTextureMergePlanner
-                .SelectTwoDimensionalMerges(new[] { a, b, c },
-                    out var improvement);
-            Assert.That(verified, Is.EqualTo(selected));
-            Assert.That(improvement, Is.Not.Null);
-            Assert.That(improvement.CandidateCount, Is.EqualTo(3));
-            Assert.That(improvement.GreedySelections, Is.EqualTo(new[] { a }));
-            Assert.That(improvement.ExactSavingBytes,
-                Is.GreaterThan(improvement.GreedySavingBytes));
-            Assert.That(improvement.ExactSavingBytes -
-                improvement.GreedySavingBytes,
-                Is.EqualTo(b.PredictedSavingBytes +
-                    c.PredictedSavingBytes - a.PredictedSavingBytes));
         }
 
         [Test]
@@ -823,9 +846,6 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 
             Assert.That(selected, Is.EqualTo(new[] { a, independent }));
 
-            AutoAtlasTextureMergePlanner.SelectTwoDimensionalMerges(
-                new[] { a, b, independent }, out var improvement);
-            Assert.That(improvement, Is.Null);
         }
 
         [Test]
@@ -837,13 +857,10 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     0, id, id % 2 == 0 ? 16 : 24));
 
             var selected = AutoAtlasTextureMergePlanner
-                .SelectTwoDimensionalMerges(
-                    candidates,
-                    out var improvement);
+                .SelectTwoDimensionalMerges(candidates);
 
             Assert.That(selected.Count, Is.EqualTo(1));
             Assert.That(selected[0], Is.SameAs(candidates[1]));
-            Assert.That(improvement, Is.Null);
         }
 
         [Test]
@@ -863,15 +880,9 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             Assert.That(candidates.Count, Is.EqualTo(17));
 
             var selected = AutoAtlasTextureMergePlanner
-                .SelectTwoDimensionalMerges(
-                    candidates,
-                    out var improvement);
+                .SelectTwoDimensionalMerges(candidates);
 
             Assert.That(selected, Is.EqualTo(new[] { b, c }));
-            Assert.That(improvement, Is.Not.Null);
-            Assert.That(improvement!.CandidateCount, Is.EqualTo(17));
-            Assert.That(improvement.ExactSavingBytes,
-                Is.GreaterThan(improvement.GreedySavingBytes));
         }
 
         [Test]
@@ -883,13 +894,10 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     0, id, id % 2 == 0 ? 16 : 24));
 
             var selected = AutoAtlasTextureMergePlanner
-                .SelectTwoDimensionalMerges(
-                    candidates,
-                    out var improvement);
+                .SelectTwoDimensionalMerges(candidates);
 
             Assert.That(selected.Count, Is.EqualTo(1));
             Assert.That(selected[0], Is.SameAs(candidates[1]));
-            Assert.That(improvement, Is.Null);
         }
 
         private static AutoAtlasTextureMergePlanner.MergeSelection
