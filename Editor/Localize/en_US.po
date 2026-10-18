@@ -858,3 +858,6 @@ msgstr "g{0} placement does not preserve required region padding: region={1}, bo
 
 msgid "AutoAtlasTexture:fallback:FinalPixelsNotReduced"
 msgstr "final output pixel count is invalid or not reduced: actual={0}, baseline={1}"
+
+msgid "AutoAtlasTexture:fallback:SourceTextureRetained"
+msgstr "generated atlased materials still reference one or more source textures"
