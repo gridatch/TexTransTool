@@ -62,7 +62,7 @@ The trace is diagnostic. It must not make a failed profile acceptable.
 
 Known captured fixtures:
 - Seiran_Test_Atlas `g8: 1_Blue, 2_Gray, 3_Dark Blue, 4_Light Blue`: prepare succeeds; all 256–4096 lossless relocations fail.
-- ShuwashuwaPearl `g11: Lace 1`: same classification.
+- Seiran_ShuwashuwaPearl `g11: Lace 1`: same classification.
 
 These observations establish that the condition is not unique to one fixture. They do not prove that no theoretical packing exists; they prove only that the current lossless relocation path did not find one.
 
