@@ -212,6 +212,77 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void RequiredAtlasMeshIgnoresEmptyTargetSubmeshButKeepsRepeatedGeometry()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var target = new Material(shader);
+            var other = new Material(shader);
+            var mesh = new Mesh();
+            var gameObject = new GameObject("RequiredAtlasMesh");
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.uv = new[]
+                {
+                    Vector2.zero,
+                    Vector2.right,
+                    Vector2.up,
+                };
+                mesh.subMeshCount = 2;
+                mesh.SetTriangles(System.Array.Empty<int>(), 0);
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 1);
+
+                var filter = gameObject.AddComponent<MeshFilter>();
+                filter.sharedMesh = mesh;
+                var renderer = gameObject.AddComponent<MeshRenderer>();
+
+                renderer.sharedMaterials = new[] { target, other };
+                var targeting = new RendererTargetingForTest(
+                    new Renderer[] { renderer });
+                Assert.That(
+                    AutoAtlasTextureProcessor.RendererRequiresAtlasMesh(
+                        targeting,
+                        renderer,
+                        new HashSet<Material> { target }),
+                    Is.False,
+                    "A target material used only by an empty submesh has no UVs to rewrite.");
+
+                renderer.sharedMaterials = new[] { other, target };
+                Assert.That(
+                    AutoAtlasTextureProcessor.RendererRequiresAtlasMesh(
+                        targeting,
+                        renderer,
+                        new HashSet<Material> { target }),
+                    Is.True);
+
+                mesh.subMeshCount = 1;
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                renderer.sharedMaterials = new[] { other, target };
+                Assert.That(
+                    AutoAtlasTextureProcessor.RendererRequiresAtlasMesh(
+                        targeting,
+                        renderer,
+                        new HashSet<Material> { target }),
+                    Is.True,
+                    "Extra material slots repeat the final non-empty submesh and therefore still require an atlased mesh.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(target);
+                Object.DestroyImmediate(other);
+            }
+        }
+
+        [Test]
         public void AtlasSubSetIgnoresTargetMaterialOnEmptySubMesh()
         {
             var shader = Shader.Find("Hidden/InternalErrorShader");
