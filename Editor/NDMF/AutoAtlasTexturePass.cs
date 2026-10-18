@@ -750,6 +750,41 @@ namespace net.rs64.TexTransTool.NDMF
 
                 using var atlasContext = atlasResult.AtlasContext!;
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
+
+                // Revalidate against the actual material grouping created by
+                // AtlasContext. This is the authoritative guard before default
+                // ReferenceCopy fine tuning can redirect texture properties.
+                if (!AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            group,
+                            atlasContext.MaterialGroupingCtx,
+                            settings))
+                {
+                    foreach (var rt in compiledTextures.Values.Distinct())
+                        rt.Dispose();
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes);
+
+                    if (execution.MergeSelection is { } referenceCopyMerge)
+                    {
+                        if (referenceCopyMerge.PackedRegions != null)
+                        {
+                            twoDimensionalFallbackReasons.Add(
+                                $"groups={string.Join(",", referenceCopyMerge.GroupIds.Select(id => "g" + id))}, "
+                                + $"layout={referenceCopyMerge.PlannedLayoutSize.x}×{referenceCopyMerge.PlannedLayoutSize.y}: "
+                                + FormatLocalized(
+                                    "AutoAtlasTexture:fallback:ReferenceCopySemanticsMismatch"));
+                        }
+
+                        EnqueueStandaloneFallback(
+                            executionGroups,
+                            referenceCopyMerge,
+                            preparedGroups);
+                    }
+
+                    continue;
+                }
+
                 var tuningResult = AtlasTexture.DoTextureFinTuning(
                     engine, atlasContext, settings, compiledTextures, null);
 
