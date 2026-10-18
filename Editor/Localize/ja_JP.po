@@ -143,9 +143,6 @@ msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応
 msgid "AtlasTexture:info:RelocateResultWithResolutionAndMemory"
 msgstr "アトラス再配置結果\n上部の空き領域: {0}\n優先度に応じた縮小: {1}倍\n全体的な縮小: {2}倍\n{3}\n対象テクスチャメモリ: {4} → {5}\n累計再配置計算回数: {6}回\n再配置実行時間: {7}ms"
 
-msgid "AutoAtlasTexture:info:SelectionImprovement"
-msgstr "2Dテクスチャ統合の組合せ最適化（計画段階の予測値）\n厳密選択がGreedy方式を上回りました。\n安全候補数: {0}件\n予測追加削減量: {1} bytes → {2} bytes（差: {3} bytes）\nGreedy方式:\n{4}\n厳密選択方式:\n{5}"
-
 msgid "AutoAtlasTexture:info:TwoDimensionalFallback"
 msgstr "2Dテクスチャ統合が成立せず、単体処理へ復帰しました。\n{0}"
 
@@ -810,3 +807,45 @@ msgstr "パスとなるプロパティネーム"
 
 msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "選択テクスチャーのプレビュー"
+
+msgid "AutoAtlasTexture:fallback:RendererSetChanged"
+msgstr "実行時のAtlasTexture対象Renderer集合が計画時と一致しない"
+
+msgid "AutoAtlasTexture:fallback:LayoutMismatch"
+msgstr "出力レイアウトが不適合: actual={0}×{1}, planned={2}×{3}, outputPixels={4}"
+
+msgid "AutoAtlasTexture:fallback:PropertyResolutionMismatch"
+msgstr "プロパティ解像度が不適合: {0} actual={1}×{2}, planned={3}×{4}"
+
+msgid "AutoAtlasTexture:fallback:AtlasExecutionFailed"
+msgstr "DoAtlasTextureが失敗（配置・サイズ判定の詳細未取得）"
+
+msgid "AutoAtlasTexture:fallback:FinalMemoryUnknown"
+msgstr "最終テクスチャメモリを計算できない"
+
+msgid "AutoAtlasTexture:fallback:FinalMemoryNotReduced"
+msgstr "最終テクスチャメモリが削減されない: actual={0} bytes, baseline={1} bytes"
+
+msgid "AutoAtlasTexture:fallback:InvalidPlannedRegions"
+msgstr "計画矩形の重複・範囲外・不足"
+
+msgid "AutoAtlasTexture:fallback:AtomicGroupMappingMismatch"
+msgstr "元UV IslandとAtomic Groupの対応が不整合"
+
+msgid "AutoAtlasTexture:fallback:InvalidIslandContext"
+msgstr "Island数またはTargetHeightが不正: islands={0}, map={1}, targetHeight={2}"
+
+msgid "AutoAtlasTexture:fallback:GroupCountMismatch"
+msgstr "実行時group数の相違: actual={0}, planned={1}"
+
+msgid "AutoAtlasTexture:fallback:MissingGroupRegion"
+msgstr "g{0}の配置矩形なし"
+
+msgid "AutoAtlasTexture:fallback:NfdhComparerFailure"
+msgstr "g{0}のNFDH比較処理が失敗: {1}"
+
+msgid "AutoAtlasTexture:fallback:RegionPackingFailed"
+msgstr "g{0}の矩形内NFDH配置に失敗: region={1}, islands={2}, profilePadding={3}"
+
+msgid "AutoAtlasTexture:fallback:RegionPaddingFailed"
+msgstr "g{0}の実配置が矩形境界の必要余白を満たさない: region={1}, box=({2},{3},{4},{5}), profilePadding={6}, regionPadding={7}"
