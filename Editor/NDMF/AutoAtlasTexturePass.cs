@@ -1129,12 +1129,8 @@ namespace net.rs64.TexTransTool.NDMF
                          in material.GetTexturePropertyNames())
                 {
                     var texture = material.GetTexture(propertyName);
-                    if (texture == null
-                        || texture is not Texture2D
-                            and not RenderTexture)
-                    {
+                    if (texture == null)
                         continue;
-                    }
 
                     if (!usages.TryGetValue(
                             propertyName,
@@ -1142,8 +1138,8 @@ namespace net.rs64.TexTransTool.NDMF
                         || usage.UVChannel == UsageUVChannel.Unknown)
                     {
                         // Automatic atlasing rewrites mesh UVs. If shader
-                        // metadata cannot prove which UV channel a sampled 2D
-                        // texture uses, retaining that texture is unsafe.
+                        // metadata cannot prove which UV channel a texture
+                        // uses, retaining that texture is unsafe.
                         return true;
                     }
 
@@ -1166,6 +1162,16 @@ namespace net.rs64.TexTransTool.NDMF
                         // The common AtlasTexture path preserves the original
                         // UV in a spare channel and remaps this property.
                         continue;
+                    }
+
+                    if (texture is not Texture2D
+                        and not RenderTexture)
+                    {
+                        // Material generation cannot replace other texture
+                        // dimensions with a generated 2D atlas. If such a
+                        // property samples the rewritten UV channel, AutoAtlas
+                        // cannot preserve its sampling semantics.
+                        return true;
                     }
 
                     if (!TTShaderTextureUsageInformationUtil
