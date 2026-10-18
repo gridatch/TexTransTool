@@ -184,9 +184,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     // every mipmapped texture contains a complete chain; an
                     // overestimated baseline can make a merge look beneficial
                     // when it is not.
-                    mipCount = descriptor.UseMipMap
-                        ? Math.Max(1, texture2D.mipmapCount)
-                        : 1;
+                    mipCount = GetSourceTextureMipCount(
+                        texture2D, descriptor);
                     return true;
                 }
 
@@ -242,6 +241,15 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 default:
                     return false;
             }
+        }
+
+        internal static int GetSourceTextureMipCount(
+            Texture2D texture,
+            TexTransToolTextureDescriptor descriptor)
+        {
+            return descriptor.UseMipMap
+                ? Math.Max(1, texture.mipmapCount)
+                : 1;
         }
 
         internal static string FormatTextureMemory(long bytes)
