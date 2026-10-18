@@ -1703,6 +1703,80 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void AutoAtlasRejectsOutOfRangeUvOnlyOnTargetMaterialGeometry()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var targetMaterial = new Material(shader);
+            var otherMaterial = new Material(shader);
+            var mesh = new Mesh();
+            var root = new GameObject("UvBounds");
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                    Vector3.one,
+                    Vector3.one + Vector3.right,
+                    Vector3.one + Vector3.up,
+                };
+                mesh.uv = new[]
+                {
+                    new Vector2(0f, 0f),
+                    new Vector2(1f, 0f),
+                    new Vector2(0f, 1f),
+                    new Vector2(1.25f, 0f),
+                    new Vector2(1.5f, 0f),
+                    new Vector2(1.25f, 1f),
+                };
+                mesh.subMeshCount = 2;
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                mesh.SetTriangles(new[] { 3, 4, 5 }, 1);
+
+                var filter = root.AddComponent<MeshFilter>();
+                filter.sharedMesh = mesh;
+                var renderer = root.AddComponent<MeshRenderer>();
+                renderer.sharedMaterials =
+                    new[] { targetMaterial, otherMaterial };
+                var targeting = new RendererTargetingForTest(
+                    new Renderer[] { renderer });
+                var targets = new HashSet<Material> { targetMaterial };
+
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasOutOfBoundsTargetUv(
+                        targeting,
+                        new Renderer[] { renderer },
+                        targets,
+                        UVChannel.UV0),
+                    Is.False,
+                    "Out-of-range UVs belonging only to a non-target material must not block the target group.");
+
+                var uv = mesh.uv;
+                uv[1] = new Vector2(1.25f, 0f);
+                mesh.uv = uv;
+
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasOutOfBoundsTargetUv(
+                        targeting,
+                        new Renderer[] { renderer },
+                        targets,
+                        UVChannel.UV0),
+                    Is.True,
+                    "Target-material UVs outside 0..1 cannot preserve Repeat/Mirror sampling through the atlas transfer clamp.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(targetMaterial);
+                Object.DestroyImmediate(otherMaterial);
+            }
+        }
+
+        [Test]
         public void AutoAtlasRejectsNonTextureUsageOfTargetUv()
         {
             var shader = Shader.Find("Standard");
