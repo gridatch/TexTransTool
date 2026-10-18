@@ -28,29 +28,79 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 var mesh = targeting.GetMesh(renderer)!;
                 var meshID = atlasMeshSourceContext.Normalized2MeshID[atlasMeshSourceContext.Origin2NormalizedMesh[mesh!]];
 
-                var atlasSubSet = new AtlasSubMeshIndexID?[mats.Length];
-                for (var subMeshIndex = 0; mats.Length > subMeshIndex; subMeshIndex += 1)
+                var atlasSubSet = BuildAtlasSubSet(
+                    mesh,
+                    mats,
+                    meshID,
+                    targetMaterials,
+                    materialGroupingContext);
+
+                foreach (var atSubData in atlasSubSet
+                             .Where(item => item.HasValue)
+                             .Select(item => item!.Value))
                 {
-                    var mat = mats[subMeshIndex];
-
-                    if (mat == null) { continue; }
-                    if (targetMaterials.Contains(mat) is false) { continue; }
-                    if (mesh.GetSubMesh(Math.Clamp(subMeshIndex, 0, mesh.subMeshCount - 1)).indexCount is 0) { continue; }
-
-                    var matID = materialGroupingContext.GetMaterialGroupID(mat);
-                    Debug.Assert(matID is not -1);
-
-                    var atSubData = new AtlasSubMeshIndexID(meshID, subMeshIndex, matID);
-
-                    atlasSubSet[subMeshIndex] = atSubData;
                     AtlasSubMeshIndexIDHash.Add(atSubData);
                 }
-                AtlasSubSets.Add(atlasSubSet);
+
+                // A renderer can reference a target material only on an empty
+                // effective submesh. Such a renderer has no UVs to rewrite and
+                // therefore must not create an output-mesh subset. Leaving an
+                // all-null subset here makes GenerateAtlasedMesh.First(...) fail.
+                if (atlasSubSet.Any(item => item.HasValue))
+                    AtlasSubSets.Add(atlasSubSet);
             }
 
             IdenticalSubSetRemove(AtlasSubSets);
         }
 
+
+
+        internal static AtlasSubMeshIndexID?[] BuildAtlasSubSet(
+            Mesh mesh,
+            Material?[] materials,
+            int meshID,
+            HashSet<Material>? targetMaterials,
+            MaterialGroupingContext materialGroupingContext)
+        {
+            var atlasSubSet =
+                new AtlasSubMeshIndexID?[materials.Length];
+
+            // MeshRenderer semantics repeat the final submesh when there are
+            // more material slots than submeshes, so keep the existing clamp.
+            // With no submeshes there is no geometry to atlas.
+            if (mesh.subMeshCount == 0)
+                return atlasSubSet;
+
+            for (var subMeshIndex = 0;
+                 subMeshIndex < materials.Length;
+                 subMeshIndex += 1)
+            {
+                var material = materials[subMeshIndex];
+                if (material == null)
+                    continue;
+                if (targetMaterials != null
+                    && !targetMaterials.Contains(material))
+                    continue;
+
+                var materialGroupID =
+                    materialGroupingContext.GetMaterialGroupID(material);
+                if (materialGroupID == -1)
+                    continue;
+
+                var effectiveSubMeshIndex = Math.Clamp(
+                    subMeshIndex, 0, mesh.subMeshCount - 1);
+                if (mesh.GetSubMesh(effectiveSubMeshIndex).indexCount == 0)
+                    continue;
+
+                atlasSubSet[subMeshIndex] =
+                    new AtlasSubMeshIndexID(
+                        meshID,
+                        subMeshIndex,
+                        materialGroupID);
+            }
+
+            return atlasSubSet;
+        }
 
 
 
