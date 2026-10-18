@@ -1766,6 +1766,17 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                         UVChannel.UV0),
                     Is.True,
                     "Target-material UVs outside 0..1 cannot preserve Repeat/Mirror sampling through the atlas transfer clamp.");
+
+                uv[1] = new Vector2(float.NaN, 0f);
+                mesh.uv = uv;
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasOutOfBoundsTargetUv(
+                        targeting,
+                        new Renderer[] { renderer },
+                        targets,
+                        UVChannel.UV0),
+                    Is.True,
+                    "Non-finite target UVs must fail closed before atlas packing.");
             }
             finally
             {
