@@ -62,7 +62,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         public void RegisterVertexIndexUsage()
         {
-            // Do nothing
+            if (_uvUsageWriter is ITTVertexIndexUsageWriter vertexIndexWriter)
+                vertexIndexWriter.WriteVertexIndexUsage();
         }
         public void RegisterOtherUVUsage(UsingUVChannels uvChannel)
         {
