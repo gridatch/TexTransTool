@@ -858,3 +858,6 @@ msgstr "最終出力ピクセル数が不正、または削減されない: actu
 
 msgid "AutoAtlasTexture:fallback:SourceTextureRetained"
 msgstr "生成されたアトラス化Materialに元テクスチャの参照が残っている"
+
+msgid "AutoAtlasTexture:fallback:GeneratedPropertyApplicationMismatch"
+msgstr "統合後のアトラスプロパティが、このアトラス向けに変換されていないMaterialのテクスチャプロパティを上書きする"
