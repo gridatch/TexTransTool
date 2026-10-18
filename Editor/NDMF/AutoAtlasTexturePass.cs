@@ -630,6 +630,14 @@ namespace net.rs64.TexTransTool.NDMF
                 var standalone = preparedGroup.StandaloneMetrics is { } metrics
                     ? $"{metrics.LayoutSize.x}x{metrics.LayoutSize.y}"
                     : "(none)";
+                var standaloneAnalysis =
+                    preparedGroup.StandaloneMetrics == null
+                        ? " analysis=["
+                          + string.Join(
+                              ", ",
+                              preparedGroup.StandaloneAnalysisDiagnostics)
+                          + "]"
+                        : "";
                 preparationDiagnostics.Add(
                     $"g{preparedGroup.Id} PREPARED: "
                     + $"{DescribeGroupMaterials(preparedGroup.Materials)} "
@@ -639,7 +647,8 @@ namespace net.rs64.TexTransTool.NDMF
                     + preparedGroup.ExcludedFromTextureMerging
                     + $" standalone={standalone} "
                     + $"baselineKnown={preparedGroup.BaselineCostKnown} "
-                    + $"profiles=[{string.Join(", ", profiles)}]");
+                    + $"profiles=[{string.Join(", ", profiles)}]"
+                    + standaloneAnalysis);
             }
 
             string FormatMergeSelections(
@@ -698,13 +707,32 @@ namespace net.rs64.TexTransTool.NDMF
                 var candidateCount =
                     mergePlan.SearchBudgetComparison?.ProductionCandidateCount
                     ?? 0;
-                lines.Add(
-                    $"selection-policy: candidates={candidateCount}, "
-                    + "rank=savingBytes(desc)>savingRate(desc)>groupCount(desc), "
-                    + "disjoint-selection=exact when candidateCount<="
-                    + AutoAtlasTextureMergePlanner
-                        .ExactSelectionCandidateLimit
-                    + " otherwise greedy");
+                if (mergePlan.SelectionDiagnostics is { } selectionDiagnostics)
+                {
+                    lines.Add(
+                        $"selection-policy: candidates={candidateCount}, "
+                        + $"distinctGroups="
+                        + $"{selectionDiagnostics.DistinctGroupCount}, "
+                        + $"solver={selectionDiagnostics.Solver}, "
+                        + $"greedySaving="
+                        + $"{selectionDiagnostics.GreedySavingBytes}, "
+                        + $"selectedSaving="
+                        + $"{selectionDiagnostics.SelectedSavingBytes}, "
+                        + $"delta="
+                        + $"{selectionDiagnostics.SelectedSavingBytes - selectionDiagnostics.GreedySavingBytes}, "
+                        + "rank=savingBytes(desc)>savingRate(desc)>groupCount(desc), "
+                        + "limits="
+                        + $"groupMask<="
+                        + AutoAtlasTextureMergePlanner.ExactSelectionGroupLimit
+                        + $"/candidateSubset<="
+                        + AutoAtlasTextureMergePlanner.ExactSelectionCandidateLimit);
+                }
+                else
+                {
+                    lines.Add(
+                        $"selection-policy: candidates={candidateCount}, "
+                        + "solver=(not evaluated)");
+                }
 
                 foreach (var selection in mergePlan.Selections)
                 {
