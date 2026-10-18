@@ -864,3 +864,6 @@ msgstr "統合後のアトラスプロパティが、このアトラス向けに
 
 msgid "AutoAtlasTexture:fallback:RequiredMeshResolutionFailed"
 msgstr "必要なアトラス化MeshをRendererに解決できない: {0}"
+
+msgid "AutoAtlasTexture:fallback:ActiveUntransformedConsumer"
+msgstr "現在アクティブなMaterial共有先の一部へ対応するAtlas Mesh/UV変換を適用できない"
