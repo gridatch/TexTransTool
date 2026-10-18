@@ -730,7 +730,7 @@ namespace net.rs64.TexTransTool.NDMF
                             || (((int)targetUsage.UVChannel) - 1)
                                 != (int)settings.AtlasTargetUVChannel
                             || !TTShaderTextureUsageInformationUtil
-                                .IsIdentityUVMatrix(targetUsage.UVMatrix))
+                                .IsKnownIdentityUVMatrix(targetUsage))
                         {
                             // ReferenceCopy replaces the target property's
                             // texture even when that property was not otherwise
