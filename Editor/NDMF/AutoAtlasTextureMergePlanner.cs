@@ -1095,12 +1095,20 @@ namespace net.rs64.TexTransTool.NDMF
                     return cached;
 
                 var projection = GetProjection(ids, layoutSize);
+                var selectedMaterials = ids
+                    .Select(id => byId[id])
+                    .SelectMany(group => group.Materials)
+                    .ToHashSet();
                 var candidate = new Candidate(
                     ids,
                     projection.Baseline,
                     projection.Merged,
                     layoutSize,
-                    projection.PropertySizes);
+                    projection.PropertySizes,
+                    PreservesReferenceCopySemantics(
+                        selectedMaterials,
+                        propertyTextures,
+                        settings));
                 candidateCache[layoutKey] = candidate;
                 return candidate;
             }
