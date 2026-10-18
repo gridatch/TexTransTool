@@ -157,22 +157,34 @@ msgid "AutoAtlasTexture:info:TemporaryProjectName"
 msgstr "Unityプロジェクト名: {0}"
 
 msgid "AutoAtlasTexture:info:TemporaryPreparationDiagnostic"
-msgstr "一時診断（AutoAtlas group準備状況）\n{0}"
+msgstr "AutoAtlas診断（group準備状況）\n{0}"
+
+msgid "AutoAtlasTexture:info:TemporarySelectionRationale"
+msgstr "AutoAtlas診断（採用候補の判定根拠）\n{0}"
+
+msgid "AutoAtlasTexture:info:TemporaryProductionTopCandidates"
+msgstr "AutoAtlas診断（本番安全候補 上位20件）\n{0}"
+
+msgid "AutoAtlasTexture:info:TemporaryWatchedPathDiagnostic"
+msgstr "AutoAtlas診断（{0}状態で本番採用案へ至る探索経路）\n{1}"
+
+msgid "AutoAtlasTexture:info:TemporaryExecutionSummary"
+msgstr "AutoAtlas診断（実行効果サマリー）\n{0}"
 
 msgid "AutoAtlasTexture:info:TemporaryRejected4096Candidates"
-msgstr "一時診断（{0}状態探索・4096幅で棄却された上位候補）\n{1}"
+msgstr "AutoAtlas診断（{0}状態探索・4096幅で棄却された上位候補）\n{1}"
 
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetHeader"
-msgstr "一時診断（本番{0}状態と拡張探索の比較・拡張側は計画のみ）\n{0}状態: 探索={1}ms / 安全候補={2} / 想定採用={3} / 予測削減={4} bytes / 保持前最大状態={5} / 剪定累計={6}\n本番案:\n{7}\n注: 本番適用は{0}状態案のみです。拡張探索も同じgeometry・cost・safety判定を使用します。"
+msgstr "AutoAtlas診断（本番{0}状態と比較探索・比較側は計画のみ）\n{0}状態: 探索={1}ms / 安全候補={2} / 想定採用={3} / 予測削減={4} bytes / 保持前最大状態={5} / 剪定累計={6}\n本番案:\n{7}\n注: 本番適用は{0}状態案のみです。比較探索も同じgeometry・cost・safety判定を使用します。"
 
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetProbe"
 msgstr "{0}状態: 探索={2}ms / 安全候補={3} / 想定採用={4} / 予測削減={5} bytes / 保持前最大状態={6} / 剪定累計={7}\n本番{1}状態案と最終採用が一致={8}\n採用案:\n{9}"
 
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetDifferences"
-msgstr "{0}状態と本番{1}状態の候補差分\n本番より追加または改善された安全候補={2}件（最大20件表示）\n{3}\n本番側にのみ存在または本番側の方が良い候補={4}件（最大20件表示）\n{5}"
+msgstr "{0}状態と本番{1}状態の候補差分\n比較側で追加または改善された安全候補={2}件（最大20件表示）\n{3}\n本番側にのみ存在または本番側の方が良い候補={4}件（最大20件表示）\n{5}"
 
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetAborted"
-msgstr "{0}状態: 診断探索を{1}msで中止しました。{2}\nraw stateの安全上限に達したため、この状態数以上の比較は行いません。通常の{3}状態による本番処理には影響しません。"
+msgstr "{0}状態: 比較探索を{1}msで中止しました。{2}\nraw stateの安全上限に達したため、この状態数以上の比較は行いません。通常の{3}状態による本番処理には影響しません。"
 
 msgid "AutoAtlasTexture:info:TwoDimensionalFallback"
 msgstr "2Dテクスチャ統合が成立せず、単体処理へ復帰しました。\n{0}"

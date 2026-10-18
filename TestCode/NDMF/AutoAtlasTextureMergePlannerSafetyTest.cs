@@ -85,6 +85,44 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void MergeSelectionCarriesPredictedCostMetrics()
+        {
+            var baseline = Plan(new[]
+            {
+                Entry(128, 128, 1),
+                Entry(128, 128, 1),
+            });
+            var merged = Plan(new[]
+            {
+                Entry(256, 64, 1),
+            });
+            var candidate = new AutoAtlasTextureMergePlanner.Candidate(
+                new[] { 2, 5 },
+                baseline,
+                merged,
+                new Vector2Int(256, 64),
+                new Dictionary<string, Vector2Int>
+                {
+                    ["_MainTex"] = new Vector2Int(256, 64),
+                });
+            var selection =
+                new AutoAtlasTextureMergePlanner.MergeSelection(candidate);
+
+            Assert.That(selection.BaselinePixels,
+                Is.EqualTo(baseline.PixelCount));
+            Assert.That(selection.PredictedMergedPixels,
+                Is.EqualTo(merged.PixelCount));
+            Assert.That(selection.BaselineBytes,
+                Is.EqualTo(baseline.FullResidentBytes));
+            Assert.That(selection.PredictedMergedBytes,
+                Is.EqualTo(merged.FullResidentBytes));
+            Assert.That(selection.PredictedSavingBytes,
+                Is.EqualTo(
+                    baseline.FullResidentBytes
+                    - merged.FullResidentBytes));
+        }
+
+        [Test]
         public void CandidateRejectsSamplingCostRegression()
         {
             var baseline = Plan(

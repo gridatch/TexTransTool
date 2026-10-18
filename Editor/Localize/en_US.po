@@ -156,22 +156,34 @@ msgid "AutoAtlasTexture:info:TemporaryProjectName"
 msgstr "Unity project: {0}"
 
 msgid "AutoAtlasTexture:info:TemporaryPreparationDiagnostic"
-msgstr "Temporary diagnostic (AutoAtlas group preparation)\n{0}"
+msgstr "AutoAtlas diagnostic (group preparation)\n{0}"
+
+msgid "AutoAtlasTexture:info:TemporarySelectionRationale"
+msgstr "AutoAtlas diagnostic (selected candidate rationale)\n{0}"
+
+msgid "AutoAtlasTexture:info:TemporaryProductionTopCandidates"
+msgstr "AutoAtlas diagnostic (top 20 production-safe candidates)\n{0}"
+
+msgid "AutoAtlasTexture:info:TemporaryWatchedPathDiagnostic"
+msgstr "AutoAtlas diagnostic ({0}-state path to production selections)\n{1}"
+
+msgid "AutoAtlasTexture:info:TemporaryExecutionSummary"
+msgstr "AutoAtlas diagnostic (execution effect summary)\n{0}"
 
 msgid "AutoAtlasTexture:info:TemporaryRejected4096Candidates"
-msgstr "Temporary diagnostic ({0}-state search; top rejected candidates at width 4096)\n{1}"
+msgstr "AutoAtlas diagnostic ({0}-state search; top rejected candidates at width 4096)\n{1}"
 
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetHeader"
-msgstr "Temporary diagnostic (production {0} states vs wider searches; wider searches are planning-only)\n{0} states: search={1}ms / safe candidates={2} / planned selections={3} / predicted savings={4} bytes / max states before retention={5} / cumulative pruned={6}\nProduction plan:\n{7}\nNote: only the {0}-state production plan is applied. Wider searches use the same geometry, cost, and safety rules."
+msgstr "AutoAtlas diagnostic (production {0} states vs comparison searches; comparison searches are planning-only)\n{0} states: search={1}ms / safe candidates={2} / planned selections={3} / predicted savings={4} bytes / max states before retention={5} / cumulative pruned={6}\nProduction plan:\n{7}\nNote: only the {0}-state production plan is applied. Comparison searches use the same geometry, cost, and safety rules."
 
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetProbe"
 msgstr "{0} states: search={2}ms / safe candidates={3} / planned selections={4} / predicted savings={5} bytes / max states before retention={6} / cumulative pruned={7}\nSame final selected plan as production {1}={8}\nSelected plan:\n{9}"
 
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetDifferences"
-msgstr "Candidate differences between {0} states and production {1}\nSafe candidates added or improved vs production={2} (showing up to 20)\n{3}\nCandidates only in production or better in production={4} (showing up to 20)\n{5}"
+msgstr "Candidate differences between {0} states and production {1}\nSafe candidates added or improved in comparison={2} (showing up to 20)\n{3}\nCandidates only in production or better in production={4} (showing up to 20)\n{5}"
 
 msgid "AutoAtlasTexture:info:TemporarySearchBudgetAborted"
-msgstr "{0} states: diagnostic search stopped after {1}ms. {2}\nThe raw-state safety limit was reached, so larger comparisons were skipped. The normal {3}-state production plan is unaffected."
+msgstr "{0} states: comparison search stopped after {1}ms. {2}\nThe raw-state safety limit was reached, so larger comparisons were skipped. The normal {3}-state production plan is unaffected."
 
 msgid "AutoAtlasTexture:info:TwoDimensionalFallback"
 msgstr "2D texture merging could not complete; individual atlas processing was retried.\n{0}"

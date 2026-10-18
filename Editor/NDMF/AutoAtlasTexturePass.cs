@@ -367,6 +367,15 @@ namespace net.rs64.TexTransTool.NDMF
             var completed = new List<string>();
 
             var twoDimensionalFallbackReasons = new List<string>();
+            var executionEffectDiagnostics = new List<string>();
+            var appliedOperationCount = 0;
+            var appliedMergeCount = 0;
+            var appliedStandaloneCount = 0;
+            long appliedSourcePixels = 0;
+            long appliedOutputPixels = 0;
+            long appliedSourceMemoryBytes = 0;
+            long appliedOutputMemoryBytes = 0;
+            var appliedMemoryKnown = true;
 
             string OriginalMaterialName(Material material)
             {
@@ -637,6 +646,205 @@ namespace net.rs64.TexTransTool.NDMF
                     : string.Join("\n", lines);
             }
 
+            string FormatSelectionRationale()
+            {
+                if (mergePlan.Selections.Count == 0)
+                    return "(none)";
+
+                var lines = new List<string>();
+                var candidateCount =
+                    mergePlan.SearchBudgetComparison?.ProductionCandidateCount
+                    ?? 0;
+                lines.Add(
+                    $"selection-policy: candidates={candidateCount}, "
+                    + "rank=savingBytes(desc)>savingRate(desc)>groupCount(desc), "
+                    + "disjoint-selection=exact when candidateCount<="
+                    + AutoAtlasTextureMergePlanner
+                        .ExactSelectionCandidateLimit
+                    + " otherwise greedy");
+
+                foreach (var selection in mergePlan.Selections)
+                {
+                    var ids = string.Join(
+                        "+",
+                        selection.GroupIds.Select(id => "g" + id));
+                    var materials = string.Join(
+                        ", ",
+                        selection.GroupIds
+                            .SelectMany(id => preparedGroups[id].Materials)
+                            .Select(OriginalMaterialName)
+                            .Distinct()
+                            .OrderBy(
+                                name => name,
+                                StringComparer.Ordinal));
+                    var sourceTextureCount = selection.GroupIds.Sum(
+                        id => preparedGroups[id].SourceTextures.Count);
+                    lines.Add(
+                        $"{ids} layout="
+                        + $"{selection.PlannedLayoutSize.x}x"
+                        + $"{selection.PlannedLayoutSize.y} "
+                        + $"groups={selection.GroupIds.Length} "
+                        + $"sourceTextures={sourceTextureCount} "
+                        + $"materials=[{materials}]");
+                    lines.Add(
+                        "  gates: "
+                        + $"pixels PASS "
+                        + $"{selection.BaselinePixels}"
+                        + $"->{selection.PredictedMergedPixels} "
+                        + $"delta="
+                        + $"{selection.PredictedMergedPixels - selection.BaselinePixels}; "
+                        + $"memory PASS "
+                        + $"{selection.BaselineBytes}"
+                        + $"->{selection.PredictedMergedBytes} "
+                        + $"saving={selection.PredictedSavingBytes} "
+                        + $"rate={selection.PredictedSavingRate:P2}; "
+                        + "sampling PASS");
+
+                    if (selection.PackedRegions != null)
+                    {
+                        lines.Add("  regions:");
+                        foreach (var id in selection.GroupIds)
+                        {
+                            if (!selection.PackedRegions.TryGetValue(
+                                    id,
+                                    out var region))
+                            {
+                                lines.Add($"    g{id}: (missing)");
+                                continue;
+                            }
+
+                            preparedGroups[id].TwoDimensionalProfileHeights
+                                .TryGetValue(
+                                    (
+                                        selection.PlannedLayoutSize.x,
+                                        region.width),
+                                    out var profileHeight);
+                            var groupMaterials = DescribeGroupMaterials(
+                                preparedGroups[id].Materials);
+                            lines.Add(
+                                $"    g{id}: "
+                                + $"profile="
+                                + $"{selection.PlannedLayoutSize.x}/"
+                                + $"{region.width}={profileHeight} "
+                                + $"region=({region.x},{region.y},"
+                                + $"{region.width}x{region.height}) "
+                                + $"baselinePixels="
+                                + $"{preparedGroups[id].BaselineCost.PixelCount} "
+                                + $"baselineMemory="
+                                + $"{preparedGroups[id].BaselineCost.FullResidentBytes} "
+                                + $"sources="
+                                + $"{preparedGroups[id].SourceTextures.Count} "
+                                + $"materials=[{groupMaterials}]");
+                        }
+                    }
+
+                    var properties = selection.PlannedPropertySizes
+                        .OrderBy(
+                            pair => pair.Key,
+                            StringComparer.Ordinal)
+                        .Select(pair =>
+                            $"{pair.Key}="
+                            + $"{pair.Value.x}x{pair.Value.y}");
+                    lines.Add(
+                        $"  properties: {string.Join(", ", properties)}");
+                }
+
+                return string.Join("\n", lines);
+            }
+
+            string FormatWatchedPaths(
+                AutoAtlasTextureMergePlanner.SearchBudgetProbe probe)
+            {
+                if (probe.WatchedPaths.Count == 0)
+                    return "(none)";
+
+                var lines = new List<string>();
+                foreach (var watched in probe.WatchedPaths)
+                {
+                    var targetIds = string.Join(
+                        "+",
+                        watched.TargetGroupIds.Select(id => "g" + id));
+                    var selectedAtBudget = probe.Selections.Any(selection =>
+                        selection.GroupIds.SequenceEqual(
+                            watched.TargetGroupIds)
+                        && selection.PlannedLayoutSize
+                            == watched.TargetLayoutSize
+                        && selection.PredictedSavingBytes
+                            == watched.FoundSavingBytes);
+
+                    lines.Add(
+                        $"target={targetIds} "
+                        + $"layout={watched.TargetLayoutSize.x}x"
+                        + $"{watched.TargetLayoutSize.y} "
+                        + $"stage={watched.LossStage} "
+                        + $"candidateFound={watched.CandidateFound} "
+                        + $"selected={selectedAtBudget}");
+
+                    if (watched.CandidateFound)
+                    {
+                        lines.Add(
+                            "  found: "
+                            + $"layout={watched.FoundLayoutSize.x}x"
+                            + $"{watched.FoundLayoutSize.y} "
+                            + $"saving={watched.FoundSavingBytes}");
+                    }
+
+                    if (watched.LossStage
+                        == AutoAtlasTextureMergePlanner
+                            .WatchedPathLossStage.Retention)
+                    {
+                        lines.Add(
+                            "  first-loss: "
+                            + $"expanding=g{watched.ExpandingGroupId} "
+                            + $"prefix="
+                            + $"{string.Join("+", watched.PrefixGroupIds.Select(id => "g" + id))} "
+                            + $"states={watched.StatesBeforeRetention}"
+                            + $"->{watched.StatesAfterRetention} "
+                            + $"totalBefore="
+                            + $"{watched.TotalStatesBeforeRetention}");
+                        lines.Add(
+                            "  retention-rank: "
+                            + $"pixel={watched.PixelRank}"
+                            + $"/quota~{probe.StateBudget / 2}, "
+                            + $"memory={watched.MemoryRank}"
+                            + $"/quota~{probe.StateBudget / 4}, "
+                            + $"geometry={watched.GeometryRank}"
+                            + $"/quota~{probe.StateBudget / 8}, "
+                            + $"baseline={watched.BaselineRank}"
+                            + $"/quota~{probe.StateBudget / 8}");
+                    }
+                    else if (watched.LossStage
+                        == AutoAtlasTextureMergePlanner
+                            .WatchedPathLossStage.GenerationOrGeometry)
+                    {
+                        lines.Add(
+                            "  first-loss: "
+                            + $"expanding=g{watched.ExpandingGroupId} "
+                            + $"prefix="
+                            + $"{string.Join("+", watched.PrefixGroupIds.Select(id => "g" + id))} "
+                            + "could not produce an undominated geometry state "
+                            + "before retention");
+                    }
+                    else if (watched.LossStage
+                        == AutoAtlasTextureMergePlanner
+                            .WatchedPathLossStage.CandidateOrSelection)
+                    {
+                        lines.Add(
+                            "  path survived retention, but the exact "
+                            + "production candidate was not reproduced "
+                            + "(candidate gate/layout/selection difference)");
+                    }
+                    else
+                    {
+                        lines.Add(
+                            "  exact production candidate survived this "
+                            + "state budget");
+                    }
+                }
+
+                return string.Join("\n", lines);
+            }
+
             var executionGroups = CreateExecutionGroups(
                 preparedGroups, mergePlan.Selections);
 
@@ -869,17 +1077,68 @@ namespace net.rs64.TexTransTool.NDMF
                         AtlasResolutionRouteReport.CreateLocalizedLogLines(
                             resolutionRoutes)));
 
-                if (hasExecutionTextureMemory
-                    && AtlasTexture.TryCalculateSourceTextureMemory(
+                var hasSourceTextureMemory =
+                    AtlasTexture.TryCalculateSourceTextureMemory(
                         domain,
                         execution.SourceTextures,
-                        out var sourceTextureMemoryBytes))
+                        out var sourceTextureMemoryBytes);
+                if (hasExecutionTextureMemory && hasSourceTextureMemory)
                 {
                     block += "\n" + string.Format(
                         "AtlasTexture:info:TargetTextureMemory".GetLocalize(),
                         AtlasTexture.FormatTextureMemory(sourceTextureMemoryBytes),
                         AtlasTexture.FormatTextureMemory(executionTextureMemoryBytes));
                 }
+
+                appliedOperationCount += 1;
+                if (execution.MergeSelection != null)
+                    appliedMergeCount += 1;
+                else
+                    appliedStandaloneCount += 1;
+                appliedSourcePixels += originalPixels;
+                appliedOutputPixels += finalOutputPixels;
+                if (hasExecutionTextureMemory && hasSourceTextureMemory)
+                {
+                    appliedSourceMemoryBytes += sourceTextureMemoryBytes;
+                    appliedOutputMemoryBytes += executionTextureMemoryBytes;
+                }
+                else
+                {
+                    appliedMemoryKnown = false;
+                }
+
+                var operationIds = execution.MergeSelection == null
+                    ? "standalone"
+                    : string.Join(
+                        "+",
+                        execution.MergeSelection.GroupIds
+                            .Select(id => "g" + id));
+                var operationMaterials = string.Join(
+                    ", ",
+                    group.Select(OriginalMaterialName)
+                        .Distinct()
+                        .OrderBy(
+                            name => name,
+                            StringComparer.Ordinal));
+                var operationMemory = hasExecutionTextureMemory
+                    && hasSourceTextureMemory
+                        ? $"{sourceTextureMemoryBytes}"
+                          + $"->{executionTextureMemoryBytes} "
+                          + $"delta="
+                          + $"{executionTextureMemoryBytes - sourceTextureMemoryBytes}"
+                        : "unknown";
+                var prediction = execution.MergeSelection is { } appliedMerge
+                    ? $" predictedBaselineMemory={appliedMerge.BaselineBytes}"
+                      + $" predictedMergedMemory={appliedMerge.PredictedMergedBytes}"
+                      + $" predictedSaving={appliedMerge.PredictedSavingBytes}"
+                    : "";
+                executionEffectDiagnostics.Add(
+                    $"{operationIds}: "
+                    + $"pixels={originalPixels}->{finalOutputPixels} "
+                    + $"delta={finalOutputPixels - originalPixels} "
+                    + $"memory={operationMemory}"
+                    + prediction
+                    + $" materials=[{operationMaterials}]");
 
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
@@ -934,6 +1193,10 @@ namespace net.rs64.TexTransTool.NDMF
                 "AutoAtlasTexture:info:TemporaryPreparationDiagnostic",
                 string.Join("\n", preparationDiagnostics));
 
+            AppendDiagnostic(
+                "AutoAtlasTexture:info:TemporarySelectionRationale",
+                FormatSelectionRationale());
+
             if (mergePlan.SearchBudgetComparison is { } searchComparison)
             {
                 string FormatDiagnosticSelections(
@@ -957,6 +1220,11 @@ namespace net.rs64.TexTransTool.NDMF
                     searchComparison.ProductionMaxStatesBeforeRetention,
                     searchComparison.ProductionPrunedStateCount,
                     FormatDiagnosticSelections(mergePlan.Selections));
+
+                AppendDiagnostic(
+                    "AutoAtlasTexture:info:TemporaryProductionTopCandidates",
+                    FormatDiagnosticSelections(
+                        searchComparison.ProductionTopCandidates));
 
                 foreach (var probe in searchComparison.Probes)
                 {
@@ -995,6 +1263,11 @@ namespace net.rs64.TexTransTool.NDMF
                         FormatDiagnosticSelections(
                             probe.MissingOrChangedCandidates));
 
+                    AppendDiagnostic(
+                        "AutoAtlasTexture:info:TemporaryWatchedPathDiagnostic",
+                        probe.StateBudget,
+                        FormatWatchedPaths(probe));
+
                     if (probe.Rejected4096Candidates.Count != 0)
                     {
                         AppendDiagnostic(
@@ -1005,6 +1278,38 @@ namespace net.rs64.TexTransTool.NDMF
                     }
                 }
             }
+
+            var aggregateMemory = appliedMemoryKnown
+                ? $"{appliedSourceMemoryBytes}->{appliedOutputMemoryBytes} "
+                  + $"delta="
+                  + $"{appliedOutputMemoryBytes - appliedSourceMemoryBytes}"
+                : "unknown";
+            var productionComparison =
+                mergePlan.SearchBudgetComparison;
+            var executionSummaryLines = new List<string>
+            {
+                $"preparedGroups={preparedGroups.Count}",
+                $"productionStateBudget="
+                    + $"{productionComparison?.ProductionStateBudget ?? 0} "
+                    + $"safeCandidates="
+                    + $"{productionComparison?.ProductionCandidateCount ?? 0} "
+                    + $"selectedMerges={mergePlan.Selections.Count} "
+                    + $"predictedMergeSaving="
+                    + $"{mergePlan.Selections.Sum(selection => selection.PredictedSavingBytes)}",
+                $"appliedOperations={appliedOperationCount} "
+                    + $"merge={appliedMergeCount} "
+                    + $"standalone={appliedStandaloneCount} "
+                    + $"mergeFallbacks={twoDimensionalFallbackReasons.Count}",
+                $"pixels={appliedSourcePixels}->{appliedOutputPixels} "
+                    + $"delta={appliedOutputPixels - appliedSourcePixels}",
+                $"memory={aggregateMemory}",
+                $"processingWithDiagnostics="
+                    + $"{processingTimer.ElapsedMilliseconds}ms",
+            };
+            executionSummaryLines.AddRange(executionEffectDiagnostics);
+            AppendDiagnostic(
+                "AutoAtlasTexture:info:TemporaryExecutionSummary",
+                string.Join("\n", executionSummaryLines));
 
             string? fallbackText = null;
             if (twoDimensionalFallbackReasons.Count != 0)

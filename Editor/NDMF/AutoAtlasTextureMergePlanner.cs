@@ -20,11 +20,12 @@ namespace net.rs64.TexTransTool.NDMF
     internal static class AutoAtlasTextureMergePlanner
     {
         private const int MaxMergeGroupCount = 12;
+        internal const int ExactSelectionCandidateLimit = 16;
         // Candidate exploration below never calls DoAtlasTexture. These limits
         // only bound cheap integer-DP state retention, not expensive atlas probes.
         private const int ShadowPackingStatesPerHost = 1024;
         private static readonly int[] DiagnosticStateBudgets =
-            { 2048, 4096 };
+            { 512, 2048, 4096 };
         // Prevent a diagnostic expansion from destabilizing the Unity process.
         // This limit applies to one generated-state dictionary, before any
         // property-aware retention. Production search is not subject to it.
@@ -55,7 +56,10 @@ namespace net.rs64.TexTransTool.NDMF
         internal sealed class MergeSelection
         {
             internal readonly int[] GroupIds;
+            internal readonly long BaselinePixels;
+            internal readonly long PredictedMergedPixels;
             internal readonly long BaselineBytes;
+            internal readonly long PredictedMergedBytes;
             internal readonly Vector2Int PlannedLayoutSize;
             internal readonly IReadOnlyDictionary<string, Vector2Int>
                 PlannedPropertySizes;
@@ -68,7 +72,10 @@ namespace net.rs64.TexTransTool.NDMF
                 IReadOnlyDictionary<int, RectInt>? packedRegions = null)
             {
                 GroupIds = candidate.GroupIds.OrderBy(id => id).ToArray();
+                BaselinePixels = candidate.Baseline.PixelCount;
+                PredictedMergedPixels = candidate.Merged.PixelCount;
                 BaselineBytes = candidate.Baseline.FullResidentBytes;
+                PredictedMergedBytes = candidate.Merged.FullResidentBytes;
                 PlannedLayoutSize = candidate.LayoutSize;
                 PlannedPropertySizes = candidate.PropertySizes.ToDictionary(
                     pair => pair.Key,
@@ -124,6 +131,67 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        internal enum WatchedPathLossStage
+        {
+            None,
+            GenerationOrGeometry,
+            Retention,
+            CandidateOrSelection,
+        }
+
+        internal sealed class WatchedPathDiagnostic
+        {
+            internal readonly int[] TargetGroupIds;
+            internal readonly Vector2Int TargetLayoutSize;
+            internal readonly WatchedPathLossStage LossStage;
+            internal readonly int ExpandingGroupId;
+            internal readonly int[] PrefixGroupIds;
+            internal readonly int StatesBeforeRetention;
+            internal readonly int StatesAfterRetention;
+            internal readonly int TotalStatesBeforeRetention;
+            internal readonly int PixelRank;
+            internal readonly int MemoryRank;
+            internal readonly int GeometryRank;
+            internal readonly int BaselineRank;
+            internal readonly bool CandidateFound;
+            internal readonly Vector2Int FoundLayoutSize;
+            internal readonly long FoundSavingBytes;
+
+            internal WatchedPathDiagnostic(
+                int[] targetGroupIds,
+                Vector2Int targetLayoutSize,
+                WatchedPathLossStage lossStage,
+                int expandingGroupId,
+                int[] prefixGroupIds,
+                int statesBeforeRetention,
+                int statesAfterRetention,
+                int totalStatesBeforeRetention,
+                int pixelRank,
+                int memoryRank,
+                int geometryRank,
+                int baselineRank,
+                bool candidateFound,
+                Vector2Int foundLayoutSize,
+                long foundSavingBytes)
+            {
+                TargetGroupIds = targetGroupIds;
+                TargetLayoutSize = targetLayoutSize;
+                LossStage = lossStage;
+                ExpandingGroupId = expandingGroupId;
+                PrefixGroupIds = prefixGroupIds;
+                StatesBeforeRetention = statesBeforeRetention;
+                StatesAfterRetention = statesAfterRetention;
+                TotalStatesBeforeRetention = totalStatesBeforeRetention;
+                PixelRank = pixelRank;
+                MemoryRank = memoryRank;
+                GeometryRank = geometryRank;
+                BaselineRank = baselineRank;
+                CandidateFound = candidateFound;
+                FoundLayoutSize = foundLayoutSize;
+                FoundSavingBytes = foundSavingBytes;
+            }
+        }
+
         internal sealed class SearchBudgetProbe
         {
             internal readonly int StateBudget;
@@ -145,6 +213,8 @@ namespace net.rs64.TexTransTool.NDMF
                 MissingOrChangedCandidates;
             internal readonly IReadOnlyList<RejectedCandidateDiagnostic>
                 Rejected4096Candidates;
+            internal readonly IReadOnlyList<WatchedPathDiagnostic>
+                WatchedPaths;
 
             internal SearchBudgetProbe(
                 int stateBudget,
@@ -161,7 +231,9 @@ namespace net.rs64.TexTransTool.NDMF
                 IReadOnlyList<MergeSelection>?
                     missingOrChangedCandidates = null,
                 IReadOnlyList<RejectedCandidateDiagnostic>?
-                    rejected4096Candidates = null)
+                    rejected4096Candidates = null,
+                IReadOnlyList<WatchedPathDiagnostic>?
+                    watchedPaths = null)
             {
                 StateBudget = stateBudget;
                 SearchMilliseconds = searchMilliseconds;
@@ -190,6 +262,9 @@ namespace net.rs64.TexTransTool.NDMF
                 Rejected4096Candidates =
                     rejected4096Candidates
                     ?? Array.Empty<RejectedCandidateDiagnostic>();
+                WatchedPaths =
+                    watchedPaths
+                    ?? Array.Empty<WatchedPathDiagnostic>();
             }
         }
 
@@ -200,6 +275,8 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly int ProductionCandidateCount;
             internal readonly int ProductionMaxStatesBeforeRetention;
             internal readonly long ProductionPrunedStateCount;
+            internal readonly IReadOnlyList<MergeSelection>
+                ProductionTopCandidates;
             internal readonly IReadOnlyList<SearchBudgetProbe> Probes;
 
             internal SearchBudgetComparison(
@@ -208,6 +285,7 @@ namespace net.rs64.TexTransTool.NDMF
                 int productionCandidateCount,
                 int productionMaxStatesBeforeRetention,
                 long productionPrunedStateCount,
+                IReadOnlyList<MergeSelection> productionTopCandidates,
                 IReadOnlyList<SearchBudgetProbe> probes)
             {
                 ProductionStateBudget = productionStateBudget;
@@ -216,6 +294,7 @@ namespace net.rs64.TexTransTool.NDMF
                 ProductionMaxStatesBeforeRetention =
                     productionMaxStatesBeforeRetention;
                 ProductionPrunedStateCount = productionPrunedStateCount;
+                ProductionTopCandidates = productionTopCandidates;
                 Probes = probes;
             }
         }
@@ -505,6 +584,26 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        private sealed class WatchedPathTrace
+        {
+            internal readonly MergeSelection Target;
+            internal WatchedPathLossStage LossStage;
+            internal int ExpandingGroupId = -1;
+            internal int[] PrefixGroupIds = Array.Empty<int>();
+            internal int StatesBeforeRetention;
+            internal int StatesAfterRetention;
+            internal int TotalStatesBeforeRetention;
+            internal int PixelRank = -1;
+            internal int MemoryRank = -1;
+            internal int GeometryRank = -1;
+            internal int BaselineRank = -1;
+
+            internal WatchedPathTrace(MergeSelection target)
+            {
+                Target = target;
+            }
+        }
+
         /// <summary>
         /// For identical already-placed group sets, a skyline no higher in
         /// any column leaves at least as much room for every future placement.
@@ -590,18 +689,23 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly long PrunedStateCount;
             internal readonly IReadOnlyList<RejectedCandidateDiagnostic>
                 Rejected4096Candidates;
+            internal readonly IReadOnlyList<WatchedPathDiagnostic>
+                WatchedPaths;
 
             internal ShadowPackingDiagnostics(
                 IReadOnlyList<MergeSelection> productionCandidates,
                 int maxStatesBeforeRetention,
                 long prunedStateCount,
                 IReadOnlyList<RejectedCandidateDiagnostic>
-                    rejected4096Candidates)
+                    rejected4096Candidates,
+                IReadOnlyList<WatchedPathDiagnostic>? watchedPaths = null)
             {
                 ProductionCandidates = productionCandidates;
                 MaxStatesBeforeRetention = maxStatesBeforeRetention;
                 PrunedStateCount = prunedStateCount;
                 Rejected4096Candidates = rejected4096Candidates;
+                WatchedPaths =
+                    watchedPaths ?? Array.Empty<WatchedPathDiagnostic>();
             }
         }
 
@@ -871,9 +975,11 @@ namespace net.rs64.TexTransTool.NDMF
                     selection => SelectionSignature(selection),
                     StringComparer.Ordinal);
 
-            // Diagnostic-only widening. A true unbounded run can grow
-            // combinatorially before skyline dominance is reached, so compare
-            // progressively larger retention budgets instead. Abort a probe
+            // Diagnostic-only budget comparison. Include the former 512-state
+            // production budget as well as wider budgets so regressions and
+            // retention losses remain directly observable. A true unbounded
+            // run can grow combinatorially before skyline dominance is reached.
+            // Abort a probe
             // before its per-step generated-state dictionary can exhaust Unity.
             var probes = new List<SearchBudgetProbe>();
             foreach (var diagnosticBudget in DiagnosticStateBudgets)
@@ -890,7 +996,8 @@ namespace net.rs64.TexTransTool.NDMF
                         alphaCache,
                         GetPredictedPropertySizes,
                         diagnosticBudget,
-                        DiagnosticGeneratedStateLimit);
+                        DiagnosticGeneratedStateLimit,
+                        selected);
                     diagnosticTimer.Stop();
 
                     var diagnosticSelected =
@@ -949,7 +1056,8 @@ namespace net.rs64.TexTransTool.NDMF
                                 diagnosticSelected),
                         additionalOrChanged,
                         missingOrChanged,
-                        diagnostic.Rejected4096Candidates));
+                        diagnostic.Rejected4096Candidates,
+                        diagnostic.WatchedPaths));
                 }
                 catch (DiagnosticSearchStateLimitExceededException exception)
                 {
@@ -966,12 +1074,24 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
+            var productionTopCandidates =
+                shadow2D.ProductionCandidates
+                    .OrderByDescending(candidate =>
+                        candidate.PredictedSavingBytes)
+                    .ThenByDescending(candidate =>
+                        candidate.PredictedSavingRate)
+                    .ThenByDescending(candidate =>
+                        candidate.GroupIds.Length)
+                    .Take(20)
+                    .ToArray();
+
             var comparison = new SearchBudgetComparison(
                 ShadowPackingStatesPerHost,
                 productionTimer.ElapsedMilliseconds,
                 shadow2D.ProductionCandidates.Count,
                 shadow2D.MaxStatesBeforeRetention,
                 shadow2D.PrunedStateCount,
+                productionTopCandidates,
                 probes);
 
             return new PlanResult(selected, improvement, comparison);
@@ -1024,8 +1144,8 @@ namespace net.rs64.TexTransTool.NDMF
                 consumed.UnionWith(candidate.GroupIds);
             }
 
-            const int exactCandidateLimit = 16;
-            if (ranked.Length <= 1 || ranked.Length > exactCandidateLimit)
+            if (ranked.Length <= 1
+                || ranked.Length > ExactSelectionCandidateLimit)
                 return greedy;
 
             // Set packing: two independent merges may save more memory than a
@@ -1109,7 +1229,8 @@ namespace net.rs64.TexTransTool.NDMF
                 IReadOnlyDictionary<string, Vector2Int>>
                 propertySizeProvider,
             int stateBudget,
-            int? generatedStateLimit = null)
+            int? generatedStateLimit = null,
+            IReadOnlyList<MergeSelection>? watchedSelections = null)
         {
             if (stateBudget < 8 || stateBudget % 8 != 0)
                 throw new ArgumentOutOfRangeException(nameof(stateBudget));
@@ -1132,6 +1253,34 @@ namespace net.rs64.TexTransTool.NDMF
                 new Dictionary<GroupLayoutKey, Candidate>();
             var rejected4096Candidates =
                 new List<RejectedCandidateDiagnostic>();
+            var watchedTraces = (watchedSelections
+                    ?? Array.Empty<MergeSelection>())
+                .Select(selection => new WatchedPathTrace(selection))
+                .ToArray();
+
+            static bool SameGroupIds(
+                IReadOnlyList<int> left,
+                IReadOnlyList<int> right)
+            {
+                if (left.Count != right.Count) return false;
+                for (var index = 0; index < left.Count; index += 1)
+                    if (left[index] != right[index]) return false;
+                return true;
+            }
+
+            static int BestRank(
+                IEnumerable<ShadowPackingState> ordered,
+                IReadOnlyList<int> targetIds)
+            {
+                var rank = 0;
+                foreach (var state in ordered)
+                {
+                    rank += 1;
+                    if (SameGroupIds(state.GroupIds, targetIds))
+                        return rank;
+                }
+                return -1;
+            }
 
             void RecordRejected4096(Candidate candidate)
             {
@@ -1519,8 +1668,34 @@ namespace net.rs64.TexTransTool.NDMF
                         }
                     }
 
+                    var activeWatches = watchedTraces
+                        .Where(trace =>
+                            trace.LossStage
+                                == WatchedPathLossStage.None
+                            && trace.Target.PlannedLayoutSize.x
+                                == targetWidth)
+                        .ToArray();
+
                     if (generated.Count == 0)
+                    {
+                        foreach (var trace in activeWatches)
+                        {
+                            if (!trace.Target.GroupIds.Contains(group.Id))
+                                continue;
+
+                            var prefix = trace.Target.GroupIds
+                                .Where(id => id <= group.Id)
+                                .ToArray();
+                            trace.LossStage =
+                                WatchedPathLossStage.GenerationOrGeometry;
+                            trace.ExpandingGroupId = group.Id;
+                            trace.PrefixGroupIds = prefix;
+                            trace.StatesBeforeRetention = 0;
+                            trace.StatesAfterRetention = 0;
+                            trace.TotalStatesBeforeRetention = states.Count;
+                        }
                         continue;
+                    }
 
                     var undominated = RemoveDominatedSkylineStates(
                         generated.Values);
@@ -1528,7 +1703,106 @@ namespace net.rs64.TexTransTool.NDMF
                         ScoreState(generatedState, targetWidth);
 
                     states.AddRange(undominated);
+                    var statesBeforeRetention = states;
+                    var watchPrefixes = activeWatches.ToDictionary(
+                        trace => trace,
+                        trace => trace.Target.GroupIds
+                            .Where(id => id <= group.Id)
+                            .ToArray());
+                    var watchCountsBefore = watchPrefixes.ToDictionary(
+                        pair => pair.Key,
+                        pair => pair.Value.Length == 0
+                            ? 0
+                            : statesBeforeRetention.Count(state =>
+                                SameGroupIds(
+                                    state.GroupIds,
+                                    pair.Value)));
+
                     states = SelectPropertyAwareStates(states);
+
+                    foreach (var trace in activeWatches)
+                    {
+                        var prefix = watchPrefixes[trace];
+                        if (prefix.Length == 0)
+                            continue;
+
+                        var beforeCount = watchCountsBefore[trace];
+                        var afterCount = states.Count(state =>
+                            SameGroupIds(state.GroupIds, prefix));
+
+                        if (beforeCount > 0 && afterCount == 0)
+                        {
+                            trace.LossStage =
+                                WatchedPathLossStage.Retention;
+                            trace.ExpandingGroupId = group.Id;
+                            trace.PrefixGroupIds = prefix;
+                            trace.StatesBeforeRetention = beforeCount;
+                            trace.StatesAfterRetention = afterCount;
+                            trace.TotalStatesBeforeRetention =
+                                statesBeforeRetention.Count;
+                            trace.PixelRank = BestRank(
+                                statesBeforeRetention
+                                    .OrderBy(state =>
+                                        state.ProjectedPixelDelta)
+                                    .ThenBy(state =>
+                                        state.ProjectedMemoryDelta)
+                                    .ThenBy(state => state.MaxHeight)
+                                    .ThenBy(
+                                        state => state,
+                                        ShadowPackingStateStableComparer
+                                            .Instance),
+                                prefix);
+                            trace.MemoryRank = BestRank(
+                                statesBeforeRetention
+                                    .OrderBy(state =>
+                                        state.ProjectedMemoryDelta)
+                                    .ThenBy(state =>
+                                        state.ProjectedPixelDelta)
+                                    .ThenBy(state => state.MaxHeight)
+                                    .ThenBy(
+                                        state => state,
+                                        ShadowPackingStateStableComparer
+                                            .Instance),
+                                prefix);
+                            trace.GeometryRank = BestRank(
+                                statesBeforeRetention
+                                    .OrderBy(state => state.MaxHeight)
+                                    .ThenBy(state => state.SkylineArea)
+                                    .ThenByDescending(state =>
+                                        state.GroupIds.Length)
+                                    .ThenBy(
+                                        state => state,
+                                        ShadowPackingStateStableComparer
+                                            .Instance),
+                                prefix);
+                            trace.BaselineRank = BestRank(
+                                statesBeforeRetention
+                                    .OrderByDescending(state =>
+                                        state.BaselineBytes)
+                                    .ThenByDescending(state =>
+                                        state.GroupIds.Length)
+                                    .ThenBy(state => state.MaxHeight)
+                                    .ThenBy(
+                                        state => state,
+                                        ShadowPackingStateStableComparer
+                                            .Instance),
+                                prefix);
+                            continue;
+                        }
+
+                        if (beforeCount == 0
+                            && trace.Target.GroupIds.Contains(group.Id))
+                        {
+                            trace.LossStage =
+                                WatchedPathLossStage.GenerationOrGeometry;
+                            trace.ExpandingGroupId = group.Id;
+                            trace.PrefixGroupIds = prefix;
+                            trace.StatesBeforeRetention = 0;
+                            trace.StatesAfterRetention = afterCount;
+                            trace.TotalStatesBeforeRetention =
+                                statesBeforeRetention.Count;
+                        }
+                    }
                 }
 
                 foreach (var state in states.Where(
@@ -1585,12 +1859,59 @@ namespace net.rs64.TexTransTool.NDMF
                 .Take(20)
                 .ToArray();
 
+            var watchedDiagnostics = watchedTraces
+                .Select(trace =>
+                {
+                    var key = string.Join(
+                        ",",
+                        trace.Target.GroupIds.OrderBy(id => id));
+                    var candidateFound = shadowAdoptable.TryGetValue(
+                        key,
+                        out var foundCandidate);
+                    var foundLayout = candidateFound
+                        ? foundCandidate!.LayoutSize
+                        : default;
+                    var foundSaving = candidateFound
+                        ? foundCandidate!.SavingBytes
+                        : 0L;
+                    var lossStage = trace.LossStage;
+                    if (lossStage == WatchedPathLossStage.None
+                        && (!candidateFound
+                            || foundLayout
+                                != trace.Target.PlannedLayoutSize
+                            || foundSaving
+                                != trace.Target.PredictedSavingBytes))
+                    {
+                        lossStage =
+                            WatchedPathLossStage.CandidateOrSelection;
+                    }
+
+                    return new WatchedPathDiagnostic(
+                        trace.Target.GroupIds.ToArray(),
+                        trace.Target.PlannedLayoutSize,
+                        lossStage,
+                        trace.ExpandingGroupId,
+                        trace.PrefixGroupIds.ToArray(),
+                        trace.StatesBeforeRetention,
+                        trace.StatesAfterRetention,
+                        trace.TotalStatesBeforeRetention,
+                        trace.PixelRank,
+                        trace.MemoryRank,
+                        trace.GeometryRank,
+                        trace.BaselineRank,
+                        candidateFound,
+                        foundLayout,
+                        foundSaving);
+                })
+                .ToArray();
+
             return new ShadowPackingDiagnostics(
                 shadowAdoptable.Select(pair => new MergeSelection(
                     pair.Value, shadowPackedRegions[pair.Key])).ToArray(),
                 maxStatesBeforeRetention,
                 prunedStateCount,
-                rejectedDiagnostics);
+                rejectedDiagnostics,
+                watchedDiagnostics);
         }
 
         private static int GetUsedHeightPixels(
