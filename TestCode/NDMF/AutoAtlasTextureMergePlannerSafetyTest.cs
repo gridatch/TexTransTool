@@ -937,6 +937,69 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void AutoAtlasRejectsNonIdentityTextureUvTransform()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var texture = new Texture2D(4, 4);
+            try
+            {
+                material.SetTexture("_MainTex", texture);
+                var materials = new HashSet<Material> { material };
+                var propertyTextures =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [material] = new Dictionary<string, Texture>
+                        {
+                            ["_MainTex"] = texture,
+                        },
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsupportedTextureUvTransform(
+                            materials,
+                            propertyTextures,
+                            UVChannel.UV0),
+                    Is.False);
+
+                material.SetTextureScale(
+                    "_MainTex",
+                    new Vector2(2f, 1f));
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsupportedTextureUvTransform(
+                            materials,
+                            propertyTextures,
+                            UVChannel.UV0),
+                    Is.True);
+
+                material.SetTextureScale(
+                    "_MainTex",
+                    Vector2.one);
+                material.SetTextureOffset(
+                    "_MainTex",
+                    new Vector2(0.25f, 0f));
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsupportedTextureUvTransform(
+                            materials,
+                            propertyTextures,
+                            UVChannel.UV0),
+                    Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
         public void AdditionalMaterialReferenceExcludesEntireAutoAtlasGroup()
         {
             var shader = Shader.Find("Hidden/InternalErrorShader");
