@@ -748,6 +748,43 @@ namespace net.rs64.TexTransTool.NDMF
                 using var atlasContext = atlasResult.AtlasContext!;
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
 
+                // Revalidate generated-property application against
+                // the actual MaterialGroupingContext. A merge can introduce a
+                // property name that did not exist in another atomic group's
+                // standalone atlas outputs, so the combined operation must
+                // prove that GenerateAtlasMat will not overwrite an excluded
+                // same-named texture property.
+                if (HasUnsafeGeneratedPropertyApplication(
+                        group,
+                        atlasContext.MaterialGroupingCtx
+                            .ContainsTextureDictionaries,
+                        settings.AtlasTargetUVChannel))
+                {
+                    foreach (var rt in compiledTextures.Values.Distinct())
+                        rt.Dispose();
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes);
+
+                    if (execution.MergeSelection is { } propertyMerge)
+                    {
+                        if (propertyMerge.PackedRegions != null)
+                        {
+                            twoDimensionalFallbackReasons.Add(
+                                $"groups={string.Join(",", propertyMerge.GroupIds.Select(id => "g" + id))}, "
+                                + $"layout={propertyMerge.PlannedLayoutSize.x}×{propertyMerge.PlannedLayoutSize.y}: "
+                                + FormatLocalized(
+                                    "AutoAtlasTexture:fallback:GeneratedPropertyApplicationMismatch"));
+                        }
+
+                        EnqueueStandaloneFallback(
+                            executionGroups,
+                            propertyMerge,
+                            preparedGroups);
+                    }
+
+                    continue;
+                }
+
                 // Revalidate against the actual material grouping created by
                 // AtlasContext. This is the authoritative guard before default
                 // ReferenceCopy fine tuning can redirect texture properties.
