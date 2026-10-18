@@ -820,6 +820,9 @@ msgstr "プロパティ解像度が不適合: {0} actual={1}×{2}, planned={3}×
 msgid "AutoAtlasTexture:fallback:AtlasExecutionFailed"
 msgstr "DoAtlasTextureが失敗（配置・サイズ判定の詳細未取得）"
 
+msgid "AutoAtlasTexture:fallback:ReferenceCopySemanticsMismatch"
+msgstr "ReferenceCopyにより別のテクスチャ内容へ置き換わる可能性があるため自動統合を中止"
+
 msgid "AutoAtlasTexture:fallback:FinalMemoryUnknown"
 msgstr "最終テクスチャメモリを計算できない"
 
