@@ -1,0 +1,112 @@
+# AutoAtlas Diagnostic Templates
+
+snapshot_branch: `feat/auto-atlas-merge-planner`  
+snapshot_base: `wdt`  
+snapshot_head_before_template_registry: `1405baf8aa52d4a33f88dfb4898e4113a11d20a8`
+
+## Scope
+
+These templates cover temporary diagnostics used to investigate AutoAtlas texture merging, search retention, candidate selection, standalone lossless-profile failures, execution effects, and NDMF Console presentation.
+
+The current source at the snapshot head still contains the active diagnostic pack. This registry captures how to reconstruct it later; it does not by itself disable or remove diagnostics.
+
+## Template index
+
+- `state-budget-comparison.md` — compare production 1024-state search with 512/2048/4096 planning-only searches and trace retention losses.
+- `selection-exactness.md` — expose greedy vs exact disjoint candidate selection without confusing the production exact solver with temporary logging.
+- `standalone-profile-failure.md` — classify why a prepared atomic group has no lossless standalone profile.
+- `execution-effect-summary.md` — report predicted vs actual merge/standalone effects and fallback counts.
+- `ndmf-console-exact-copy.md` — render long diagnostics reliably and guarantee display/copy source identity.
+
+## Current classification
+
+### permanent-production — do not remove with diagnostic cleanup
+
+- AutoAtlas renderer-target population aligned with regular AtlasTexture semantics.
+- Production 2D shadow packing search with `ShadowPackingStatesPerHost = 1024`.
+- Candidate gates: PixelCount, FullResidentMemory, Sampling.
+- Physical-pixel padding preservation for 2D merge profiles/execution.
+- Final FineTuning memory revalidation before mutation.
+- Standalone post-FineTuning acceptance behavior.
+- Exact disjoint selection by group mask for bounded group universes:
+  - `ExactSelectionGroupLimit`
+  - `SelectExactByGroupMask(...)`
+  - fallback behavior for larger universes.
+- Visibility-animation merge exclusion behavior.
+- Total AutoAtlas processing-time user-facing log. It was explicitly restored after a rejected audit and must remain unless separately changed.
+- Common AtlasTexture empty-submesh fix:
+  - `AtlasSubMeshIndexIDSetContext.BuildAtlasSubSet(...)`
+  - all-null output subsets are not registered
+  - mesh resolution uses the same effective-submesh rule.
+- Existing common fixes such as `AtlasSubMeshIndexIDSetContext.SubPartEqual` correction and TextureManager ownership handling.
+
+### permanent-tests — keep with production behavior
+
+- Exact group-mask selection tests.
+- Large group-universe greedy fallback test.
+- Empty/ mixed effective-submesh tests.
+- Other safety tests covering production fallback and renderer targeting.
+
+### temporary-diagnostic
+
+Planner anchors:
+- `DiagnosticStateBudgets`
+- `DiagnosticGeneratedStateLimit`
+- `SearchBudgetComparison`
+- `SearchBudgetProbe`
+- `WatchedPathDiagnostic`
+- `RejectedCandidateDiagnostic`
+- retention rank / watched-path state
+- comparison-only 512/2048/4096 searches
+- `PreparedGroup.StandaloneAnalysisDiagnostics`
+- `SelectionDiagnostics` only as diagnostic reporting state; the exact selection algorithm itself is permanent.
+
+Pass/report anchors:
+- group preparation report
+- safe-candidate top-N report
+- state-budget difference reports
+- watched-path report
+- rejected 4096-width candidate report
+- detailed execution-effect summary
+- `AutoAtlasTextureTemporaryDiagnosticError`
+
+### diagnostic-presentation
+
+- scrollable line-by-line NDMF diagnostic UI
+- one-click exact-copy button
+- project-folder label in report
+- exact display/copy source identity.
+
+These are removable if no long-form diagnostic report remains, but while present they must obey `ndmf-console-exact-copy.md`.
+
+## Validation matrix captured at this snapshot
+
+All listed projects completed with `mergeFallbacks=0`.
+
+| Project | 1024 safe candidates | 2048 | 4096 | production merge saving | final plan changes above 1024 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Seiran | 141 | 188 | 188 | 5,592,520 B | none |
+| Koiboshi | 2 | 2 | 2 | 117,432 B | none |
+| ShuwashuwaPearl | 2 | 2 | 2 | 196,960 B | none |
+| FrillNyantic | 6 | 6 | 6 | 393,280 B | none |
+| Cornet | 14 | 14 | 14 | 144 B | none |
+| SailorCupid | 6 | 26 | 31 | 120 B | none |
+| Octopus | 1 | 1 | 1 | 24 B | none |
+
+Observed conclusion at this snapshot:
+- 1024 is not candidate-complete in every fixture.
+- No tested fixture improved its final selected plan at 2048 or 4096.
+- 2048/4096 comparison searches add substantial diagnostic runtime cost.
+- Current evidence supports retaining production budget 1024.
+
+## Cleanup boundary
+
+When removing the current investigation pack:
+
+1. Remove comparison searches and their state/result DTOs.
+2. Remove watched-path / rejected-candidate / candidate-diff formatting.
+3. Remove standalone failure-detail strings if no active investigation needs them.
+4. Remove detailed execution-effect summary if no active investigation needs it.
+5. Remove temporary NDMF diagnostic UI only after all long-form reports are gone.
+6. Preserve production exact selection, production state budget, execution safety, common fixes, and total processing-time log.
+7. Run the safety tests after cleanup.
