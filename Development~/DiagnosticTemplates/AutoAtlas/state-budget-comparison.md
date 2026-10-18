@@ -94,7 +94,7 @@ A valid run must make it possible to answer:
 
 Captured multi-project result:
 - Seiran_Test_Atlas: 1024=141 candidates; 2048/4096=188; final plan unchanged.
-- SailorCupid: 1024=6; 2048=26; 4096=31; final plan unchanged.
+- Seiran_SailorCupid: 1024=6; 2048=26; 4096=31; final plan unchanged.
 - Other benchmark fixtures: no final plan change across tested budgets.
 
 ## activation_recipe
