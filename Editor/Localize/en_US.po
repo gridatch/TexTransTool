@@ -870,3 +870,6 @@ msgstr "combined atlas properties would overwrite a material texture property th
 
 msgid "AutoAtlasTexture:fallback:RequiredMeshResolutionFailed"
 msgstr "required atlased mesh could not be resolved for renderer: {0}"
+
+msgid "AutoAtlasTexture:fallback:ActiveUntransformedConsumer"
+msgstr "a currently active material consumer cannot receive the corresponding atlas mesh/UV rewrite"
