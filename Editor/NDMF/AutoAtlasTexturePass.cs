@@ -1227,6 +1227,25 @@ namespace net.rs64.TexTransTool.NDMF
             return false;
         }
 
+        internal static bool HasOtherUvUsageOnTarget(
+            UsingUVChannels usage,
+            UVChannel atlasTargetUvChannel)
+        {
+            var target = atlasTargetUvChannel switch
+            {
+                UVChannel.UV0 => UsingUVChannels.UV0,
+                UVChannel.UV1 => UsingUVChannels.UV1,
+                UVChannel.UV2 => UsingUVChannels.UV2,
+                UVChannel.UV3 => UsingUVChannels.UV3,
+                UVChannel.UV4 => UsingUVChannels.UV4,
+                UVChannel.UV5 => UsingUVChannels.UV5,
+                UVChannel.UV6 => UsingUVChannels.UV6,
+                UVChannel.UV7 => UsingUVChannels.UV7,
+                _ => UsingUVChannels.Unknown,
+            };
+            return (usage & target) != 0;
+        }
+
         internal static bool HasUnsupportedTextureUvSampling(
             IReadOnlyCollection<Material> materials,
             IReadOnlyDictionary<
@@ -1246,6 +1265,18 @@ namespace net.rs64.TexTransTool.NDMF
                 var usages =
                     TTShaderTextureUsageInformationUtil
                         .GetContainsUVTransformUsage(material);
+                var otherUvUsage =
+                    TTShaderTextureUsageInformationUtil
+                        .GetOtherUVUsage(material);
+                if (HasOtherUvUsageOnTarget(
+                        otherUvUsage,
+                        atlasTargetUvChannel))
+                {
+                    // AtlasTexture rewrites the target mesh UV channel for the
+                    // whole renderer. Non-texture shader calculations that use
+                    // the same channel cannot be preserved automatically.
+                    return true;
+                }
 
                 foreach (var propertyName
                          in material.GetTexturePropertyNames())
