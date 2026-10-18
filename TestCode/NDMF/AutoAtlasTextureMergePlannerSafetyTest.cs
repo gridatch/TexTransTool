@@ -363,6 +363,48 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void AtlasRendererEligibilityRejectsMeshWithoutSubMeshes()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var mesh = new Mesh();
+            var gameObject = new GameObject("NoSubMeshes");
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.uv = new[]
+                {
+                    Vector2.zero,
+                    Vector2.right,
+                    Vector2.up,
+                };
+                mesh.subMeshCount = 0;
+
+                var filter = gameObject.AddComponent<MeshFilter>();
+                filter.sharedMesh = mesh;
+                var renderer = gameObject.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+
+                Assert.That(
+                    AtlasTexture.IsAtlasAllowedRenderer(renderer),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
         public void AutoAtlasRendererEligibilityMatchesManualAtlasDefault()
         {
             var shader = Shader.Find("Hidden/InternalErrorShader");
