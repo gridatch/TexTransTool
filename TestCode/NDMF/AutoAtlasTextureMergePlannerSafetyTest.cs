@@ -22,15 +22,20 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 
             var diagnosticScroll =
                 root.Q<ScrollView>("auto-atlas-diagnostic-scroll");
-            var diagnosticText =
-                root.Q<Label>("auto-atlas-diagnostic-message");
+            var linesContainer =
+                root.Q<VisualElement>("auto-atlas-diagnostic-lines");
             var copyButton =
                 root.Q<Button>("auto-atlas-copy-diagnostics");
 
             Assert.That(diagnosticScroll, Is.Not.Null);
-            Assert.That(diagnosticText, Is.Not.Null);
-            Assert.That(diagnosticText.text, Is.EqualTo(message));
-            Assert.That(diagnosticText.enableRichText, Is.False);
+            Assert.That(linesContainer, Is.Not.Null);
+            var lines = linesContainer.Children()
+                .Cast<Label>()
+                .ToArray();
+            Assert.That(lines.Length, Is.EqualTo(4));
+            Assert.That(lines.All(line => !line.enableRichText), Is.True);
+            Assert.That(string.Join("\n", lines.Select(line => line.text)),
+                Is.EqualTo(message));
             Assert.That(copyButton, Is.Not.Null);
             Assert.That(error.TitleSubst, Is.Empty);
         }
