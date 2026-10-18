@@ -854,4 +854,4 @@ msgid "AutoAtlasTexture:fallback:FinalPixelsNotReduced"
 msgstr "最終出力ピクセル数が不正、または削減されない: actual={0}, baseline={1}"
 
 msgid "AutoAtlasTexture:fallback:SourceTextureRetained"
-msgstr "生成されたアトラス化Materialに元source textureの参照が残っている"
+msgstr "生成されたアトラス化Materialに元テクスチャの参照が残っている"
