@@ -789,13 +789,6 @@ namespace net.rs64.TexTransTool.NDMF
             var propertyRequirementCache =
                 new Dictionary<string, PropertyResolutionRequirements>(
                     StringComparer.Ordinal);
-            var semanticSafetyCache =
-                new Dictionary<
-                    string,
-                    (bool AtomicGroupMapping,
-                     bool GeneratedPropertyApplication,
-                     bool ReferenceCopy)>(
-                    StringComparer.Ordinal);
             IReadOnlyDictionary<string, Vector2Int>
                 GetPredictedPropertySizes(
                     int[] ids,
@@ -1133,6 +1126,13 @@ namespace net.rs64.TexTransTool.NDMF
                 new Dictionary<GroupLayoutKey, ShadowCostProjection>();
             var candidateCache =
                 new Dictionary<GroupLayoutKey, Candidate>();
+            var semanticSafetyCache =
+                new Dictionary<
+                    string,
+                    (bool AtomicGroupMapping,
+                     bool GeneratedPropertyApplication,
+                     bool ReferenceCopy)>(
+                    StringComparer.Ordinal);
 
             ShadowCostProjection GetProjection(
                 int[] ids,
