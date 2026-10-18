@@ -5,6 +5,7 @@ using System.Linq;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.IslandRelocator;
+using net.rs64.TexTransTool.Editor;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.NDMF
@@ -41,6 +42,13 @@ namespace net.rs64.TexTransTool.NDMF
         {
             FailureDetail = reason;
             return new RelocationResult(false, true);
+        }
+
+        private static string FormatLocalized(
+            string key,
+            params object[] args)
+        {
+            return string.Format(key.GetLocalize(), args);
         }
 
         internal AutoAtlas2DMergeIslandRelocator(
@@ -108,8 +116,10 @@ namespace net.rs64.TexTransTool.NDMF
             _valid = valid;
             if (!valid)
                 FailureDetail = !ValidatePlannedRegions(regions, atlasWidth)
-                    ? "計画矩形の重複・範囲外・不足"
-                    : "元UV IslandとAtomic Groupの対応が不整合";
+                    ? FormatLocalized(
+                        "AutoAtlasTexture:fallback:InvalidPlannedRegions")
+                    : FormatLocalized(
+                        "AutoAtlasTexture:fallback:AtomicGroupMappingMismatch");
         }
 
         internal static bool ValidatePlannedRegions(
@@ -198,17 +208,26 @@ namespace net.rs64.TexTransTool.NDMF
             if (islands.Length == 0
                 || islands.Length != _groupByIsland.Length
                 || Math.Abs(context.TargetHeight - 1f) > Epsilon)
-                return Fail($"Island数またはTargetHeightが不正: islands={islands.Length}, map={_groupByIsland.Length}, targetHeight={context.TargetHeight}");
+                return Fail(FormatLocalized(
+                    "AutoAtlasTexture:fallback:InvalidIslandContext",
+                    islands.Length,
+                    _groupByIsland.Length,
+                    context.TargetHeight));
 
             var groupedIndices = Enumerable.Range(0, islands.Length)
                 .GroupBy(index => _groupByIsland[index]).ToArray();
             if (groupedIndices.Length != _regions.Count)
-                return Fail($"実行時group数の相違: actual={groupedIndices.Length}, planned={_regions.Count}");
+                return Fail(FormatLocalized(
+                    "AutoAtlasTexture:fallback:GroupCountMismatch",
+                    groupedIndices.Length,
+                    _regions.Count));
 
             foreach (var group in groupedIndices)
             {
                 if (!_regions.TryGetValue(group.Key, out var region))
-                    return Fail($"g{group.Key}の配置矩形なし");
+                    return Fail(FormatLocalized(
+                        "AutoAtlasTexture:fallback:MissingGroupRegion",
+                        group.Key));
 
                 // The base island scale is relative to the full atlas width.
                 // Convert to the group's profile width for local NFDH, then
@@ -233,15 +252,20 @@ namespace net.rs64.TexTransTool.NDMF
                     when (AutoAtlas2DMergeIslandRelocator
                         .IsNfdhComparerFailure(exception))
                 {
-                    return Fail($"g{group.Key}のNFDH比較処理が失敗: {exception.Message}");
+                    return Fail(FormatLocalized(
+                        "AutoAtlasTexture:fallback:NfdhComparerFailure",
+                        group.Key,
+                        exception.Message));
                 }
 
                 if (!localResult.IsSuccess)
                 {
-                    return Fail(
-                        $"g{group.Key}の矩形内NFDH配置に失敗: "
-                        + $"region={region}, islands={localIslands.Length}, "
-                        + $"profilePadding={context.Padding}");
+                    return Fail(FormatLocalized(
+                        "AutoAtlasTexture:fallback:RegionPackingFailed",
+                        group.Key,
+                        region,
+                        localIslands.Length,
+                        context.Padding));
                 }
 
                 var minX = (float)region.xMin / _atlasWidth;
@@ -274,7 +298,19 @@ namespace net.rs64.TexTransTool.NDMF
                                 island, region, _atlasWidth, context.Padding))
                             ?? invalidIsland;
                         var box = unresolved.GetBox();
-                        return Fail($"g{group.Key}の実配置が矩形境界の必要余白を満たさない: region={region}, box=({box.X},{box.Y},{box.Z},{box.W}), profilePadding={context.Padding}, regionPadding={GetRegionPaddingInAtlasUv(context.Padding, _atlasWidth, region.width)}");
+                        return Fail(FormatLocalized(
+                            "AutoAtlasTexture:fallback:RegionPaddingFailed",
+                            group.Key,
+                            region,
+                            box.X,
+                            box.Y,
+                            box.Z,
+                            box.W,
+                            context.Padding,
+                            GetRegionPaddingInAtlasUv(
+                                context.Padding,
+                                _atlasWidth,
+                                region.width)));
                     }
                 }
             }
