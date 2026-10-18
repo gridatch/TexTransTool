@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.IslandRelocator;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.NDMF
