@@ -1211,6 +1211,37 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void MaterialInformationTranslatorPreservesNonMeshUsage()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var texture = new Texture2D(4, 4);
+            try
+            {
+                material.SetTexture("_BumpMap", texture);
+                var provider = new MaterialUVUsageProvider(material);
+                var translator = new MaterialInformationTranslator(provider);
+
+                translator.RegisterTextureUVUsage(
+                    "_BumpMap",
+                    SamplerStateInformation.LinearRepeatSampler,
+                    UsingUVChannels.NonMesh,
+                    null);
+
+                Assert.That(
+                    provider.UVUsageWithTransform["_BumpMap"].UVChannel,
+                    Is.EqualTo(UsageUVChannel.NonMesh));
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
         public void AutoAtlasRejectsUnprovenTextureUvUsage()
         {
             var shader = Shader.Find("Standard");
@@ -1244,6 +1275,27 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                             UVChannel.UV0),
                     Is.True,
                     "A non-null 2D texture with no UV usage metadata cannot be proven safe after mesh UV rewriting.");
+
+                TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                    new TestShaderTextureUsageInformation(
+                        includeBumpMap: true,
+                        UsageUVChannel.NonMesh);
+                var nonMeshGrouping = new MaterialGroupingContext(
+                    materials,
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+                Assert.That(
+                    nonMeshGrouping.ContainsTextureDictionaries[material]
+                        .ContainsKey("_BumpMap"),
+                    Is.False);
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsupportedTextureUvSampling(
+                            materials,
+                            nonMeshGrouping.ContainsTextureDictionaries,
+                            UVChannel.UV0),
+                    Is.False,
+                    "Sampling proven to use non-mesh coordinates is unaffected by UV0 atlasing.");
 
                 TTShaderTextureUsageInformationRegistry.s_information[shader] =
                     new TestShaderTextureUsageInformation(
