@@ -1214,7 +1214,7 @@ namespace net.rs64.TexTransTool.NDMF
                     }
 
                     if (!TTShaderTextureUsageInformationUtil
-                            .IsIdentityUVMatrix(usage.UVMatrix))
+                            .IsKnownIdentityUVMatrix(usage))
                     {
                         return true;
                     }
