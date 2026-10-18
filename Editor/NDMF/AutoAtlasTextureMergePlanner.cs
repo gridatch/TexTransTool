@@ -459,6 +459,7 @@ namespace net.rs64.TexTransTool.NDMF
         internal enum CandidateRejectionReason
         {
             None,
+            AtomicGroupMapping,
             ReferenceCopySemantics,
             PixelCount,
             FullResidentMemory,
@@ -484,6 +485,7 @@ namespace net.rs64.TexTransTool.NDMF
                 TextureCostPlan merged,
                 Vector2Int layoutSize,
                 IReadOnlyDictionary<string, Vector2Int> propertySizes,
+                bool preservesAtomicGroupMapping = true,
                 bool preservesReferenceCopySemantics = true)
             {
                 GroupIds = groupIds;
@@ -497,8 +499,10 @@ namespace net.rs64.TexTransTool.NDMF
                     : (float)SavingBytes / baseline.FullResidentBytes;
 
                 RejectionReason =
-                    !preservesReferenceCopySemantics
-                        ? CandidateRejectionReason.ReferenceCopySemantics
+                    !preservesAtomicGroupMapping
+                        ? CandidateRejectionReason.AtomicGroupMapping
+                        : !preservesReferenceCopySemantics
+                            ? CandidateRejectionReason.ReferenceCopySemantics
                         : merged.PixelCount >= baseline.PixelCount
                             ? CandidateRejectionReason.PixelCount
                         : merged.FullResidentBytes >= baseline.FullResidentBytes
@@ -584,6 +588,55 @@ namespace net.rs64.TexTransTool.NDMF
                 MipCount = Math.Max(1, mipCount);
                 FullResidentBytes = CalculateBytes(this);
             }
+        }
+
+        internal static bool PreservesAtomicGroupBoundaries(
+            IReadOnlyList<PreparedGroup> groups,
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>>
+                propertyTextures)
+        {
+            if (groups.Count < 2)
+                return true;
+
+            var materials = groups
+                .SelectMany(group => group.Materials)
+                .ToHashSet();
+            var grouping = new MaterialGroupingContext(
+                materials,
+                propertyTextures,
+                primaryTexturePropertyOrMaximum: null);
+            return PreservesAtomicGroupBoundaries(
+                groups,
+                grouping);
+        }
+
+        internal static bool PreservesAtomicGroupBoundaries(
+            IReadOnlyList<PreparedGroup> groups,
+            MaterialGroupingContext grouping)
+        {
+            var atomicGroupByMaterial = groups
+                .SelectMany(group => group.Materials.Select(
+                    material => (material, group.Id)))
+                .ToDictionary(pair => pair.material, pair => pair.Id);
+
+            foreach (var materialGroup in grouping.GroupMaterials)
+            {
+                var ids = materialGroup
+                    .Select(material =>
+                        atomicGroupByMaterial.TryGetValue(
+                            material,
+                            out var id)
+                            ? (int?)id
+                            : null)
+                    .Distinct()
+                    .ToArray();
+                if (ids.Length != 1 || !ids[0].HasValue)
+                    return false;
+            }
+
+            return true;
         }
 
         internal static bool PreservesReferenceCopySemantics(
@@ -712,6 +765,11 @@ namespace net.rs64.TexTransTool.NDMF
             var alphaCache = new Dictionary<Texture, bool>();
             var propertyRequirementCache =
                 new Dictionary<string, PropertyResolutionRequirements>(
+                    StringComparer.Ordinal);
+            var semanticSafetyCache =
+                new Dictionary<
+                    string,
+                    (bool AtomicGroupMapping, bool ReferenceCopy)>(
                     StringComparer.Ordinal);
             IReadOnlyDictionary<string, Vector2Int>
                 GetPredictedPropertySizes(
@@ -1095,20 +1153,40 @@ namespace net.rs64.TexTransTool.NDMF
                     return cached;
 
                 var projection = GetProjection(ids, layoutSize);
-                var selectedMaterials = ids
-                    .Select(id => byId[id])
-                    .SelectMany(group => group.Materials)
-                    .ToHashSet();
+                var semanticKey = string.Join(",", ids);
+                if (!semanticSafetyCache.TryGetValue(
+                        semanticKey,
+                        out var semanticSafety))
+                {
+                    var selectedGroups = ids
+                        .Select(id => byId[id])
+                        .ToArray();
+                    var selectedMaterials = selectedGroups
+                        .SelectMany(group => group.Materials)
+                        .ToHashSet();
+                    var grouping = new MaterialGroupingContext(
+                        selectedMaterials,
+                        propertyTextures,
+                        primaryTexturePropertyOrMaximum: null);
+                    semanticSafety = (
+                        PreservesAtomicGroupBoundaries(
+                            selectedGroups,
+                            grouping),
+                        PreservesReferenceCopySemantics(
+                            selectedMaterials,
+                            grouping,
+                            settings));
+                    semanticSafetyCache[semanticKey] = semanticSafety;
+                }
+
                 var candidate = new Candidate(
                     ids,
                     projection.Baseline,
                     projection.Merged,
                     layoutSize,
                     projection.PropertySizes,
-                    PreservesReferenceCopySemantics(
-                        selectedMaterials,
-                        propertyTextures,
-                        settings));
+                    semanticSafety.AtomicGroupMapping,
+                    semanticSafety.ReferenceCopy);
                 candidateCache[layoutKey] = candidate;
                 return candidate;
             }
