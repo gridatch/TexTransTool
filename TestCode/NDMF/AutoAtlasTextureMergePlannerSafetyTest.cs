@@ -108,6 +108,22 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             }
         }
 
+        private sealed class VertexIndexShaderTextureUsageInformation
+            : ITTShaderTextureUsageInformation
+        {
+            public void GetMaterialTextureUVUsage(
+                ITTTextureUVUsageWriter writer)
+            {
+                var translator = new MaterialInformationTranslator(writer);
+                translator.RegisterTextureUVUsage(
+                    "_MainTex",
+                    SamplerStateInformation.LinearRepeatSampler,
+                    UsingUVChannels.UV0,
+                    Matrix2x3.Identity);
+                translator.RegisterVertexIndexUsage();
+            }
+        }
+
         private static Shader RequireStandardShaderUsageInformation()
         {
             var shader = Shader.Find("Standard");
@@ -1543,6 +1559,144 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     TTShaderTextureUsageInformationRegistry
                         .s_information.Remove(shader);
 
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
+        public void AutoAtlasProtectsVertexIndexOnlyWhenMeshWillBeReindexed()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var texture = new Texture2D(4, 4);
+            var material = new Material(shader);
+            var root = new GameObject("VertexIndexSafety");
+            var simpleMesh = new Mesh();
+            var crossMesh = new Mesh();
+            var expandedMesh = new Mesh();
+            try
+            {
+                material.SetTexture("_MainTex", texture);
+                TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                    new VertexIndexShaderTextureUsageInformation();
+
+                Assert.That(
+                    TTShaderTextureUsageInformationUtil
+                        .UsesVertexIndex(material),
+                    Is.True,
+                    "RegisterVertexIndexUsage must survive the translator/provider path.");
+
+                void SetGeometry(Mesh mesh, bool crossSubMesh)
+                {
+                    mesh.vertices = new[]
+                    {
+                        Vector3.zero,
+                        Vector3.right,
+                        Vector3.up,
+                        Vector3.one,
+                    };
+                    mesh.uv = new[]
+                    {
+                        Vector2.zero,
+                        Vector2.right,
+                        Vector2.up,
+                        Vector2.one,
+                    };
+                    if (crossSubMesh)
+                    {
+                        mesh.subMeshCount = 2;
+                        mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                        mesh.SetTriangles(new[] { 0, 2, 3 }, 1);
+                    }
+                    else
+                    {
+                        mesh.subMeshCount = 1;
+                        mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                    }
+                }
+
+                MeshRenderer AddRenderer(
+                    string name,
+                    Mesh mesh,
+                    Material[] materials)
+                {
+                    var go = new GameObject(name);
+                    go.transform.SetParent(root.transform, false);
+                    var filter = go.AddComponent<MeshFilter>();
+                    filter.sharedMesh = mesh;
+                    var renderer = go.AddComponent<MeshRenderer>();
+                    renderer.sharedMaterials = materials;
+                    return renderer;
+                }
+
+                SetGeometry(simpleMesh, crossSubMesh: false);
+                var simple = AddRenderer(
+                    "simple",
+                    simpleMesh,
+                    new[] { material });
+                var simpleTargeting = new RendererTargetingForTest(
+                    new Renderer[] { simple });
+                Assert.That(
+                    AtlasMeshSourceContext.RequiresVertexReindexing(
+                        simpleTargeting,
+                        simpleMesh,
+                        new Renderer[] { simple }),
+                    Is.False);
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasUnsafeVertexIndexUsage(
+                        simpleTargeting,
+                        new Renderer[] { simple }),
+                    Is.False,
+                    "A simple clone-and-UV rewrite preserves vertex indices.");
+
+                SetGeometry(crossMesh, crossSubMesh: true);
+                var cross = AddRenderer(
+                    "cross",
+                    crossMesh,
+                    new[] { material, material });
+                var crossTargeting = new RendererTargetingForTest(
+                    new Renderer[] { cross });
+                Assert.That(
+                    AtlasMeshSourceContext.RequiresVertexReindexing(
+                        crossTargeting,
+                        crossMesh,
+                        new Renderer[] { cross }),
+                    Is.True);
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasUnsafeVertexIndexUsage(
+                        crossTargeting,
+                        new Renderer[] { cross }),
+                    Is.True,
+                    "Cross-submesh normalization duplicates shared vertices and must block vertex-index shaders.");
+
+                SetGeometry(expandedMesh, crossSubMesh: false);
+                var expanded = AddRenderer(
+                    "expanded",
+                    expandedMesh,
+                    new[] { material, material });
+                var expandedTargeting = new RendererTargetingForTest(
+                    new Renderer[] { expanded });
+                Assert.That(
+                    AtlasMeshSourceContext.RequiresVertexReindexing(
+                        expandedTargeting,
+                        expandedMesh,
+                        new Renderer[] { expanded }),
+                    Is.True);
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasUnsafeVertexIndexUsage(
+                        expandedTargeting,
+                        new Renderer[] { expanded }),
+                    Is.True,
+                    "Material-slot expansion repeats a submesh with cloned vertices and must block vertex-index shaders.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(simpleMesh);
+                Object.DestroyImmediate(crossMesh);
+                Object.DestroyImmediate(expandedMesh);
                 Object.DestroyImmediate(material);
                 Object.DestroyImmediate(texture);
             }
