@@ -565,6 +565,17 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
+                // AtlasMeshSourceContext can duplicate vertices when a mesh
+                // shares vertices across submeshes or needs material-slot
+                // expansion. If any material rendered by that mesh depends on
+                // SV_VertexID / vertex index, automatic atlasing cannot prove
+                // the result equivalent.
+                if (HasUnsafeVertexIndexUsage(
+                        domain, atlasRenderers))
+                {
+                    continue;
+                }
+
                 var texturesToReplace = group
                     .SelectMany(material => propertyTextures[material].Values)
                     .Where(texture => texture != null)
@@ -655,6 +666,23 @@ namespace net.rs64.TexTransTool.NDMF
                                 "AutoAtlasTexture:fallback:ActiveUntransformedConsumer"));
                         EnqueueStandaloneFallback(
                             executionGroups, invalidMerge, preparedGroups);
+                    }
+                    continue;
+                }
+
+                if (HasUnsafeVertexIndexUsage(
+                        domain, atlasRenderers))
+                {
+                    if (execution.MergeSelection is { } vertexIndexMerge)
+                    {
+                        twoDimensionalFallbackReasons.Add(
+                            $"groups={string.Join(",", vertexIndexMerge.GroupIds.Select(id => "g" + id))}: "
+                            + FormatLocalized(
+                                "AutoAtlasTexture:fallback:VertexIndexReindexing"));
+                        EnqueueStandaloneFallback(
+                            executionGroups,
+                            vertexIndexMerge,
+                            preparedGroups);
                     }
                     continue;
                 }
@@ -1350,6 +1378,42 @@ namespace net.rs64.TexTransTool.NDMF
                         // would sample transformed atlas UVs against its old
                         // texture after the mesh rewrite.
                         return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool HasUnsafeVertexIndexUsage(
+            IRendererTargeting domain,
+            IReadOnlyCollection<Renderer> targetRenderers)
+        {
+            foreach (var meshGroup in targetRenderers
+                         .Where(renderer => renderer != null)
+                         .GroupBy(domain.GetMesh))
+            {
+                var mesh = meshGroup.Key;
+                if (mesh == null
+                    || !AtlasMeshSourceContext.RequiresVertexReindexing(
+                        domain, mesh, meshGroup))
+                {
+                    continue;
+                }
+
+                var checkedMaterials = new HashSet<Material>();
+                foreach (var renderer in meshGroup)
+                {
+                    foreach (var material in domain.GetMaterials(renderer)
+                                 .UOfType<Material>())
+                    {
+                        if (!checkedMaterials.Add(material))
+                            continue;
+                        if (TTShaderTextureUsageInformationUtil
+                                .UsesVertexIndex(material))
+                        {
+                            return true;
+                        }
                     }
                 }
             }
