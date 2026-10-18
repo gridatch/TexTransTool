@@ -103,6 +103,11 @@ namespace net.rs64.TexTransTool.TestCode
                 normalCompress.PropertyNameList
                     .Select(property => (string)property)
                     .ToArray());
+
+            Assert.That(
+                new MipMapData().UseMipMap,
+                Is.True,
+                "AutoAtlas cost prediction assumes generated atlas outputs keep the default full mip chain.");
         }
 
         [TestCase(512, 512, 2048, 2048, 2048, 2048, 512, 512)]
