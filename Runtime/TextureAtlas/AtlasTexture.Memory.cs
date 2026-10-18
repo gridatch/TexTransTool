@@ -179,9 +179,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     if (!TryGetMemoryBlockLayout(format, out block))
                         return false;
 
+                    // A source Texture2D already has a concrete mip
+                    // chain. Use the actual level count instead of assuming
+                    // every mipmapped texture contains a complete chain; an
+                    // overestimated baseline can make a merge look beneficial
+                    // when it is not.
                     mipCount = descriptor.UseMipMap
-                        ? CalculateMemoryMipCount(
-                            texture2D.width, texture2D.height)
+                        ? Math.Max(1, texture2D.mipmapCount)
                         : 1;
                     return true;
                 }
