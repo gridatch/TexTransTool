@@ -888,16 +888,36 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         [Test]
         public void LargeGroupUniverseKeepsBoundedGreedySelection()
         {
-            var candidates = new List<AutoAtlasTextureMergePlanner.MergeSelection>();
-            for (var id = 1; id <= 21; id++)
-                candidates.Add(TwoGroupSelection(
-                    0, id, id % 2 == 0 ? 16 : 24));
+            // Greedy prefers a, while exact set packing would prefer b + c.
+            // Add enough lower-ranked conflicts to exceed both exact-solver
+            // bounds. The production policy must therefore return the bounded
+            // greedy result instead of silently expanding the exact search.
+            var a = TwoGroupSelection(0, 1, 16);
+            var b = TwoGroupSelection(0, 2, 24);
+            var c = TwoGroupSelection(1, 3, 24);
+            var candidates =
+                new List<AutoAtlasTextureMergePlanner.MergeSelection>
+                {
+                    a, b, c,
+                };
+            for (var id = 4; id <= 22; id++)
+                candidates.Add(TwoGroupSelection(0, id, 32));
+
+            Assert.That(
+                candidates.Count,
+                Is.GreaterThan(
+                    AutoAtlasTextureMergePlanner.ExactSelectionCandidateLimit));
+            Assert.That(
+                candidates.SelectMany(candidate => candidate.GroupIds)
+                    .Distinct()
+                    .Count(),
+                Is.GreaterThan(
+                    AutoAtlasTextureMergePlanner.ExactSelectionGroupLimit));
 
             var selected = AutoAtlasTextureMergePlanner
                 .SelectTwoDimensionalMerges(candidates);
 
-            Assert.That(selected.Count, Is.EqualTo(1));
-            Assert.That(selected[0], Is.SameAs(candidates[1]));
+            Assert.That(selected, Is.EqualTo(new[] { a }));
         }
 
         private static AutoAtlasTextureMergePlanner.MergeSelection
