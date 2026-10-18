@@ -257,6 +257,13 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        internal static bool HasStrictPixelReduction(
+            long finalPixels,
+            long baselinePixels)
+        {
+            return finalPixels > 0 && finalPixels < baselinePixels;
+        }
+
         internal static void DestroyUnappliedAtlasedMeshes(
             IEnumerable<Mesh>? meshes)
         {
@@ -682,8 +689,9 @@ namespace net.rs64.TexTransTool.NDMF
                     .Sum(texture => (long)texture.Width * texture.Hight);
 
                 if (execution.MergeSelection == null
-                    && (finalOutputPixels <= 0
-                        || finalOutputPixels >= originalPixels))
+                    && !HasStrictPixelReduction(
+                        finalOutputPixels,
+                        originalPixels))
                 {
                     foreach (var rt in compiledTextures.Values
                                  .Concat(tuningResult.TextureDescriptors.Keys)
@@ -693,6 +701,38 @@ namespace net.rs64.TexTransTool.NDMF
                     }
                     DestroyUnappliedAtlasedMeshes(
                         atlasResult.AtlasedMeshes);
+                    continue;
+                }
+
+                if (execution.MergeSelection is { } pixelCheckedMerge
+                    && !HasStrictPixelReduction(
+                        finalOutputPixels,
+                        pixelCheckedMerge.BaselinePixels))
+                {
+                    foreach (var rt in compiledTextures.Values
+                                 .Concat(tuningResult.TextureDescriptors.Keys)
+                                 .Distinct())
+                    {
+                        rt.Dispose();
+                    }
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes);
+
+                    if (pixelCheckedMerge.PackedRegions != null)
+                    {
+                        twoDimensionalFallbackReasons.Add(
+                            $"groups={string.Join(",", pixelCheckedMerge.GroupIds.Select(id => "g" + id))}, "
+                            + $"layout={pixelCheckedMerge.PlannedLayoutSize.x}×{pixelCheckedMerge.PlannedLayoutSize.y}: "
+                            + FormatLocalized(
+                                "AutoAtlasTexture:fallback:FinalPixelsNotReduced",
+                                finalOutputPixels,
+                                pixelCheckedMerge.BaselinePixels));
+                    }
+
+                    EnqueueStandaloneFallback(
+                        executionGroups,
+                        pixelCheckedMerge,
+                        preparedGroups);
                     continue;
                 }
 
