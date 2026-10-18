@@ -62,8 +62,9 @@ namespace net.rs64.TexTransTool.NDMF
     // Diagnostic UI deliberately does not put the complete report into
     // SimpleError.TitleSubst. NDMF's title renderer is intended for ordinary
     // error titles and does not lay out a large preformatted report reliably.
-    // Render the report as one plain-text element and copy that exact element's
-    // text so the Console view and clipboard cannot diverge.
+    // Also avoid one giant UI Toolkit text element: long diagnostic reports can
+    // overflow/corrupt text geometry in the Console even when the source string
+    // itself is intact. Render one plain-text element per logical line instead.
     internal sealed class AutoAtlasTextureTemporaryDiagnosticError : SimpleError
     {
         private readonly string _message;
@@ -95,21 +96,38 @@ namespace net.rs64.TexTransTool.NDMF
             diagnosticScroll.style.minHeight = 120;
             diagnosticScroll.style.height = 560;
 
-            // Keep the report itself at its measured content size so the
-            // dedicated ScrollView, rather than NDMF's outer details layout,
-            // owns both vertical and horizontal scrolling.
-            var diagnosticText = new Label(_message)
+            // A single Label containing the whole report has produced broken
+            // glyph geometry in NDMF Console for long reports. Keep each line
+            // below that rendering limit while preserving the source text
+            // exactly when the lines are joined with '\n'.
+            var linesContainer = new VisualElement
             {
-                name = "auto-atlas-diagnostic-message",
-                enableRichText = false,
+                name = "auto-atlas-diagnostic-lines",
             };
-            diagnosticText.style.flexShrink = 0;
-            diagnosticText.style.whiteSpace = WhiteSpace.NoWrap;
-            diagnosticScroll.Add(diagnosticText);
+            linesContainer.style.flexShrink = 0;
+            linesContainer.style.minWidth = 0;
+
+            foreach (var line in _message.Split(
+                         new[] { '\n' }, StringSplitOptions.None))
+            {
+                var diagnosticLine = new Label(line)
+                {
+                    name = "auto-atlas-diagnostic-line",
+                    enableRichText = false,
+                };
+                diagnosticLine.style.flexShrink = 0;
+                diagnosticLine.style.whiteSpace = WhiteSpace.NoWrap;
+                if (line.Length == 0)
+                    diagnosticLine.style.minHeight =
+                        EditorGUIUtility.singleLineHeight;
+                linesContainer.Add(diagnosticLine);
+            }
+
+            diagnosticScroll.Add(linesContainer);
             root.Add(diagnosticScroll);
 
             var copyButton = new Button(() =>
-                EditorGUIUtility.systemCopyBuffer = diagnosticText.text)
+                EditorGUIUtility.systemCopyBuffer = _message)
             {
                 name = "auto-atlas-copy-diagnostics",
                 text = "AutoAtlasTexture:button:CopyDiagnostics"
