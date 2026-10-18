@@ -3,44 +3,11 @@ using System.Linq;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
 using UnityEngine;
-using UnityEngine.UIElements;
 
 namespace net.rs64.TexTransTool.NDMF.TestCode
 {
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
-        [Test]
-        public void DiagnosticConsoleRendersExactCopyText()
-        {
-            const string message =
-                "Unityプロジェクト名: Test\n\n"
-                + "section\n"
-                + "  indented value=1  value=2";
-
-            var error =
-                new AutoAtlasTextureTemporaryDiagnosticError(message);
-            var root = error.CreateVisualElement(null);
-
-            var diagnosticScroll =
-                root.Q<ScrollView>("auto-atlas-diagnostic-scroll");
-            var linesContainer =
-                root.Q<VisualElement>("auto-atlas-diagnostic-lines");
-            var copyButton =
-                root.Q<Button>("auto-atlas-copy-diagnostics");
-
-            Assert.That(diagnosticScroll, Is.Not.Null);
-            Assert.That(linesContainer, Is.Not.Null);
-            var lines = linesContainer.Children()
-                .Cast<Label>()
-                .ToArray();
-            Assert.That(lines.Length, Is.EqualTo(4));
-            Assert.That(lines.All(line => !line.enableRichText), Is.True);
-            Assert.That(string.Join("\n", lines.Select(line => line.text)),
-                Is.EqualTo(message));
-            Assert.That(copyButton, Is.Not.Null);
-            Assert.That(error.TitleSubst, Is.Empty);
-        }
-
         [Test]
         public void AtlasSubSetIgnoresTargetMaterialOnEmptySubMesh()
         {
@@ -872,19 +839,11 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             var selected = AutoAtlasTextureMergePlanner
                 .SelectTwoDimensionalMerges(
                     candidates,
-                    out var improvement,
-                    out var diagnostics);
+                    out var improvement);
 
             Assert.That(selected.Count, Is.EqualTo(1));
             Assert.That(selected[0], Is.SameAs(candidates[1]));
             Assert.That(improvement, Is.Null);
-            Assert.That(diagnostics.Solver,
-                Is.EqualTo(AutoAtlasTextureMergePlanner
-                    .SelectionSolverKind.ExactGroupMask));
-            Assert.That(diagnostics.CandidateCount, Is.EqualTo(17));
-            Assert.That(diagnostics.DistinctGroupCount, Is.EqualTo(18));
-            Assert.That(diagnostics.SelectedSavingBytes,
-                Is.EqualTo(diagnostics.GreedySavingBytes));
         }
 
         [Test]
@@ -906,17 +865,13 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             var selected = AutoAtlasTextureMergePlanner
                 .SelectTwoDimensionalMerges(
                     candidates,
-                    out var improvement,
-                    out var diagnostics);
+                    out var improvement);
 
             Assert.That(selected, Is.EqualTo(new[] { b, c }));
             Assert.That(improvement, Is.Not.Null);
-            Assert.That(diagnostics.Solver,
-                Is.EqualTo(AutoAtlasTextureMergePlanner
-                    .SelectionSolverKind.ExactGroupMask));
-            Assert.That(diagnostics.CandidateCount, Is.EqualTo(17));
-            Assert.That(diagnostics.SelectedSavingBytes,
-                Is.GreaterThan(diagnostics.GreedySavingBytes));
+            Assert.That(improvement!.CandidateCount, Is.EqualTo(17));
+            Assert.That(improvement.ExactSavingBytes,
+                Is.GreaterThan(improvement.GreedySavingBytes));
         }
 
         [Test]
@@ -930,16 +885,11 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             var selected = AutoAtlasTextureMergePlanner
                 .SelectTwoDimensionalMerges(
                     candidates,
-                    out var improvement,
-                    out var diagnostics);
+                    out var improvement);
 
             Assert.That(selected.Count, Is.EqualTo(1));
             Assert.That(selected[0], Is.SameAs(candidates[1]));
             Assert.That(improvement, Is.Null);
-            Assert.That(diagnostics.Solver,
-                Is.EqualTo(AutoAtlasTextureMergePlanner
-                    .SelectionSolverKind.Greedy));
-            Assert.That(diagnostics.DistinctGroupCount, Is.EqualTo(22));
         }
 
         private static AutoAtlasTextureMergePlanner.MergeSelection
