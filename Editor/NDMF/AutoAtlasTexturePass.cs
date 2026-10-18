@@ -396,10 +396,6 @@ namespace net.rs64.TexTransTool.NDMF
                 .SelectMany(domain.GetMaterials)
                 .UOfType<Material>()
                 .ToHashSet();
-            var allReferencedMaterials = domain.GetAllMaterials();
-            var additionalReferencedMaterials = domain is NDMFDomain ndmfDomain
-                ? ndmfDomain.GetAdditionalReferencedMaterials()
-                : new HashSet<Material>();
             if (candidateMaterials.Count == 0)
             {
                 processingTimer.Stop();
@@ -408,6 +404,25 @@ namespace net.rs64.TexTransTool.NDMF
                         "AutoAtlasTexture:info:TargetNotFound",
                         processingTimer.ElapsedMilliseconds));
                 return;
+            }
+
+            HashSet<Material> additionalReferencedMaterials;
+            HashSet<Material> allReferencedMaterials;
+            if (domain is NDMFDomain ndmfDomain)
+            {
+                additionalReferencedMaterials =
+                    ndmfDomain.GetAdditionalReferencedMaterials();
+                allReferencedMaterials = allRenderers
+                    .SelectMany(domain.GetMaterials)
+                    .UOfType<Material>()
+                    .ToHashSet();
+                allReferencedMaterials.UnionWith(
+                    additionalReferencedMaterials);
+            }
+            else
+            {
+                additionalReferencedMaterials = new HashSet<Material>();
+                allReferencedMaterials = domain.GetAllMaterials();
             }
 
             // Material grouping remains shader/property-aware, but it is now
