@@ -460,6 +460,7 @@ namespace net.rs64.TexTransTool.NDMF
         {
             None,
             AtomicGroupMapping,
+            GeneratedPropertyApplication,
             ReferenceCopySemantics,
             PixelCount,
             FullResidentMemory,
@@ -486,6 +487,7 @@ namespace net.rs64.TexTransTool.NDMF
                 Vector2Int layoutSize,
                 IReadOnlyDictionary<string, Vector2Int> propertySizes,
                 bool preservesAtomicGroupMapping = true,
+                bool preservesGeneratedPropertyApplication = true,
                 bool preservesReferenceCopySemantics = true)
             {
                 GroupIds = groupIds;
@@ -501,6 +503,8 @@ namespace net.rs64.TexTransTool.NDMF
                 RejectionReason =
                     !preservesAtomicGroupMapping
                         ? CandidateRejectionReason.AtomicGroupMapping
+                        : !preservesGeneratedPropertyApplication
+                            ? CandidateRejectionReason.GeneratedPropertyApplication
                         : !preservesReferenceCopySemantics
                             ? CandidateRejectionReason.ReferenceCopySemantics
                         : merged.PixelCount >= baseline.PixelCount
@@ -788,7 +792,9 @@ namespace net.rs64.TexTransTool.NDMF
             var semanticSafetyCache =
                 new Dictionary<
                     string,
-                    (bool AtomicGroupMapping, bool ReferenceCopy)>(
+                    (bool AtomicGroupMapping,
+                     bool GeneratedPropertyApplication,
+                     bool ReferenceCopy)>(
                     StringComparer.Ordinal);
             IReadOnlyDictionary<string, Vector2Int>
                 GetPredictedPropertySizes(
@@ -1191,6 +1197,11 @@ namespace net.rs64.TexTransTool.NDMF
                         PreservesAtomicGroupBoundaries(
                             selectedGroups,
                             grouping),
+                        !AutoAtlasTextureProcessor
+                            .HasUnsafeGeneratedPropertyApplication(
+                                selectedMaterials,
+                                propertyTextures,
+                                settings.AtlasTargetUVChannel),
                         PreservesReferenceCopySemantics(
                             selectedMaterials,
                             grouping,
@@ -1205,6 +1216,7 @@ namespace net.rs64.TexTransTool.NDMF
                     layoutSize,
                     projection.PropertySizes,
                     semanticSafety.AtomicGroupMapping,
+                    semanticSafety.GeneratedPropertyApplication,
                     semanticSafety.ReferenceCopy);
                 candidateCache[layoutKey] = candidate;
                 return candidate;
