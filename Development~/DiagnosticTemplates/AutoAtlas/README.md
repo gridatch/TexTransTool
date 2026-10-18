@@ -36,6 +36,8 @@ Cleanup removed the temporary comparison searches, watched-path/rejection report
 - Final merge pixel-count revalidation before mutation.
 - Unknown texture-memory formats fail closed instead of assuming 4 B/px.
 - Generated AutoAtlas materials are checked for retained source-texture references before mutation.
+- AutoAtlas skips atomic groups whose materials are referenced by NDMF additional-material providers (Animator object curves or Modular Avatar material setters), because those references are rewritten domain-wide and their future renderer/slot UV compatibility cannot be proven automatically.
+- Atlas renderer eligibility rejects meshes with zero submeshes before mesh normalization; such meshes have no drawable geometry and material-slot expansion would otherwise be invalid.
 - Rejected generated meshes/materials/render textures are destroyed before fallback/skip.
 - Standalone post-FineTuning acceptance behavior.
 - Exact disjoint selection by group mask for bounded group universes:
