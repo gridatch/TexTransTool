@@ -385,7 +385,6 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         /// <summary>
-        /// For identical already-placed group sets        /// <summary>
         /// For identical already-placed group sets, a skyline no higher in
         /// any column leaves at least as much room for every future placement.
         /// A different group set must never be pruned using geometry alone:
