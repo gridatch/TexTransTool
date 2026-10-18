@@ -75,12 +75,15 @@ The diagnostic must preserve the distinction between:
 
 Do not report merge planner saving as if it were the full original-to-final saving.
 
-For a merge, actual final FineTuning cost is authoritative for execution acceptance. Diagnostic values must observe the already-decided execution result, not change it.
+For a merge, actual post-FineTuning output is authoritative for execution acceptance. Production currently revalidates strict pixel reduction, texture-memory reduction, and the absence of retained source-texture references before mesh/material mutation. Diagnostic values must observe the already-decided execution result, not change it.
 
 ## must_not_change
 
 - FineTuning execution.
 - Merge memory revalidation.
+- Merge final pixel-count revalidation.
+- Generated-material retained-source rejection.
+- Rejected output cleanup.
 - Standalone acceptance.
 - Mesh/material mutation ordering.
 - Fallback scheduling.
@@ -116,5 +119,8 @@ Remove:
 Preserve:
 - production counters/state actually required for fallback or acceptance
 - final FineTuning memory checks
+- final merge pixel checks
+- retained-source material checks
+- rejected output cleanup
 - normal relocation result output
 - total AutoAtlas processing-time user-facing log.
