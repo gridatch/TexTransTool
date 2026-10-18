@@ -1143,6 +1143,13 @@ namespace net.rs64.TexTransTool.NDMF
                         return true;
                     }
 
+                    if (usage.UVChannel == UsageUVChannel.NonMesh)
+                    {
+                        // Screen-space, color-derived, and other explicitly
+                        // non-mesh coordinates are unaffected by rewriting UV0.
+                        continue;
+                    }
+
                     var usageChannel =
                         ((int)usage.UVChannel) - 1;
                     if (usageChannel != (int)atlasTargetUvChannel)
