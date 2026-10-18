@@ -83,6 +83,21 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             public void GetMaterialTextureUVUsage(ITTTextureUVUsageWriter writer)
             {
+                if (writer is ITTTextureUVTransformUsageWriter transformWriter)
+                {
+                    // For an unknown shader we can only prove that _MainTex
+                    // conventionally uses UV0. We cannot prove whether the
+                    // shader applies _MainTex_ST or another transform, so keep
+                    // the matrix unknown. Manual AtlasTexture keeps its
+                    // existing UV0 eligibility; automatic atlasing can fail
+                    // closed on the unknown transform.
+                    transformWriter.WriteTextureUVUsage(
+                        "_MainTex",
+                        UsageUVChannel.UV0,
+                        null);
+                    return;
+                }
+
                 writer.WriteTextureUVUsage("_MainTex", UsageUVChannel.UV0);
             }
         }
