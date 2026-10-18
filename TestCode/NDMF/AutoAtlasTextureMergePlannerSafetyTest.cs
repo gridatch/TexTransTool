@@ -113,6 +113,112 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void AutoAtlasRendererEligibilityMatchesManualAtlasDefault()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var mesh = new Mesh();
+            var root = new GameObject("root");
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.uv = new[]
+                {
+                    Vector2.zero,
+                    Vector2.right,
+                    Vector2.up,
+                };
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+
+                MeshRenderer AddRenderer(string name)
+                {
+                    var go = new GameObject(name);
+                    go.transform.SetParent(root.transform, false);
+                    var filter = go.AddComponent<MeshFilter>();
+                    filter.sharedMesh = mesh;
+                    var renderer = go.AddComponent<MeshRenderer>();
+                    renderer.sharedMaterial = material;
+                    return renderer;
+                }
+
+                var active = AddRenderer("active");
+                var disabled = AddRenderer("disabled");
+                disabled.enabled = false;
+                var inactive = AddRenderer("inactive");
+                inactive.gameObject.SetActive(false);
+                var explicitlyExcluded = AddRenderer("explicitlyExcluded");
+
+                var configuration =
+                    root.AddComponent<TextureAtlas.AutoAtlasTexture>();
+                configuration.ExcludedRenderers.Add(explicitlyExcluded);
+
+                var targeting = new RendererTargetingForTest(new Renderer[]
+                {
+                    active,
+                    disabled,
+                    inactive,
+                    explicitlyExcluded,
+                });
+
+                var manualDefault = TextureAtlas.AtlasTexture
+                    .GetAtlasAllowedRenderers(
+                        targeting,
+                        targeting.EnumerateRenderer(),
+                        includeDisabledRenderer: false)
+                    .Where(renderer =>
+                        renderer != explicitlyExcluded)
+                    .ToHashSet();
+
+                var auto = AutoAtlasTextureProcessor
+                    .GetAutoAtlasAllowedRenderers(targeting, configuration)
+                    .ToHashSet();
+
+                Assert.That(auto.SetEquals(manualDefault), Is.True);
+                Assert.That(auto.Contains(active), Is.True);
+                Assert.That(auto.Contains(disabled), Is.False);
+                Assert.That(auto.Contains(inactive), Is.False);
+                Assert.That(auto.Contains(explicitlyExcluded), Is.False);
+
+                var aao = AutoAtlasTextureProcessor
+                    .GetAAONegotiationRenderers(targeting, configuration)
+                    .ToHashSet();
+                Assert.That(aao.SetEquals(auto), Is.True);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                UnityEngine.Object.DestroyImmediate(mesh);
+                UnityEngine.Object.DestroyImmediate(material);
+            }
+        }
+
+        private sealed class RendererTargetingForTest : IRendererTargeting
+        {
+            private readonly Renderer[] _renderers;
+
+            internal RendererTargetingForTest(Renderer[] renderers)
+            {
+                _renderers = renderers;
+            }
+
+            public IEnumerable<Renderer> EnumerateRenderer() => _renderers;
+
+            public bool OriginEqual(
+                UnityEngine.Object? left,
+                UnityEngine.Object? right)
+            {
+                return left == right;
+            }
+        }
+
+        [Test]
         public void CandidateRejectsComplementaryPropertyDensityInflation()
         {
             // Two groups have opposite high/low requirements across two

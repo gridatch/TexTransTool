@@ -328,17 +328,28 @@ namespace net.rs64.TexTransTool.NDMF
                 .ToArray();
         }
 
-        internal static Renderer[] GetAAONegotiationRenderers(
+        internal static List<Renderer> GetAutoAtlasAllowedRenderers(
             IRendererTargeting domain, AutoAtlasTexture configuration)
         {
-            // AAO negotiation runs before TTT material modification, so it must use
-            // a conservative renderer set rather than the later material candidates.
+            // AutoAtlasTexture adds automatic material selection and lossless
+            // sizing on top of AtlasTexture. Renderer eligibility must therefore
+            // follow AtlasTexture's normal default target resolution instead of
+            // inventing a broader "include disabled" rule.
             var excludedRenderers = domain
                 .GetDomainsRenderers(configuration.ExcludedRenderers)
                 .ToHashSet();
             return AtlasTexture.GetAtlasAllowedRenderers(
-                    domain, domain.EnumerateRenderer(), includeDisabledRenderer: true)
+                    domain,
+                    domain.EnumerateRenderer(),
+                    includeDisabledRenderer: false)
                 .Where(renderer => !excludedRenderers.Contains(renderer))
+                .ToList();
+        }
+
+        internal static Renderer[] GetAAONegotiationRenderers(
+            IRendererTargeting domain, AutoAtlasTexture configuration)
+        {
+            return GetAutoAtlasAllowedRenderers(domain, configuration)
                 .ToArray();
         }
 
@@ -377,15 +388,25 @@ namespace net.rs64.TexTransTool.NDMF
                 return identity?.ToString() ?? material.name;
             }
 
-            var allRenderers = domain.EnumerateRenderer().Where(renderer => renderer != null).ToArray();
+            var allRenderers = domain.EnumerateRenderer()
+                .Where(renderer => renderer != null)
+                .ToArray();
 
-            // Selection is renderer-scoped. Domain.GetAllMaterials() is used
-            // separately for safety checks because it also includes animation refs.
-            var allMaterials = allRenderers.SelectMany(domain.GetMaterials)
-                .UOfType<Material>().ToHashSet();
-            // Includes animation material references in the NDMF domain.
+            // Auto-select materials from the same renderer population that a
+            // normal AtlasTexture with its default IncludeDisabledRenderer=false
+            // would use. Additional referenced materials are still inspected
+            // separately by the source-texture exclusivity guard.
+            var excludedRenderers = domain
+                .GetDomainsRenderers(configuration.ExcludedRenderers)
+                .ToHashSet();
+            var atlasAllowedRenderers =
+                GetAutoAtlasAllowedRenderers(domain, configuration);
+            var candidateMaterials = atlasAllowedRenderers
+                .SelectMany(domain.GetMaterials)
+                .UOfType<Material>()
+                .ToHashSet();
             var allReferencedMaterials = domain.GetAllMaterials();
-            if (allMaterials.Count == 0)
+            if (candidateMaterials.Count == 0)
             {
                 processingTimer.Stop();
                 var earlyResultText = string.Format(
@@ -406,28 +427,13 @@ namespace net.rs64.TexTransTool.NDMF
                 return;
             }
 
-            // Material groups follow the textures actually transformed by TTT for UV0,
-            // not merely common shaders or all texture references in the material.
+            // Material grouping remains shader/property-aware, but it is now
+            // scoped to the same renderer-selected materials as AtlasTexture.
             var textureUsages = new MaterialGroupingContext(
-                allMaterials, UVChannel.UV0, primaryTexturePropertyOrMaximum: null);
+                candidateMaterials,
+                UVChannel.UV0,
+                primaryTexturePropertyOrMaximum: null);
             var propertyTextures = textureUsages.ContainsTextureDictionaries;
-
-            // This is the final renderer eligibility check at Optimizing time,
-            // after earlier TTT material modifications have already run.
-            var excludedRenderers = domain
-                .GetDomainsRenderers(configuration.ExcludedRenderers)
-                .ToHashSet();
-            var atlasAllowedRenderers = AtlasTexture.GetAtlasAllowedRenderers(
-                    domain, allRenderers, includeDisabledRenderer: true)
-                .Where(renderer => !excludedRenderers.Contains(renderer))
-                .ToList();
-            var candidateMaterials = propertyTextures
-                .Where(pair => pair.Value.Count != 0)
-                .Select(pair => pair.Key)
-                .ToHashSet();
-            var allowedRenderers = AtlasTexture.FilterTargetRenderers(
-                    domain, atlasAllowedRenderers, candidateMaterials)
-                .ToHashSet();
 
             var excludedMaterials = domain.GetDomainsMaterialsHashSet(
                 configuration.ExcludedMaterials);
@@ -459,11 +465,12 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 AutoAtlasTextureSize = true,
                 UsePrimaryMaximumTexture = true,
-                IncludeDisabledRenderer = true,
+                IncludeDisabledRenderer = false,
                 AtlasTargetUVChannel = UVChannel.UV0,
                 IslandPadding = Mathf.Clamp(configuration.IslandPadding, 0f, 0.05f),
             };
-            var groups = MakeTextureConnectedGroups(allMaterials, propertyTextures);
+            var groups = MakeTextureConnectedGroups(
+                candidateMaterials, propertyTextures);
             var preparedGroups = new List<AutoAtlasTextureMergePlanner.PreparedGroup>();
             var preparationDiagnostics = new List<string>();
 
@@ -489,30 +496,35 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
-                // Every renderer referencing a material must be transformed together:
-                // replacing a shared material while leaving another mesh's UVs intact
-                // would corrupt that mesh's appearance.
-                var referencingRenderers = domain
-                    .RendererFilterForMaterialFromDomains(group)
+                // Preserve the explicit AutoAtlas renderer exclusion contract.
+                // A shared material would otherwise be replaced globally even
+                // though the user explicitly excluded one of its consumers.
+                var explicitlyExcludedConsumers = excludedRenderers
+                    .Where(renderer => domain.GetMaterials(renderer)
+                        .UOfType<Material>()
+                        .Any(group.Contains))
                     .ToArray();
-                if (referencingRenderers.Length == 0
-                    || referencingRenderers.Any(
-                        renderer => !allowedRenderers.Contains(renderer)))
+                if (explicitlyExcludedConsumers.Length != 0)
                 {
                     preparationDiagnostics.Add(
-                        $"SKIP renderer eligibility: {diagnosticMaterials} "
-                        + $"refs={referencingRenderers.Length}");
+                        $"SKIP explicit renderer exclusion: "
+                        + $"{diagnosticMaterials} "
+                        + $"excludedRefs="
+                        + explicitlyExcludedConsumers.Length);
                     continue;
                 }
 
+                // From this point on, resolve renderers exactly like the normal
+                // AtlasTexture path after its target materials have been chosen.
+                var targetRenderers = AtlasTexture.FilterTargetRenderers(
+                    domain, atlasAllowedRenderers, group);
                 var atlasRenderers = AtlasTexture.FilterExistUVChannel(
-                    domain, referencingRenderers, UVChannel.UV0);
-                if (atlasRenderers.Length != referencingRenderers.Length)
+                    domain, targetRenderers, UVChannel.UV0);
+                if (atlasRenderers.Length == 0)
                 {
                     preparationDiagnostics.Add(
-                        $"SKIP missing UV0: {diagnosticMaterials} "
-                        + $"refs={referencingRenderers.Length} "
-                        + $"uv0={atlasRenderers.Length}");
+                        $"SKIP renderer eligibility: {diagnosticMaterials} "
+                        + $"refs={targetRenderers.Length}");
                     continue;
                 }
 
