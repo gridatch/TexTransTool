@@ -1347,8 +1347,10 @@ namespace net.rs64.TexTransTool.NDMF
             for (var available = fullMask;
                  available != 0;)
             {
-                var candidateIndex = choice.GetValueOrDefault(
-                    available, -1);
+                var candidateIndex =
+                    choice.TryGetValue(available, out var storedChoice)
+                        ? storedChoice
+                        : -1;
                 if (candidateIndex >= 0)
                 {
                     selectedIndices.Add(candidateIndex);
