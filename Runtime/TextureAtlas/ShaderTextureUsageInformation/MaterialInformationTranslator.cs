@@ -51,6 +51,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 32 => UsageUVChannel.UV5,
                 64 => UsageUVChannel.UV6,
                 128 => UsageUVChannel.UV7,
+                (int)UsingUVChannels.NonMesh => UsageUVChannel.NonMesh,
                 _ => UsageUVChannel.Unknown,
             };
             if (_uvUsageWriter is ITTTextureUVTransformUsageWriter transformUsageWriter)
