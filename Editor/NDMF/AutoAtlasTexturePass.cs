@@ -388,17 +388,17 @@ namespace net.rs64.TexTransTool.NDMF
             if (allMaterials.Count == 0)
             {
                 processingTimer.Stop();
-                var resultText = string.Format(
+                var earlyResultText = string.Format(
                     "AutoAtlasTexture:info:TargetNotFound".GetLocalize(),
                     processingTimer.ElapsedMilliseconds);
-                var completeDiagnosticText = string.Join(
+                var earlyCompleteDiagnosticText = string.Join(
                     "\n\n",
-                    diagnosticSections.Concat(new[] { resultText }));
+                    diagnosticSections.Concat(new[] { earlyResultText }));
 
                 TTTLog.ReportingObject(configuration, () =>
                     ErrorReport.ReportError(
                         new AutoAtlasTextureTemporaryDiagnosticError(
-                            completeDiagnosticText)));
+                            earlyCompleteDiagnosticText)));
                 TTTLog.ReportingObject(configuration, () =>
                     TTTLog.Info(
                         "AutoAtlasTexture:info:TargetNotFound",
