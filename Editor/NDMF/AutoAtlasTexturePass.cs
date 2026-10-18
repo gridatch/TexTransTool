@@ -85,21 +85,31 @@ namespace net.rs64.TexTransTool.NDMF
             root.style.flexGrow = 1;
             root.style.minWidth = 0;
 
-            var diagnosticText = new TextField
+            var diagnosticScroll = new ScrollView(
+                ScrollViewMode.VerticalAndHorizontal)
+            {
+                name = "auto-atlas-diagnostic-scroll",
+            };
+            diagnosticScroll.style.flexGrow = 1;
+            diagnosticScroll.style.minWidth = 0;
+            diagnosticScroll.style.minHeight = 120;
+            diagnosticScroll.style.height = 560;
+
+            // Keep the report itself at its measured content size so the
+            // dedicated ScrollView, rather than NDMF's outer details layout,
+            // owns both vertical and horizontal scrolling.
+            var diagnosticText = new Label(_message)
             {
                 name = "auto-atlas-diagnostic-message",
-                multiline = true,
-                isReadOnly = true,
-                value = _message,
+                enableRichText = false,
             };
-            diagnosticText.style.flexGrow = 1;
-            diagnosticText.style.minWidth = 0;
-            diagnosticText.style.minHeight = 120;
-            diagnosticText.style.height = 560;
-            root.Add(diagnosticText);
+            diagnosticText.style.flexShrink = 0;
+            diagnosticText.style.whiteSpace = WhiteSpace.NoWrap;
+            diagnosticScroll.Add(diagnosticText);
+            root.Add(diagnosticScroll);
 
             var copyButton = new Button(() =>
-                EditorGUIUtility.systemCopyBuffer = diagnosticText.value)
+                EditorGUIUtility.systemCopyBuffer = diagnosticText.text)
             {
                 name = "auto-atlas-copy-diagnostics",
                 text = "AutoAtlasTexture:button:CopyDiagnostics"
