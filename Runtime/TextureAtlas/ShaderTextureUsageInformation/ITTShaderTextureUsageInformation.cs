@@ -52,6 +52,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
         UV5 = 6,
         UV6 = 7,
         UV7 = 8,
+
+        /// <summary>
+        /// Sampling that is known not to use mesh UV channels, such as
+        /// screen-space or vertex-color-derived coordinates.
+        /// </summary>
+        NonMesh = 9,
     }
     class MaterialUVUsageProvider : ITTTextureUVUsageWriter, ITTTextureUVTransformUsageWriter
     {
