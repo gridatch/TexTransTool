@@ -570,8 +570,9 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     Is.True,
                     "ReferenceCopy is safe when the target property already uses exactly the source pixels.");
 
+                // Unity Standard samples _BumpMap through _MainTex_ST.
                 targetMaterial.SetTextureScale(
-                    "_BumpMap",
+                    "_MainTex",
                     new Vector2(2f, 1f));
                 Assert.That(
                     AutoAtlasTextureMergePlanner
@@ -582,7 +583,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     Is.False,
                     "ReferenceCopy must reject a target property that samples the same texture through a different UV transform.");
                 targetMaterial.SetTextureScale(
-                    "_BumpMap",
+                    "_MainTex",
                     Vector2.one);
 
                 targetMaterial.SetTexture("_BumpMap", targetTexture);
