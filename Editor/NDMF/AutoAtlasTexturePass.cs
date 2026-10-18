@@ -494,6 +494,20 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
+                // Default AtlasTexture fine tuning can ReferenceCopy one
+                // texture property onto another (for example _MainTex onto
+                // _BaseMap). AutoAtlas is automatic, so process an atomic group
+                // only when every affected material group is proven to receive
+                // the same source pixels it used before the copy.
+                if (!AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            group,
+                            propertyTextures,
+                            settings))
+                {
+                    continue;
+                }
+
                 // Preserve the explicit AutoAtlas renderer exclusion contract.
                 // A shared material would otherwise be replaced globally even
                 // though the user explicitly excluded one of its consumers.
