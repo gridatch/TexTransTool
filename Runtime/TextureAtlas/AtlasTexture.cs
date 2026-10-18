@@ -1133,8 +1133,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal static bool IsAtlasAllowedRenderer(Renderer item)
         {
             if (item.tag == "EditorOnly") return false;
-            if (item.GetMesh() == null) return false;
-            if (item.GetMesh().uv.Any() == false) return false;
+            var mesh = item.GetMesh();
+            if (mesh == null) return false;
+            // A mesh without submeshes has no drawable geometry. Allowing it
+            // through can reach AtlasMeshSourceContext.Normalizing(), where
+            // material-slot expansion would otherwise try GetIndices(-1).
+            if (mesh.subMeshCount == 0) return false;
+            if (mesh.uv.Any() == false) return false;
             if (item.sharedMaterials.Length == 0) return false;
             if (item.GetComponent<AtlasExcludeTag>() != null) return false;
 
