@@ -861,3 +861,6 @@ msgstr "生成されたアトラス化Materialに元テクスチャの参照が�
 
 msgid "AutoAtlasTexture:fallback:GeneratedPropertyApplicationMismatch"
 msgstr "統合後のアトラスプロパティが、このアトラス向けに変換されていないMaterialのテクスチャプロパティを上書きする"
+
+msgid "AutoAtlasTexture:fallback:RequiredMeshResolutionFailed"
+msgstr "必要なアトラス化MeshをRendererに解決できない: {0}"
