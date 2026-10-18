@@ -8,7 +8,6 @@ using UnityEngine;
 
 #if CONTAINS_NDMF
 using nadena.dev.ndmf;
-using UnityEngine.UIElements;
 #endif
 
 namespace net.rs64.TexTransTool
@@ -33,20 +32,6 @@ namespace net.rs64.TexTransTool
             ErrorReport.ReportError(NDMFLocalizer, ErrorSeverity.Information, code, objects);
 #else
             Debug.Log("[info]" + code + ":" + string.Join('-', objects.Select(i => i.ToString())));
-#endif
-        }
-
-        internal static void CopyableInfo(
-            string title,
-            string message,
-            string copyText,
-            string buttonLabel)
-        {
-#if CONTAINS_NDMF
-            ErrorReport.ReportError(new CopyableInfoError(
-                title, message, copyText, buttonLabel));
-#else
-            Debug.Log("[info]" + title + "\n" + message);
 #endif
         }
         internal static string FormatLocalizedLines(
@@ -113,60 +98,6 @@ namespace net.rs64.TexTransTool
         }
 
 #if CONTAINS_NDMF
-        private sealed class CopyableInfoError : SimpleError
-        {
-            private readonly string _title;
-            private readonly string _message;
-            private readonly string _copyText;
-            private readonly string _buttonLabel;
-
-            internal CopyableInfoError(
-                string title,
-                string message,
-                string copyText,
-                string buttonLabel)
-            {
-                _title = title;
-                _message = message;
-                _copyText = copyText;
-                _buttonLabel = buttonLabel;
-            }
-
-            public override nadena.dev.ndmf.localization.Localizer Localizer =>
-                NDMFLocalizer;
-            public override string TitleKey => string.Empty;
-            public override ErrorSeverity Severity => ErrorSeverity.Information;
-
-            public override string FormatTitle() => _title;
-            public override string FormatDetails() => _message;
-            public override string FormatHint() => null;
-
-            public override VisualElement CreateVisualElement(
-                ErrorReport report)
-            {
-                var element = base.CreateVisualElement(report);
-                var button = new Button(() =>
-                    GUIUtility.systemCopyBuffer = _copyText)
-                {
-                    text = _buttonLabel,
-                };
-
-                var buttons = element.Q<VisualElement>(
-                    "error-list-buttons");
-                if (buttons != null)
-                {
-                    buttons.style.display = DisplayStyle.Flex;
-                    buttons.Add(button);
-                }
-                else
-                {
-                    element.Add(button);
-                }
-
-                return element;
-            }
-        }
-
         private static nadena.dev.ndmf.localization.Localizer _ndmfLocalizer;
         public static nadena.dev.ndmf.localization.Localizer NDMFLocalizer
         {

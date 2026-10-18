@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using nadena.dev.ndmf;
 using nadena.dev.ndmf.animator;
+using nadena.dev.ndmf.localization;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
@@ -11,7 +12,9 @@ using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.Editor;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using net.rs64.TexTransTool.Utils;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.UIElements;
 using UnityEngine.Experimental.Rendering;
 
 namespace net.rs64.TexTransTool.NDMF
@@ -53,6 +56,44 @@ namespace net.rs64.TexTransTool.NDMF
                 animationServices?.AnimationIndex,
                 animationServices?.ObjectPathRemapper,
                 context.AvatarRootTransform);
+        }
+    }
+
+    // Temporary diagnostic UI. This intentionally mirrors the previously
+    // validated NDMF Console implementation: wrap SimpleError's normal UI and
+    // append the copy button as a direct child instead of depending on NDMF's
+    // internal button-container structure.
+    internal sealed class AutoAtlasTextureTemporaryDiagnosticError : SimpleError
+    {
+        private readonly string _message;
+
+        internal AutoAtlasTextureTemporaryDiagnosticError(string message)
+        {
+            _message = message;
+        }
+
+        public override Localizer Localizer => TTTLog.NDMFLocalizer;
+        public override ErrorSeverity Severity => ErrorSeverity.Information;
+        public override string TitleKey =>
+            "AutoAtlasTexture:info:TemporaryDiagnosticMessage";
+        public override string[] TitleSubst => new[] { _message };
+
+        public override VisualElement CreateVisualElement(ErrorReport report)
+        {
+            var root = new VisualElement();
+            root.style.flexGrow = 1;
+            root.Add(base.CreateVisualElement(report));
+
+            var copyButton = new Button(() =>
+                EditorGUIUtility.systemCopyBuffer = _message)
+            {
+                text = "AutoAtlasTexture:button:CopyDiagnostics"
+                    .GetLocalize(),
+            };
+            copyButton.style.alignSelf = Align.FlexEnd;
+            root.Add(copyButton);
+
+            return root;
         }
     }
 
@@ -311,6 +352,15 @@ namespace net.rs64.TexTransTool.NDMF
         {
             var processingTimer = System.Diagnostics.Stopwatch.StartNew();
 
+            var diagnosticSections = new List<string>();
+            var projectDirectory = System.IO.Path.GetDirectoryName(
+                Application.dataPath) ?? Application.dataPath;
+            var projectName =
+                new System.IO.DirectoryInfo(projectDirectory).Name;
+            diagnosticSections.Add(string.Format(
+                "AutoAtlasTexture:info:TemporaryProjectName".GetLocalize(),
+                projectName));
+
             // Store only the NDMF console summary for this build.
             var completed = new List<string>();
 
@@ -338,6 +388,17 @@ namespace net.rs64.TexTransTool.NDMF
             if (allMaterials.Count == 0)
             {
                 processingTimer.Stop();
+                var resultText = string.Format(
+                    "AutoAtlasTexture:info:TargetNotFound".GetLocalize(),
+                    processingTimer.ElapsedMilliseconds);
+                var completeDiagnosticText = string.Join(
+                    "\n\n",
+                    diagnosticSections.Concat(new[] { resultText }));
+
+                TTTLog.ReportingObject(configuration, () =>
+                    ErrorReport.ReportError(
+                        new AutoAtlasTextureTemporaryDiagnosticError(
+                            completeDiagnosticText)));
                 TTTLog.ReportingObject(configuration, () =>
                     TTTLog.Info(
                         "AutoAtlasTexture:info:TargetNotFound",
@@ -405,7 +466,6 @@ namespace net.rs64.TexTransTool.NDMF
             var groups = MakeTextureConnectedGroups(allMaterials, propertyTextures);
             var preparedGroups = new List<AutoAtlasTextureMergePlanner.PreparedGroup>();
             var preparationDiagnostics = new List<string>();
-            var diagnosticSections = new List<string>();
 
             void AppendDiagnostic(string key, params object[] args)
             {
@@ -996,13 +1056,9 @@ namespace net.rs64.TexTransTool.NDMF
                 string.Join("\n\n", copySections);
 
             TTTLog.ReportingObject(configuration, () =>
-                TTTLog.CopyableInfo(
-                    "AutoAtlasTexture:info:TemporaryDiagnosticBundleTitle"
-                        .GetLocalize(),
-                    completeDiagnosticText,
-                    completeDiagnosticText,
-                    "AutoAtlasTexture:button:CopyAllDiagnostics"
-                        .GetLocalize()));
+                ErrorReport.ReportError(
+                    new AutoAtlasTextureTemporaryDiagnosticError(
+                        completeDiagnosticText)));
 
             if (completed.Count == 0)
             {
