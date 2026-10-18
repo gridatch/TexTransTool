@@ -753,21 +753,84 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void LargeCandidateSetKeepsBoundedGreedySelection()
+        public void LargeCandidateSetUsesExactGroupMaskWhenGroupUniverseIsBounded()
         {
             var candidates = new List<AutoAtlasTextureMergePlanner.MergeSelection>();
             for (var id = 1; id <= 17; id++)
-                candidates.Add(TwoGroupSelection(0, id, id % 2 == 0 ? 16 : 24));
+                candidates.Add(TwoGroupSelection(
+                    0, id, id % 2 == 0 ? 16 : 24));
 
             var selected = AutoAtlasTextureMergePlanner
-                .SelectTwoDimensionalMerges(candidates);
+                .SelectTwoDimensionalMerges(
+                    candidates,
+                    out var improvement,
+                    out var diagnostics);
 
             Assert.That(selected.Count, Is.EqualTo(1));
             Assert.That(selected[0], Is.SameAs(candidates[1]));
-
-            AutoAtlasTextureMergePlanner.SelectTwoDimensionalMerges(
-                candidates, out var improvement);
             Assert.That(improvement, Is.Null);
+            Assert.That(diagnostics.Solver,
+                Is.EqualTo(AutoAtlasTextureMergePlanner
+                    .SelectionSolverKind.ExactGroupMask));
+            Assert.That(diagnostics.CandidateCount, Is.EqualTo(17));
+            Assert.That(diagnostics.DistinctGroupCount, Is.EqualTo(18));
+            Assert.That(diagnostics.SelectedSavingBytes,
+                Is.EqualTo(diagnostics.GreedySavingBytes));
+        }
+
+        [Test]
+        public void ExactGroupMaskImprovesGreedyWithMoreThanSixteenCandidates()
+        {
+            var a = TwoGroupSelection(0, 1, 16);
+            var b = TwoGroupSelection(0, 2, 24);
+            var c = TwoGroupSelection(1, 3, 24);
+            var candidates =
+                new List<AutoAtlasTextureMergePlanner.MergeSelection>
+                {
+                    a, b, c,
+                };
+            for (var id = 4; id <= 17; id++)
+                candidates.Add(TwoGroupSelection(0, id, 32));
+
+            Assert.That(candidates.Count, Is.EqualTo(17));
+
+            var selected = AutoAtlasTextureMergePlanner
+                .SelectTwoDimensionalMerges(
+                    candidates,
+                    out var improvement,
+                    out var diagnostics);
+
+            Assert.That(selected, Is.EqualTo(new[] { b, c }));
+            Assert.That(improvement, Is.Not.Null);
+            Assert.That(diagnostics.Solver,
+                Is.EqualTo(AutoAtlasTextureMergePlanner
+                    .SelectionSolverKind.ExactGroupMask));
+            Assert.That(diagnostics.CandidateCount, Is.EqualTo(17));
+            Assert.That(diagnostics.SelectedSavingBytes,
+                Is.GreaterThan(diagnostics.GreedySavingBytes));
+        }
+
+        [Test]
+        public void LargeGroupUniverseKeepsBoundedGreedySelection()
+        {
+            var candidates = new List<AutoAtlasTextureMergePlanner.MergeSelection>();
+            for (var id = 1; id <= 21; id++)
+                candidates.Add(TwoGroupSelection(
+                    0, id, id % 2 == 0 ? 16 : 24));
+
+            var selected = AutoAtlasTextureMergePlanner
+                .SelectTwoDimensionalMerges(
+                    candidates,
+                    out var improvement,
+                    out var diagnostics);
+
+            Assert.That(selected.Count, Is.EqualTo(1));
+            Assert.That(selected[0], Is.SameAs(candidates[1]));
+            Assert.That(improvement, Is.Null);
+            Assert.That(diagnostics.Solver,
+                Is.EqualTo(AutoAtlasTextureMergePlanner
+                    .SelectionSolverKind.Greedy));
+            Assert.That(diagnostics.DistinctGroupCount, Is.EqualTo(22));
         }
 
         private static AutoAtlasTextureMergePlanner.MergeSelection
