@@ -10,6 +10,15 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 {
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
+        private static Shader RequireStandardShaderUsageInformation()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+            TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                new StandardShaderInformation();
+            return shader;
+        }
+
         [TestCase(1L, 2L, true)]
         [TestCase(0L, 2L, false)]
         [TestCase(2L, 2L, false)]
@@ -487,8 +496,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         [Test]
         public void ReferenceCopySafetyRequiresEquivalentSourcePixels()
         {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
+            var shader = RequireStandardShaderUsageInformation();
 
             var sourceTexture = new Texture2D(4, 4);
             var targetTexture = new Texture2D(4, 4);
@@ -955,8 +963,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         [Test]
         public void AutoAtlasRejectsGeneratedPropertyAppliedToExcludedUsage()
         {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
+            var shader = RequireStandardShaderUsageInformation();
 
             var sharedMain = new Texture2D(4, 4);
             var generatedSource = new Texture2D(4, 4);
@@ -1037,8 +1044,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         [Test]
         public void AutoAtlasRejectsNonIdentityTextureUvTransform()
         {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
+            var shader = RequireStandardShaderUsageInformation();
 
             var material = new Material(shader);
             var texture = new Texture2D(4, 4);
