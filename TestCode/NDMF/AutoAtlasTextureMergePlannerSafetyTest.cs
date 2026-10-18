@@ -11,6 +11,26 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 {
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
+        private Dictionary<Shader, ITTShaderTextureUsageInformation>
+            _shaderUsageSnapshot;
+
+        [SetUp]
+        public void CaptureShaderUsageRegistry()
+        {
+            _shaderUsageSnapshot =
+                TTShaderTextureUsageInformationRegistry.s_information
+                    .ToDictionary(pair => pair.Key, pair => pair.Value);
+        }
+
+        [TearDown]
+        public void RestoreShaderUsageRegistry()
+        {
+            TTShaderTextureUsageInformationRegistry.s_information.Clear();
+            foreach (var pair in _shaderUsageSnapshot)
+                TTShaderTextureUsageInformationRegistry
+                    .s_information[pair.Key] = pair.Value;
+        }
+
         private sealed class TestShaderTextureUsageInformation
             : ITTShaderTextureUsageInformation
         {
