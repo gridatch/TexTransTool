@@ -952,6 +952,83 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void AutoAtlasRejectsGeneratedPropertyAppliedToExcludedUsage()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var generatedSource = new Texture2D(4, 4);
+            var excludedSource = new Texture2D(4, 4);
+            var generatedMaterial = new Material(shader);
+            var excludedMaterial = new Material(shader);
+            try
+            {
+                generatedMaterial.SetTexture("_BumpMap", generatedSource);
+                excludedMaterial.SetTexture("_BumpMap", excludedSource);
+
+                var materials = new HashSet<Material>
+                {
+                    generatedMaterial,
+                    excludedMaterial,
+                };
+                var unsafeProperties =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [generatedMaterial] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_BumpMap"] = generatedSource,
+                            },
+                        [excludedMaterial] =
+                            new Dictionary<string, Texture>(),
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsafeGeneratedPropertyApplication(
+                            materials,
+                            unsafeProperties,
+                            UVChannel.UV0),
+                    Is.True,
+                    "A generated property must not overwrite a material property whose UV usage was excluded from atlas generation.");
+
+                var safeProperties =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [generatedMaterial] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_BumpMap"] = generatedSource,
+                            },
+                        [excludedMaterial] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_BumpMap"] = excludedSource,
+                            },
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsafeGeneratedPropertyApplication(
+                            materials,
+                            safeProperties,
+                            UVChannel.UV0),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(generatedMaterial);
+                Object.DestroyImmediate(excludedMaterial);
+                Object.DestroyImmediate(generatedSource);
+                Object.DestroyImmediate(excludedSource);
+            }
+        }
+
+        [Test]
         public void AutoAtlasRejectsNonIdentityTextureUvTransform()
         {
             var shader = Shader.Find("Standard");
