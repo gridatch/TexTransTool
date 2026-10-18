@@ -66,7 +66,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
         }
         public void RegisterOtherUVUsage(UsingUVChannels uvChannel)
         {
-            // Do nothing
+            if (_uvUsageWriter is ITTTextureOtherUVUsageWriter otherUsageWriter)
+                otherUsageWriter.WriteOtherUVUsage(uvChannel);
         }
     }
 }
