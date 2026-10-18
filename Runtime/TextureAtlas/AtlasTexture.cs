@@ -1135,9 +1135,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
             if (item.tag == "EditorOnly") return false;
             var mesh = item.GetMesh();
             if (mesh == null) return false;
-            // A mesh without submeshes has no drawable geometry. Allowing it
-            // through can reach AtlasMeshSourceContext.Normalizing(), where
-            // material-slot expansion would otherwise try GetIndices(-1).
+            // Atlas island generation is triangle-only, and a mesh with no
+            // non-empty triangle submesh has no drawable geometry to transform.
+            // In particular, a zero-submesh mesh with material slots would
+            // otherwise reach normalization and try GetIndices(-1).
             if (mesh.subMeshCount == 0) return false;
             var hasDrawableTriangles = false;
             for (var subMeshIndex = 0;
