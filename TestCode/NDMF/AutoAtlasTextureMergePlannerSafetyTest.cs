@@ -77,8 +77,8 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 16,
                 16,
                 TextureFormat.RGBA32,
-                mipCount: 2,
-                linear: false);
+                2,
+                false);
             try
             {
                 Assert.That(texture.mipmapCount, Is.EqualTo(2));
