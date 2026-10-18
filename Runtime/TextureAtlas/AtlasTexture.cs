@@ -1146,11 +1146,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
                  subMeshIndex += 1)
             {
                 var subMesh = mesh.GetSubMesh(subMeshIndex);
-                if (subMesh.indexCount == 0)
-                    continue;
+                // AtlasMeshSourceContext and MeshData enumerate every submesh
+                // through triangle-only APIs, so even an empty non-triangle
+                // submesh is outside the supported input contract.
                 if (subMesh.topology != MeshTopology.Triangles)
                     return false;
-                hasDrawableTriangles = true;
+                if (subMesh.indexCount != 0)
+                    hasDrawableTriangles = true;
             }
             if (!hasDrawableTriangles) return false;
             if (mesh.uv.Any() == false) return false;
