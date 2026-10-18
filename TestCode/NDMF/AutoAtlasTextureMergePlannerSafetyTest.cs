@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using net.rs64.TexTransTool.TextureAtlas;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -38,6 +39,114 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Is.EqualTo(message));
             Assert.That(copyButton, Is.Not.Null);
             Assert.That(error.TitleSubst, Is.Empty);
+        }
+
+        [Test]
+        public void AtlasSubSetIgnoresTargetMaterialOnEmptySubMesh()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var mesh = new Mesh();
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.subMeshCount = 1;
+                mesh.SetTriangles(System.Array.Empty<int>(), 0);
+
+                var targetMaterials = new HashSet<Material> { material };
+                var grouping = new MaterialGroupingContext(
+                    targetMaterials,
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [material] =
+                            new Dictionary<string, Texture>(),
+                    },
+                    null);
+
+                var subSet =
+                    AtlasSubMeshIndexIDSetContext.BuildAtlasSubSet(
+                        mesh,
+                        new Material?[] { material },
+                        7,
+                        targetMaterials,
+                        grouping);
+
+                Assert.That(subSet.All(item => !item.HasValue), Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void AtlasSubSetKeepsNonEmptySlotsAndRepeatedLastSubMesh()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var mesh = new Mesh();
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.subMeshCount = 2;
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                mesh.SetTriangles(System.Array.Empty<int>(), 1);
+
+                var targetMaterials = new HashSet<Material> { material };
+                var grouping = new MaterialGroupingContext(
+                    targetMaterials,
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [material] =
+                            new Dictionary<string, Texture>(),
+                    },
+                    null);
+
+                var mixed =
+                    AtlasSubMeshIndexIDSetContext.BuildAtlasSubSet(
+                        mesh,
+                        new Material?[] { material, material },
+                        3,
+                        targetMaterials,
+                        grouping);
+                Assert.That(mixed[0].HasValue, Is.True);
+                Assert.That(mixed[1].HasValue, Is.False);
+
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 1);
+                var repeated =
+                    AtlasSubMeshIndexIDSetContext.BuildAtlasSubSet(
+                        mesh,
+                        new Material?[] { material, material, material },
+                        3,
+                        targetMaterials,
+                        grouping);
+                Assert.That(repeated.All(item => item.HasValue), Is.True);
+                Assert.That(repeated[2]!.Value.SubMeshIndex, Is.EqualTo(2));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(material);
+            }
         }
 
         [Test]
