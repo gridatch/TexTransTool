@@ -57,7 +57,6 @@ namespace net.rs64.TexTransTool.NDMF
     }
 
     /// <summary>
-    /// Detects visibility animation    /// <summary>
     /// Detects visibility animation on renderers and their parent GameObjects.
     /// This only determines whether a property can take a value different from
     /// its current one; it does not infer runtime usage frequency or menu reachability.
