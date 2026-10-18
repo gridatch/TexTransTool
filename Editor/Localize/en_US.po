@@ -826,6 +826,9 @@ msgstr "property resolution mismatch: {0} actual={1}×{2}, planned={3}×{4}"
 msgid "AutoAtlasTexture:fallback:AtlasExecutionFailed"
 msgstr "DoAtlasTexture failed without a detailed placement or size reason"
 
+msgid "AutoAtlasTexture:fallback:ReferenceCopySemanticsMismatch"
+msgstr "automatic merge was rejected because ReferenceCopy could substitute different texture content"
+
 msgid "AutoAtlasTexture:fallback:FinalMemoryUnknown"
 msgstr "final texture memory could not be calculated"
 
