@@ -482,20 +482,19 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 return null;
             }
 
-            var meshID = atlasContext.NormalizedMeshCtx.Normalized2MeshID[normalizedMesh];
-            var matIDs = targeting.GetMaterials(renderer)
-                .Select(material => material != null
-                    ? atlasContext.MaterialGroupingCtx.GetMaterialGroupID(material)
-                    : -1)
-                .ToArray();
+            var meshID =
+                atlasContext.NormalizedMeshCtx.Normalized2MeshID[
+                    normalizedMesh];
+            var subSet =
+                AtlasSubMeshIndexIDSetContext.BuildAtlasSubSet(
+                    mesh,
+                    targeting.GetMaterials(renderer),
+                    meshID,
+                    targetMaterials: null,
+                    atlasContext.MaterialGroupingCtx);
 
-            var subSet = new AtlasSubMeshIndexID?[matIDs.Length];
-            for (var i = 0; i < subSet.Length; i += 1)
-            {
-                var matID = matIDs[i];
-                if (matID is -1) { subSet[i] = null; }
-                else { subSet[i] = new AtlasSubMeshIndexID(meshID, i, matID); }
-            }
+            if (!subSet.Any(item => item.HasValue))
+                return null;
 
             var identicalSubSetID = atlasContext.AtlasSubMeshIndexSetCtx.AtlasSubSets
                 .FindIndex(candidate =>
