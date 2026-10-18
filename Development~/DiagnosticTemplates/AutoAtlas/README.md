@@ -8,7 +8,12 @@ snapshot_head_before_template_registry: `1405baf8aa52d4a33f88dfb4898e4113a11d20a
 
 These templates cover temporary diagnostics used to investigate AutoAtlas texture merging, search retention, candidate selection, standalone lossless-profile failures, execution effects, and NDMF Console presentation.
 
-The current source at the snapshot head still contains the active diagnostic pack. This registry captures how to reconstruct it later; it does not by itself disable or remove diagnostics.
+The snapshot head above contains the active diagnostic pack. The pack was subsequently removed after the templates were captured.
+
+current_status: `archived-reapply-available`  
+cleanup_head_before_status_note: `a9abd5ff3a417a5391bc45cb1421e8fad81b19c0`
+
+Cleanup removed the temporary comparison searches, watched-path/rejection reporting, standalone failure strings, execution-effect summary, long-form NDMF diagnostic UI, diagnostic-only tests, and temporary localization keys. Permanent production behavior and independent fixes listed below were retained.
 
 ## Template index
 
