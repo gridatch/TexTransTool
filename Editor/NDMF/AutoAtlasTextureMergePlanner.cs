@@ -717,6 +717,25 @@ namespace net.rs64.TexTransTool.NDMF
                             continue;
                         }
 
+                        var usages =
+                            TTShaderTextureUsageInformationUtil
+                                .GetContainsUVTransformUsage(material);
+                        if (!usages.TryGetValue(
+                                targetProperty,
+                                out var targetUsage)
+                            || (((int)targetUsage.UVChannel) - 1)
+                                != (int)settings.AtlasTargetUVChannel
+                            || !TTShaderTextureUsageInformationUtil
+                                .IsIdentityUVMatrix(targetUsage.UVMatrix))
+                        {
+                            // ReferenceCopy replaces the target property's
+                            // texture even when that property was not otherwise
+                            // part of atlas generation. The copied atlas can
+                            // only preserve sampling when the target property
+                            // reads the transformed atlas UV channel directly.
+                            return false;
+                        }
+
                         var materialGroupId =
                             grouping.GetMaterialGroupID(material);
                         if (materialGroupId < 0)
