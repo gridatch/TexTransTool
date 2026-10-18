@@ -1211,6 +1211,67 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void FallbackShaderUsageKeepsUvTransformUnknownForAutoAtlas()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            TTShaderTextureUsageInformationRegistry.s_information
+                .TryGetValue(shader, out var previousInformation);
+
+            var material = new Material(shader);
+            var texture = new Texture2D(4, 4);
+            try
+            {
+                TTShaderTextureUsageInformationRegistry
+                    .s_information.Remove(shader);
+                material.SetTexture("_MainTex", texture);
+
+                var materials = new HashSet<Material> { material };
+                var grouping = new MaterialGroupingContext(
+                    materials,
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+                var usages =
+                    TTShaderTextureUsageInformationUtil
+                        .GetContainsUVTransformUsage(material);
+
+                Assert.That(
+                    grouping.ContainsTextureDictionaries[material]
+                        .ContainsKey("_MainTex"),
+                    Is.True,
+                    "Manual AtlasTexture eligibility should still see fallback _MainTex as UV0.");
+                Assert.That(
+                    usages["_MainTex"].UVChannel,
+                    Is.EqualTo(UsageUVChannel.UV0));
+                Assert.That(
+                    usages["_MainTex"].UVMatrix,
+                    Is.Null,
+                    "Fallback metadata must not invent an identity transform.");
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsupportedTextureUvSampling(
+                            materials,
+                            grouping.ContainsTextureDictionaries,
+                            UVChannel.UV0),
+                    Is.True,
+                    "Automatic atlasing must fail closed when the fallback shader transform is unknown.");
+            }
+            finally
+            {
+                if (previousInformation != null)
+                    TTShaderTextureUsageInformationRegistry
+                        .s_information[shader] = previousInformation;
+                else
+                    TTShaderTextureUsageInformationRegistry
+                        .s_information.Remove(shader);
+
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
         public void MaterialInformationTranslatorPreservesNonMeshUsage()
         {
             var shader = Shader.Find("Standard");
