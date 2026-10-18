@@ -359,7 +359,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
 
             pf.Split("check hight");
-            var height = IslandRelocationManager.CalculateIslandsMaxHeight(movedVirtualIslandArray) + atlasSetting.IslandPadding;
+            var paddingProvider =
+                relocatorOverride as IAtlasTexturePaddingProvider;
+            var height = paddingProvider?.CalculateUsedHeight(
+                    movedVirtualIslandArray,
+                    atlasSetting.IslandPadding)
+                ?? IslandRelocationManager.CalculateIslandsMaxHeight(
+                    movedVirtualIslandArray) + atlasSetting.IslandPadding;
             var atlasTextureHeightSize = Mathf.Max(GetNormalizedMinHeightSize(atlasTargeSize.y, height), 4);
             Debug.Assert(Mathf.IsPowerOfTwo(atlasTextureHeightSize));
 
@@ -410,6 +416,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                   , resolutionPlan
                   , relocateResult.IslandRelocationResult.IsRectangleMove
                   , source2MovedVirtualIsland
+                  , paddingProvider
               );
             pf.Split("exit");
             return new(true, atlasContext, atlasedMeshes, compiledAtlasTextures,

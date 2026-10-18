@@ -42,8 +42,8 @@ namespace net.rs64.TexTransTool.NDMF
             internal long OriginalPixels;
 
             internal AtlasTexture.AtlasExecutionMetrics? StandaloneMetrics;
-            // Heights include the final atlas's required padding, expressed
-            // in pixels at the atomic group's own profile width.
+            // Heights include the atomic group's standalone padding,
+            // expressed in pixels at that group's profile width.
             internal readonly Dictionary<(int AtlasWidth, int RegionWidth), int>
                 TwoDimensionalProfileHeights = new();
             internal readonly Dictionary<string, int> PropertyUseCount =
@@ -1701,38 +1701,6 @@ namespace net.rs64.TexTransTool.NDMF
             return result;
         }
 
-        internal static float GetTwoDimensionalLocalPadding(
-            float atlasPadding, int atlasWidth, int regionWidth)
-        {
-            if (atlasWidth <= 0 || regionWidth <= 0)
-                throw new ArgumentOutOfRangeException(
-                    nameof(regionWidth), "Atlas and region widths must be positive.");
-            return atlasPadding * ((float)atlasWidth / regionWidth);
-        }
-
-        private static AtlasSetting CreateTwoDimensionalProfileSettings(
-            AtlasSetting settings, int atlasWidth, int regionWidth)
-        {
-            return new AtlasSetting
-            {
-                AtlasTextureSize = settings.AtlasTextureSize,
-                CustomAspect = settings.CustomAspect,
-                AtlasTextureHeightSize = settings.AtlasTextureHeightSize,
-                AtlasTargetUVChannel = settings.AtlasTargetUVChannel,
-                UsePrimaryMaximumTexture = settings.UsePrimaryMaximumTexture,
-                PrimaryTextureProperty = settings.PrimaryTextureProperty,
-                ForceSizePriority = settings.ForceSizePriority,
-                IslandPadding = GetTwoDimensionalLocalPadding(
-                    settings.IslandPadding, atlasWidth, regionWidth),
-                IncludeDisabledRenderer = settings.IncludeDisabledRenderer,
-                BackGroundColor = settings.BackGroundColor,
-                PixelNormalize = settings.PixelNormalize,
-                DownScaleAlgorithm = settings.DownScaleAlgorithm,
-                ForceSetTexture = settings.ForceSetTexture,
-                TextureFineTuning = settings.TextureFineTuning,
-            };
-        }
-
         private static AtlasTexture.AtlasExecutionMetrics? AnalyzeAtlas(
             IDomain domain,
             AtlasSetting settings,
@@ -1767,52 +1735,22 @@ namespace net.rs64.TexTransTool.NDMF
                             continue;
                         }
 
+                        var usedHeight = GetUsedHeightPixels(metrics);
                         group.TwoDimensionalProfileHeights[(size, size)] =
-                            GetUsedHeightPixels(metrics);
+                            usedHeight;
                         standalone ??= metrics;
 
-                        // NFDH's padding is expressed in local UV units.
-                        // A subregion of width 'size' inside a wider final
-                        // atlas needs the same padding in final-atlas pixels:
-                        // localPadding = globalPadding * finalWidth / size.
+                        // A wider merged atlas must not silently increase the
+                        // atomic group's padding. The group keeps the same
+                        // texel density and the same padding in profile pixels;
+                        // execution converts that padding into final-atlas UV
+                        // units from the reserved region width.
                         foreach (var atlasWidth in
                                  AtlasTexture.AutoAtlasTextureSizeCandidates)
                         {
                             if (atlasWidth <= size) continue;
-
-                            if (settings.IslandPadding == 0f)
-                            {
-                                group.TwoDimensionalProfileHeights[
-                                    (atlasWidth, size)] =
-                                    GetUsedHeightPixels(metrics);
-                                continue;
-                            }
-
-                            var profileSettings =
-                                CreateTwoDimensionalProfileSettings(
-                                    settings, atlasWidth, size);
-                            try
-                            {
-                                if (AtlasTexture.TryAnalyzePreparedAtlasAtSize(
-                                        domain,
-                                        prepared,
-                                        new List<IIslandSizePriorityTuner?>(),
-                                        profileSettings,
-                                        size,
-                                        out var paddedMetrics))
-                                {
-                                    group.TwoDimensionalProfileHeights[
-                                        (atlasWidth, size)] =
-                                        GetUsedHeightPixels(paddedMetrics);
-                                }
-                            }
-                            catch (ArgumentException exception)
-                                when (AutoAtlas2DMergeIslandRelocator
-                                    .IsNfdhComparerFailure(exception))
-                            {
-                                // This padded profile cannot be relocated
-                                // reliably at the selected width.
-                            }
+                            group.TwoDimensionalProfileHeights[
+                                (atlasWidth, size)] = usedHeight;
                         }
                     }
                     catch (ArgumentException exception)

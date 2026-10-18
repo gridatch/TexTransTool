@@ -293,6 +293,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , AtlasTextureResolutionPlan resolutionPlan
             , bool IsRectangleMove
             , Dictionary<IslandTransform, IslandTransform> source2MovedVirtualIsland
+            , AtlasTexture.IAtlasTexturePaddingProvider? paddingProvider = null
         ) where TTT4U : ITexTransToolForUnity
         {
             using var pf = new PFScope("init");
@@ -356,12 +357,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                                 TTLog.Assert(drawTargetSourceVirtualIslands.Length is not 0, "what happened !?, target virtual islands is not exist!!");
 
+                                var islandPadding =
+                                    paddingProvider?.GetTexturePadding(
+                                        findMaterialID,
+                                        atlasSetting.IslandPadding)
+                                    ?? atlasSetting.IslandPadding;
                                 AtlasingUtility.TransMoveRectangle(engine
                                     , targetRT
                                     , sourceRenderTexture
                                     , drawTargetSourceVirtualIslands
                                     , drawTargetMovedVirtualIslands
-                                    , atlasSetting.IslandPadding
+                                    , islandPadding
                                 );
                             }
                         }

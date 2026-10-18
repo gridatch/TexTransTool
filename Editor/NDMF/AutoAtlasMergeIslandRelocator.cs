@@ -13,7 +13,9 @@ namespace net.rs64.TexTransTool.NDMF
     /// merging planner. Every atomic group is packed independently into its
     /// reserved region; execution fails closed for incompatible groupings.
     /// </summary>
-    internal sealed class AutoAtlas2DMergeIslandRelocator : IIslandRelocator
+    internal sealed class AutoAtlas2DMergeIslandRelocator :
+        IIslandRelocator,
+        AtlasTexture.IAtlasTexturePaddingProvider
     {
         internal static bool IsNfdhComparerFailure(ArgumentException exception)
         {
@@ -27,6 +29,8 @@ namespace net.rs64.TexTransTool.NDMF
 
         private const float Epsilon = 1e-5f;
         private readonly int[] _groupByIsland;
+        private readonly Dictionary<int, int> _groupByMaterialGroupId =
+            new();
         private readonly IReadOnlyDictionary<int, RectInt> _regions;
         private readonly int _atlasWidth;
         private readonly bool _valid;
@@ -50,6 +54,30 @@ namespace net.rs64.TexTransTool.NDMF
 
             var valid = ValidatePlannedRegions(regions, atlasWidth)
                 && groupByMaterial.Values.All(regions.ContainsKey);
+
+            for (var materialGroupId = 0;
+                 materialGroupId < context.MaterialGroupingCtx.GroupMaterials.Length;
+                 materialGroupId++)
+            {
+                var ids = context.MaterialGroupingCtx.GroupMaterials[
+                        materialGroupId]
+                    .Select(material =>
+                        groupByMaterial.TryGetValue(material, out var id)
+                            ? (int?)id
+                            : null)
+                    .Distinct()
+                    .ToArray();
+                if (ids.Length == 1
+                    && ids[0].HasValue
+                    && regions.ContainsKey(ids[0].Value))
+                {
+                    _groupByMaterialGroupId[materialGroupId] = ids[0].Value;
+                }
+                else
+                {
+                    valid = false;
+                }
+            }
 
             for (var index = 0; index < _groupByIsland.Length; index++)
             {
@@ -104,6 +132,63 @@ namespace net.rs64.TexTransTool.NDMF
             return true;
         }
 
+        internal static float GetRegionPaddingInAtlasUv(
+            float profilePadding,
+            int atlasWidth,
+            int regionWidth)
+        {
+            if (atlasWidth <= 0 || regionWidth <= 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(regionWidth),
+                    "Atlas and region widths must be positive.");
+            return profilePadding * ((float)regionWidth / atlasWidth);
+        }
+
+        public float GetTexturePadding(
+            int materialGroupId,
+            float defaultPadding)
+        {
+            if (!_groupByMaterialGroupId.TryGetValue(
+                    materialGroupId,
+                    out var groupId)
+                || !_regions.TryGetValue(groupId, out var region))
+                return defaultPadding;
+
+            return GetRegionPaddingInAtlasUv(
+                defaultPadding,
+                _atlasWidth,
+                region.width);
+        }
+
+        public float CalculateUsedHeight(
+            IslandTransform[] movedIslands,
+            float defaultPadding)
+        {
+            if (movedIslands.Length != _groupByIsland.Length)
+                return IslandRelocationManager.CalculateIslandsMaxHeight(
+                    movedIslands) + defaultPadding;
+
+            var maxHeight = 0f;
+            for (var index = 0; index < movedIslands.Length; index++)
+            {
+                var groupId = _groupByIsland[index];
+                if (groupId < 0
+                    || !_regions.TryGetValue(groupId, out var region))
+                    return IslandRelocationManager.CalculateIslandsMaxHeight(
+                        movedIslands) + defaultPadding;
+
+                var padding = GetRegionPaddingInAtlasUv(
+                    defaultPadding,
+                    _atlasWidth,
+                    region.width);
+                maxHeight = Math.Max(
+                    maxHeight,
+                    movedIslands[index].GetBox().W + padding);
+            }
+
+            return maxHeight;
+        }
+
         public RelocationResult Relocation(
             RelocationContext context,
             IslandTransform[] islands)
@@ -132,16 +217,15 @@ namespace net.rs64.TexTransTool.NDMF
                 foreach (var island in localIslands)
                     island.Size *= localScale;
 
-                // Diagnostic only; never used as the actual placement.
-                var profilePaddingProbe = localIslands
-                    .Select(island => island.Clone()).ToArray();
-
+                // Keep the atomic group's standalone pixel padding.
+                // The group's local coordinate system is its reserved region,
+                // so using the original normalized padding preserves
+                // paddingPixels = padding * regionWidth even in a wider atlas.
                 RelocationResult localResult;
                 try
                 {
                     localResult = new NFDHPlasFC().Relocation(
-                        new RelocationContext(
-                            1f, context.Padding * localScale),
+                        new RelocationContext(1f, context.Padding),
                         localIslands);
                 }
                 catch (ArgumentException exception)
@@ -153,21 +237,10 @@ namespace net.rs64.TexTransTool.NDMF
 
                 if (!localResult.IsSuccess)
                 {
-                    // Check if using the standalone-profile padding would fit.
-                    // This is solely to diagnose any padding-model mismatch.
-                    string probeResult;
-                    try
-                    {
-                        var trial = new NFDHPlasFC().Relocation(
-                            new RelocationContext(1f, context.Padding),
-                            profilePaddingProbe);
-                        probeResult = trial.IsSuccess.ToString();
-                    }
-                    catch (Exception)
-                    {
-                        probeResult = "error";
-                    }
-                    return Fail($"g{group.Key}の矩形内NFDH配置に失敗: region={region}, islands={localIslands.Length}, globalPadding={context.Padding}, localPadding={context.Padding * localScale}, standalonePaddingFit={probeResult}");
+                    return Fail(
+                        $"g{group.Key}の矩形内NFDH配置に失敗: "
+                        + $"region={region}, islands={localIslands.Length}, "
+                        + $"profilePadding={context.Padding}");
                 }
 
                 var minX = (float)region.xMin / _atlasWidth;
@@ -200,7 +273,7 @@ namespace net.rs64.TexTransTool.NDMF
                                 island, region, _atlasWidth, context.Padding))
                             ?? invalidIsland;
                         var box = unresolved.GetBox();
-                        return Fail($"g{group.Key}の実配置が矩形境界の必要余白を満たさない: region={region}, box=({box.X},{box.Y},{box.Z},{box.W}), globalPadding={context.Padding}, perSideMargin={context.Padding * 0.5f}");
+                        return Fail($"g{group.Key}の実配置が矩形境界の必要余白を満たさない: region={region}, box=({box.X},{box.Y},{box.Z},{box.W}), profilePadding={context.Padding}, regionPadding={GetRegionPaddingInAtlasUv(context.Padding, _atlasWidth, region.width)}");
                     }
                 }
             }
@@ -209,9 +282,11 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
 
-        // NFDH's edge allowance can differ from the reserved region's
-        // half-padding requirement. A translation preserves all inter-island
-        // distances and rotations; never scale or relax the boundary check.
+        // NFDH may place an island close to an outer edge because ordinary
+        // AtlasTexture can clip transfer padding at the texture boundary.
+        // Internal 2D-region edges cannot use that clipping behavior, so
+        // translate the complete atomic group when needed without changing
+        // inter-island distances, rotations, or texel density.
         internal static bool TryTranslateIslandsWithinPlannedRegion(
             IReadOnlyList<IslandTransform> islands, RectInt region,
             int atlasWidth, float padding)
@@ -243,11 +318,22 @@ namespace net.rs64.TexTransTool.NDMF
                 maxY = Math.Max(maxY, box.W);
             }
 
-            var halfPadding = padding * 0.5f;
-            var shiftMinX = (float)region.xMin / atlasWidth + halfPadding - minX;
-            var shiftMinY = (float)region.yMin / atlasWidth + halfPadding - minY;
-            var shiftMaxX = (float)region.xMax / atlasWidth - halfPadding - maxX;
-            var shiftMaxY = (float)region.yMax / atlasWidth - halfPadding - maxY;
+            var regionPadding = GetRegionPaddingInAtlasUv(
+                padding, atlasWidth, region.width);
+            var leftPadding = region.xMin > 0 ? regionPadding : 0f;
+            var bottomPadding = region.yMin > 0 ? regionPadding : 0f;
+            var rightPadding =
+                region.xMax < atlasWidth ? regionPadding : 0f;
+            var topPadding =
+                region.yMax < atlasWidth ? regionPadding : 0f;
+            var shiftMinX =
+                (float)region.xMin / atlasWidth + leftPadding - minX;
+            var shiftMinY =
+                (float)region.yMin / atlasWidth + bottomPadding - minY;
+            var shiftMaxX =
+                (float)region.xMax / atlasWidth - rightPadding - maxX;
+            var shiftMaxY =
+                (float)region.yMax / atlasWidth - topPadding - maxY;
             if (shiftMinX > shiftMaxX || shiftMinY > shiftMaxY)
                 return false;
 
@@ -276,19 +362,27 @@ namespace net.rs64.TexTransTool.NDMF
                 || float.IsInfinity(box.Z) || float.IsInfinity(box.W))
                 return false;
 
-            // NFDH has already placed and padded the islands. Requiring a
-            // second full padding at each boundary rejects ordinary valid
-            // NFDH results. Reserve at least half padding at each edge: two
-            // adjacent, nonoverlapping regions then have a full padding gap.
-            var halfPadding = padding * 0.5f;
+            // Texture transfer expands each island by its padding.
+            // At an internal region edge that expansion must stop at the
+            // region boundary so that independently rendered atomic groups
+            // cannot overwrite each other's padding. At the outer atlas edge,
+            // ordinary AtlasTexture behavior clips the padding to the texture.
+            var regionPadding = GetRegionPaddingInAtlasUv(
+                padding, atlasWidth, region.width);
+            var leftPadding = region.xMin > 0 ? regionPadding : 0f;
+            var bottomPadding = region.yMin > 0 ? regionPadding : 0f;
+            var rightPadding =
+                region.xMax < atlasWidth ? regionPadding : 0f;
+            var topPadding =
+                region.yMax < atlasWidth ? regionPadding : 0f;
             var minX = (float)region.xMin / atlasWidth;
             var minY = (float)region.yMin / atlasWidth;
             var maxX = (float)region.xMax / atlasWidth;
             var maxY = (float)region.yMax / atlasWidth;
-            return box.X >= minX + halfPadding - Epsilon
-                && box.Y >= minY + halfPadding - Epsilon
-                && box.Z <= maxX - halfPadding + Epsilon
-                && box.W <= maxY - halfPadding + Epsilon;
+            return box.X >= minX + leftPadding - Epsilon
+                && box.Y >= minY + bottomPadding - Epsilon
+                && box.Z <= maxX - rightPadding + Epsilon
+                && box.W <= maxY - topPadding + Epsilon;
         }
     }
 }

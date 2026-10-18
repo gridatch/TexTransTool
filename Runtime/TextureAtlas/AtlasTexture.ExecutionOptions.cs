@@ -30,6 +30,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
         }
 
+        internal interface IAtlasTexturePaddingProvider
+        {
+            float GetTexturePadding(
+                int materialGroupId,
+                float defaultPadding);
+
+            float CalculateUsedHeight(
+                IslandTransform[] movedIslands,
+                float defaultPadding);
+        }
+
         internal sealed class AtlasExecutionOptions
         {
             internal bool RequireLossless;

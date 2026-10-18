@@ -359,24 +359,25 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void TwoDimensionalProfilePaddingUsesFinalAtlasPixels()
+        public void TwoDimensionalRegionPaddingPreservesAtomicPixelDistance()
         {
-            const float globalPadding = 0.01f;
-            Assert.That(
-                AutoAtlasTextureMergePlanner.GetTwoDimensionalLocalPadding(
-                    globalPadding, 1024, 256),
-                Is.EqualTo(0.04f).Within(0.000001f));
-            Assert.That(
-                AutoAtlasTextureMergePlanner.GetTwoDimensionalLocalPadding(
-                    globalPadding, 1024, 1024),
-                Is.EqualTo(globalPadding).Within(0.000001f));
+            const float profilePadding = 0.01f;
+            const int atlasWidth = 4096;
+            const int regionWidth = 2048;
 
-            // Padding is the same in X and Y in a square local NFDH UV
-            // coordinate system: the physical distance remains 10.24px.
+            var atlasUvPadding =
+                AutoAtlas2DMergeIslandRelocator.GetRegionPaddingInAtlasUv(
+                    profilePadding,
+                    atlasWidth,
+                    regionWidth);
+
             Assert.That(
-                AutoAtlasTextureMergePlanner.GetTwoDimensionalLocalPadding(
-                    globalPadding, 1024, 256) * 256f,
-                Is.EqualTo(globalPadding * 1024f).Within(0.00001f));
+                atlasUvPadding,
+                Is.EqualTo(0.005f).Within(0.000001f));
+            Assert.That(
+                atlasUvPadding * atlasWidth,
+                Is.EqualTo(profilePadding * regionWidth)
+                    .Within(0.00001f));
         }
 
         [Test]
@@ -434,35 +435,36 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void TwoDimensionalPackingStillRejectsInsufficientBorderGap()
+        public void TwoDimensionalPackingProtectsInternalRegionPadding()
         {
+            // Internal region boundaries must preserve the complete
+            // pixel-equivalent transfer padding. For a 512-wide region in a
+            // 1024 atlas, 0.01 profile padding becomes 0.005 atlas UV.
             var island = new net.rs64.TexTransCore.UVIsland.IslandTransform
             {
-                Position = new System.Numerics.Vector2(0.99f, 0.01f),
-                Size = new System.Numerics.Vector2(0.009f, 0.04f),
+                Position = new System.Numerics.Vector2(0.491f, 0.01f),
+                Size = new System.Numerics.Vector2(0.005f, 0.04f),
             };
-
-            Assert.That(
-                AutoAtlas2DMergeIslandRelocator.IsWithinPlannedRegion(
-                    island, new RectInt(0, 0, 1024, 371), 1024, 0.01f),
-                Is.False);
-
-            // A region boundary, not only the full atlas boundary, must
-            // also preserve half-padding on its own side.
-            island.Position = new System.Numerics.Vector2(0.50f, 0.01f);
-            island.Size = new System.Numerics.Vector2(0.009f, 0.04f);
             Assert.That(
                 AutoAtlas2DMergeIslandRelocator.IsWithinPlannedRegion(
                     island, new RectInt(0, 0, 512, 512), 1024, 0.01f),
                 Is.False);
+
+            island.Position = new System.Numerics.Vector2(0.49f, 0.01f);
+            island.Size = new System.Numerics.Vector2(0.005f, 0.04f);
+            Assert.That(
+                AutoAtlas2DMergeIslandRelocator.IsWithinPlannedRegion(
+                    island, new RectInt(0, 0, 512, 512), 1024, 0.01f),
+                Is.True);
         }
 
 
         [Test]
-        public void TwoDimensionalPackingTranslatesMeasuredRightEdgeOverflow()
+        public void TwoDimensionalPackingAllowsMeasuredOuterEdgePaddingClip()
         {
-            // Seiran_ShuwashuwaPearl g5 measured box. Include a second
-            // island on the left to verify the complete group moves together.
+            // Seiran_ShuwashuwaPearl g5 measured box. The region reaches the
+            // right edge of the final atlas, so transfer padding may be clipped
+            // there exactly as in ordinary AtlasTexture.
             var islands = new[]
             {
                 new net.rs64.TexTransCore.UVIsland.IslandTransform
@@ -480,24 +482,17 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 },
             };
             var region = new RectInt(512, 751, 512, 83);
-            var beforeDistance = islands[0].Position - islands[1].Position;
-            var originalSize = islands[0].Size;
-            Assert.That(AutoAtlas2DMergeIslandRelocator.IsWithinPlannedRegion(
-                islands[0], region, 1024, 0.01f), Is.False);
-
-            Assert.That(
-                AutoAtlas2DMergeIslandRelocator.TryTranslateIslandsWithinPlannedRegion(
-                    islands, region, 1024, 0.01f), Is.True);
             foreach (var island in islands)
                 Assert.That(
                     AutoAtlas2DMergeIslandRelocator.IsWithinPlannedRegion(
                         island, region, 1024, 0.01f), Is.True);
-            Assert.That((islands[0].Position - islands[1].Position).X,
-                Is.EqualTo(beforeDistance.X).Within(0.000001f));
-            Assert.That((islands[0].Position - islands[1].Position).Y,
-                Is.EqualTo(beforeDistance.Y).Within(0.000001f));
-            Assert.That(islands[0].Size.X, Is.EqualTo(originalSize.X));
-            Assert.That(islands[0].Size.Y, Is.EqualTo(originalSize.Y));
+
+            var before = islands.Select(island => island.Position).ToArray();
+            Assert.That(
+                AutoAtlas2DMergeIslandRelocator.TryTranslateIslandsWithinPlannedRegion(
+                    islands, region, 1024, 0.01f), Is.True);
+            Assert.That(islands.Select(island => island.Position),
+                Is.EqualTo(before));
         }
 
         [Test]
@@ -517,18 +512,18 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void TwoDimensionalPackingRejectsUntranslatableGroupWithoutMutation()
+        public void TwoDimensionalPackingRejectsUntranslatableInternalGroupWithoutMutation()
         {
             var islands = new[]
             {
                 new net.rs64.TexTransCore.UVIsland.IslandTransform
                 {
-                    Position = new System.Numerics.Vector2(0.507f, 0.75f),
+                    Position = new System.Numerics.Vector2(0.257f, 0.30f),
                     Size = new System.Numerics.Vector2(0.01f, 0.01f),
                 },
                 new net.rs64.TexTransCore.UVIsland.IslandTransform
                 {
-                    Position = new System.Numerics.Vector2(0.995f, 0.75f),
+                    Position = new System.Numerics.Vector2(0.745f, 0.30f),
                     Size = new System.Numerics.Vector2(0.004f, 0.01f),
                 },
             };
@@ -536,14 +531,14 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             var before1 = islands[1].Position;
             Assert.That(
                 AutoAtlas2DMergeIslandRelocator.TryTranslateIslandsWithinPlannedRegion(
-                    islands, new RectInt(512, 751, 512, 83),
+                    islands, new RectInt(256, 256, 512, 512),
                     1024, 0.01f), Is.False);
             Assert.That(islands[0].Position, Is.EqualTo(before0));
             Assert.That(islands[1].Position, Is.EqualTo(before1));
         }
 
         [Test]
-        public void TwoDimensionalPackingTranslatesRotatedIslandWithoutChangingRotation()
+        public void TwoDimensionalPackingPreservesRotatedIslandGeometry()
         {
             var island = new net.rs64.TexTransCore.UVIsland.IslandTransform
             {
