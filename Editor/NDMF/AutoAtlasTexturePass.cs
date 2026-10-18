@@ -815,15 +815,19 @@ namespace net.rs64.TexTransTool.NDMF
                         atlasResult.PreserveBump2ndMaterials,
                         atlasResult.PreservedOriginalUVChannel);
 
+                var generatedAtlasMaterials =
+                    atlasMaterialMaps.materialMap.Values
+                        .Concat(
+                            atlasMaterialMaps
+                                .domainsMaterial2ReplaceMaterial.Values)
+                        .Distinct()
+                        .ToArray();
                 if (RetainsAnySourceTexture(
-                        atlasMaterialMaps.materialMap.Values,
+                        generatedAtlasMaterials,
                         execution.SourceTextures))
                 {
                     DestroyUnappliedAtlasedMaterials(
-                        atlasMaterialMaps.materialMap.Values
-                            .Concat(
-                                atlasMaterialMaps
-                                    .domainsMaterial2ReplaceMaterial.Values));
+                        generatedAtlasMaterials);
                     foreach (var rt in compiledTextures.Values
                                  .Concat(tuningResult.TextureDescriptors.Keys)
                                  .Distinct())
