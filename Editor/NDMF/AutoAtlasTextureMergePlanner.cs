@@ -22,9 +22,9 @@ namespace net.rs64.TexTransTool.NDMF
         private const int MaxMergeGroupCount = 12;
         // Candidate exploration below never calls DoAtlasTexture. These limits
         // only bound cheap integer-DP state retention, not expensive atlas probes.
-        private const int ShadowPackingStatesPerHost = 512;
+        private const int ShadowPackingStatesPerHost = 1024;
         private static readonly int[] DiagnosticStateBudgets =
-            { 1024, 2048, 4096 };
+            { 2048, 4096 };
         // Prevent a diagnostic expansion from destabilizing the Unity process.
         // This limit applies to one generated-state dictionary, before any
         // property-aware retention. Production search is not subject to it.
@@ -195,6 +195,7 @@ namespace net.rs64.TexTransTool.NDMF
 
         internal sealed class SearchBudgetComparison
         {
+            internal readonly int ProductionStateBudget;
             internal readonly long ProductionSearchMilliseconds;
             internal readonly int ProductionCandidateCount;
             internal readonly int ProductionMaxStatesBeforeRetention;
@@ -202,12 +203,14 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly IReadOnlyList<SearchBudgetProbe> Probes;
 
             internal SearchBudgetComparison(
+                int productionStateBudget,
                 long productionSearchMilliseconds,
                 int productionCandidateCount,
                 int productionMaxStatesBeforeRetention,
                 long productionPrunedStateCount,
                 IReadOnlyList<SearchBudgetProbe> probes)
             {
+                ProductionStateBudget = productionStateBudget;
                 ProductionSearchMilliseconds = productionSearchMilliseconds;
                 ProductionCandidateCount = productionCandidateCount;
                 ProductionMaxStatesBeforeRetention =
@@ -958,12 +961,13 @@ namespace net.rs64.TexTransTool.NDMF
                         exception.Message));
                     // Do not attempt a still wider probe after the raw-state
                     // safety ceiling is reached; the diagnostic must never
-                    // destabilize the normal 512-state build.
+                    // destabilize the normal production search.
                     break;
                 }
             }
 
             var comparison = new SearchBudgetComparison(
+                ShadowPackingStatesPerHost,
                 productionTimer.ElapsedMilliseconds,
                 shadow2D.ProductionCandidates.Count,
                 shadow2D.MaxStatesBeforeRetention,

@@ -948,6 +948,7 @@ namespace net.rs64.TexTransTool.NDMF
 
                 AppendDiagnostic(
                     "AutoAtlasTexture:info:TemporarySearchBudgetHeader",
+                    searchComparison.ProductionStateBudget,
                     searchComparison.ProductionSearchMilliseconds,
                     searchComparison.ProductionCandidateCount,
                     mergePlan.Selections.Count,
@@ -965,13 +966,15 @@ namespace net.rs64.TexTransTool.NDMF
                             "AutoAtlasTexture:info:TemporarySearchBudgetAborted",
                             probe.StateBudget,
                             probe.SearchMilliseconds,
-                            probe.AbortReason);
+                            probe.AbortReason,
+                            searchComparison.ProductionStateBudget);
                         continue;
                     }
 
                     AppendDiagnostic(
                         "AutoAtlasTexture:info:TemporarySearchBudgetProbe",
                         probe.StateBudget,
+                        searchComparison.ProductionStateBudget,
                         probe.SearchMilliseconds,
                         probe.CandidateCount,
                         probe.SelectedCount,
@@ -984,6 +987,7 @@ namespace net.rs64.TexTransTool.NDMF
                     AppendDiagnostic(
                         "AutoAtlasTexture:info:TemporarySearchBudgetDifferences",
                         probe.StateBudget,
+                        searchComparison.ProductionStateBudget,
                         probe.AdditionalOrChangedCandidateCount,
                         FormatDiagnosticSelections(
                             probe.AdditionalOrChangedCandidates),
