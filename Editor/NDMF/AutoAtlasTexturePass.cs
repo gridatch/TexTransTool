@@ -630,9 +630,7 @@ namespace net.rs64.TexTransTool.NDMF
                     .ToHashSet();
 
                 if (atlasRenderers.Length == 0
-                    || !plannedRenderers.SetEquals(atlasRenderers)
-                    || HasActiveUntransformedMaterialConsumer(
-                        domain, group, atlasRenderers))
+                    || !plannedRenderers.SetEquals(atlasRenderers))
                 {
                     if (execution.MergeSelection is { } invalidMerge)
                     {
@@ -640,6 +638,21 @@ namespace net.rs64.TexTransTool.NDMF
                             $"groups={string.Join(",", invalidMerge.GroupIds.Select(id => "g" + id))}: "
                             + FormatLocalized(
                                 "AutoAtlasTexture:fallback:RendererSetChanged"));
+                        EnqueueStandaloneFallback(
+                            executionGroups, invalidMerge, preparedGroups);
+                    }
+                    continue;
+                }
+
+                if (HasActiveUntransformedMaterialConsumer(
+                        domain, group, atlasRenderers))
+                {
+                    if (execution.MergeSelection is { } invalidMerge)
+                    {
+                        twoDimensionalFallbackReasons.Add(
+                            $"groups={string.Join(",", invalidMerge.GroupIds.Select(id => "g" + id))}: "
+                            + FormatLocalized(
+                                "AutoAtlasTexture:fallback:ActiveUntransformedConsumer"));
                         EnqueueStandaloneFallback(
                             executionGroups, invalidMerge, preparedGroups);
                     }
