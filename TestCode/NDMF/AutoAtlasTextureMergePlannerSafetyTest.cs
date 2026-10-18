@@ -20,15 +20,17 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 new AutoAtlasTextureTemporaryDiagnosticError(message);
             var root = error.CreateVisualElement(null);
 
+            var diagnosticScroll =
+                root.Q<ScrollView>("auto-atlas-diagnostic-scroll");
             var diagnosticText =
-                root.Q<TextField>("auto-atlas-diagnostic-message");
+                root.Q<Label>("auto-atlas-diagnostic-message");
             var copyButton =
                 root.Q<Button>("auto-atlas-copy-diagnostics");
 
+            Assert.That(diagnosticScroll, Is.Not.Null);
             Assert.That(diagnosticText, Is.Not.Null);
-            Assert.That(diagnosticText.value, Is.EqualTo(message));
-            Assert.That(diagnosticText.multiline, Is.True);
-            Assert.That(diagnosticText.isReadOnly, Is.True);
+            Assert.That(diagnosticText.text, Is.EqualTo(message));
+            Assert.That(diagnosticText.enableRichText, Is.False);
             Assert.That(copyButton, Is.Not.Null);
             Assert.That(error.TitleSubst, Is.Empty);
         }
