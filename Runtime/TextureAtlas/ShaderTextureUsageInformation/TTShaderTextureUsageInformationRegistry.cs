@@ -62,6 +62,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
             return IsIdentityUVMatrix(usage.UVMatrix) is false;
         }
 
+        public static bool IsKnownIdentityUVMatrix(
+            TextureUVUsage usage)
+        {
+            return usage.UVMatrixExplicitlyReported
+                && IsIdentityUVMatrix(usage.UVMatrix);
+        }
+
         public static bool IsIdentityUVMatrix(Matrix2x3? uvMatrix)
         {
             if (uvMatrix is not { } matrix) { return false; }
