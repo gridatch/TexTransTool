@@ -28,6 +28,20 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             public void GetMaterialTextureUVUsage(
                 ITTTextureUVUsageWriter writer)
             {
+                if (writer is ITTTextureUVTransformUsageWriter transformWriter)
+                {
+                    transformWriter.WriteTextureUVUsage(
+                        "_MainTex",
+                        UsageUVChannel.UV0,
+                        Matrix2x3.Identity);
+                    if (_includeBumpMap)
+                        transformWriter.WriteTextureUVUsage(
+                            "_BumpMap",
+                            _bumpMapUv,
+                            Matrix2x3.Identity);
+                    return;
+                }
+
                 writer.WriteTextureUVUsage(
                     "_MainTex",
                     UsageUVChannel.UV0);
@@ -35,6 +49,18 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     writer.WriteTextureUVUsage(
                         "_BumpMap",
                         _bumpMapUv);
+            }
+        }
+
+        private sealed class LegacyChannelOnlyShaderTextureUsageInformation
+            : ITTShaderTextureUsageInformation
+        {
+            public void GetMaterialTextureUVUsage(
+                ITTTextureUVUsageWriter writer)
+            {
+                writer.WriteTextureUVUsage(
+                    "_MainTex",
+                    UsageUVChannel.UV0);
             }
         }
 
@@ -1207,6 +1233,68 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Object.DestroyImmediate(sharedMain);
                 Object.DestroyImmediate(generatedSource);
                 Object.DestroyImmediate(excludedSource);
+            }
+        }
+
+        [Test]
+        public void LegacyChannelOnlyShaderUsageIsNotProofOfIdentityTransform()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            TTShaderTextureUsageInformationRegistry.s_information
+                .TryGetValue(shader, out var previousInformation);
+
+            var material = new Material(shader);
+            var texture = new Texture2D(4, 4);
+            try
+            {
+                TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                    new LegacyChannelOnlyShaderTextureUsageInformation();
+                material.SetTexture("_MainTex", texture);
+
+                var materials = new HashSet<Material> { material };
+                var grouping = new MaterialGroupingContext(
+                    materials,
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+                var usage =
+                    TTShaderTextureUsageInformationUtil
+                        .GetContainsUVTransformUsage(material)["_MainTex"];
+
+                Assert.That(
+                    grouping.ContainsTextureDictionaries[material]
+                        .ContainsKey("_MainTex"),
+                    Is.True,
+                    "The legacy channel-only API must keep manual AtlasTexture UV0 eligibility.");
+                Assert.That(
+                    usage.UVMatrix,
+                    Is.EqualTo(Matrix2x3.Identity),
+                    "Manual AtlasTexture legacy semantics still assume identity.");
+                Assert.That(
+                    usage.UVMatrixExplicitlyReported,
+                    Is.False,
+                    "Channel-only metadata must not be treated as explicit transform proof.");
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsupportedTextureUvSampling(
+                            materials,
+                            grouping.ContainsTextureDictionaries,
+                            UVChannel.UV0),
+                    Is.True,
+                    "Automatic atlasing must reject a target-UV transform that was only assumed by the legacy API.");
+            }
+            finally
+            {
+                if (previousInformation != null)
+                    TTShaderTextureUsageInformationRegistry
+                        .s_information[shader] = previousInformation;
+                else
+                    TTShaderTextureUsageInformationRegistry
+                        .s_information.Remove(shader);
+
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(texture);
             }
         }
 
