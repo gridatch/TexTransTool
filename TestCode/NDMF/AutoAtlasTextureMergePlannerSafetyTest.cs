@@ -336,6 +336,125 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void CandidateRejectsUnexecutableAtomicGroupMapping()
+        {
+            var baseline = Plan(new[]
+            {
+                Entry(64, 64, 1),
+                Entry(64, 64, 1),
+            });
+            var merged = Plan(new[]
+            {
+                Entry(64, 64, 1),
+            });
+
+            var candidate = new AutoAtlasTextureMergePlanner.Candidate(
+                new[] { 0, 1 },
+                baseline,
+                merged,
+                new Vector2Int(64, 64),
+                new Dictionary<string, Vector2Int>(),
+                preservesAtomicGroupMapping: false);
+
+            Assert.That(candidate.IsAdoptable, Is.False);
+            Assert.That(
+                candidate.RejectionReason,
+                Is.EqualTo(
+                    AutoAtlasTextureMergePlanner
+                        .CandidateRejectionReason
+                        .AtomicGroupMapping));
+        }
+
+        [Test]
+        public void MaterialGroupingMustPreserveAtomicGroupBoundaries()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var textureA = new Texture2D(4, 4);
+            var textureB = new Texture2D(4, 4);
+            var materialA = new Material(shader);
+            var materialB = new Material(shader);
+            try
+            {
+                materialA.SetTexture("_MainTex", textureA);
+                materialB.SetTexture("_BumpMap", textureB);
+
+                var groups = new[]
+                {
+                    new AutoAtlasTextureMergePlanner.PreparedGroup
+                    {
+                        Id = 0,
+                        Materials = new HashSet<Material> { materialA },
+                    },
+                    new AutoAtlasTextureMergePlanner.PreparedGroup
+                    {
+                        Id = 1,
+                        Materials = new HashSet<Material> { materialB },
+                    },
+                };
+
+                var disjointProperties =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [materialA] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_MainTex"] = textureA,
+                            },
+                        [materialB] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_BumpMap"] = textureB,
+                            },
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesAtomicGroupBoundaries(
+                            groups,
+                            disjointProperties),
+                    Is.False,
+                    "MaterialGroupingContext combines compatible disjoint properties, so the 2D relocator cannot assign that material group to two atomic regions.");
+
+                materialB.SetTexture("_MainTex", textureB);
+                var conflictingSharedProperty =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [materialA] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_MainTex"] = textureA,
+                            },
+                        [materialB] =
+                            new Dictionary<string, Texture>
+                            {
+                                ["_MainTex"] = textureB,
+                            },
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesAtomicGroupBoundaries(
+                            groups,
+                            conflictingSharedProperty),
+                    Is.True,
+                    "Different textures on the same property force separate material groups and preserve atomic boundaries.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(materialA);
+                Object.DestroyImmediate(materialB);
+                Object.DestroyImmediate(textureA);
+                Object.DestroyImmediate(textureB);
+            }
+        }
+
+        [Test]
         public void CandidateRejectsUnsafeReferenceCopySemantics()
         {
             var baseline = Plan(new[]
