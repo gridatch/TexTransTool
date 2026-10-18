@@ -56,6 +56,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
             return GetMaterialUVUsageProvider(material).OtherUVUsage;
         }
 
+        internal static bool UsesVertexIndex(Material material)
+        {
+            return GetMaterialUVUsageProvider(material).UsesVertexIndex;
+        }
+
         private static MaterialUVUsageProvider GetMaterialUVUsageProvider(
             Material material)
         {
