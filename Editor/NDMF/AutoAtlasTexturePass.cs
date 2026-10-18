@@ -397,6 +397,9 @@ namespace net.rs64.TexTransTool.NDMF
                 .UOfType<Material>()
                 .ToHashSet();
             var allReferencedMaterials = domain.GetAllMaterials();
+            var additionalReferencedMaterials = domain is NDMFDomain ndmfDomain
+                ? ndmfDomain.GetAdditionalReferencedMaterials()
+                : new HashSet<Material>();
             if (candidateMaterials.Count == 0)
             {
                 processingTimer.Stop();
@@ -458,6 +461,18 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 if (group.Any(material => excludedMaterials.Contains(material)
                     || manuallySelectedMaterials.Contains(material)))
+                {
+                    continue;
+                }
+
+                // NDMF material replacement also rewrites references held by
+                // animation object curves and Modular Avatar material setters.
+                // AutoAtlas cannot infer that every future material assignment
+                // will use a mesh slot transformed for this atlas, so automatic
+                // processing must fail closed for any such material. Explicit
+                // manual AtlasTexture behavior is intentionally unchanged.
+                if (HasAdditionalMaterialReference(
+                        group, additionalReferencedMaterials))
                 {
                     continue;
                 }
@@ -919,6 +934,13 @@ namespace net.rs64.TexTransTool.NDMF
                 TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
                     string.Join("\n\n", completed),
                     processingTimer.ElapsedMilliseconds));
+        }
+
+        internal static bool HasAdditionalMaterialReference(
+            IReadOnlyCollection<Material> materials,
+            HashSet<Material> additionalReferencedMaterials)
+        {
+            return materials.Any(additionalReferencedMaterials.Contains);
         }
 
         internal static bool IsExcludedFromTextureMerging(
