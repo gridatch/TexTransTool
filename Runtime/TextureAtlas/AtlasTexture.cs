@@ -1139,6 +1139,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
             // through can reach AtlasMeshSourceContext.Normalizing(), where
             // material-slot expansion would otherwise try GetIndices(-1).
             if (mesh.subMeshCount == 0) return false;
+            for (var subMeshIndex = 0;
+                 subMeshIndex < mesh.subMeshCount;
+                 subMeshIndex += 1)
+            {
+                var subMesh = mesh.GetSubMesh(subMeshIndex);
+                if (subMesh.indexCount != 0
+                    && subMesh.topology != MeshTopology.Triangles)
+                {
+                    return false;
+                }
+            }
             if (mesh.uv.Any() == false) return false;
             if (item.sharedMaterials.Length == 0) return false;
             if (item.GetComponent<AtlasExcludeTag>() != null) return false;
