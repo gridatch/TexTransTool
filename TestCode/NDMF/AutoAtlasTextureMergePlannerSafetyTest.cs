@@ -941,6 +941,15 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     "A renderer with no drawable indices must not enter AtlasTexture.");
 
                 mesh.SetIndices(
+                    System.Array.Empty<int>(),
+                    MeshTopology.Lines,
+                    0);
+                Assert.That(
+                    AtlasTexture.IsAtlasAllowedRenderer(renderer),
+                    Is.False,
+                    "Even an empty non-triangle submesh is unsupported because AtlasTexture enumerates every submesh through triangle-only APIs.");
+
+                mesh.SetIndices(
                     new[] { 0, 1 },
                     MeshTopology.Lines,
                     0);
