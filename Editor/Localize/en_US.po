@@ -867,3 +867,6 @@ msgstr "generated atlased materials still reference one or more source textures"
 
 msgid "AutoAtlasTexture:fallback:GeneratedPropertyApplicationMismatch"
 msgstr "combined atlas properties would overwrite a material texture property that was not transformed for this atlas"
+
+msgid "AutoAtlasTexture:fallback:RequiredMeshResolutionFailed"
+msgstr "required atlased mesh could not be resolved for renderer: {0}"
