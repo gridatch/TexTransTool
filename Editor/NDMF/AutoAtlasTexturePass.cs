@@ -298,28 +298,6 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        internal static bool HasLiveTargetSubMesh(
-            Mesh mesh,
-            Material[] materials,
-            HashSet<Material> targetMaterials)
-        {
-            if (mesh == null || mesh.subMeshCount <= 0)
-                return false;
-
-            for (var slot = 0; slot < materials.Length; slot += 1)
-            {
-                var material = materials[slot];
-                if (material == null || !targetMaterials.Contains(material))
-                    continue;
-
-                var subMeshIndex = Math.Clamp(
-                    slot, 0, mesh.subMeshCount - 1);
-                if (mesh.GetSubMesh(subMeshIndex).indexCount != 0)
-                    return true;
-            }
-
-            return false;
-        }
         internal static AutoAtlasTexture[] GetActiveConfigurations(GameObject root)
         {
             return root.GetComponentsInChildren<AutoAtlasTexture>(true)
@@ -344,6 +322,19 @@ namespace net.rs64.TexTransTool.NDMF
                     includeDisabledRenderer: false)
                 .Where(renderer => !excludedRenderers.Contains(renderer))
                 .ToList();
+        }
+
+        internal static Renderer[] ResolveAutoAtlasTargetRenderers(
+            IRendererTargeting domain,
+            AutoAtlasTexture configuration,
+            HashSet<Material> targetMaterials)
+        {
+            var allowedRenderers =
+                GetAutoAtlasAllowedRenderers(domain, configuration);
+            var targetRenderers = AtlasTexture.FilterTargetRenderers(
+                domain, allowedRenderers, targetMaterials);
+            return AtlasTexture.FilterExistUVChannel(
+                domain, targetRenderers, UVChannel.UV0);
         }
 
         internal static Renderer[] GetAAONegotiationRenderers(
@@ -514,17 +505,15 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
-                // From this point on, resolve renderers exactly like the normal
-                // AtlasTexture path after its target materials have been chosen.
-                var targetRenderers = AtlasTexture.FilterTargetRenderers(
-                    domain, atlasAllowedRenderers, group);
-                var atlasRenderers = AtlasTexture.FilterExistUVChannel(
-                    domain, targetRenderers, UVChannel.UV0);
+                // Resolve renderers through the same AtlasTexture-equivalent
+                // path that execution revalidation uses.
+                var atlasRenderers = ResolveAutoAtlasTargetRenderers(
+                    domain, configuration, group);
                 if (atlasRenderers.Length == 0)
                 {
                     preparationDiagnostics.Add(
                         $"SKIP renderer eligibility: {diagnosticMaterials} "
-                        + $"refs={targetRenderers.Length}");
+                        + "refs=0");
                     continue;
                 }
 
@@ -657,51 +646,25 @@ namespace net.rs64.TexTransTool.NDMF
                 var execution = executionGroups.Dequeue();
                 var group = execution.Materials;
 
-                // Material replacement is domain-wide. Only renderers that
-                // actually draw one of the target materials need atlas UVs;
-                // references on empty submeshes are harmless. Fail closed when
-                // any live consumer cannot be transformed, or when the live
-                // consumer set has changed since planning.
-                bool IsLiveTargetRenderer(Renderer renderer)
-                {
-                    var mesh = domain.GetMesh(renderer);
-                    return mesh != null
-                        && HasLiveTargetSubMesh(
-                            mesh, domain.GetMaterials(renderer), group);
-                }
-
-                bool CanAtlasRenderer(Renderer renderer)
-                {
-                    if (!AtlasTexture.IsAtlasAllowedRenderer(renderer))
-                        return false;
-
-                    var mesh = domain.GetMesh(renderer);
-                    return mesh != null
-                        && mesh.subMeshCount > 0
-                        && mesh.HasUV((int)UVChannel.UV0);
-                }
-
-                var atlasRenderers = execution.Renderers
+                // Revalidate against the exact same renderer-targeting rule
+                // used during planning. Do not broaden execution to every
+                // domain-wide material consumer; AutoAtlas is required to
+                // preserve AtlasTexture's normal target semantics.
+                var atlasRenderers = ResolveAutoAtlasTargetRenderers(
+                    domain, configuration, group);
+                var plannedRenderers = execution.Renderers
                     .Where(renderer => renderer != null)
-                    .Where(IsLiveTargetRenderer)
-                    .Distinct()
-                    .ToArray();
-                var currentLiveRenderers = domain
-                    .RendererFilterForMaterialFromDomains(group)
-                    .Where(renderer => renderer != null)
-                    .Where(IsLiveTargetRenderer)
                     .Distinct()
                     .ToHashSet();
 
                 if (atlasRenderers.Length == 0
-                    || atlasRenderers.Any(
-                        renderer => !CanAtlasRenderer(renderer))
-                    || !currentLiveRenderers.SetEquals(atlasRenderers))
+                    || !plannedRenderers.SetEquals(atlasRenderers))
                 {
                     if (execution.MergeSelection is { } invalidMerge)
                     {
                         twoDimensionalFallbackReasons.Add(
-                            $"groups={string.Join(",", invalidMerge.GroupIds.Select(id => "g" + id))}: 実行時の描画対象Renderer集合が計画時と一致しない");
+                            $"groups={string.Join(",", invalidMerge.GroupIds.Select(id => "g" + id))}: "
+                            + "実行時のAtlasTexture対象Renderer集合が計画時と一致しない");
                         EnqueueStandaloneFallback(
                             executionGroups, invalidMerge, preparedGroups);
                     }
