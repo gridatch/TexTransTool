@@ -36,7 +36,11 @@ Cleanup removed the temporary comparison searches, watched-path/rejection report
 - Final merge pixel-count revalidation before mutation.
 - Unknown texture-memory formats fail closed instead of assuming 4 B/px.
 - Generated AutoAtlas materials are checked for retained source-texture references before mutation.
-- Atlas renderer eligibility rejects meshes with zero submeshes before mesh normalization; such meshes have no drawable geometry and material-slot expansion would otherwise be invalid.
+- Automatic texture sampling is accepted only when shader metadata proves that target-UV sampling uses an identity transform; unknown/legacy channel-only transforms fail closed for AutoAtlas while manual AtlasTexture keeps its existing behavior.
+- Proven non-mesh texture sampling and sampling through another known UV channel are preserved without forcing them into the atlas.
+- Combined merge candidates and execution both revalidate atomic-group boundaries, generated-property application, and default ReferenceCopy semantics.
+- Required renderers must resolve to an actual generated atlased mesh before global material replacement.
+- Atlas renderer eligibility requires triangle-only submeshes and at least one non-empty drawable triangle submesh; even empty non-triangle submeshes are rejected because the common mesh-analysis path is triangle-only.
 - Rejected generated meshes/materials/render textures are destroyed before fallback/skip.
 - Standalone post-FineTuning acceptance behavior.
 - Exact disjoint selection by group mask for bounded group universes:
@@ -60,6 +64,10 @@ Cleanup removed the temporary comparison searches, watched-path/rejection report
 - Final strict pixel-reduction test.
 - Rejected Mesh/Material cleanup tests.
 - Retained source-texture detection test.
+- UV transform / unknown shader / non-mesh sampling safety tests.
+- ReferenceCopy and generated-property application safety tests.
+- Atomic-group mapping and required-atlased-mesh revalidation tests.
+- Triangle-only renderer eligibility tests, including empty non-triangle submeshes.
 - Other safety tests covering production fallback and renderer targeting.
 
 ### temporary-diagnostic
