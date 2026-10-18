@@ -73,6 +73,36 @@ namespace net.rs64.TexTransTool.TestCode
                     typeof(Compress),
                 },
                 actualFineTuning);
+
+            // AutoAtlasTextureMergePlanner models these defaults directly when
+            // predicting post-FineTuning texture count and compression cost.
+            // If the regular AtlasTexture defaults change, this test forces the
+            // planner assumptions to be reviewed instead of drifting silently.
+            var referenceCopy = settings.TextureFineTuning
+                .OfType<ReferenceCopy>()
+                .Single();
+            Assert.That(
+                (string)referenceCopy.SourcePropertyName,
+                Is.EqualTo("_MainTex"));
+            CollectionAssert.AreEquivalent(
+                new[] { "_BaseColorMap", "_BaseMap" },
+                referenceCopy.TargetPropertyNameList
+                    .Select(property => (string)property)
+                    .ToArray());
+
+            var normalCompress = settings.TextureFineTuning
+                .OfType<Compress>()
+                .Single();
+            Assert.That(
+                normalCompress.FormatQualityValue,
+                Is.EqualTo(FormatQuality.High));
+            Assert.That(normalCompress.UseOverride, Is.False);
+            Assert.That(normalCompress.Select, Is.EqualTo(PropertySelect.Equal));
+            CollectionAssert.AreEquivalent(
+                new[] { "_BumpMap", "_Bump2ndMap" },
+                normalCompress.PropertyNameList
+                    .Select(property => (string)property)
+                    .ToArray());
         }
 
         [TestCase(512, 512, 2048, 2048, 2048, 2048, 512, 512)]
