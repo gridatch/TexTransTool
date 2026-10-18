@@ -25,12 +25,6 @@ namespace net.rs64.TexTransTool.NDMF
         // Candidate exploration below never calls DoAtlasTexture. These limits
         // only bound cheap integer-DP state retention, not expensive atlas probes.
         private const int ShadowPackingStatesPerHost = 1024;
-        private static readonly int[] DiagnosticStateBudgets =
-            { 512, 2048, 4096 };
-        // Prevent a diagnostic expansion from destabilizing the Unity process.
-        // This limit applies to one generated-state dictionary, before any
-        // property-aware retention. Production search is not subject to it.
-        private const int DiagnosticGeneratedStateLimit = 200_000;
         private const int PackingGridUnit = 256;
         private const double Epsilon = 1e-8;
 
@@ -44,7 +38,6 @@ namespace net.rs64.TexTransTool.NDMF
             internal long OriginalPixels;
 
             internal AtlasTexture.AtlasExecutionMetrics? StandaloneMetrics;
-            internal readonly List<string> StandaloneAnalysisDiagnostics = new();
             // Heights include the atomic group's standalone padding,
             // expressed in pixels at that group's profile width.
             internal readonly Dictionary<(int AtlasWidth, int RegionWidth), int>
@@ -109,245 +102,17 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        internal enum SelectionSolverKind
-        {
-            Greedy,
-            ExactCandidateSubset,
-            ExactGroupMask,
-        }
-
-        internal sealed class SelectionDiagnostics
-        {
-            internal readonly int CandidateCount;
-            internal readonly int DistinctGroupCount;
-            internal readonly SelectionSolverKind Solver;
-            internal readonly long GreedySavingBytes;
-            internal readonly long SelectedSavingBytes;
-
-            internal SelectionDiagnostics(
-                int candidateCount,
-                int distinctGroupCount,
-                SelectionSolverKind solver,
-                long greedySavingBytes,
-                long selectedSavingBytes)
-            {
-                CandidateCount = candidateCount;
-                DistinctGroupCount = distinctGroupCount;
-                Solver = solver;
-                GreedySavingBytes = greedySavingBytes;
-                SelectedSavingBytes = selectedSavingBytes;
-            }
-        }
-
-        internal sealed class RejectedCandidateDiagnostic
-        {
-            internal readonly int[] GroupIds;
-            internal readonly Vector2Int LayoutSize;
-            internal readonly CandidateRejectionReason RejectionReason;
-            internal readonly long BaselinePixels;
-            internal readonly long MergedPixels;
-            internal readonly long BaselineBytes;
-            internal readonly long MergedBytes;
-            internal readonly long SavingBytes;
-
-            internal RejectedCandidateDiagnostic(Candidate candidate)
-            {
-                GroupIds = candidate.GroupIds.OrderBy(id => id).ToArray();
-                LayoutSize = candidate.LayoutSize;
-                RejectionReason = candidate.RejectionReason;
-                BaselinePixels = candidate.Baseline.PixelCount;
-                MergedPixels = candidate.Merged.PixelCount;
-                BaselineBytes = candidate.Baseline.FullResidentBytes;
-                MergedBytes = candidate.Merged.FullResidentBytes;
-                SavingBytes = candidate.SavingBytes;
-            }
-        }
-
-        internal enum WatchedPathLossStage
-        {
-            None,
-            GenerationOrGeometry,
-            Retention,
-            CandidateOrSelection,
-        }
-
-        internal sealed class WatchedPathDiagnostic
-        {
-            internal readonly int[] TargetGroupIds;
-            internal readonly Vector2Int TargetLayoutSize;
-            internal readonly WatchedPathLossStage LossStage;
-            internal readonly int ExpandingGroupId;
-            internal readonly int[] PrefixGroupIds;
-            internal readonly int StatesBeforeRetention;
-            internal readonly int StatesAfterRetention;
-            internal readonly int TotalStatesBeforeRetention;
-            internal readonly int PixelRank;
-            internal readonly int MemoryRank;
-            internal readonly int GeometryRank;
-            internal readonly int BaselineRank;
-            internal readonly bool CandidateFound;
-            internal readonly Vector2Int FoundLayoutSize;
-            internal readonly long FoundSavingBytes;
-
-            internal WatchedPathDiagnostic(
-                int[] targetGroupIds,
-                Vector2Int targetLayoutSize,
-                WatchedPathLossStage lossStage,
-                int expandingGroupId,
-                int[] prefixGroupIds,
-                int statesBeforeRetention,
-                int statesAfterRetention,
-                int totalStatesBeforeRetention,
-                int pixelRank,
-                int memoryRank,
-                int geometryRank,
-                int baselineRank,
-                bool candidateFound,
-                Vector2Int foundLayoutSize,
-                long foundSavingBytes)
-            {
-                TargetGroupIds = targetGroupIds;
-                TargetLayoutSize = targetLayoutSize;
-                LossStage = lossStage;
-                ExpandingGroupId = expandingGroupId;
-                PrefixGroupIds = prefixGroupIds;
-                StatesBeforeRetention = statesBeforeRetention;
-                StatesAfterRetention = statesAfterRetention;
-                TotalStatesBeforeRetention = totalStatesBeforeRetention;
-                PixelRank = pixelRank;
-                MemoryRank = memoryRank;
-                GeometryRank = geometryRank;
-                BaselineRank = baselineRank;
-                CandidateFound = candidateFound;
-                FoundLayoutSize = foundLayoutSize;
-                FoundSavingBytes = foundSavingBytes;
-            }
-        }
-
-        internal sealed class SearchBudgetProbe
-        {
-            internal readonly int StateBudget;
-            internal readonly long SearchMilliseconds;
-            internal readonly bool Aborted;
-            internal readonly string AbortReason;
-            internal readonly int CandidateCount;
-            internal readonly int SelectedCount;
-            internal readonly long PredictedSavingBytes;
-            internal readonly int MaxStatesBeforeRetention;
-            internal readonly long PrunedStateCount;
-            internal readonly bool SameSelectedPlan;
-            internal readonly IReadOnlyList<MergeSelection> Selections;
-            internal readonly int AdditionalOrChangedCandidateCount;
-            internal readonly IReadOnlyList<MergeSelection>
-                AdditionalOrChangedCandidates;
-            internal readonly int MissingOrChangedCandidateCount;
-            internal readonly IReadOnlyList<MergeSelection>
-                MissingOrChangedCandidates;
-            internal readonly IReadOnlyList<RejectedCandidateDiagnostic>
-                Rejected4096Candidates;
-            internal readonly IReadOnlyList<WatchedPathDiagnostic>
-                WatchedPaths;
-
-            internal SearchBudgetProbe(
-                int stateBudget,
-                long searchMilliseconds,
-                bool aborted,
-                string abortReason,
-                int candidateCount = 0,
-                IReadOnlyList<MergeSelection>? selections = null,
-                int maxStatesBeforeRetention = 0,
-                long prunedStateCount = 0,
-                bool sameSelectedPlan = false,
-                IReadOnlyList<MergeSelection>?
-                    additionalOrChangedCandidates = null,
-                IReadOnlyList<MergeSelection>?
-                    missingOrChangedCandidates = null,
-                IReadOnlyList<RejectedCandidateDiagnostic>?
-                    rejected4096Candidates = null,
-                IReadOnlyList<WatchedPathDiagnostic>?
-                    watchedPaths = null)
-            {
-                StateBudget = stateBudget;
-                SearchMilliseconds = searchMilliseconds;
-                Aborted = aborted;
-                AbortReason = abortReason;
-                CandidateCount = candidateCount;
-                Selections = selections ?? Array.Empty<MergeSelection>();
-                SelectedCount = Selections.Count;
-                PredictedSavingBytes = Selections.Sum(
-                    selection => selection.PredictedSavingBytes);
-                MaxStatesBeforeRetention = maxStatesBeforeRetention;
-                PrunedStateCount = prunedStateCount;
-                SameSelectedPlan = sameSelectedPlan;
-                AdditionalOrChangedCandidates =
-                    (additionalOrChangedCandidates
-                        ?? Array.Empty<MergeSelection>())
-                    .Take(20).ToArray();
-                AdditionalOrChangedCandidateCount =
-                    additionalOrChangedCandidates?.Count ?? 0;
-                MissingOrChangedCandidates =
-                    (missingOrChangedCandidates
-                        ?? Array.Empty<MergeSelection>())
-                    .Take(20).ToArray();
-                MissingOrChangedCandidateCount =
-                    missingOrChangedCandidates?.Count ?? 0;
-                Rejected4096Candidates =
-                    rejected4096Candidates
-                    ?? Array.Empty<RejectedCandidateDiagnostic>();
-                WatchedPaths =
-                    watchedPaths
-                    ?? Array.Empty<WatchedPathDiagnostic>();
-            }
-        }
-
-        internal sealed class SearchBudgetComparison
-        {
-            internal readonly int ProductionStateBudget;
-            internal readonly long ProductionSearchMilliseconds;
-            internal readonly int ProductionCandidateCount;
-            internal readonly int ProductionMaxStatesBeforeRetention;
-            internal readonly long ProductionPrunedStateCount;
-            internal readonly IReadOnlyList<MergeSelection>
-                ProductionTopCandidates;
-            internal readonly IReadOnlyList<SearchBudgetProbe> Probes;
-
-            internal SearchBudgetComparison(
-                int productionStateBudget,
-                long productionSearchMilliseconds,
-                int productionCandidateCount,
-                int productionMaxStatesBeforeRetention,
-                long productionPrunedStateCount,
-                IReadOnlyList<MergeSelection> productionTopCandidates,
-                IReadOnlyList<SearchBudgetProbe> probes)
-            {
-                ProductionStateBudget = productionStateBudget;
-                ProductionSearchMilliseconds = productionSearchMilliseconds;
-                ProductionCandidateCount = productionCandidateCount;
-                ProductionMaxStatesBeforeRetention =
-                    productionMaxStatesBeforeRetention;
-                ProductionPrunedStateCount = productionPrunedStateCount;
-                ProductionTopCandidates = productionTopCandidates;
-                Probes = probes;
-            }
-        }
-
         internal sealed class PlanResult
         {
             internal readonly IReadOnlyList<MergeSelection> Selections;
             internal readonly SelectionImprovement? Improvement;
-            internal readonly SearchBudgetComparison? SearchBudgetComparison;
-            internal readonly SelectionDiagnostics? SelectionDiagnostics;
 
             internal PlanResult(
                 IReadOnlyList<MergeSelection> selections,
-                SelectionImprovement? improvement = null,
-                SearchBudgetComparison? searchBudgetComparison = null,
-                SelectionDiagnostics? selectionDiagnostics = null)
+                SelectionImprovement? improvement = null)
             {
                 Selections = selections;
                 Improvement = improvement;
-                SearchBudgetComparison = searchBudgetComparison;
-                SelectionDiagnostics = selectionDiagnostics;
             }
         }
 
@@ -619,27 +384,8 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        private sealed class WatchedPathTrace
-        {
-            internal readonly MergeSelection Target;
-            internal WatchedPathLossStage LossStage;
-            internal int ExpandingGroupId = -1;
-            internal int[] PrefixGroupIds = Array.Empty<int>();
-            internal int StatesBeforeRetention;
-            internal int StatesAfterRetention;
-            internal int TotalStatesBeforeRetention;
-            internal int PixelRank = -1;
-            internal int MemoryRank = -1;
-            internal int GeometryRank = -1;
-            internal int BaselineRank = -1;
-
-            internal WatchedPathTrace(MergeSelection target)
-            {
-                Target = target;
-            }
-        }
-
         /// <summary>
+        /// For identical already-placed group sets        /// <summary>
         /// For identical already-placed group sets, a skyline no higher in
         /// any column leaves at least as much room for every future placement.
         /// A different group set must never be pruned using geometry alone:
@@ -720,43 +466,11 @@ namespace net.rs64.TexTransTool.NDMF
         private readonly struct ShadowPackingDiagnostics
         {
             internal readonly IReadOnlyList<MergeSelection> ProductionCandidates;
-            internal readonly int MaxStatesBeforeRetention;
-            internal readonly long PrunedStateCount;
-            internal readonly IReadOnlyList<RejectedCandidateDiagnostic>
-                Rejected4096Candidates;
-            internal readonly IReadOnlyList<WatchedPathDiagnostic>
-                WatchedPaths;
 
             internal ShadowPackingDiagnostics(
-                IReadOnlyList<MergeSelection> productionCandidates,
-                int maxStatesBeforeRetention,
-                long prunedStateCount,
-                IReadOnlyList<RejectedCandidateDiagnostic>
-                    rejected4096Candidates,
-                IReadOnlyList<WatchedPathDiagnostic>? watchedPaths = null)
+                IReadOnlyList<MergeSelection> productionCandidates)
             {
                 ProductionCandidates = productionCandidates;
-                MaxStatesBeforeRetention = maxStatesBeforeRetention;
-                PrunedStateCount = prunedStateCount;
-                Rejected4096Candidates = rejected4096Candidates;
-                WatchedPaths =
-                    watchedPaths ?? Array.Empty<WatchedPathDiagnostic>();
-            }
-        }
-
-        private sealed class DiagnosticSearchStateLimitExceededException
-            : Exception
-        {
-            internal DiagnosticSearchStateLimitExceededException(
-                int stateBudget,
-                int targetWidth,
-                int groupId,
-                int generatedStateLimit)
-                : base(
-                    $"budget={stateBudget}, width={targetWidth}, "
-                    + $"expanding=g{groupId}, generated-state limit="
-                    + generatedStateLimit)
-            {
             }
         }
 
@@ -988,8 +702,6 @@ namespace net.rs64.TexTransTool.NDMF
 
             var byId = groups.ToDictionary(group => group.Id);
 
-            var productionTimer =
-                System.Diagnostics.Stopwatch.StartNew();
             var shadow2D = EvaluateShadow2DPacking(
                 mergeGroups,
                 byId,
@@ -998,182 +710,21 @@ namespace net.rs64.TexTransTool.NDMF
                 alphaCache,
                 GetPredictedPropertySizes,
                 ShadowPackingStatesPerHost);
-            productionTimer.Stop();
-
             var selected = SelectTwoDimensionalMerges(
-                shadow2D.ProductionCandidates,
-                out var improvement,
-                out var selectionDiagnostics);
-            var productionPlanSignature =
-                SelectionPlanSignature(selected);
-            var productionByGroupSet = shadow2D.ProductionCandidates
-                .ToDictionary(
-                    SelectionGroupSetKey,
-                    selection => SelectionSignature(selection),
-                    StringComparer.Ordinal);
+                shadow2D.ProductionCandidates, out var improvement);
 
-            // Diagnostic-only budget comparison. Include the former 512-state
-            // production budget as well as wider budgets so regressions and
-            // retention losses remain directly observable. A true unbounded
-            // run can grow combinatorially before skyline dominance is reached.
-            // Abort a probe
-            // before its per-step generated-state dictionary can exhaust Unity.
-            var probes = new List<SearchBudgetProbe>();
-            foreach (var diagnosticBudget in DiagnosticStateBudgets)
-            {
-                var diagnosticTimer =
-                    System.Diagnostics.Stopwatch.StartNew();
-                try
-                {
-                    var diagnostic = EvaluateShadow2DPacking(
-                        mergeGroups,
-                        byId,
-                        propertyTextures,
-                        settings,
-                        alphaCache,
-                        GetPredictedPropertySizes,
-                        diagnosticBudget,
-                        DiagnosticGeneratedStateLimit,
-                        selected);
-                    diagnosticTimer.Stop();
-
-                    var diagnosticSelected =
-                        SelectTwoDimensionalMerges(
-                            diagnostic.ProductionCandidates);
-                    var diagnosticByGroupSet =
-                        diagnostic.ProductionCandidates.ToDictionary(
-                            SelectionGroupSetKey,
-                            selection => SelectionSignature(selection),
-                            StringComparer.Ordinal);
-
-                    var additionalOrChanged =
-                        diagnostic.ProductionCandidates
-                            .Where(selection =>
-                                !productionByGroupSet.TryGetValue(
-                                    SelectionGroupSetKey(selection),
-                                    out var productionSignature)
-                                || !string.Equals(
-                                    productionSignature,
-                                    SelectionSignature(selection),
-                                    StringComparison.Ordinal))
-                            .OrderByDescending(selection =>
-                                selection.PredictedSavingBytes)
-                            .ThenBy(
-                                SelectionGroupSetKey,
-                                StringComparer.Ordinal)
-                            .ToArray();
-                    var missingOrChanged =
-                        shadow2D.ProductionCandidates
-                            .Where(selection =>
-                                !diagnosticByGroupSet.TryGetValue(
-                                    SelectionGroupSetKey(selection),
-                                    out var diagnosticSignature)
-                                || !string.Equals(
-                                    diagnosticSignature,
-                                    SelectionSignature(selection),
-                                    StringComparison.Ordinal))
-                            .OrderByDescending(selection =>
-                                selection.PredictedSavingBytes)
-                            .ThenBy(
-                                SelectionGroupSetKey,
-                                StringComparer.Ordinal)
-                            .ToArray();
-
-                    probes.Add(new SearchBudgetProbe(
-                        diagnosticBudget,
-                        diagnosticTimer.ElapsedMilliseconds,
-                        false,
-                        "",
-                        diagnostic.ProductionCandidates.Count,
-                        diagnosticSelected,
-                        diagnostic.MaxStatesBeforeRetention,
-                        diagnostic.PrunedStateCount,
-                        productionPlanSignature
-                            == SelectionPlanSignature(
-                                diagnosticSelected),
-                        additionalOrChanged,
-                        missingOrChanged,
-                        diagnostic.Rejected4096Candidates,
-                        diagnostic.WatchedPaths));
-                }
-                catch (DiagnosticSearchStateLimitExceededException exception)
-                {
-                    diagnosticTimer.Stop();
-                    probes.Add(new SearchBudgetProbe(
-                        diagnosticBudget,
-                        diagnosticTimer.ElapsedMilliseconds,
-                        true,
-                        exception.Message));
-                    // Do not attempt a still wider probe after the raw-state
-                    // safety ceiling is reached; the diagnostic must never
-                    // destabilize the normal production search.
-                    break;
-                }
-            }
-
-            var productionTopCandidates =
-                shadow2D.ProductionCandidates
-                    .OrderByDescending(candidate =>
-                        candidate.PredictedSavingBytes)
-                    .ThenByDescending(candidate =>
-                        candidate.PredictedSavingRate)
-                    .ThenByDescending(candidate =>
-                        candidate.GroupIds.Length)
-                    .Take(20)
-                    .ToArray();
-
-            var comparison = new SearchBudgetComparison(
-                ShadowPackingStatesPerHost,
-                productionTimer.ElapsedMilliseconds,
-                shadow2D.ProductionCandidates.Count,
-                shadow2D.MaxStatesBeforeRetention,
-                shadow2D.PrunedStateCount,
-                productionTopCandidates,
-                probes);
-
-            return new PlanResult(
-                selected,
-                improvement,
-                comparison,
-                selectionDiagnostics);
+            return new PlanResult(selected, improvement);
         }
-
-        private static string SelectionGroupSetKey(
-            MergeSelection selection) =>
-            string.Join(",", selection.GroupIds.OrderBy(id => id));
-
-        private static string SelectionSignature(
-            MergeSelection selection) =>
-            SelectionGroupSetKey(selection)
-            + "@" + selection.PlannedLayoutSize.x
-            + "x" + selection.PlannedLayoutSize.y
-            + ":" + selection.PredictedSavingBytes;
-
-        private static string SelectionPlanSignature(
-            IEnumerable<MergeSelection> selections) =>
-            string.Join(";",
-                selections
-                    .Select(SelectionSignature)
-                    .OrderBy(value => value, StringComparer.Ordinal));
 
         internal static List<MergeSelection> SelectTwoDimensionalMerges(
             IEnumerable<MergeSelection> candidates)
         {
-            return SelectTwoDimensionalMerges(candidates, out _, out _);
+            return SelectTwoDimensionalMerges(candidates, out _);
         }
 
         internal static List<MergeSelection> SelectTwoDimensionalMerges(
             IEnumerable<MergeSelection> candidates,
             out SelectionImprovement? improvement)
-        {
-            return SelectTwoDimensionalMerges(
-                candidates, out improvement, out _);
-        }
-
-        internal static List<MergeSelection> SelectTwoDimensionalMerges(
-            IEnumerable<MergeSelection> candidates,
-            out SelectionImprovement? improvement,
-            out SelectionDiagnostics diagnostics)
         {
             improvement = null;
             var ranked = candidates
@@ -1192,6 +743,9 @@ namespace net.rs64.TexTransTool.NDMF
                 consumed.UnionWith(candidate.GroupIds);
             }
 
+            if (ranked.Length <= 1)
+                return greedy;
+
             var greedySaving = greedy.Sum(
                 candidate => candidate.PredictedSavingBytes);
             var distinctGroupIds = ranked
@@ -1200,20 +754,8 @@ namespace net.rs64.TexTransTool.NDMF
                 .OrderBy(id => id)
                 .ToArray();
 
-            if (ranked.Length <= 1)
-            {
-                diagnostics = new SelectionDiagnostics(
-                    ranked.Length,
-                    distinctGroupIds.Length,
-                    SelectionSolverKind.Greedy,
-                    greedySaving,
-                    greedySaving);
-                return greedy;
-            }
-
             List<MergeSelection> exact;
             long optimum;
-            SelectionSolverKind solver;
 
             // Candidate count can be large even when all candidates are
             // combinations of a small number of atomic groups. Solve weighted
@@ -1223,46 +765,24 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 exact = SelectExactByGroupMask(
                     ranked, distinctGroupIds, out optimum);
-                solver = SelectionSolverKind.ExactGroupMask;
             }
             else if (ranked.Length <= ExactSelectionCandidateLimit)
             {
                 exact = SelectExactByCandidateSubset(
                     ranked, out optimum);
-                solver = SelectionSolverKind.ExactCandidateSubset;
             }
             else
             {
-                diagnostics = new SelectionDiagnostics(
-                    ranked.Length,
-                    distinctGroupIds.Length,
-                    SelectionSolverKind.Greedy,
-                    greedySaving,
-                    greedySaving);
                 return greedy;
             }
 
             // On equal predicted savings, retain the established Greedy
             // selection and execution order.
             if (optimum <= greedySaving)
-            {
-                diagnostics = new SelectionDiagnostics(
-                    ranked.Length,
-                    distinctGroupIds.Length,
-                    solver,
-                    greedySaving,
-                    greedySaving);
                 return greedy;
-            }
 
             improvement = new SelectionImprovement(
                 ranked.Length, greedy, greedySaving, optimum);
-            diagnostics = new SelectionDiagnostics(
-                ranked.Length,
-                distinctGroupIds.Length,
-                solver,
-                greedySaving,
-                optimum);
             return exact;
         }
 
@@ -1439,18 +959,10 @@ namespace net.rs64.TexTransTool.NDMF
             Func<int[], Vector2Int,
                 IReadOnlyDictionary<string, Vector2Int>>
                 propertySizeProvider,
-            int stateBudget,
-            int? generatedStateLimit = null,
-            IReadOnlyList<MergeSelection>? watchedSelections = null)
+            int stateBudget)
         {
             if (stateBudget < 8 || stateBudget % 8 != 0)
                 throw new ArgumentOutOfRangeException(nameof(stateBudget));
-            if (generatedStateLimit is <= 0)
-                throw new ArgumentOutOfRangeException(
-                    nameof(generatedStateLimit));
-
-            var maxStatesBeforeRetention = 0;
-            long prunedStateCount = 0;
             var shadowAdoptable =
                 new Dictionary<string, Candidate>(StringComparer.Ordinal);
             var shadowPackedRegions =
@@ -1462,61 +974,6 @@ namespace net.rs64.TexTransTool.NDMF
                 new Dictionary<GroupLayoutKey, ShadowCostProjection>();
             var candidateCache =
                 new Dictionary<GroupLayoutKey, Candidate>();
-            var rejected4096Candidates =
-                new List<RejectedCandidateDiagnostic>();
-            var watchedTraces = (watchedSelections
-                    ?? Array.Empty<MergeSelection>())
-                .Select(selection => new WatchedPathTrace(selection))
-                .ToArray();
-
-            static bool SameGroupIds(
-                IReadOnlyList<int> left,
-                IReadOnlyList<int> right)
-            {
-                if (left.Count != right.Count) return false;
-                for (var index = 0; index < left.Count; index += 1)
-                    if (left[index] != right[index]) return false;
-                return true;
-            }
-
-            static int BestRank(
-                IEnumerable<ShadowPackingState> ordered,
-                IReadOnlyList<int> targetIds)
-            {
-                var rank = 0;
-                foreach (var state in ordered)
-                {
-                    rank += 1;
-                    if (SameGroupIds(state.GroupIds, targetIds))
-                        return rank;
-                }
-                return -1;
-            }
-
-            void RecordRejected4096(Candidate candidate)
-            {
-                if (candidate.LayoutSize.x != 4096)
-                    return;
-
-                rejected4096Candidates.Add(
-                    new RejectedCandidateDiagnostic(candidate));
-                if (rejected4096Candidates.Count <= 40)
-                    return;
-
-                rejected4096Candidates.Sort((left, right) =>
-                {
-                    var saving = right.SavingBytes.CompareTo(left.SavingBytes);
-                    if (saving != 0) return saving;
-                    var groupCount =
-                        right.GroupIds.Length.CompareTo(left.GroupIds.Length);
-                    if (groupCount != 0) return groupCount;
-                    return string.CompareOrdinal(
-                        string.Join(",", left.GroupIds),
-                        string.Join(",", right.GroupIds));
-                });
-                rejected4096Candidates.RemoveRange(
-                    40, rejected4096Candidates.Count - 40);
-            }
 
             ShadowCostProjection GetProjection(
                 int[] ids,
@@ -1606,8 +1063,6 @@ namespace net.rs64.TexTransTool.NDMF
                 // expanded, while generated states always do. generated itself
                 // is deduplicated by StateKey, so the union is already unique.
                 var unique = source.ToArray();
-                maxStatesBeforeRetention = Math.Max(
-                    maxStatesBeforeRetention, unique.Length);
 
                 if (unique.Length <= stateBudget)
                 {
@@ -1722,8 +1177,6 @@ namespace net.rs64.TexTransTool.NDMF
                         stateBudget);
                 }
 
-                prunedStateCount += unique.Length - selected.Count;
-
                 return selected
                     .OrderBy(
                         state =>
@@ -1809,17 +1262,6 @@ namespace net.rs64.TexTransTool.NDMF
                                  x + widthColumns <= columnCount;
                                  x += 1)
                             {
-                                if (generatedStateLimit is { } limit
-                                    && generated.Count >= limit)
-                                {
-                                    throw new
-                                        DiagnosticSearchStateLimitExceededException(
-                                            stateBudget,
-                                            targetWidth,
-                                            group.Id,
-                                            limit);
-                                }
-
                                 var y = 0;
                                 for (var column = x;
                                      column < x + widthColumns;
@@ -1879,34 +1321,8 @@ namespace net.rs64.TexTransTool.NDMF
                         }
                     }
 
-                    var activeWatches = watchedTraces
-                        .Where(trace =>
-                            trace.LossStage
-                                == WatchedPathLossStage.None
-                            && trace.Target.PlannedLayoutSize.x
-                                == targetWidth)
-                        .ToArray();
-
                     if (generated.Count == 0)
-                    {
-                        foreach (var trace in activeWatches)
-                        {
-                            if (!trace.Target.GroupIds.Contains(group.Id))
-                                continue;
-
-                            var prefix = trace.Target.GroupIds
-                                .Where(id => id <= group.Id)
-                                .ToArray();
-                            trace.LossStage =
-                                WatchedPathLossStage.GenerationOrGeometry;
-                            trace.ExpandingGroupId = group.Id;
-                            trace.PrefixGroupIds = prefix;
-                            trace.StatesBeforeRetention = 0;
-                            trace.StatesAfterRetention = 0;
-                            trace.TotalStatesBeforeRetention = states.Count;
-                        }
                         continue;
-                    }
 
                     var undominated = RemoveDominatedSkylineStates(
                         generated.Values);
@@ -1914,106 +1330,7 @@ namespace net.rs64.TexTransTool.NDMF
                         ScoreState(generatedState, targetWidth);
 
                     states.AddRange(undominated);
-                    var statesBeforeRetention = states;
-                    var watchPrefixes = activeWatches.ToDictionary(
-                        trace => trace,
-                        trace => trace.Target.GroupIds
-                            .Where(id => id <= group.Id)
-                            .ToArray());
-                    var watchCountsBefore = watchPrefixes.ToDictionary(
-                        pair => pair.Key,
-                        pair => pair.Value.Length == 0
-                            ? 0
-                            : statesBeforeRetention.Count(state =>
-                                SameGroupIds(
-                                    state.GroupIds,
-                                    pair.Value)));
-
                     states = SelectPropertyAwareStates(states);
-
-                    foreach (var trace in activeWatches)
-                    {
-                        var prefix = watchPrefixes[trace];
-                        if (prefix.Length == 0)
-                            continue;
-
-                        var beforeCount = watchCountsBefore[trace];
-                        var afterCount = states.Count(state =>
-                            SameGroupIds(state.GroupIds, prefix));
-
-                        if (beforeCount > 0 && afterCount == 0)
-                        {
-                            trace.LossStage =
-                                WatchedPathLossStage.Retention;
-                            trace.ExpandingGroupId = group.Id;
-                            trace.PrefixGroupIds = prefix;
-                            trace.StatesBeforeRetention = beforeCount;
-                            trace.StatesAfterRetention = afterCount;
-                            trace.TotalStatesBeforeRetention =
-                                statesBeforeRetention.Count;
-                            trace.PixelRank = BestRank(
-                                statesBeforeRetention
-                                    .OrderBy(state =>
-                                        state.ProjectedPixelDelta)
-                                    .ThenBy(state =>
-                                        state.ProjectedMemoryDelta)
-                                    .ThenBy(state => state.MaxHeight)
-                                    .ThenBy(
-                                        state => state,
-                                        ShadowPackingStateStableComparer
-                                            .Instance),
-                                prefix);
-                            trace.MemoryRank = BestRank(
-                                statesBeforeRetention
-                                    .OrderBy(state =>
-                                        state.ProjectedMemoryDelta)
-                                    .ThenBy(state =>
-                                        state.ProjectedPixelDelta)
-                                    .ThenBy(state => state.MaxHeight)
-                                    .ThenBy(
-                                        state => state,
-                                        ShadowPackingStateStableComparer
-                                            .Instance),
-                                prefix);
-                            trace.GeometryRank = BestRank(
-                                statesBeforeRetention
-                                    .OrderBy(state => state.MaxHeight)
-                                    .ThenBy(state => state.SkylineArea)
-                                    .ThenByDescending(state =>
-                                        state.GroupIds.Length)
-                                    .ThenBy(
-                                        state => state,
-                                        ShadowPackingStateStableComparer
-                                            .Instance),
-                                prefix);
-                            trace.BaselineRank = BestRank(
-                                statesBeforeRetention
-                                    .OrderByDescending(state =>
-                                        state.BaselineBytes)
-                                    .ThenByDescending(state =>
-                                        state.GroupIds.Length)
-                                    .ThenBy(state => state.MaxHeight)
-                                    .ThenBy(
-                                        state => state,
-                                        ShadowPackingStateStableComparer
-                                            .Instance),
-                                prefix);
-                            continue;
-                        }
-
-                        if (beforeCount == 0
-                            && trace.Target.GroupIds.Contains(group.Id))
-                        {
-                            trace.LossStage =
-                                WatchedPathLossStage.GenerationOrGeometry;
-                            trace.ExpandingGroupId = group.Id;
-                            trace.PrefixGroupIds = prefix;
-                            trace.StatesBeforeRetention = 0;
-                            trace.StatesAfterRetention = afterCount;
-                            trace.TotalStatesBeforeRetention =
-                                statesBeforeRetention.Count;
-                        }
-                    }
                 }
 
                 foreach (var state in states.Where(
@@ -2034,11 +1351,7 @@ namespace net.rs64.TexTransTool.NDMF
                         continue;
 
                     var candidate = GetCandidate(ids, layoutSize);
-                    if (!candidate.IsAdoptable)
-                    {
-                        RecordRejected4096(candidate);
-                        continue;
-                    }
+                    if (!candidate.IsAdoptable) continue;
 
                     if (!shadowAdoptable.TryGetValue(
                             key,
@@ -2061,68 +1374,9 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
-            var rejectedDiagnostics = rejected4096Candidates
-                .OrderByDescending(candidate => candidate.SavingBytes)
-                .ThenByDescending(candidate => candidate.GroupIds.Length)
-                .ThenBy(candidate =>
-                    string.Join(",", candidate.GroupIds),
-                    StringComparer.Ordinal)
-                .Take(20)
-                .ToArray();
-
-            var watchedDiagnostics = watchedTraces
-                .Select(trace =>
-                {
-                    var key = string.Join(
-                        ",",
-                        trace.Target.GroupIds.OrderBy(id => id));
-                    var candidateFound = shadowAdoptable.TryGetValue(
-                        key,
-                        out var foundCandidate);
-                    var foundLayout = candidateFound
-                        ? foundCandidate!.LayoutSize
-                        : default;
-                    var foundSaving = candidateFound
-                        ? foundCandidate!.SavingBytes
-                        : 0L;
-                    var lossStage = trace.LossStage;
-                    if (lossStage == WatchedPathLossStage.None
-                        && (!candidateFound
-                            || foundLayout
-                                != trace.Target.PlannedLayoutSize
-                            || foundSaving
-                                != trace.Target.PredictedSavingBytes))
-                    {
-                        lossStage =
-                            WatchedPathLossStage.CandidateOrSelection;
-                    }
-
-                    return new WatchedPathDiagnostic(
-                        trace.Target.GroupIds.ToArray(),
-                        trace.Target.PlannedLayoutSize,
-                        lossStage,
-                        trace.ExpandingGroupId,
-                        trace.PrefixGroupIds.ToArray(),
-                        trace.StatesBeforeRetention,
-                        trace.StatesAfterRetention,
-                        trace.TotalStatesBeforeRetention,
-                        trace.PixelRank,
-                        trace.MemoryRank,
-                        trace.GeometryRank,
-                        trace.BaselineRank,
-                        candidateFound,
-                        foundLayout,
-                        foundSaving);
-                })
-                .ToArray();
-
             return new ShadowPackingDiagnostics(
                 shadowAdoptable.Select(pair => new MergeSelection(
-                    pair.Value, shadowPackedRegions[pair.Key])).ToArray(),
-                maxStatesBeforeRetention,
-                prunedStateCount,
-                rejectedDiagnostics,
-                watchedDiagnostics);
+                    pair.Value, shadowPackedRegions[pair.Key])).ToArray());
         }
 
         private static int GetUsedHeightPixels(
@@ -2239,7 +1493,6 @@ namespace net.rs64.TexTransTool.NDMF
             PreparedGroup group)
         {
             group.TwoDimensionalProfileHeights.Clear();
-            group.StandaloneAnalysisDiagnostics.Clear();
 
             var prepared = AtlasTexture.PrepareAtlasContext(
                 domain,
@@ -2247,14 +1500,7 @@ namespace net.rs64.TexTransTool.NDMF
                 group.Renderers,
                 settings);
             if (prepared is null)
-            {
-                group.StandaloneAnalysisDiagnostics.Add(
-                    "prepare=failed");
                 return null;
-            }
-
-            group.StandaloneAnalysisDiagnostics.Add(
-                "prepare=ok");
 
             using (prepared)
             {
@@ -2272,17 +1518,10 @@ namespace net.rs64.TexTransTool.NDMF
                                 size,
                                 out var metrics))
                         {
-                            group.StandaloneAnalysisDiagnostics.Add(
-                                $"{size}=lossless-relocation-failed");
                             continue;
                         }
 
                         var usedHeight = GetUsedHeightPixels(metrics);
-                        group.StandaloneAnalysisDiagnostics.Add(
-                            $"{size}=success("
-                            + $"{metrics.LayoutSize.x}x"
-                            + $"{metrics.LayoutSize.y},"
-                            + $"usedHeight={usedHeight})");
                         group.TwoDimensionalProfileHeights[(size, size)] =
                             usedHeight;
                         standalone ??= metrics;
@@ -2304,8 +1543,6 @@ namespace net.rs64.TexTransTool.NDMF
                         when (AutoAtlas2DMergeIslandRelocator.IsNfdhComparerFailure(
                             exception))
                     {
-                        group.StandaloneAnalysisDiagnostics.Add(
-                            $"{size}=nfdh-comparer-failure");
                         // A profile that cannot be relocated reliably at one
                         // candidate width is unavailable. Wider widths can still
                         // produce a valid lossless profile.
