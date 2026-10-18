@@ -439,11 +439,11 @@ namespace net.rs64.TexTransTool.NDMF
             return survivors;
         }
 
-        private readonly struct ShadowPackingDiagnostics
+        private readonly struct ShadowPackingResult
         {
             internal readonly IReadOnlyList<MergeSelection> ProductionCandidates;
 
-            internal ShadowPackingDiagnostics(
+            internal ShadowPackingResult(
                 IReadOnlyList<MergeSelection> productionCandidates)
             {
                 ProductionCandidates = productionCandidates;
@@ -1101,7 +1101,7 @@ namespace net.rs64.TexTransTool.NDMF
             return selected;
         }
 
-        private static ShadowPackingDiagnostics EvaluateShadow2DPacking(
+        private static ShadowPackingResult EvaluateShadow2DPacking(
             IReadOnlyList<PreparedGroup> groups,
             IReadOnlyDictionary<int, PreparedGroup> byId,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
@@ -1567,7 +1567,7 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
-            return new ShadowPackingDiagnostics(
+            return new ShadowPackingResult(
                 shadowAdoptable.Select(pair => new MergeSelection(
                     pair.Value, shadowPackedRegions[pair.Key])).ToArray());
         }
