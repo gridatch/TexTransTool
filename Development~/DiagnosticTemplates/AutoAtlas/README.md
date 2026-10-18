@@ -12,6 +12,7 @@ The snapshot head above contains the active diagnostic pack. The pack was subseq
 
 current_status: `archived-reapply-available`  
 cleanup_implementation_head: `53c45e78637b9f7496c3eb0333e8a1ef6819a3a8`
+post_cleanup_audit_head_before_registry_update: `cc26cebbb1d74328bf343a502067477c30efe78b`
 
 Cleanup removed the temporary comparison searches, watched-path/rejection reporting, standalone failure strings, execution-effect summary, long-form NDMF diagnostic UI, diagnostic-only tests, and temporary localization keys. Permanent production behavior and independent fixes listed below were retained.
 
@@ -32,6 +33,10 @@ Cleanup removed the temporary comparison searches, watched-path/rejection report
 - Candidate gates: PixelCount, FullResidentMemory, Sampling.
 - Physical-pixel padding preservation for 2D merge profiles/execution.
 - Final FineTuning memory revalidation before mutation.
+- Final merge pixel-count revalidation before mutation.
+- Unknown texture-memory formats fail closed instead of assuming 4 B/px.
+- Generated AutoAtlas materials are checked for retained source-texture references before mutation.
+- Rejected generated meshes/materials/render textures are destroyed before fallback/skip.
 - Standalone post-FineTuning acceptance behavior.
 - Exact disjoint selection by group mask for bounded group universes:
   - `ExactSelectionGroupLimit`
@@ -48,8 +53,12 @@ Cleanup removed the temporary comparison searches, watched-path/rejection report
 ### permanent-tests — keep with production behavior
 
 - Exact group-mask selection tests.
-- Large group-universe greedy fallback test.
+- Large group-universe greedy fallback test, using an input where greedy and exact results differ.
 - Empty/ mixed effective-submesh tests.
+- Unknown memory-format fail-closed test.
+- Final strict pixel-reduction test.
+- Rejected Mesh/Material cleanup tests.
+- Retained source-texture detection test.
 - Other safety tests covering production fallback and renderer targeting.
 
 ### temporary-diagnostic
