@@ -94,7 +94,7 @@ Useful consistency checks:
 - aggregate values include only applied operations, not skipped standalone candidates.
 
 Captured benchmark pack:
-- Seiran, Koiboshi, ShuwashuwaPearl, FrillNyantic, Cornet, SailorCupid, Octopus all completed with `mergeFallbacks=0` at the captured snapshot.
+- Seiran_Test_Atlas, Koiboshi, ShuwashuwaPearl, FrillNyantic, Cornet, SailorCupid, Octopus all completed with `mergeFallbacks=0` at the captured snapshot.
 
 ## activation_recipe
 
