@@ -1465,7 +1465,11 @@ namespace net.rs64.TexTransTool.NDMF
                         }
 
                         var uv = uvBuffer[vertexIndex];
-                        if (uv.x < -epsilon
+                        if (float.IsNaN(uv.x)
+                            || float.IsInfinity(uv.x)
+                            || float.IsNaN(uv.y)
+                            || float.IsInfinity(uv.y)
+                            || uv.x < -epsilon
                             || uv.x > 1f + epsilon
                             || uv.y < -epsilon
                             || uv.y > 1f + epsilon)
