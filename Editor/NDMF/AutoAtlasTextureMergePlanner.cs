@@ -483,6 +483,7 @@ namespace net.rs64.TexTransTool.NDMF
         internal enum CandidateRejectionReason
         {
             None,
+            AtomicGroupMapping,
             GeneratedPropertyApplication,
             ReferenceCopySemantics,
             PixelCount,
@@ -509,6 +510,7 @@ namespace net.rs64.TexTransTool.NDMF
                 TextureCostPlan merged,
                 Vector2Int layoutSize,
                 IReadOnlyDictionary<string, Vector2Int> propertySizes,
+                bool preservesAtomicGroupMapping = true,
                 bool preservesGeneratedPropertyApplication = true,
                 bool preservesReferenceCopySemantics = true)
             {
@@ -523,8 +525,10 @@ namespace net.rs64.TexTransTool.NDMF
                     : (float)SavingBytes / baseline.FullResidentBytes;
 
                 RejectionReason =
-                    !preservesGeneratedPropertyApplication
-                        ? CandidateRejectionReason.GeneratedPropertyApplication
+                    !preservesAtomicGroupMapping
+                        ? CandidateRejectionReason.AtomicGroupMapping
+                        : !preservesGeneratedPropertyApplication
+                            ? CandidateRejectionReason.GeneratedPropertyApplication
                         : !preservesReferenceCopySemantics
                             ? CandidateRejectionReason.ReferenceCopySemantics
                             : merged.PixelCount >= baseline.PixelCount
@@ -612,6 +616,56 @@ namespace net.rs64.TexTransTool.NDMF
                 MipCount = Math.Max(1, mipCount);
                 FullResidentBytes = CalculateBytes(this);
             }
+        }
+
+        internal static bool PreservesAtomicGroupBoundaries(
+            IReadOnlyList<PreparedGroup> groups,
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>>
+                propertyTextures)
+        {
+            if (groups.Count < 2)
+                return true;
+
+            var materials = groups
+                .SelectMany(group => group.Materials)
+                .ToHashSet();
+            var grouping = new MaterialGroupingContext(
+                materials,
+                propertyTextures,
+                primaryTexturePropertyOrMaximum: null);
+            return PreservesAtomicGroupBoundaries(
+                groups,
+                grouping);
+        }
+
+        internal static bool PreservesAtomicGroupBoundaries(
+            IReadOnlyList<PreparedGroup> groups,
+            MaterialGroupingContext grouping)
+        {
+            var atomicGroupByMaterial = groups
+                .SelectMany(group => group.Materials.Select(
+                    material => (material, group.Id)))
+                .ToDictionary(pair => pair.material, pair => pair.Id);
+
+            foreach (var materialGroup in grouping.GroupMaterials)
+            {
+                var ids = materialGroup
+                    .Select(material =>
+                        atomicGroupByMaterial.TryGetValue(
+                            material,
+                            out var id)
+                            ? (int?)id
+                            : null)
+                    .Distinct()
+                    .ToArray();
+
+                if (ids.Length != 1 || !ids[0].HasValue)
+                    return false;
+            }
+
+            return true;
         }
 
         internal static bool PreservesReferenceCopySemantics(
@@ -1082,7 +1136,8 @@ namespace net.rs64.TexTransTool.NDMF
             var mergeSemanticSafetyCache =
                 new Dictionary<
                     string,
-                    (bool GeneratedPropertyApplication,
+                    (bool AtomicGroupMapping,
+                     bool GeneratedPropertyApplication,
                      bool ReferenceCopy)>(
                     StringComparer.Ordinal);
 
@@ -1135,8 +1190,10 @@ namespace net.rs64.TexTransTool.NDMF
                         groupSetKey,
                         out var semanticSafety))
                 {
-                    var selectedMaterials = ids
+                    var selectedGroups = ids
                         .Select(id => byId[id])
+                        .ToArray();
+                    var selectedMaterials = selectedGroups
                         .SelectMany(group => group.Materials)
                         .ToHashSet();
                     var grouping = new MaterialGroupingContext(
@@ -1144,6 +1201,9 @@ namespace net.rs64.TexTransTool.NDMF
                         propertyTextures,
                         primaryTexturePropertyOrMaximum: null);
                     semanticSafety = (
+                        PreservesAtomicGroupBoundaries(
+                            selectedGroups,
+                            grouping),
                         !AutoAtlasTextureProcessor
                             .HasUnsafeGeneratedPropertyApplication(
                                 selectedMaterials,
@@ -1163,6 +1223,7 @@ namespace net.rs64.TexTransTool.NDMF
                     projection.Merged,
                     layoutSize,
                     projection.PropertySizes,
+                    semanticSafety.AtomicGroupMapping,
                     semanticSafety.GeneratedPropertyApplication,
                     semanticSafety.ReferenceCopy);
                 candidateCache[layoutKey] = candidate;
