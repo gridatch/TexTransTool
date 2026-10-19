@@ -347,6 +347,22 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             }
         }
 
+        [TestCase(1L, 2L, true)]
+        [TestCase(2L, 2L, false)]
+        [TestCase(3L, 2L, false)]
+        [TestCase(0L, 2L, false)]
+        public void FinalMergePixelBenefitMustBeStrict(
+            long finalPixels,
+            long baselinePixels,
+            bool expected)
+        {
+            Assert.That(
+                AutoAtlasTextureProcessor.HasStrictMergePixelBenefit(
+                    finalPixels,
+                    baselinePixels),
+                Is.EqualTo(expected));
+        }
+
         [Test]
         public void CandidateAcceptsStrictlyBetterNonRegressingMerge()
         {
