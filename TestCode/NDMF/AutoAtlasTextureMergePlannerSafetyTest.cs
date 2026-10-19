@@ -1961,6 +1961,52 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void PreservedOriginalUvChannelMustBeShaderSemanticallyUnused()
+        {
+            var shader = RequireStandardShaderUsageInformation();
+            var mainTexture = new Texture2D(4, 4);
+            var detailTexture = new Texture2D(4, 4);
+            var material = new Material(shader);
+            var gameObject = new GameObject("PreservedUv");
+            try
+            {
+                material.SetTexture("_MainTex", mainTexture);
+                material.SetTexture("_DetailAlbedoMap", detailTexture);
+                material.SetFloat("_UVSec", 1f);
+
+                var renderer = gameObject.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+                var targeting =
+                    new RendererTargetingForTest(new Renderer[] { renderer });
+
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsafePreservedOriginalUvUsage(
+                            targeting,
+                            new Renderer[] { renderer },
+                            preservedUvChannel: 1),
+                    Is.True,
+                    "Writing original UV0 into UV1 would change Standard detail-map sampling.");
+
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsafePreservedOriginalUvUsage(
+                            targeting,
+                            new Renderer[] { renderer },
+                            preservedUvChannel: 2),
+                    Is.False,
+                    "A channel proven unused by the shader is safe for original-UV preservation.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(mainTexture);
+                Object.DestroyImmediate(detailTexture);
+            }
+        }
+
+        [Test]
         public void AutoAtlasRejectsUnprovenTextureUvUsage()
         {
             var shader = Shader.Find("Standard");
