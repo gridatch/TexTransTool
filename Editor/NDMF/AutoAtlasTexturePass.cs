@@ -859,6 +859,39 @@ namespace net.rs64.TexTransTool.NDMF
                 using var atlasContext = atlasResult.AtlasContext!;
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
 
+                if (atlasResult.PreservedOriginalUVChannel
+                        is int preservedUvChannel
+                    && HasUnsafePreservedOriginalUvUsage(
+                        domain,
+                        atlasRenderers,
+                        preservedUvChannel))
+                {
+                    foreach (var rt in compiledTextures.Values.Distinct())
+                        rt.Dispose();
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes);
+
+                    if (execution.MergeSelection is { } preservedUvMerge)
+                    {
+                        if (preservedUvMerge.PackedRegions != null)
+                        {
+                            twoDimensionalFallbackReasons.Add(
+                                $"groups={string.Join(",", preservedUvMerge.GroupIds.Select(id => "g" + id))}, "
+                                + $"layout={preservedUvMerge.PlannedLayoutSize.x}×{preservedUvMerge.PlannedLayoutSize.y}: "
+                                + FormatLocalized(
+                                    "AutoAtlasTexture:fallback:PreservedUvChannelConflict",
+                                    preservedUvChannel));
+                        }
+
+                        EnqueueStandaloneFallback(
+                            executionGroups,
+                            preservedUvMerge,
+                            preparedGroups);
+                    }
+
+                    continue;
+                }
+
                 var unresolvedRequiredRenderer =
                     atlasRenderers.FirstOrDefault(renderer =>
                         RendererRequiresAtlasMesh(
@@ -1492,6 +1525,56 @@ namespace net.rs64.TexTransTool.NDMF
                             return true;
                         }
                     }
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool HasUnsafePreservedOriginalUvUsage(
+            IRendererTargeting domain,
+            IEnumerable<Renderer> renderers,
+            int preservedUvChannel)
+        {
+            if (preservedUvChannel < 0 || preservedUvChannel > 7)
+                return true;
+
+            var atlasUvChannel = (UVChannel)preservedUvChannel;
+            var materials = renderers
+                .Where(renderer => renderer != null)
+                .SelectMany(domain.GetMaterials)
+                .UOfType<Material>()
+                .Distinct();
+
+            foreach (var material in materials)
+            {
+                if (!TTShaderTextureUsageInformationUtil
+                        .HasFullShaderSemanticAnalysis(material))
+                {
+                    return true;
+                }
+
+                var usages = TTShaderTextureUsageInformationUtil
+                    .GetContainsUVTransformUsage(material);
+                foreach (var usage in usages.Values)
+                {
+                    if (usage.UVChannel == UsageUVChannel.NonMesh)
+                        continue;
+                    if (usage.UVChannel == UsageUVChannel.Unknown)
+                        return true;
+                    if (((int)usage.UVChannel) - 1
+                        == preservedUvChannel)
+                    {
+                        return true;
+                    }
+                }
+
+                if (HasOtherUvUsageOnTarget(
+                        TTShaderTextureUsageInformationUtil
+                            .GetOtherUVUsage(material),
+                        atlasUvChannel))
+                {
+                    return true;
                 }
             }
 
