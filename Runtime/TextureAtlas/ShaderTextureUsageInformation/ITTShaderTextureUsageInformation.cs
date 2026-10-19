@@ -55,6 +55,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
         void WriteVertexIndexUsage();
     }
 
+    internal interface ITTFullShaderSemanticUsageWriter
+    {
+        void MarkFullShaderSemanticAnalysis();
+    }
+
     public enum UsageUVChannel
     {
         Unknown = 0,
@@ -78,16 +83,19 @@ namespace net.rs64.TexTransTool.TextureAtlas
         ITTTextureUVUsageWriter,
         ITTTextureUVTransformUsageWriter,
         ITTTextureOtherUVUsageWriter,
-        ITTVertexIndexUsageWriter
+        ITTVertexIndexUsageWriter,
+        ITTFullShaderSemanticUsageWriter
     {
         Material _material;
         readonly HashSet<string> _texturePropertyNames;
         Dictionary<string, TextureUVUsage> _uvUsage = new();
         private UsingUVChannels _otherUVUsage;
         private bool _usesVertexIndex;
+        private bool _fullShaderSemanticAnalysis;
         public IReadOnlyDictionary<string, TextureUVUsage> UVUsageWithTransform => _uvUsage;
         internal UsingUVChannels OtherUVUsage => _otherUVUsage;
         internal bool UsesVertexIndex => _usesVertexIndex;
+        internal bool FullShaderSemanticAnalysis => _fullShaderSemanticAnalysis;
         public MaterialUVUsageProvider(Material material)
         {
             _material = material;
@@ -160,6 +168,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
         public void WriteVertexIndexUsage()
         {
             _usesVertexIndex = true;
+        }
+
+        public void MarkFullShaderSemanticAnalysis()
+        {
+            _fullShaderSemanticAnalysis = true;
         }
     }
 }
