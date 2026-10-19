@@ -3,13 +3,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using nadena.dev.ndmf;
+using nadena.dev.ndmf.animator;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.Editor;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using net.rs64.TexTransTool.Utils;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 
 namespace net.rs64.TexTransTool.NDMF
 {
@@ -37,13 +40,230 @@ namespace net.rs64.TexTransTool.NDMF
                 .Where(atlas => TexTransBehaviorSearch.CheckIsActiveBehavior(
                     atlas, context.AvatarRootObject))
                 .ToArray();
+            var configuration = configurations[0];
+            var animationServices =
+                configuration.EnableAdditionalAtlasMerging
+                && configuration.ExcludeVisibilityAnimatedItemsFromTextureMerging
+                    ? context.Extension<AnimatorServicesContext>()
+                    : null;
             AutoAtlasTextureProcessor.Execute(
-                session.Domain, configurations[0], manualAtlases);
+                session.Domain,
+                configuration,
+                manualAtlases,
+                animationServices?.AnimationIndex,
+                animationServices?.ObjectPathRemapper,
+                context.AvatarRootTransform);
+        }
+    }
+
+    /// <summary>
+    /// Detects visibility animation on renderers and their parent GameObjects.
+    /// This only determines whether a property can take a value different from
+    /// its current one; it does not infer runtime usage frequency or menu reachability.
+    /// </summary>
+    internal static class AutoAtlasTextureVisibilityAnimationDetector
+    {
+        internal static HashSet<Renderer> Detect(
+            AnimationIndex animationIndex,
+            ObjectPathRemapper pathRemapper,
+            Transform avatarRoot,
+            IEnumerable<Renderer> renderers)
+        {
+            return Detect(
+                animationIndex,
+                avatarRoot,
+                renderers,
+                transform =>
+                {
+                    // An NDMF ReplaceObject can map multiple historical animation
+                    // paths to the same current object. Inspect every alias.
+                    // Register new objects first, just as the original lookup did.
+                    pathRemapper.GetVirtualPathForObject(transform);
+                    return pathRemapper.GetAllPathsForObject(transform);
+                });
+        }
+
+        // Allows tests to supply deterministic object paths without requiring
+        // a live NDMF BuildContext.
+        internal static HashSet<Renderer> Detect(
+            AnimationIndex animationIndex,
+            Transform avatarRoot,
+            IEnumerable<Renderer> renderers,
+            Func<Transform, IEnumerable<string>> pathsForObject)
+        {
+            var animatedRenderers = new HashSet<Renderer>();
+            var gameObjectVisibility = new Dictionary<Transform, bool>();
+
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null) continue;
+
+                var transform = renderer.transform;
+                var cursor = transform;
+                var insideAvatar = false;
+                while (cursor != null)
+                {
+                    if (cursor == avatarRoot)
+                    {
+                        insideAvatar = true;
+                        break;
+                    }
+                    cursor = cursor.parent;
+                }
+                if (!insideAvatar) continue;
+
+                if (HasAnimatedVisibility(
+                        animationIndex, pathsForObject(transform),
+                        renderer.GetType(), "m_Enabled", renderer.enabled))
+                {
+                    animatedRenderers.Add(renderer);
+                    continue;
+                }
+
+                for (cursor = transform; cursor != null; cursor = cursor.parent)
+                {
+                    if (!gameObjectVisibility.TryGetValue(cursor, out var animated))
+                    {
+                        animated = HasAnimatedVisibility(
+                            animationIndex, pathsForObject(cursor),
+                            typeof(GameObject), "m_IsActive",
+                            cursor.gameObject.activeSelf);
+                        gameObjectVisibility.Add(cursor, animated);
+                    }
+
+                    if (animated)
+                    {
+                        animatedRenderers.Add(renderer);
+                        break;
+                    }
+
+                    if (cursor == avatarRoot) break;
+                }
+            }
+
+            return animatedRenderers;
+        }
+
+        private static bool HasAnimatedVisibility(
+            AnimationIndex index, IEnumerable<string> paths,
+            Type componentType, string propertyName, bool currentValue)
+        {
+            foreach (var path in paths.Distinct(StringComparer.Ordinal))
+            {
+                foreach (var clip in index.GetClipsForObjectPath(path))
+                {
+                    foreach (var binding in clip.GetFloatCurveBindings())
+                    {
+                        if (binding.path != path
+                            || binding.propertyName != propertyName
+                            || binding.type == null
+                            || !binding.type.IsAssignableFrom(componentType)
+                            || (propertyName == "m_IsActive"
+                                ? binding.type != typeof(GameObject)
+                                : !typeof(Renderer).IsAssignableFrom(binding.type)))
+                            continue;
+
+                        if (CurveChangesVisibility(
+                                clip.GetFloatCurve(binding), currentValue))
+                            return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool CurveChangesVisibility(
+            AnimationCurve? curve, bool currentValue)
+        {
+            if (curve == null) return false;
+            // Boolean animation properties are encoded as float 0 or 1.
+            // Curves that keep the current state must not exclude an item.
+            return curve.keys.Any(key =>
+                !float.IsNaN(key.value)
+                && !float.IsInfinity(key.value)
+                && (key.value >= 0.5f) != currentValue);
         }
     }
 
     internal static class AutoAtlasTextureProcessor
     {
+        internal sealed class ExecutionGroup
+        {
+            internal readonly HashSet<Material> Materials;
+            internal readonly Renderer[] Renderers;
+            internal readonly HashSet<Texture> SourceTextures;
+            internal readonly AutoAtlasTextureMergePlanner.MergeSelection? MergeSelection;
+
+            internal ExecutionGroup(
+                HashSet<Material> materials,
+                Renderer[] renderers,
+                HashSet<Texture> sourceTextures,
+                AutoAtlasTextureMergePlanner.MergeSelection? mergeSelection)
+            {
+                Materials = materials;
+                Renderers = renderers;
+                SourceTextures = sourceTextures;
+                MergeSelection = mergeSelection;
+            }
+        }
+
+        internal static Queue<ExecutionGroup> CreateExecutionGroups(
+            IReadOnlyList<AutoAtlasTextureMergePlanner.PreparedGroup> preparedGroups,
+            IReadOnlyList<AutoAtlasTextureMergePlanner.MergeSelection> selections)
+        {
+            var selectedIds = selections.SelectMany(selection => selection.GroupIds)
+                .ToHashSet();
+            var queue = new Queue<ExecutionGroup>();
+
+            foreach (var selection in selections)
+            {
+                var selected = selection.GroupIds
+                    .Select(id => preparedGroups[id])
+                    .ToArray();
+                queue.Enqueue(new ExecutionGroup(
+                    selected.SelectMany(group => group.Materials).ToHashSet(),
+                    selected.SelectMany(group => group.Renderers).Distinct().ToArray(),
+                    selected.SelectMany(group => group.SourceTextures).ToHashSet(),
+                    selection));
+            }
+
+            foreach (var prepared in preparedGroups.Where(
+                         group => !selectedIds.Contains(group.Id)))
+            {
+                queue.Enqueue(new ExecutionGroup(
+                    prepared.Materials,
+                    prepared.Renderers,
+                    prepared.SourceTextures,
+                    null));
+            }
+
+            return queue;
+        }
+
+        internal static void EnqueueStandaloneFallback(
+            Queue<ExecutionGroup> queue,
+            AutoAtlasTextureMergePlanner.MergeSelection failedMerge,
+            IReadOnlyList<AutoAtlasTextureMergePlanner.PreparedGroup> preparedGroups)
+        {
+            foreach (var id in failedMerge.GroupIds)
+            {
+                var prepared = preparedGroups[id];
+                queue.Enqueue(new ExecutionGroup(
+                    prepared.Materials,
+                    prepared.Renderers,
+                    prepared.SourceTextures,
+                    null));
+            }
+        }
+
+        private static string FormatLocalized(
+            string key,
+            params object[] args)
+        {
+            return string.Format(key.GetLocalize(), args);
+        }
+
         internal static AutoAtlasTexture[] GetActiveConfigurations(GameObject root)
         {
             return root.GetComponentsInChildren<AutoAtlasTexture>(true)
@@ -52,25 +272,58 @@ namespace net.rs64.TexTransTool.NDMF
                 .ToArray();
         }
 
-        internal static Renderer[] GetAAONegotiationRenderers(
+        internal static List<Renderer> GetAutoAtlasAllowedRenderers(
             IRendererTargeting domain, AutoAtlasTexture configuration)
         {
-            // AAO negotiation runs before TTT material modification, so it must use
-            // a conservative renderer set rather than the later material candidates.
+            // AutoAtlasTexture adds automatic material selection and lossless
+            // sizing on top of AtlasTexture. Renderer eligibility must therefore
+            // follow AtlasTexture's normal default target resolution instead of
+            // inventing a broader "include disabled" rule.
             var excludedRenderers = domain
                 .GetDomainsRenderers(configuration.ExcludedRenderers)
                 .ToHashSet();
             return AtlasTexture.GetAtlasAllowedRenderers(
-                    domain, domain.EnumerateRenderer(), includeDisabledRenderer: true)
+                    domain,
+                    domain.EnumerateRenderer(),
+                    includeDisabledRenderer: false)
                 .Where(renderer => !excludedRenderers.Contains(renderer))
+                .ToList();
+        }
+
+        internal static Renderer[] ResolveAutoAtlasTargetRenderers(
+            IRendererTargeting domain,
+            AutoAtlasTexture configuration,
+            HashSet<Material> targetMaterials)
+        {
+            var allowedRenderers =
+                GetAutoAtlasAllowedRenderers(domain, configuration);
+            var targetRenderers = AtlasTexture.FilterTargetRenderers(
+                domain, allowedRenderers, targetMaterials);
+            return AtlasTexture.FilterExistUVChannel(
+                domain, targetRenderers, UVChannel.UV0);
+        }
+
+        internal static Renderer[] GetAAONegotiationRenderers(
+            IRendererTargeting domain, AutoAtlasTexture configuration)
+        {
+            return GetAutoAtlasAllowedRenderers(domain, configuration)
                 .ToArray();
         }
 
-        internal static void Execute(IDomain domain,
-            AutoAtlasTexture configuration, IReadOnlyCollection<AtlasTexture> manualAtlases)
+        internal static void Execute(
+            IDomain domain,
+            AutoAtlasTexture configuration,
+            IReadOnlyCollection<AtlasTexture> manualAtlases,
+            AnimationIndex? animationIndex = null,
+            ObjectPathRemapper? objectPathRemapper = null,
+            Transform? avatarRoot = null)
         {
+            var processingTimer = System.Diagnostics.Stopwatch.StartNew();
+
             // Store only the NDMF console summary for this build.
-            var completed = new List<(string Block, int Relocations, long Milliseconds)>();
+            var completed = new List<string>();
+
+            var twoDimensionalFallbackReasons = new List<string>();
 
             string OriginalMaterialName(Material material)
             {
@@ -83,46 +336,59 @@ namespace net.rs64.TexTransTool.NDMF
                 return identity?.ToString() ?? material.name;
             }
 
-            var allRenderers = domain.EnumerateRenderer().Where(renderer => renderer != null).ToArray();
+            var allRenderers = domain.EnumerateRenderer()
+                .Where(renderer => renderer != null)
+                .ToArray();
 
-            // Selection is renderer-scoped. Domain.GetAllMaterials() is used
-            // separately for safety checks because it also includes animation refs.
-            var allMaterials = allRenderers.SelectMany(domain.GetMaterials)
-                .UOfType<Material>().ToHashSet();
-            // Includes animation material references in the NDMF domain.
-            var allReferencedMaterials = domain.GetAllMaterials();
-            if (allMaterials.Count == 0)
-            {
-                TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info("AtlasTexture:info:TargetNotFound"));
-                return;
-            }
-
-            // Material groups follow the textures actually transformed by TTT for UV0,
-            // not merely common shaders or all texture references in the material.
-            var textureUsages = new MaterialGroupingContext(
-                allMaterials, UVChannel.UV0, primaryTexturePropertyOrMaximum: null);
-            var propertyTextures = textureUsages.ContainsTextureDictionaries;
-
-            // This is the final renderer eligibility check at Optimizing time,
-            // after earlier TTT material modifications have already run.
+            // Auto-select materials from the same renderer population that a
+            // normal AtlasTexture with its default IncludeDisabledRenderer=false
+            // would use. Additional referenced materials are still inspected
+            // separately by the source-texture exclusivity guard.
             var excludedRenderers = domain
                 .GetDomainsRenderers(configuration.ExcludedRenderers)
                 .ToHashSet();
-            var atlasAllowedRenderers = AtlasTexture.GetAtlasAllowedRenderers(
-                    domain, allRenderers, includeDisabledRenderer: true)
-                .Where(renderer => !excludedRenderers.Contains(renderer))
-                .ToList();
-            var candidateMaterials = propertyTextures
-                .Where(pair => pair.Value.Count != 0)
-                .Select(pair => pair.Key)
+            var atlasAllowedRenderers =
+                GetAutoAtlasAllowedRenderers(domain, configuration);
+            var candidateMaterials = atlasAllowedRenderers
+                .SelectMany(domain.GetMaterials)
+                .UOfType<Material>()
                 .ToHashSet();
-            var allowedRenderers = AtlasTexture.FilterTargetRenderers(
-                    domain, atlasAllowedRenderers, candidateMaterials)
-                .ToHashSet();
+            var allReferencedMaterials = domain.GetAllMaterials();
+            if (candidateMaterials.Count == 0)
+            {
+                processingTimer.Stop();
+                TTTLog.ReportingObject(configuration, () =>
+                    TTTLog.Info(
+                        "AutoAtlasTexture:info:TargetNotFound",
+                        processingTimer.ElapsedMilliseconds));
+                return;
+            }
+
+            // Material grouping remains shader/property-aware, but it is now
+            // scoped to the same renderer-selected materials as AtlasTexture.
+            var textureUsages = new MaterialGroupingContext(
+                candidateMaterials,
+                UVChannel.UV0,
+                primaryTexturePropertyOrMaximum: null);
+            var propertyTextures = textureUsages.ContainsTextureDictionaries;
 
             var excludedMaterials = domain.GetDomainsMaterialsHashSet(
                 configuration.ExcludedMaterials);
+            var mergingExcludedRenderers = domain
+                .GetDomainsRenderers(configuration.TextureMergingExcludedRenderers)
+                .ToHashSet();
+            var mergingExcludedMaterials = domain.GetDomainsMaterialsHashSet(
+                configuration.TextureMergingExcludedMaterials);
+            var animatedVisibilityRenderers =
+                configuration.EnableAdditionalAtlasMerging
+                && configuration.ExcludeVisibilityAnimatedItemsFromTextureMerging
+                && animationIndex != null
+                && objectPathRemapper != null
+                && avatarRoot != null
+                    ? AutoAtlasTextureVisibilityAnimationDetector.Detect(
+                        animationIndex, objectPathRemapper, avatarRoot,
+                        allRenderers)
+                    : new HashSet<Renderer>();
 
             // Resolve manual AtlasTexture targets through TTT's existing lookup
             // rather than rescanning hierarchy and comparing raw user selections.
@@ -136,35 +402,54 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 AutoAtlasTextureSize = true,
                 UsePrimaryMaximumTexture = true,
-                IncludeDisabledRenderer = true,
+                IncludeDisabledRenderer = false,
                 AtlasTargetUVChannel = UVChannel.UV0,
                 IslandPadding = Mathf.Clamp(configuration.IslandPadding, 0f, 0.05f),
             };
-            var groups = MakeTextureConnectedGroups(allMaterials, propertyTextures);
-            var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
+            var groups = MakeTextureConnectedGroups(
+                candidateMaterials, propertyTextures);
+            var preparedGroups =
+                new List<AutoAtlasTextureMergePlanner.PreparedGroup>();
+
             foreach (var group in groups)
             {
-                if (group.Any(material => excludedMaterials.Contains(material) ||
-                    manuallySelectedMaterials.Contains(material)))
+                if (group.Any(material => excludedMaterials.Contains(material)
+                    || manuallySelectedMaterials.Contains(material)))
                 {
                     continue;
                 }
 
-                // Every renderer referencing a material must be transformed together:
-                // replacing a shared material while leaving another mesh's UVs intact
-                // would corrupt that mesh's appearance.
-                var referencingRenderers = domain
-                    .RendererFilterForMaterialFromDomains(group)
+                // Preserve the explicit AutoAtlas renderer exclusion contract.
+                // A shared material would otherwise be replaced globally even
+                // though the user explicitly excluded one of its consumers.
+                var explicitlyExcludedConsumers = excludedRenderers
+                    .Where(renderer => domain.GetMaterials(renderer)
+                        .UOfType<Material>()
+                        .Any(group.Contains))
                     .ToArray();
-                if (referencingRenderers.Length == 0 ||
-                    referencingRenderers.Any(renderer => !allowedRenderers.Contains(renderer)))
+                if (explicitlyExcludedConsumers.Length != 0)
                 {
                     continue;
                 }
 
-                var atlasRenderers = AtlasTexture.FilterExistUVChannel(
-                    domain, referencingRenderers, UVChannel.UV0);
-                if (atlasRenderers.Length != referencingRenderers.Length)
+                // Resolve renderers through the same AtlasTexture-equivalent
+                // path that execution revalidation uses.
+                var atlasRenderers = ResolveAutoAtlasTargetRenderers(
+                    domain, configuration, group);
+                if (atlasRenderers.Length == 0)
+                {
+                    continue;
+                }
+
+                // Material replacement is domain-wide. A currently
+                // active consumer that cannot receive the corresponding UV
+                // rewrite would otherwise get an atlased material on its
+                // original mesh. Disabled/inactive consumers remain outside
+                // this check to preserve AtlasTexture's default targeting.
+                if (HasActiveUntransformedMaterialConsumer(
+                        domain,
+                        group,
+                        atlasRenderers))
                 {
                     continue;
                 }
@@ -183,15 +468,122 @@ namespace net.rs64.TexTransTool.NDMF
                 // must be eligible; otherwise generating an additional atlas can
                 // increase memory usage.
                 if (!ReferencesAreExclusive(
-                    allReferencedMaterials, group, propertyTextures, texturesToReplace))
+                        allReferencedMaterials,
+                        group,
+                        propertyTextures,
+                        texturesToReplace))
                 {
                     continue;
                 }
 
-                var originalPixels = texturesToReplace.Sum(texture =>
+                // AutoAtlas applies every generated property to every target
+                // material exposing that property. Prove that this cannot
+                // overwrite a same-named texture whose sampling was excluded
+                // from the atlas operation.
+                if (HasUnsafeGeneratedPropertyApplication(
+                        group,
+                        propertyTextures,
+                        settings.AtlasTargetUVChannel))
+                {
+                    continue;
+                }
+
+                // ReferenceCopy can create/redirect a property only because a
+                // second atomic group contributes its source property. Keep
+                // standalone fallback valid as well as merged execution.
+                if (!AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            group,
+                            propertyTextures,
+                            settings))
+                {
+                    continue;
+                }
+
+                preparedGroups.Add(new AutoAtlasTextureMergePlanner.PreparedGroup
+                {
+                    Id = preparedGroups.Count,
+                    Materials = group,
+                    Renderers = atlasRenderers,
+                    SourceTextures = texturesToReplace,
+                    OriginalPixels = texturesToReplace.Sum(texture =>
+                        (long)texture.width * texture.height),
+                    ExcludedFromTextureMerging = IsExcludedFromTextureMerging(
+                        group, atlasRenderers, mergingExcludedMaterials,
+                        mergingExcludedRenderers)
+                        || atlasRenderers.Any(animatedVisibilityRenderers.Contains),
+                });
+            }
+
+            var mergePlan = AutoAtlasTextureMergePlanner.Plan(
+                domain,
+                configuration,
+                settings,
+                propertyTextures,
+                preparedGroups);
+
+            var executionGroups = CreateExecutionGroups(
+                preparedGroups, mergePlan.Selections);
+
+            var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
+            while (executionGroups.Count != 0)
+            {
+                var execution = executionGroups.Dequeue();
+                var group = execution.Materials;
+
+                // Revalidate against the exact same renderer-targeting rule
+                // used during planning. Do not broaden execution to every
+                // domain-wide material consumer; AutoAtlas is required to
+                // preserve AtlasTexture's normal target semantics.
+                var atlasRenderers = ResolveAutoAtlasTargetRenderers(
+                    domain, configuration, group);
+                var plannedRenderers = execution.Renderers
+                    .Where(renderer => renderer != null)
+                    .Distinct()
+                    .ToHashSet();
+
+                var hasActiveUntransformedConsumer =
+                    HasActiveUntransformedMaterialConsumer(
+                        domain,
+                        group,
+                        atlasRenderers);
+                if (atlasRenderers.Length == 0
+                    || !plannedRenderers.SetEquals(atlasRenderers)
+                    || hasActiveUntransformedConsumer)
+                {
+                    if (execution.MergeSelection is { } invalidMerge)
+                    {
+                        var reason = hasActiveUntransformedConsumer
+                            ? FormatLocalized(
+                                "AutoAtlasTexture:fallback:ActiveUntransformedConsumer")
+                            : FormatLocalized(
+                                "AutoAtlasTexture:fallback:RendererSetChanged");
+                        twoDimensionalFallbackReasons.Add(
+                            $"groups={string.Join(",", invalidMerge.GroupIds.Select(id => "g" + id))}: "
+                            + reason);
+                        EnqueueStandaloneFallback(
+                            executionGroups, invalidMerge, preparedGroups);
+                    }
+                    continue;
+                }
+
+                var originalPixels = execution.SourceTextures.Sum(texture =>
                     (long)texture.width * texture.height);
 
                 var engine = domain.GetTexTransCoreEngineForUnity();
+
+                IReadOnlyDictionary<Material, int>? mergeAtomicGroupByMaterial = null;
+                if (execution.MergeSelection is { } selectedMerge)
+                {
+                    mergeAtomicGroupByMaterial = selectedMerge.GroupIds
+                        .Select(id => preparedGroups[id])
+                        .SelectMany(group => group.Materials.Select(
+                            material => (material, group.Id)))
+                        .ToDictionary(pair => pair.material, pair => pair.Id);
+                }
+
+                AutoAtlas2DMergeIslandRelocator? twoDimensionalRelocator = null;
+                string? twoDimensionalSizeRejection = null;
                 var executionMetrics = default(AtlasTexture.AtlasExecutionMetrics);
                 var atlasResult = AtlasTexture.DoAtlasTexture(
                     domain,
@@ -204,24 +596,362 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         RequireLossless = true,
                         ReportProgressInfo = false,
+                        IslandRelocatorFactory = mergeAtomicGroupByMaterial != null
+                            ? atlasContext =>
+                            {
+                                if (execution.MergeSelection?.PackedRegions
+                                    is { } packedRegions)
+                                {
+                                    twoDimensionalRelocator =
+                                        new AutoAtlas2DMergeIslandRelocator(
+                                            atlasContext,
+                                            mergeAtomicGroupByMaterial,
+                                            packedRegions,
+                                            execution.MergeSelection.PlannedLayoutSize.x);
+                                    return twoDimensionalRelocator;
+                                }
+
+                                throw new InvalidOperationException(
+                                    "Production merge candidates must have 2D packed regions.");
+                            }
+                            : null,
+                        ForcedAutoAtlasWidth =
+                            execution.MergeSelection?.PackedRegions != null
+                                ? execution.MergeSelection.PlannedLayoutSize.x
+                                : null,
                         AcceptAtlasSize = (atlasContext, size, metrics) =>
                         {
                             executionMetrics = metrics;
-                            return metrics.OutputTexturePixelCount > 0
-                                && metrics.OutputTexturePixelCount < originalPixels;
+                            if (execution.MergeSelection is { } mergeSelection)
+                            {
+                                // The planner reserves an independently valid
+                                // 2D rectangle for each atomic group. Accept only
+                                // if execution stays within both the predicted
+                                // layout and every predicted property-resolution
+                                // envelope.
+                                if (metrics.OutputTexturePixelCount <= 0
+                                    || (mergeSelection.PackedRegions != null
+                                        && metrics.LayoutSize.x
+                                            != mergeSelection.PlannedLayoutSize.x)
+                                    || metrics.LayoutSize.x
+                                        > mergeSelection.PlannedLayoutSize.x
+                                    || metrics.LayoutSize.y
+                                        > mergeSelection.PlannedLayoutSize.y)
+                                {
+                                    if (mergeSelection.PackedRegions != null)
+                                        twoDimensionalSizeRejection =
+                                            FormatLocalized(
+                                                "AutoAtlasTexture:fallback:LayoutMismatch",
+                                                metrics.LayoutSize.x,
+                                                metrics.LayoutSize.y,
+                                                mergeSelection.PlannedLayoutSize.x,
+                                                mergeSelection.PlannedLayoutSize.y,
+                                                metrics.OutputTexturePixelCount);
+                                    return false;
+                                }
+
+                                foreach (var property in metrics.PropertySizes)
+                                {
+                                    if (!mergeSelection.PlannedPropertySizes
+                                            .TryGetValue(
+                                                property.Key,
+                                                out var plannedSize)
+                                        || property.Value.x > plannedSize.x
+                                        || property.Value.y > plannedSize.y)
+                                    {
+                                        if (mergeSelection.PackedRegions != null)
+                                            twoDimensionalSizeRejection =
+                                                FormatLocalized(
+                                                    "AutoAtlasTexture:fallback:PropertyResolutionMismatch",
+                                                    property.Key,
+                                                    property.Value.x,
+                                                    property.Value.y,
+                                                    plannedSize.x,
+                                                    plannedSize.y);
+                                        return false;
+                                    }
+                                }
+
+                                return true;
+                            }
+
+                            // For standalone AutoAtlas, the pre-FineTuning
+                            // property count is not authoritative. Default
+                            // ReferenceCopy (and other FineTuning) can remove or
+                            // merge outputs. Defer the benefit check until after
+                            // DoTextureFinTuning(), before any mesh/material
+                            // mutation.
+                            return metrics.OutputTexturePixelCount > 0;
                         },
                     });
-
-                if (!atlasResult.IsSuccess) continue;
+                if (!atlasResult.IsSuccess)
+                {
+                    if (execution.MergeSelection is { } failedMerge)
+                    {
+                        if (failedMerge.PackedRegions != null)
+                        {
+                            var reason = twoDimensionalRelocator?.FailureDetail;
+                            if (string.IsNullOrEmpty(reason))
+                                reason = twoDimensionalSizeRejection
+                                    ?? FormatLocalized(
+                                        "AutoAtlasTexture:fallback:AtlasExecutionFailed");
+                            twoDimensionalFallbackReasons.Add(
+                                $"groups={string.Join(",", failedMerge.GroupIds.Select(id => "g" + id))}, layout={failedMerge.PlannedLayoutSize.x}×{failedMerge.PlannedLayoutSize.y}: {reason}");
+                        }
+                        // A merge plan is only an optimization. If its
+                        // placement cannot be executed losslessly, retry the
+                        // original atomic groups without merging them.
+                        EnqueueStandaloneFallback(
+                            executionGroups, failedMerge, preparedGroups);
+                    }
+                    continue;
+                }
 
                 using var atlasContext = atlasResult.AtlasContext!;
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
+
+                // ReplaceMesh silently skips a renderer when no corresponding
+                // generated atlas mesh can be resolved. That is only harmless
+                // when the target material has no drawable geometry on that
+                // renderer. Otherwise the later domain-wide material replacement
+                // would pair an atlased material with unchanged UVs.
+                var unresolvedRequiredRenderer =
+                    atlasRenderers.FirstOrDefault(renderer =>
+                        RendererRequiresAtlasMesh(
+                            domain,
+                            renderer,
+                            group)
+                        && AtlasTexture.ResolveAtlasedMeshForRenderer(
+                            domain,
+                            renderer,
+                            atlasContext,
+                            atlasResult.AtlasedMeshes!) is null);
+                if (unresolvedRequiredRenderer != null)
+                {
+                    foreach (var rt in compiledTextures.Values.Distinct())
+                        rt.Dispose();
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes!);
+
+                    if (execution.MergeSelection is { } unresolvedMerge)
+                    {
+                        if (unresolvedMerge.PackedRegions != null)
+                        {
+                            twoDimensionalFallbackReasons.Add(
+                                $"groups={string.Join(",", unresolvedMerge.GroupIds.Select(id => "g" + id))}, "
+                                + $"layout={unresolvedMerge.PlannedLayoutSize.x}×{unresolvedMerge.PlannedLayoutSize.y}: "
+                                + FormatLocalized(
+                                    "AutoAtlasTexture:fallback:RequiredMeshResolutionFailed",
+                                    unresolvedRequiredRenderer.name));
+                        }
+
+                        EnqueueStandaloneFallback(
+                            executionGroups,
+                            unresolvedMerge,
+                            preparedGroups);
+                    }
+
+                    continue;
+                }
+
+                var generatedPropertyUnsafe =
+                    HasUnsafeGeneratedPropertyApplication(
+                        group,
+                        atlasContext.MaterialGroupingCtx
+                            .ContainsTextureDictionaries,
+                        settings.AtlasTargetUVChannel);
+                var referenceCopyUnsafe =
+                    !AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            group,
+                            atlasContext.MaterialGroupingCtx,
+                            settings);
+                if (generatedPropertyUnsafe || referenceCopyUnsafe)
+                {
+                    foreach (var rt in compiledTextures.Values.Distinct())
+                        rt.Dispose();
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes!);
+
+                    if (execution.MergeSelection is { } semanticMerge)
+                    {
+                        if (semanticMerge.PackedRegions != null)
+                        {
+                            var reason = generatedPropertyUnsafe
+                                ? FormatLocalized(
+                                    "AutoAtlasTexture:fallback:GeneratedPropertyApplicationMismatch")
+                                : FormatLocalized(
+                                    "AutoAtlasTexture:fallback:ReferenceCopySemanticsMismatch");
+                            twoDimensionalFallbackReasons.Add(
+                                $"groups={string.Join(",", semanticMerge.GroupIds.Select(id => "g" + id))}, "
+                                + $"layout={semanticMerge.PlannedLayoutSize.x}×{semanticMerge.PlannedLayoutSize.y}: "
+                                + reason);
+                        }
+
+                        EnqueueStandaloneFallback(
+                            executionGroups,
+                            semanticMerge,
+                            preparedGroups);
+                    }
+
+                    continue;
+                }
+
                 var tuningResult = AtlasTexture.DoTextureFinTuning(
                     engine, atlasContext, settings, compiledTextures, null);
+
+                var finalOutputPixels = tuningResult.TextureDescriptors.Keys
+                    .Distinct()
+                    .Sum(texture => (long)texture.Width * texture.Hight);
+
+                if (execution.MergeSelection == null
+                    && (finalOutputPixels <= 0
+                        || finalOutputPixels >= originalPixels))
+                {
+                    foreach (var rt in compiledTextures.Values
+                                 .Concat(tuningResult.TextureDescriptors.Keys)
+                                 .Distinct())
+                    {
+                        rt.Dispose();
+                    }
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes!);
+                    continue;
+                }
+
+                if (execution.MergeSelection is { } pixelCheckedMerge
+                    && !HasStrictMergePixelBenefit(
+                        finalOutputPixels,
+                        pixelCheckedMerge.BaselinePixels))
+                {
+                    foreach (var rt in compiledTextures.Values
+                                 .Concat(tuningResult.TextureDescriptors.Keys)
+                                 .Distinct())
+                    {
+                        rt.Dispose();
+                    }
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes!);
+
+                    if (pixelCheckedMerge.PackedRegions != null)
+                    {
+                        twoDimensionalFallbackReasons.Add(
+                            $"groups={string.Join(",", pixelCheckedMerge.GroupIds.Select(id => "g" + id))}, "
+                            + $"layout={pixelCheckedMerge.PlannedLayoutSize.x}×{pixelCheckedMerge.PlannedLayoutSize.y}: "
+                            + FormatLocalized(
+                                "AutoAtlasTexture:fallback:FinalPixelsNotReduced",
+                                finalOutputPixels,
+                                pixelCheckedMerge.BaselinePixels));
+                    }
+
+                    EnqueueStandaloneFallback(
+                        executionGroups,
+                        pixelCheckedMerge,
+                        preparedGroups);
+                    continue;
+                }
+
+                var hasExecutionTextureMemory =
+                    AtlasTexture.TryCalculateFinalTextureMemory(
+                        atlasContext,
+                        tuningResult,
+                        out var executionTextureMemoryBytes);
+
+                if (execution.MergeSelection is { } memoryCheckedMerge
+                    && (!hasExecutionTextureMemory
+                        || executionTextureMemoryBytes
+                            >= memoryCheckedMerge.BaselineBytes))
+                {
+                    // The planner only predicts texture cost. The final
+                    // FineTuning descriptors are authoritative enough to reject a
+                    // merge before it mutates meshes/materials. If the final cost
+                    // cannot be determined, fall back conservatively as well.
+                    foreach (var rt in compiledTextures.Values
+                                 .Concat(tuningResult.TextureDescriptors.Keys)
+                                 .Distinct())
+                    {
+                        rt.Dispose();
+                    }
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes!);
+
+                    if (memoryCheckedMerge.PackedRegions != null)
+                    {
+                        var reason = !hasExecutionTextureMemory
+                            ? FormatLocalized(
+                                "AutoAtlasTexture:fallback:FinalMemoryUnknown")
+                            : FormatLocalized(
+                                "AutoAtlasTexture:fallback:FinalMemoryNotReduced",
+                                executionTextureMemoryBytes,
+                                memoryCheckedMerge.BaselineBytes);
+                        twoDimensionalFallbackReasons.Add(
+                            $"groups={string.Join(",", memoryCheckedMerge.GroupIds.Select(id => "g" + id))}, layout={memoryCheckedMerge.PlannedLayoutSize.x}×{memoryCheckedMerge.PlannedLayoutSize.y}: {reason}");
+                    }
+                    EnqueueStandaloneFallback(
+                        executionGroups, memoryCheckedMerge, preparedGroups);
+                    continue;
+                }
+
                 var resultingTextures = tuningResult.RenderTextures.ToDictionary(
                     item => item.Key,
                     item => engine.GetReferenceRenderTexture(item.Value));
                 var retainedRenderTextures = tuningResult.TextureDescriptors.Keys.ToHashSet();
+
+                var atlasMaterialMaps =
+                    AtlasTexture.GenerateAtlasedMaterialMaps(
+                        domain,
+                        group,
+                        settings,
+                        (new List<AtlasTexture.MaterialMergeGroup>(), null, null),
+                        resultingTextures,
+                        atlasResult.PreserveBump2ndMaterials,
+                        atlasResult.PreservedOriginalUVChannel);
+                var generatedAtlasMaterials =
+                    atlasMaterialMaps.materialMap.Values
+                        .Concat(
+                            atlasMaterialMaps
+                                .domainsMaterial2ReplaceMaterial.Values)
+                        .Distinct()
+                        .ToArray();
+
+                // The merge cost model assumes every source texture can be
+                // released. Validate the actual generated materials before
+                // mutating the domain; any retained source invalidates that
+                // assumption and must fall back to standalone groups.
+                if (RetainsAnySourceTexture(
+                        generatedAtlasMaterials,
+                        execution.SourceTextures))
+                {
+                    DestroyUnappliedAtlasedMaterials(
+                        generatedAtlasMaterials);
+                    foreach (var rt in compiledTextures.Values
+                                 .Concat(tuningResult.TextureDescriptors.Keys)
+                                 .Distinct())
+                    {
+                        rt.Dispose();
+                    }
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes!);
+
+                    if (execution.MergeSelection is { } retainedSourceMerge)
+                    {
+                        if (retainedSourceMerge.PackedRegions != null)
+                        {
+                            twoDimensionalFallbackReasons.Add(
+                                $"groups={string.Join(",", retainedSourceMerge.GroupIds.Select(id => "g" + id))}, "
+                                + $"layout={retainedSourceMerge.PlannedLayoutSize.x}×{retainedSourceMerge.PlannedLayoutSize.y}: "
+                                + FormatLocalized(
+                                    "AutoAtlasTexture:fallback:SourceTextureRetained"));
+                        }
+
+                        EnqueueStandaloneFallback(
+                            executionGroups,
+                            retainedSourceMerge,
+                            preparedGroups);
+                    }
+
+                    continue;
+                }
 
                 var resolutionRoutes = AtlasResolutionRouteReport
                     .Collect(atlasContext, tuningResult);
@@ -233,16 +963,25 @@ namespace net.rs64.TexTransTool.NDMF
                         AtlasResolutionRouteReport.CreateLocalizedLogLines(
                             resolutionRoutes)));
 
+                var hasSourceTextureMemory =
+                    AtlasTexture.TryCalculateSourceTextureMemory(
+                        domain,
+                        execution.SourceTextures,
+                        out var sourceTextureMemoryBytes);
+                if (hasExecutionTextureMemory && hasSourceTextureMemory)
+                {
+                    block += "\n" + string.Format(
+                        "AtlasTexture:info:TargetTextureMemory".GetLocalize(),
+                        AtlasTexture.FormatTextureMemory(sourceTextureMemoryBytes),
+                        AtlasTexture.FormatTextureMemory(executionTextureMemoryBytes));
+                }
+
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
-                AtlasTexture.ReplaceAtlasedMaterials(
+                AtlasTexture.ApplyAtlasedMaterialMaps(
                     domain,
-                    group,
-                    settings,
-                    (new List<AtlasTexture.MaterialMergeGroup>(), null, null),
-                    resultingTextures,
-                    atlasResult.PreserveBump2ndMaterials,
-                    atlasResult.PreservedOriginalUVChannel);
+                    atlasMaterialMaps.materialMap,
+                    atlasMaterialMaps.domainsMaterial2ReplaceMaterial);
 
                 foreach (var rt in compiledTextures.Values)
                     if (!retainedRenderTextures.Contains(rt)) rt.Dispose();
@@ -251,22 +990,212 @@ namespace net.rs64.TexTransTool.NDMF
                     domain.RegisterPostProcessingAndLazyGPUReadBack(
                         descriptor.Key, descriptor.Value);
 
-                completed.Add((block, executionMetrics.TotalRelocateCount,
-                    executionMetrics.RelocationTimeMilliseconds));
+                completed.Add(block);
+            }
+
+            processingTimer.Stop();
+
+            if (twoDimensionalFallbackReasons.Count != 0)
+            {
+                TTTLog.ReportingObject(configuration, () =>
+                    TTTLog.Info(
+                        "AutoAtlasTexture:info:TwoDimensionalFallback",
+                        string.Join("\n", twoDimensionalFallbackReasons)));
             }
 
             if (completed.Count == 0)
             {
                 TTTLog.ReportingObject(configuration, () =>
-                    TTTLog.Info("AtlasTexture:info:TargetNotFound"));
+                    TTTLog.Info("AutoAtlasTexture:info:TargetNotFound",
+                        processingTimer.ElapsedMilliseconds));
                 return;
             }
 
             TTTLog.ReportingObject(configuration, () =>
                 TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
-                    string.Join("\n\n", completed.Select(item => item.Block)),
-                    completed.Sum(item => item.Relocations),
-                    completed.Sum(item => item.Milliseconds)));
+                    string.Join("\n\n", completed),
+                    processingTimer.ElapsedMilliseconds));
+        }
+
+        internal static bool RendererRequiresAtlasMesh(
+            IRendererTargeting targeting,
+            Renderer renderer,
+            HashSet<Material> targetMaterials)
+        {
+            var mesh = targeting.GetMesh(renderer);
+            if (mesh == null || mesh.subMeshCount == 0)
+                return false;
+
+            var materials = targeting.GetMaterials(renderer);
+            for (var slot = 0; slot < materials.Length; slot += 1)
+            {
+                var material = materials[slot];
+                if (material == null
+                    || !targetMaterials.Contains(material))
+                {
+                    continue;
+                }
+
+                var effectiveSubMesh = Math.Clamp(
+                    slot, 0, mesh.subMeshCount - 1);
+                if (mesh.GetSubMesh(effectiveSubMesh).indexCount != 0)
+                    return true;
+            }
+
+            return false;
+        }
+
+        internal static bool RetainsAnySourceTexture(
+            IEnumerable<Material> materials,
+            HashSet<Texture> sourceTextures)
+        {
+            return materials
+                .Where(material => material != null)
+                .SelectMany(material =>
+                    material.EnumerateReferencedTextures())
+                .Any(sourceTextures.Contains);
+        }
+
+        internal static void DestroyUnappliedAtlasedMaterials(
+            IEnumerable<Material> materials)
+        {
+            foreach (var material in materials
+                         .Where(material => material != null)
+                         .Distinct())
+            {
+                UnityEngine.Object.DestroyImmediate(material);
+            }
+        }
+
+        internal static bool HasActiveUntransformedMaterialConsumer(
+            IRendererTargeting domain,
+            IReadOnlyCollection<Material> materials,
+            IReadOnlyCollection<Renderer> transformedRenderers)
+        {
+            var transformed = transformedRenderers.ToHashSet();
+
+            foreach (var renderer in domain.EnumerateRenderer())
+            {
+                if (renderer == null || renderer.tag == "EditorOnly")
+                    continue;
+
+                if (!domain.IsEnable(renderer)
+                    || !domain.IsActive(renderer.gameObject))
+                {
+                    continue;
+                }
+
+                if (!domain.GetMaterials(renderer)
+                        .UOfType<Material>()
+                        .Any(materials.Contains))
+                {
+                    continue;
+                }
+
+                if (!transformed.Contains(renderer))
+                    return true;
+            }
+
+            return false;
+        }
+
+        internal static bool HasStrictMergePixelBenefit(
+            long finalOutputPixels,
+            long standaloneBaselinePixels)
+        {
+            return finalOutputPixels > 0
+                && finalOutputPixels < standaloneBaselinePixels;
+        }
+
+        internal static bool HasUnsafeGeneratedPropertyApplication(
+            IReadOnlyCollection<Material> materials,
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>>
+                propertyTextures,
+            UVChannel atlasTargetUvChannel)
+        {
+            var generatedProperties = materials
+                .Where(propertyTextures.ContainsKey)
+                .SelectMany(material => propertyTextures[material].Keys)
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var material in materials)
+            {
+                if (material == null)
+                    continue;
+
+                propertyTextures.TryGetValue(
+                    material,
+                    out var atlasProperties);
+                var usages =
+                    TTShaderTextureUsageInformationUtil
+                        .GetContainsUVTransformUsage(material);
+
+                foreach (var property in generatedProperties)
+                {
+                    if (!material.HasShaderTextureProperty(property))
+                        continue;
+
+                    var currentTexture = material.GetTexture(property);
+                    if (currentTexture == null
+                        || currentTexture is not Texture2D
+                            and not RenderTexture)
+                    {
+                        // AutoAtlas uses ForceSetTexture=false, so
+                        // GenerateAtlasMat leaves these properties unchanged.
+                        continue;
+                    }
+
+                    if (atlasProperties != null
+                        && atlasProperties.TryGetValue(
+                            property,
+                            out var atlasTexture)
+                        && atlasTexture == currentTexture)
+                    {
+                        continue;
+                    }
+
+                    if (property == "_Bump2ndMap"
+                        && usages.TryGetValue(property, out var usage)
+                        && TTShaderTextureUsageInformationUtil
+                            .RequiresBump2ndOriginalUVPreservation(
+                                property,
+                                usage,
+                                atlasTargetUvChannel))
+                    {
+                        // AtlasTexture intentionally leaves this texture
+                        // untouched and switches it to the preserved original
+                        // UV channel.
+                        continue;
+                    }
+
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static void DestroyUnappliedAtlasedMeshes(
+            IEnumerable<Mesh> meshes)
+        {
+            foreach (var mesh in meshes
+                         .Where(mesh => mesh != null)
+                         .Distinct())
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        internal static bool IsExcludedFromTextureMerging(
+            IReadOnlyCollection<Material> materials,
+            IEnumerable<Renderer> renderers,
+            HashSet<Material> excludedMaterials,
+            HashSet<Renderer> excludedRenderers)
+        {
+            return materials.Any(excludedMaterials.Contains)
+                || renderers.Any(excludedRenderers.Contains);
         }
 
         private static bool ReferencesAreExclusive(

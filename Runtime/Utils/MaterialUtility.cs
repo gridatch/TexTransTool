@@ -7,6 +7,23 @@ namespace net.rs64.TexTransTool.Utils
 {
     internal static class MaterialUtility
     {
+        public static bool HasShaderTextureProperty(
+            this Material material,
+            string propertyName)
+        {
+            if (material == null || string.IsNullOrEmpty(propertyName))
+                return false;
+
+            var shader = material.shader;
+            if (shader == null)
+                return false;
+
+            var propertyIndex = shader.FindPropertyIndex(propertyName);
+            return propertyIndex >= 0
+                && shader.GetPropertyType(propertyIndex)
+                    is UnityEngine.Rendering.ShaderPropertyType.Texture;
+        }
+
         public static bool ReferencesTexture(this Material material, Texture target)
         {
             if(material == null || target == null)

@@ -1,15 +1,52 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
+using net.rs64.TexTransCore.UVIsland;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas
 {
     public sealed partial class AtlasTexture
     {
+        internal sealed class PreparedAtlasContext : IDisposable
+        {
+            internal readonly AtlasContext AtlasContext;
+            internal readonly HashSet<Material> PreserveBump2ndMaterials;
+            internal readonly int? PreservedOriginalUVChannel;
+
+            internal PreparedAtlasContext(
+                AtlasContext atlasContext,
+                HashSet<Material> preserveBump2ndMaterials,
+                int? preservedOriginalUVChannel)
+            {
+                AtlasContext = atlasContext;
+                PreserveBump2ndMaterials = preserveBump2ndMaterials;
+                PreservedOriginalUVChannel = preservedOriginalUVChannel;
+            }
+
+            public void Dispose()
+            {
+                AtlasContext.Dispose();
+            }
+        }
+
+        internal interface IAtlasTexturePaddingProvider
+        {
+            float GetTexturePadding(
+                int materialGroupId,
+                float defaultPadding);
+
+            float CalculateUsedHeight(
+                IslandTransform[] movedIslands,
+                float defaultPadding);
+        }
+
         internal sealed class AtlasExecutionOptions
         {
             internal bool RequireLossless;
             internal bool ReportProgressInfo = true;
+            internal int? ForcedAutoAtlasWidth;
+            internal Func<AtlasContext, IIslandRelocator>? IslandRelocatorFactory;
             internal Func<AtlasContext, Vector2Int, AtlasExecutionMetrics, bool>? AcceptAtlasSize;
         }
 
@@ -42,17 +79,23 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal readonly int TotalRelocateCount;
             internal readonly long RelocationTimeMilliseconds;
             internal readonly long OutputTexturePixelCount;
+            internal readonly Vector2Int LayoutSize;
+            internal readonly IReadOnlyDictionary<string, Vector2Int> PropertySizes;
 
             internal AtlasExecutionMetrics(
                 float topFreeFraction,
                 int totalRelocateCount,
                 long relocationTimeMilliseconds,
-                long outputTexturePixelCount)
+                long outputTexturePixelCount,
+                Vector2Int layoutSize,
+                IReadOnlyDictionary<string, Vector2Int> propertySizes)
             {
                 TopFreeFraction = topFreeFraction;
                 TotalRelocateCount = totalRelocateCount;
                 RelocationTimeMilliseconds = relocationTimeMilliseconds;
                 OutputTexturePixelCount = outputTexturePixelCount;
+                LayoutSize = layoutSize;
+                PropertySizes = propertySizes;
             }
         }
     }
