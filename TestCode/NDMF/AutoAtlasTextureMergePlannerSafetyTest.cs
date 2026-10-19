@@ -18,12 +18,16 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             internal UsageUVChannel TextureUvChannel = UsageUVChannel.UV0;
             internal Matrix2x3? TextureUvMatrix = Matrix2x3.Identity;
             internal bool UseLegacyTextureRegistration;
+            internal string? QueriedProperty;
             internal UsingUVChannels OtherUvUsage;
             internal bool UsesVertexIndex;
 
             public void GetMaterialTextureUVUsage(
                 ITTTextureUVUsageWriter writer)
             {
+                if (!string.IsNullOrEmpty(QueriedProperty))
+                    _ = writer.GetVector(QueriedProperty);
+
                 if (UseLegacyTextureRegistration)
                 {
                     writer.WriteTextureUVUsage(
@@ -2392,11 +2396,10 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             try
             {
                 material.SetTexture("_MainTex", texture);
-                registry[shader] = new TestShaderUsageInformation();
-
-                // Force the provider to query the texture ST property.
-                _ = TTShaderTextureUsageInformationUtil
-                    .GetContainsUVTransformUsage(material);
+                registry[shader] = new TestShaderUsageInformation
+                {
+                    QueriedProperty = "_MainTex_ST",
+                };
 
                 child.transform.SetParent(root.transform);
                 var renderer = child.AddComponent<MeshRenderer>();
@@ -2420,20 +2423,21 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 var index = new nadena.dev.ndmf.animator.AnimationIndex(
                     new nadena.dev.ndmf.animator.VirtualNode[] { clip });
 
-                // This test provider itself does not query _MainTex_ST, so use
-                // a direct matcher check for the unrelated color case.
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
+                        index,
+                        new Renderer[] { renderer },
+                        new[] { material },
+                        _ => new[] { "Body" }),
+                    Is.True);
+
                 Assert.That(
                     AutoAtlasTextureShaderPropertyAnimationDetector
                         .MatchesQueriedMaterialProperty(
                             "material._Color.r",
-                            new[] { "_MainTex_ST" }),
+                            TTShaderTextureUsageInformationUtil
+                                .GetQueriedMaterialProperties(material)),
                     Is.False);
-                Assert.That(
-                    AutoAtlasTextureShaderPropertyAnimationDetector
-                        .MatchesQueriedMaterialProperty(
-                            "material._MainTex_ST.x",
-                            new[] { "_MainTex_ST" }),
-                    Is.True);
             }
             finally
             {
@@ -2456,8 +2460,15 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             var material = new Material(shader);
             var root = new GameObject("Avatar");
             var child = new GameObject("NewBody");
+            var registry = TTShaderTextureUsageInformationRegistry.s_information;
+            var hadPrevious = registry.TryGetValue(shader, out var previous);
             try
             {
+                registry[shader] = new TestShaderUsageInformation
+                {
+                    QueriedProperty = "_MainTex_ST",
+                };
+
                 child.transform.SetParent(root.transform);
                 var renderer = child.AddComponent<MeshRenderer>();
                 renderer.sharedMaterial = material;
@@ -2473,21 +2484,27 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 var index = new nadena.dev.ndmf.animator.AnimationIndex(
                     new nadena.dev.ndmf.animator.VirtualNode[] { clip });
 
-                var properties = new[] { "_MainTex_ST" };
                 Assert.That(
-                    AutoAtlasTextureShaderPropertyAnimationDetector
-                        .MatchesQueriedMaterialProperty(
-                            "material._MainTex_ST.z",
-                            properties),
+                    AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
+                        index,
+                        new Renderer[] { renderer },
+                        new[] { material },
+                        _ => new[] { "NewBody" }),
+                    Is.False);
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
+                        index,
+                        new Renderer[] { renderer },
+                        new[] { material },
+                        _ => new[] { "NewBody", "OldBody" }),
                     Is.True);
-
-                // The path-sensitive behavior is already exercised by the
-                // visibility detector; keep the semantic matcher independent
-                // from global material-reference heuristics.
-                Assert.That(renderer.transform, Is.EqualTo(child.transform));
             }
             finally
             {
+                if (hadPrevious)
+                    registry[shader] = previous;
+                else
+                    registry.Remove(shader);
                 Object.DestroyImmediate(root);
                 Object.DestroyImmediate(material);
             }
