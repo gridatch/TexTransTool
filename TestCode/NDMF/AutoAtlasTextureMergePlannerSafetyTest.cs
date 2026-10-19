@@ -3,11 +3,70 @@ using System.Linq;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 
 namespace net.rs64.TexTransTool.NDMF.TestCode
 {
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
+        [Test]
+        public void UnknownMemoryBlockLayoutsFailClosed()
+        {
+            Assert.That(
+                AtlasTexture.TryGetMemoryBlockLayout(
+                    (TextureFormat)int.MaxValue,
+                    out _),
+                Is.False);
+            Assert.That(
+                AtlasTexture.TryGetMemoryBlockLayout(
+                    (GraphicsFormat)int.MaxValue,
+                    out _),
+                Is.False);
+
+            Assert.That(
+                AtlasTexture.TryGetMemoryBlockLayout(
+                    TextureFormat.RGBA32,
+                    out var rgbaBlock),
+                Is.True);
+            Assert.That(rgbaBlock, Is.EqualTo((1u, 1u, 4u)));
+        }
+
+        [Test]
+        public void SourceTextureMemoryUsesActualMipCount()
+        {
+            var texture = new Texture2D(
+                16,
+                16,
+                TextureFormat.RGBA32,
+                mipCount: 2,
+                linear: false);
+            try
+            {
+                Assert.That(texture.mipmapCount, Is.EqualTo(2));
+
+                var descriptor = new TexTransToolTextureDescriptor
+                {
+                    UseMipMap = true,
+                };
+                Assert.That(
+                    AtlasTexture.GetSourceTextureMipCount(
+                        texture,
+                        descriptor),
+                    Is.EqualTo(2));
+
+                descriptor.UseMipMap = false;
+                Assert.That(
+                    AtlasTexture.GetSourceTextureMipCount(
+                        texture,
+                        descriptor),
+                    Is.EqualTo(1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
         [Test]
         public void AtlasSubSetIgnoresTargetMaterialOnEmptySubMesh()
         {
