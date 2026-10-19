@@ -542,6 +542,23 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void LiltoonMain2ndUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.IntValues["_UseMain2ndTex"] = 1;
+            probe.IntValues["_Main2ndTex_UVMode"] = 2;
+            probe.IntValues["_Main3rdTex_UVMode"] = 0;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                probe,
+                isOutline: false);
+
+            Assert.That(
+                probe.TextureUvChannels["_Main2ndTex"],
+                Is.EqualTo(UsingUVChannels.UV2));
+        }
+
+        [Test]
         public void LiltoonMain3rdUsesItsOwnUvMode()
         {
             var probe = new LiltoonMaterialInformationProbe();
@@ -605,6 +622,25 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             Assert.That(
                 layer.OtherUvUsage,
                 Is.EqualTo(UsingUVChannels.UV0));
+        }
+
+        [Test]
+        public void LiltoonAudioLinkMaskUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.IntValues["_UseAudioLink"] = 1;
+            probe.IntValues["_AudioLink2Emission"] = 1;
+            probe.IntValues["_AudioLinkUVMode"] = 3;
+            probe.IntValues["_AudioLinkMask_UVMode"] = 2;
+            probe.IntValues["_OutlineVectorUVMode"] = 0;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                probe,
+                isOutline: false);
+
+            Assert.That(
+                probe.TextureUvChannels["_AudioLinkMask"],
+                Is.EqualTo(UsingUVChannels.UV2));
         }
 
         [Test]
