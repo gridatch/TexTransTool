@@ -746,6 +746,35 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
+                if (execution.MergeSelection is { } pixelCheckedMerge
+                    && !HasStrictMergePixelBenefit(
+                        finalOutputPixels,
+                        pixelCheckedMerge.BaselinePixels))
+                {
+                    foreach (var rt in compiledTextures.Values
+                                 .Concat(tuningResult.TextureDescriptors.Keys)
+                                 .Distinct())
+                    {
+                        rt.Dispose();
+                    }
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes!);
+
+                    if (pixelCheckedMerge.PackedRegions != null)
+                    {
+                        twoDimensionalFallbackReasons.Add(
+                            $"groups={string.Join(",", pixelCheckedMerge.GroupIds.Select(id => "g" + id))}, "
+                            + $"layout={pixelCheckedMerge.PlannedLayoutSize.x}×{pixelCheckedMerge.PlannedLayoutSize.y}: "
+                            + $"最終出力ピクセル数が統合前より減少しない: actual={finalOutputPixels}, baseline={pixelCheckedMerge.BaselinePixels}");
+                    }
+
+                    EnqueueStandaloneFallback(
+                        executionGroups,
+                        pixelCheckedMerge,
+                        preparedGroups);
+                    continue;
+                }
+
                 var hasExecutionTextureMemory =
                     AtlasTexture.TryCalculateFinalTextureMemory(
                         atlasContext,
@@ -868,6 +897,14 @@ namespace net.rs64.TexTransTool.NDMF
                 TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
                     string.Join("\n\n", completed),
                     processingTimer.ElapsedMilliseconds));
+        }
+
+        internal static bool HasStrictMergePixelBenefit(
+            long finalOutputPixels,
+            long standaloneBaselinePixels)
+        {
+            return finalOutputPixels > 0
+                && finalOutputPixels < standaloneBaselinePixels;
         }
 
         internal static bool HasUnsafeGeneratedPropertyApplication(
