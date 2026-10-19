@@ -356,17 +356,17 @@
           },
           "zipSHA256": "98169c938a45e1051bd1baa96c887c25fd6ad833701dd43b434089625f770c01"
         },
-        "0.1.17+wdt.ttt.1.0.2.debug.896.auto-atlas-merge-planner.dd25d5c": {
+        "0.1.18+wdt.ttt.1.0.2": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.17+wdt.ttt.1.0.2.debug.896.auto-atlas-merge-planner.dd25d5c",
+          "version": "0.1.18+wdt.ttt.1.0.2",
           "unity": "2022.3",
-          "description": "Debug build 896 for auto-atlas-merge-planner from feat/auto-atlas-merge-planner at dd25d5c. Based on WDT 0.1.17+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Non-destructive modification to Texture!",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.17+wdt.ttt.1.0.2.debug.896.auto-atlas-merge-planner.dd25d5c.zip",
+          "url": "https://github.com/gridatch/TexTransTool/releases/download/wdt-v0.1.18+wdt.ttt.1.0.2/net.gridatch.tex-trans-tool-0.1.18+wdt.ttt.1.0.2.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -379,7 +379,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "5fd3a1923e026da17d5fa146dca6226ae06efcf8606f258dedf2d89e059461cc"
+          "zipSHA256": "d0a2d0369b99e98229bc6b8329a6328942b376af27171a2a524ea476baca9bf8"
         }
       }
     }
