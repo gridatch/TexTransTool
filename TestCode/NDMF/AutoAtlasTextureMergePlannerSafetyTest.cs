@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.Utils;
 using UnityEngine;
@@ -11,6 +12,416 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 {
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
+        private sealed class TestShaderUsageInformation
+            : ITTShaderTextureUsageInformation
+        {
+            internal UsageUVChannel TextureUvChannel = UsageUVChannel.UV0;
+            internal Matrix2x3? TextureUvMatrix = Matrix2x3.Identity;
+            internal bool UseLegacyTextureRegistration;
+            internal UsingUVChannels OtherUvUsage;
+            internal bool UsesVertexIndex;
+
+            public void GetMaterialTextureUVUsage(
+                ITTTextureUVUsageWriter writer)
+            {
+                if (UseLegacyTextureRegistration)
+                {
+                    writer.WriteTextureUVUsage(
+                        "_MainTex",
+                        TextureUvChannel);
+                    return;
+                }
+
+                var translator = new MaterialInformationTranslator(writer);
+                translator.RegisterTextureUVUsage(
+                    "_MainTex",
+                    SamplerStateInformation.LinearRepeatSampler,
+                    TextureUvChannel switch
+                    {
+                        UsageUVChannel.UV0 => UsingUVChannels.UV0,
+                        UsageUVChannel.UV1 => UsingUVChannels.UV1,
+                        UsageUVChannel.UV2 => UsingUVChannels.UV2,
+                        UsageUVChannel.UV3 => UsingUVChannels.UV3,
+                        UsageUVChannel.UV4 => UsingUVChannels.UV4,
+                        UsageUVChannel.UV5 => UsingUVChannels.UV5,
+                        UsageUVChannel.UV6 => UsingUVChannels.UV6,
+                        UsageUVChannel.UV7 => UsingUVChannels.UV7,
+                        UsageUVChannel.NonMesh => UsingUVChannels.NonMesh,
+                        _ => UsingUVChannels.Unknown,
+                    },
+                    TextureUvMatrix);
+
+                if (OtherUvUsage != 0)
+                    translator.RegisterOtherUVUsage(OtherUvUsage);
+                if (UsesVertexIndex)
+                    translator.RegisterVertexIndexUsage();
+            }
+        }
+
+        private sealed class LiltoonMaterialInformationProbe
+            : IMaterialInformationCallbackAbstractionInterface
+        {
+            internal readonly Dictionary<string, int?> IntValues = new();
+            internal readonly Dictionary<string, float?> FloatValues = new();
+            internal readonly Dictionary<string, Vector4?> VectorValues = new();
+            internal readonly Dictionary<string, UsingUVChannels>
+                TextureUvChannels = new();
+
+            public int? GetInteger(
+                string propertyName,
+                bool considerAnimation = true)
+                => IntValues.GetValueOrDefault(propertyName, 0);
+
+            public int? GetInt(
+                string propertyName,
+                bool considerAnimation = true)
+                => IntValues.GetValueOrDefault(propertyName, 0);
+
+            public float? GetFloat(
+                string propertyName,
+                bool considerAnimation = true)
+                => FloatValues.GetValueOrDefault(propertyName, 0f);
+
+            public Vector4? GetVector(
+                string propertyName,
+                bool considerAnimation = true)
+                => VectorValues.GetValueOrDefault(propertyName, Vector4.zero);
+
+            public bool? IsShaderKeywordEnabled(string keywordName)
+                => false;
+
+            public void RegisterOtherUVUsage(UsingUVChannels uvChannel)
+            {
+            }
+
+            public void RegisterTextureUVUsage(
+                string textureMaterialPropertyName,
+                SamplerStateInformation samplerState,
+                UsingUVChannels uvChannels,
+                Matrix2x3? uvMatrix)
+            {
+                TextureUvChannels[textureMaterialPropertyName] = uvChannels;
+            }
+
+            public void RegisterVertexIndexUsage()
+            {
+            }
+        }
+
+        [Test]
+        public void LegacyTextureUsageDoesNotProveIdentityTransform()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var texture = new Texture2D(4, 4);
+            var registry = TTShaderTextureUsageInformationRegistry.s_information;
+            var hadPrevious = registry.TryGetValue(shader, out var previous);
+            try
+            {
+                material.SetTexture("_MainTex", texture);
+                registry[shader] = new TestShaderUsageInformation
+                {
+                    UseLegacyTextureRegistration = true,
+                };
+
+                var usage = TTShaderTextureUsageInformationUtil
+                    .GetContainsUVTransformUsage(material)["_MainTex"];
+                Assert.That(
+                    TTShaderTextureUsageInformationUtil
+                        .IsIdentityUVMatrix(usage.UVMatrix),
+                    Is.True,
+                    "Manual AtlasTexture keeps the legacy identity assumption.");
+                Assert.That(
+                    TTShaderTextureUsageInformationUtil
+                        .IsKnownIdentityUVMatrix(usage),
+                    Is.False,
+                    "AutoAtlas must distinguish an assumed identity from an explicitly reported one.");
+
+                var grouping = new MaterialGroupingContext(
+                    new HashSet<Material> { material },
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasUnsupportedTextureUvSampling(
+                        new[] { material },
+                        grouping.ContainsTextureDictionaries,
+                        UVChannel.UV0),
+                    Is.True);
+            }
+            finally
+            {
+                if (hadPrevious)
+                    registry[shader] = previous;
+                else
+                    registry.Remove(shader);
+                Object.DestroyImmediate(texture);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void AutoAtlasRejectsReportedNonTextureUseOfTargetUv()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var texture = new Texture2D(4, 4);
+            var registry = TTShaderTextureUsageInformationRegistry.s_information;
+            var hadPrevious = registry.TryGetValue(shader, out var previous);
+            try
+            {
+                material.SetTexture("_MainTex", texture);
+                var provider = new TestShaderUsageInformation
+                {
+                    OtherUvUsage = UsingUVChannels.UV1,
+                };
+                registry[shader] = provider;
+
+                var grouping = new MaterialGroupingContext(
+                    new HashSet<Material> { material },
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasUnsupportedTextureUvSampling(
+                        new[] { material },
+                        grouping.ContainsTextureDictionaries,
+                        UVChannel.UV0),
+                    Is.False);
+
+                provider.OtherUvUsage = UsingUVChannels.UV0;
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasUnsupportedTextureUvSampling(
+                        new[] { material },
+                        grouping.ContainsTextureDictionaries,
+                        UVChannel.UV0),
+                    Is.True);
+            }
+            finally
+            {
+                if (hadPrevious)
+                    registry[shader] = previous;
+                else
+                    registry.Remove(shader);
+                Object.DestroyImmediate(texture);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void AutoAtlasProtectsVertexIndexOnlyWhenMeshWillBeReindexed()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var texture = new Texture2D(4, 4);
+            var root = new GameObject("VertexIndexSafety");
+            var simpleMesh = new Mesh();
+            var crossMesh = new Mesh();
+            var registry = TTShaderTextureUsageInformationRegistry.s_information;
+            var hadPrevious = registry.TryGetValue(shader, out var previous);
+            try
+            {
+                material.SetTexture("_MainTex", texture);
+                registry[shader] = new TestShaderUsageInformation
+                {
+                    UsesVertexIndex = true,
+                };
+
+                void SetGeometry(Mesh mesh, bool crossSubMesh)
+                {
+                    mesh.vertices = new[]
+                    {
+                        Vector3.zero,
+                        Vector3.right,
+                        Vector3.up,
+                        Vector3.one,
+                    };
+                    mesh.uv = new[]
+                    {
+                        Vector2.zero,
+                        Vector2.right,
+                        Vector2.up,
+                        Vector2.one,
+                    };
+
+                    if (crossSubMesh)
+                    {
+                        mesh.subMeshCount = 2;
+                        mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                        mesh.SetTriangles(new[] { 0, 2, 3 }, 1);
+                    }
+                    else
+                    {
+                        mesh.subMeshCount = 1;
+                        mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                    }
+                }
+
+                MeshRenderer AddRenderer(
+                    string name,
+                    Mesh mesh,
+                    Material[] materials)
+                {
+                    var go = new GameObject(name);
+                    go.transform.SetParent(root.transform, false);
+                    var filter = go.AddComponent<MeshFilter>();
+                    filter.sharedMesh = mesh;
+                    var renderer = go.AddComponent<MeshRenderer>();
+                    renderer.sharedMaterials = materials;
+                    return renderer;
+                }
+
+                SetGeometry(simpleMesh, crossSubMesh: false);
+                var simple = AddRenderer(
+                    "simple",
+                    simpleMesh,
+                    new[] { material });
+                var simpleTargeting = new RendererTargetingForTest(
+                    new Renderer[] { simple });
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasUnsafeVertexIndexUsage(
+                        simpleTargeting,
+                        new Renderer[] { simple }),
+                    Is.False);
+
+                SetGeometry(crossMesh, crossSubMesh: true);
+                var cross = AddRenderer(
+                    "cross",
+                    crossMesh,
+                    new[] { material, material });
+                var crossTargeting = new RendererTargetingForTest(
+                    new Renderer[] { cross });
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasUnsafeVertexIndexUsage(
+                        crossTargeting,
+                        new Renderer[] { cross }),
+                    Is.True);
+            }
+            finally
+            {
+                if (hadPrevious)
+                    registry[shader] = previous;
+                else
+                    registry.Remove(shader);
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(simpleMesh);
+                Object.DestroyImmediate(crossMesh);
+                Object.DestroyImmediate(texture);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void PreservedOriginalUvChannelRejectsExistingShaderUsage()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var texture = new Texture2D(4, 4);
+            var root = new GameObject("PreservedUvSafety");
+            var mesh = new Mesh();
+            var registry = TTShaderTextureUsageInformationRegistry.s_information;
+            var hadPrevious = registry.TryGetValue(shader, out var previous);
+            try
+            {
+                material.SetTexture("_MainTex", texture);
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.uv = new[]
+                {
+                    Vector2.zero,
+                    Vector2.right,
+                    Vector2.up,
+                };
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+
+                var filter = root.AddComponent<MeshFilter>();
+                filter.sharedMesh = mesh;
+                var renderer = root.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+                var targeting = new RendererTargetingForTest(
+                    new Renderer[] { renderer });
+
+                registry[shader] = new TestShaderUsageInformation
+                {
+                    TextureUvChannel = UsageUVChannel.UV0,
+                };
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsafePreservedOriginalUvUsage(
+                            targeting,
+                            new Renderer[] { renderer },
+                            preservedUvChannel: 1),
+                    Is.False);
+
+                registry[shader] = new TestShaderUsageInformation
+                {
+                    TextureUvChannel = UsageUVChannel.UV1,
+                };
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsafePreservedOriginalUvUsage(
+                            targeting,
+                            new Renderer[] { renderer },
+                            preservedUvChannel: 1),
+                    Is.True);
+            }
+            finally
+            {
+                if (hadPrevious)
+                    registry[shader] = previous;
+                else
+                    registry.Remove(shader);
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(texture);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void LiltoonMain3rdUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.IntValues["_UseMain3rdTex"] = 1;
+            probe.IntValues["_Main2ndTex_UVMode"] = 0;
+            probe.IntValues["_Main3rdTex_UVMode"] = 1;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                probe,
+                isOutline: false);
+
+            Assert.That(
+                probe.TextureUvChannels["_Main3rdTex"],
+                Is.EqualTo(UsingUVChannels.UV1));
+        }
+
+        [Test]
+        public void LiltoonOutlineVectorUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.IntValues["_OutlineVectorUVMode"] = 2;
+            probe.IntValues["_AudioLinkMask_UVMode"] = 0;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                probe,
+                isOutline: true);
+
+            Assert.That(
+                probe.TextureUvChannels["_OutlineVectorTex"],
+                Is.EqualTo(UsingUVChannels.UV2));
+        }
+
         [Test]
         public void UnknownMemoryBlockLayoutsFailClosed()
         {
