@@ -68,6 +68,19 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void DestroyUnappliedAtlasedMeshesDestroysTemporaryMeshes()
+        {
+            var first = new Mesh();
+            var second = new Mesh();
+
+            AutoAtlasTextureProcessor.DestroyUnappliedAtlasedMeshes(
+                new[] { first, first, second });
+
+            Assert.That(first == null, Is.True);
+            Assert.That(second == null, Is.True);
+        }
+
+        [Test]
         public void AtlasSubSetIgnoresTargetMaterialOnEmptySubMesh()
         {
             var shader = Shader.Find("Hidden/InternalErrorShader");
