@@ -135,6 +135,82 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             }
         }
 
+        private sealed class LiltoonMaterialInformationProbe
+            : IMaterialInformationCallbackAbstractionInterface
+        {
+            internal readonly Dictionary<string, int?> IntValues = new();
+            internal readonly Dictionary<string, float?> FloatValues = new();
+            internal readonly Dictionary<string, Vector4?> VectorValues = new();
+            internal readonly Dictionary<string, Matrix2x3?> TextureMatrices =
+                new();
+
+            public int? GetInteger(
+                string propertyName,
+                bool considerAnimation = true)
+            {
+                return IntValues.TryGetValue(propertyName, out var value)
+                    ? value
+                    : 0;
+            }
+
+            public int? GetInt(
+                string propertyName,
+                bool considerAnimation = true)
+            {
+                return IntValues.TryGetValue(propertyName, out var value)
+                    ? value
+                    : 0;
+            }
+
+            public float? GetFloat(
+                string propertyName,
+                bool considerAnimation = true)
+            {
+                return FloatValues.TryGetValue(propertyName, out var value)
+                    ? value
+                    : 0f;
+            }
+
+            public Vector4? GetVector(
+                string propertyName,
+                bool considerAnimation = true)
+            {
+                if (VectorValues.TryGetValue(propertyName, out var value))
+                    return value;
+                if (propertyName.EndsWith("_ST"))
+                    return new Vector4(1f, 1f, 0f, 0f);
+                if (propertyName.EndsWith("_ScrollRotate"))
+                    return Vector4.zero;
+                if (propertyName.EndsWith("DecalAnimation"))
+                    return new Vector4(1f, 1f, 1f, 30f);
+                if (propertyName.EndsWith("DecalSubParam"))
+                    return new Vector4(1f, 1f, 0f, 1f);
+                return Vector4.zero;
+            }
+
+            public bool? IsShaderKeywordEnabled(string keywordName)
+            {
+                return false;
+            }
+
+            public void RegisterOtherUVUsage(UsingUVChannels uvChannel)
+            {
+            }
+
+            public void RegisterTextureUVUsage(
+                string textureMaterialPropertyName,
+                SamplerStateInformation samplerState,
+                UsingUVChannels uvChannels,
+                Matrix2x3? uvMatrix)
+            {
+                TextureMatrices[textureMaterialPropertyName] = uvMatrix;
+            }
+
+            public void RegisterVertexIndexUsage()
+            {
+            }
+        }
+
         private static Shader RequireStandardShaderUsageInformation()
         {
             var shader = Shader.Find("Standard");
@@ -142,6 +218,62 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             TTShaderTextureUsageInformationRegistry.s_information[shader] =
                 new StandardShaderInformation();
             return shader;
+        }
+
+        [Test]
+        public void LiltoonParallaxMarksMainUvTransformUnknown()
+        {
+            var baseline = new LiltoonMaterialInformationProbe();
+            LiltoonShaderInformation.GetMaterialInformation(
+                baseline,
+                isOutline: false);
+            Assert.That(
+                baseline.TextureMatrices["_MainTex"],
+                Is.EqualTo(Matrix2x3.Identity));
+
+            var parallax = new LiltoonMaterialInformationProbe();
+            parallax.IntValues["_UseParallax"] = 1;
+            LiltoonShaderInformation.GetMaterialInformation(
+                parallax,
+                isOutline: false);
+            Assert.That(
+                parallax.TextureMatrices["_MainTex"],
+                Is.Null,
+                "lilParallax/lilPOM mutate uvMain with view-dependent offsets and cannot be represented as a static atlas UV matrix.");
+        }
+
+        [Test]
+        public void LiltoonDecalModesMarkSubTextureUvTransformUnknown()
+        {
+            var baseline = new LiltoonMaterialInformationProbe();
+            baseline.IntValues["_UseMain2ndTex"] = 1;
+            LiltoonShaderInformation.GetMaterialInformation(
+                baseline,
+                isOutline: false);
+            Assert.That(
+                baseline.TextureMatrices["_Main2ndTex"],
+                Is.EqualTo(Matrix2x3.Identity));
+
+            var decal = new LiltoonMaterialInformationProbe();
+            decal.IntValues["_UseMain2ndTex"] = 1;
+            decal.FloatValues["_Main2ndTexIsDecal"] = 1f;
+            LiltoonShaderInformation.GetMaterialInformation(
+                decal,
+                isOutline: false);
+            Assert.That(
+                decal.TextureMatrices["_Main2ndTex"],
+                Is.Null);
+
+            var animated = new LiltoonMaterialInformationProbe();
+            animated.IntValues["_UseMain2ndTex"] = 1;
+            animated.VectorValues["_Main2ndTexDecalSubParam"] =
+                new Vector4(0.5f, 1f, 0f, 1f);
+            LiltoonShaderInformation.GetMaterialInformation(
+                animated,
+                isOutline: false);
+            Assert.That(
+                animated.TextureMatrices["_Main2ndTex"],
+                Is.Null);
         }
 
         [TestCase(1L, 2L, true)]
