@@ -104,7 +104,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                 var samp = "_MainTex";
 
                 UsingUVChannels uv3rd;
-                switch (matInfo.GetInt("_Main2ndTex_UVMode"))
+                switch (matInfo.GetInt("_Main3rdTex_UVMode"))
                 {
                     case 0:
                         uv3rd = UsingUVChannels.UV0;
