@@ -256,8 +256,8 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     Is.False,
                     "Merging makes _MainTex exist and would redirect the other atomic group's _BumpMap.");
 
-                bumpMaterial.SetTexture("_MainTex", bumpTexture);
-                var safeProperties =
+                bumpMaterial.SetTexture("_BumpMap", mainTexture);
+                var equivalentSourcePixels =
                     new Dictionary<
                         Material,
                         IReadOnlyDictionary<string, Texture>>
@@ -268,8 +268,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                         },
                         [bumpMaterial] = new Dictionary<string, Texture>
                         {
-                            ["_MainTex"] = bumpTexture,
-                            ["_BumpMap"] = bumpTexture,
+                            ["_BumpMap"] = mainTexture,
                         },
                     };
 
@@ -277,9 +276,22 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     AutoAtlasTextureMergePlanner
                         .PreservesReferenceCopySemantics(
                             new[] { mainMaterial, bumpMaterial },
-                            safeProperties,
+                            equivalentSourcePixels,
                             settings),
-                    Is.True);
+                    Is.True,
+                    "ReferenceCopy is safe when the material group source atlas is drawn from the exact texture already sampled by the target.");
+
+                bumpMaterial.SetTextureScale(
+                    "_BumpMap",
+                    new Vector2(2f, 1f));
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            new[] { mainMaterial, bumpMaterial },
+                            equivalentSourcePixels,
+                            settings),
+                    Is.False,
+                    "Equivalent source pixels are insufficient when the target property applies a different UV transform.");
             }
             finally
             {
