@@ -2476,6 +2476,132 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void ShaderPropertyAnimationDetectorRejectsQueriedUvSemanticsOnly()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var registry = TTShaderTextureUsageInformationRegistry.s_information;
+            var hadPrevious = registry.TryGetValue(shader, out var previous);
+            var material = new Material(shader);
+            var mainTexture = new Texture2D(4, 4);
+            var root = new GameObject("Avatar");
+            var child = new GameObject("Body");
+            try
+            {
+                registry[shader] = new StandardShaderInformation();
+                material.SetTexture("_MainTex", mainTexture);
+                child.transform.SetParent(root.transform);
+                var renderer = child.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+
+                var clip = nadena.dev.ndmf.animator.VirtualClip.Create(
+                    "material-animation");
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Body",
+                        typeof(MeshRenderer),
+                        "material._MainTex_ST.x"),
+                    AnimationCurve.Constant(0f, 1f, 2f));
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Body",
+                        typeof(MeshRenderer),
+                        "material._Color.r"),
+                    AnimationCurve.Constant(0f, 1f, 0.5f));
+
+                var index = new nadena.dev.ndmf.animator.AnimationIndex(
+                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
+
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
+                        index,
+                        new Renderer[] { renderer },
+                        new[] { material },
+                        _ => new[] { "Body" }),
+                    Is.True);
+
+                var queried = TTShaderTextureUsageInformationUtil
+                    .GetQueriedMaterialProperties(material);
+                Assert.That(queried, Does.Contain("_MainTex_ST"));
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector
+                        .MatchesQueriedMaterialProperty(
+                            "material._Color.r",
+                            queried),
+                    Is.False);
+            }
+            finally
+            {
+                if (hadPrevious)
+                    registry[shader] = previous;
+                else
+                    registry.Remove(shader);
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(mainTexture);
+            }
+        }
+
+        [Test]
+        public void ShaderPropertyAnimationDetectorChecksMappedAliases()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var registry = TTShaderTextureUsageInformationRegistry.s_information;
+            var hadPrevious = registry.TryGetValue(shader, out var previous);
+            var material = new Material(shader);
+            var mainTexture = new Texture2D(4, 4);
+            var root = new GameObject("Avatar");
+            var child = new GameObject("NewBody");
+            try
+            {
+                registry[shader] = new StandardShaderInformation();
+                material.SetTexture("_MainTex", mainTexture);
+                child.transform.SetParent(root.transform);
+                var renderer = child.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+
+                var clip = nadena.dev.ndmf.animator.VirtualClip.Create(
+                    "old-material-path");
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "OldBody",
+                        typeof(MeshRenderer),
+                        "material._MainTex_ST.z"),
+                    AnimationCurve.Constant(0f, 1f, 0.25f));
+                var index = new nadena.dev.ndmf.animator.AnimationIndex(
+                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
+
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
+                        index,
+                        new Renderer[] { renderer },
+                        new[] { material },
+                        _ => new[] { "NewBody" }),
+                    Is.False);
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
+                        index,
+                        new Renderer[] { renderer },
+                        new[] { material },
+                        _ => new[] { "NewBody", "OldBody" }),
+                    Is.True);
+            }
+            finally
+            {
+                if (hadPrevious)
+                    registry[shader] = previous;
+                else
+                    registry.Remove(shader);
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(mainTexture);
+            }
+        }
+
+        [Test]
         public void VisibilityAnimationDetectorFindsParentActiveToggleAndRendererToggle()
         {
             var root = new GameObject("Avatar");
