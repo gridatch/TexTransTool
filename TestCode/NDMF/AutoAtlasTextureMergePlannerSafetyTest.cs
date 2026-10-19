@@ -3008,6 +3008,114 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void ShaderPropertyAnimationDetectorRejectsQueriedUvSemanticsOnly()
+        {
+            var shader = RequireStandardShaderUsageInformation();
+            var material = new Material(shader);
+            var mainTexture = new Texture2D(4, 4);
+            var root = new GameObject("Avatar");
+            var child = new GameObject("Body");
+            try
+            {
+                material.SetTexture("_MainTex", mainTexture);
+                child.transform.SetParent(root.transform);
+                var renderer = child.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+
+                var clip = nadena.dev.ndmf.animator.VirtualClip.Create(
+                    "material-animation");
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Body",
+                        typeof(MeshRenderer),
+                        "material._MainTex_ST.x"),
+                    AnimationCurve.Constant(0f, 1f, 2f));
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Body",
+                        typeof(MeshRenderer),
+                        "material._Color.r"),
+                    AnimationCurve.Constant(0f, 1f, 0.5f));
+
+                var index = new nadena.dev.ndmf.animator.AnimationIndex(
+                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
+
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
+                        index,
+                        new Renderer[] { renderer },
+                        new[] { material },
+                        _ => new[] { "Body" }),
+                    Is.True,
+                    "Animating a shader-semantic property such as _MainTex_ST invalidates the static AutoAtlas UV proof.");
+
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector
+                        .MatchesQueriedMaterialProperty(
+                            "material._Color.r",
+                            TTShaderTextureUsageInformationUtil
+                                .GetQueriedMaterialProperties(material)),
+                    Is.False,
+                    "Unrelated color animation must not exclude AutoAtlas.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(mainTexture);
+            }
+        }
+
+        [Test]
+        public void ShaderPropertyAnimationDetectorChecksMappedAliases()
+        {
+            var shader = RequireStandardShaderUsageInformation();
+            var material = new Material(shader);
+            var mainTexture = new Texture2D(4, 4);
+            var root = new GameObject("Avatar");
+            var child = new GameObject("NewBody");
+            try
+            {
+                material.SetTexture("_MainTex", mainTexture);
+                child.transform.SetParent(root.transform);
+                var renderer = child.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+
+                var clip = nadena.dev.ndmf.animator.VirtualClip.Create(
+                    "old-material-path");
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "OldBody",
+                        typeof(MeshRenderer),
+                        "material._MainTex_ST.z"),
+                    AnimationCurve.Constant(0f, 1f, 0.25f));
+                var index = new nadena.dev.ndmf.animator.AnimationIndex(
+                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
+
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
+                        index,
+                        new Renderer[] { renderer },
+                        new[] { material },
+                        _ => new[] { "NewBody" }),
+                    Is.False);
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
+                        index,
+                        new Renderer[] { renderer },
+                        new[] { material },
+                        _ => new[] { "NewBody", "OldBody" }),
+                    Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(mainTexture);
+            }
+        }
+
+        [Test]
         public void VisibilityAnimationDetectorFindsParentActiveToggleAndRendererToggle()
         {
             var root = new GameObject("Avatar");
