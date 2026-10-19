@@ -1,5 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.18+wdt.ttt.1.0.2",
-  "lastDebugSerial": 896
+  "lastDebugSerial": 897,
+  "currentDebugVersion": "0.1.18+wdt.ttt.1.0.2.debug.897.wdt-nullable-warnings.0f82bce",
+  "currentDebugChange": "wdt-nullable-warnings",
+  "currentDebugBranch": "fix/wdt-nullable-warnings",
+  "currentDebugCommit": "0f82bceef7a401820af05bd259f87c3117e9afc0",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.18+wdt.ttt.1.0.2.debug.897.wdt-nullable-warnings.0f82bce.zip"
 }
