@@ -814,6 +814,9 @@ msgstr "実行時のAtlasTexture対象Renderer集合が計画時と一致しな�
 msgid "AutoAtlasTexture:fallback:ActiveUntransformedConsumer"
 msgstr "現在アクティブなMaterial共有先の一部へ対応するAtlas Mesh/UV変換を適用できない"
 
+msgid "AutoAtlasTexture:fallback:TargetUvOutOfBounds"
+msgstr "対象Materialのジオメトリに非有限値またはAtlasで安全に扱えない0..1範囲外のUVがある"
+
 msgid "AutoAtlasTexture:fallback:LayoutMismatch"
 msgstr "出力レイアウトが不適合: actual={0}×{1}, planned={2}×{3}, outputPixels={4}"
 

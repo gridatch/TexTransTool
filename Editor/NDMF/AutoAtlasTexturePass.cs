@@ -700,8 +700,11 @@ namespace net.rs64.TexTransTool.NDMF
                         var reason = hasActiveUntransformedConsumer
                             ? FormatLocalized(
                                 "AutoAtlasTexture:fallback:ActiveUntransformedConsumer")
-                            : FormatLocalized(
-                                "AutoAtlasTexture:fallback:RendererSetChanged");
+                            : hasOutOfBoundsTargetUv
+                                ? FormatLocalized(
+                                    "AutoAtlasTexture:fallback:TargetUvOutOfBounds")
+                                : FormatLocalized(
+                                    "AutoAtlasTexture:fallback:RendererSetChanged");
                         twoDimensionalFallbackReasons.Add(
                             $"groups={string.Join(",", invalidMerge.GroupIds.Select(id => "g" + id))}: "
                             + reason);
