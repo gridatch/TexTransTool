@@ -1234,6 +1234,17 @@ namespace net.rs64.TexTransTool.NDMF
                 if (material == null)
                     continue;
 
+                if (!TTShaderTextureUsageInformationUtil
+                        .HasFullShaderSemanticAnalysis(material))
+                {
+                    // The legacy public shader-usage API only proves texture
+                    // UV usage. Automatic atlasing also changes raw mesh UVs
+                    // and can reindex vertices, so absence of non-texture UV or
+                    // vertex-index usage must be proven through the full
+                    // MaterialInformationTranslator callback surface.
+                    return true;
+                }
+
                 propertyTextures.TryGetValue(
                     material,
                     out var atlasProperties);
