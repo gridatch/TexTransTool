@@ -1133,8 +1133,30 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal static bool IsAtlasAllowedRenderer(Renderer item)
         {
             if (item.tag == "EditorOnly") return false;
-            if (item.GetMesh() == null) return false;
-            if (item.GetMesh().uv.Any() == false) return false;
+
+            var mesh = item.GetMesh();
+            if (mesh == null) return false;
+            if (mesh.subMeshCount == 0) return false;
+
+            var hasDrawableTriangles = false;
+            for (var subMeshIndex = 0;
+                 subMeshIndex < mesh.subMeshCount;
+                 subMeshIndex += 1)
+            {
+                var subMesh = mesh.GetSubMesh(subMeshIndex);
+
+                // AtlasMeshSourceContext and MeshData enumerate every submesh
+                // through triangle-only paths. Even an empty non-triangle
+                // submesh is outside that contract.
+                if (subMesh.topology != MeshTopology.Triangles)
+                    return false;
+
+                if (subMesh.indexCount != 0)
+                    hasDrawableTriangles = true;
+            }
+
+            if (!hasDrawableTriangles) return false;
+            if (mesh.uv.Any() == false) return false;
             if (item.sharedMaterials.Length == 0) return false;
             if (item.GetComponent<AtlasExcludeTag>() != null) return false;
 
