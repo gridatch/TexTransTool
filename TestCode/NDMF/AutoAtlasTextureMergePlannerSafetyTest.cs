@@ -141,6 +141,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             internal readonly Dictionary<string, int?> IntValues = new();
             internal readonly Dictionary<string, float?> FloatValues = new();
             internal readonly Dictionary<string, Vector4?> VectorValues = new();
+            internal readonly Dictionary<string, bool?> KeywordValues = new();
             internal readonly Dictionary<string, Matrix2x3?> TextureMatrices =
                 new();
             internal readonly Dictionary<string, UsingUVChannels> TextureUvChannels =
@@ -193,7 +194,9 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 
             public bool? IsShaderKeywordEnabled(string keywordName)
             {
-                return false;
+                return KeywordValues.TryGetValue(keywordName, out var value)
+                    ? value
+                    : false;
             }
 
             public void RegisterOtherUVUsage(UsingUVChannels uvChannel)
@@ -323,6 +326,33 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 probe.TextureUvChannels["_Main3rdTex"],
                 Is.EqualTo(UsingUVChannels.UV1),
                 "Main3rd UV selection must not reuse Main2nd's UV mode property.");
+        }
+
+        [Test]
+        public void ToonStandardAudioLinkReportsRawEffectUvUsage()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.KeywordValues["USE_AUDIOLINK"] = true;
+            probe.FloatValues["_ALMaskUVChannel"] = 1f;
+            probe.FloatValues["_ALEffectUVChannel"] = 0f;
+
+            new VRCSDKToonStandardShaderInformation(withOutline: false)
+                .GetMaterialInformation(probe);
+
+            Assert.That(
+                probe.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo(UsingUVChannels.UV0),
+                "Toon Standard uses Effect UV directly for AudioLink mode/band/effect calculations.");
+            Assert.That(
+                probe.OtherUvUsage & UsingUVChannels.UV1,
+                Is.EqualTo((UsingUVChannels)0),
+                "Mask sampling UV must not be misreported as raw non-texture UV usage.");
+            Assert.That(
+                probe.TextureUvChannels["_AudioLinkMask"]
+                    & (UsingUVChannels.UV0 | UsingUVChannels.UV1),
+                Is.EqualTo(
+                    UsingUVChannels.UV0 | UsingUVChannels.UV1),
+                "AudioLink mask sampling can use both mask and effect UV channels.");
         }
 
         [TestCase(1L, 2L, true)]
