@@ -115,8 +115,10 @@ namespace net.rs64.TexTransTool.NDMF
             _valid = valid;
             if (!valid)
                 FailureDetail = !ValidatePlannedRegions(regions, atlasWidth)
-                    ? "計画矩形の重複・範囲外・不足"
-                    : "元UV IslandとAtomic Groupの対応が不整合";
+                    ? FormatLocalized(
+                        "AutoAtlasTexture:fallback:InvalidPlannedRegions")
+                    : FormatLocalized(
+                        "AutoAtlasTexture:fallback:AtomicGroupMappingMismatch");
         }
 
         internal static bool ValidatePlannedRegions(
