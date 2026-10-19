@@ -827,7 +827,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 }
 
                 var prefabPath = matsukawa.SavePrefab(extraction);
-                if (string.IsNullOrEmpty(prefabPath))
+                if (prefabPath == null || prefabPath.Length == 0)
                     return Fail(result, "Prefabを保存できませんでした。");
 
                 var reportText = matsukawa.BuildReportText(extraction);
