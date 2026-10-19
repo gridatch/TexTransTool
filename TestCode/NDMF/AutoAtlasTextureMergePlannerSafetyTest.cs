@@ -504,6 +504,25 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void LiltoonAudioLinkMaskUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.IntValues["_UseAudioLink"] = 1;
+            probe.IntValues["_AudioLink2Main2nd"] = 1;
+            probe.IntValues["_AudioLinkUVMode"] = 3;
+            probe.IntValues["_AudioLinkMask_UVMode"] = 1;
+            probe.IntValues["_OutlineVectorUVMode"] = 0;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                probe,
+                isOutline: false);
+
+            Assert.That(
+                probe.TextureUvChannels["_AudioLinkMask"],
+                Is.EqualTo(UsingUVChannels.UV1));
+        }
+
+        [Test]
         public void LiltoonOutlineVectorUsesItsOwnUvMode()
         {
             var probe = new LiltoonMaterialInformationProbe();

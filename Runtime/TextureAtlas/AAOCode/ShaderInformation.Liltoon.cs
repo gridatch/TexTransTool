@@ -413,7 +413,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                     // lil_sampler_linear_repeat for _AudioLinkVertexUVMode = 3,
                     // sampler_AudioLinkMask for _AudioLinkUVMode = 3,4
                     var sampler = "_AudioLinkMask" | SamplerStateInformation.LinearRepeatSampler;
-                    switch (matInfo.GetInt("_OutlineVectorUVMode"))
+                    switch (matInfo.GetInt("_AudioLinkMask_UVMode"))
                     {
                         case 0:
                         default:
@@ -501,7 +501,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                 // _OutlineVectorTex SamplerStateInformation.LinearRepeatSampler
                 // UVs _OutlineVectorUVMode main,1,2,3
 
-                switch (matInfo.GetInt("_AudioLinkMask_UVMode"))
+                switch (matInfo.GetInt("_OutlineVectorUVMode"))
                 {
                     case 0:
                         LIL_SAMPLE_2D_WithMat("_OutlineVectorTex", SamplerStateInformation.LinearRepeatSampler, uvMain,
