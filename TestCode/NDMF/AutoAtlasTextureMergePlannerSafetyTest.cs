@@ -752,6 +752,30 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void ToonStandardAudioLinkReportsRawEffectUvUsage()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.KeywordValues["USE_AUDIOLINK"] = true;
+            probe.FloatValues["_ALMaskUVChannel"] = 1f;
+            probe.FloatValues["_ALEffectUVChannel"] = 0f;
+
+            new VRCSDKToonStandardShaderInformation(withOutline: false)
+                .GetMaterialInformation(probe);
+
+            Assert.That(
+                probe.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo(UsingUVChannels.UV0));
+            Assert.That(
+                probe.OtherUvUsage & UsingUVChannels.UV1,
+                Is.EqualTo((UsingUVChannels)0));
+            Assert.That(
+                probe.TextureUvChannels["_AudioLinkMask"]
+                    & (UsingUVChannels.UV0 | UsingUVChannels.UV1),
+                Is.EqualTo(
+                    UsingUVChannels.UV0 | UsingUVChannels.UV1));
+        }
+
+        [Test]
         public void UnknownMemoryBlockLayoutsFailClosed()
         {
             Assert.That(
