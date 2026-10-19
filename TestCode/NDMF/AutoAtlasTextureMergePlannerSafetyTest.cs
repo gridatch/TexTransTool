@@ -224,6 +224,69 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void AutoAtlasRejectsOutOfBoundsTargetUv()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var root = new GameObject("UvRange");
+            var mesh = new Mesh();
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.uv = new[]
+                {
+                    Vector2.zero,
+                    Vector2.right,
+                    Vector2.up,
+                };
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+
+                var filter = root.AddComponent<MeshFilter>();
+                filter.sharedMesh = mesh;
+                var renderer = root.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+                var targeting = new RendererTargetingForTest(
+                    new Renderer[] { renderer });
+
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasOutOfBoundsTargetUv(
+                        targeting,
+                        new Renderer[] { renderer },
+                        new[] { material },
+                        UVChannel.UV0),
+                    Is.False);
+
+                mesh.uv = new[]
+                {
+                    Vector2.zero,
+                    new Vector2(1.25f, 0f),
+                    Vector2.up,
+                };
+
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasOutOfBoundsTargetUv(
+                        targeting,
+                        new Renderer[] { renderer },
+                        new[] { material },
+                        UVChannel.UV0),
+                    Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
         public void AutoAtlasProtectsVertexIndexOnlyWhenMeshWillBeReindexed()
         {
             var shader = Shader.Find("Standard");

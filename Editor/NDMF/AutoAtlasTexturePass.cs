@@ -601,6 +601,11 @@ namespace net.rs64.TexTransTool.NDMF
                 if (HasUnsupportedTextureUvSampling(
                         group,
                         propertyTextures,
+                        settings.AtlasTargetUVChannel)
+                    || HasOutOfBoundsTargetUv(
+                        domain,
+                        atlasRenderers,
+                        group,
                         settings.AtlasTargetUVChannel))
                 {
                     continue;
@@ -698,6 +703,11 @@ namespace net.rs64.TexTransTool.NDMF
                     || HasUnsupportedTextureUvSampling(
                         group,
                         propertyTextures,
+                        settings.AtlasTargetUVChannel)
+                    || HasOutOfBoundsTargetUv(
+                        domain,
+                        atlasRenderers,
+                        group,
                         settings.AtlasTargetUVChannel))
                 {
                     if (execution.MergeSelection is { } unsafeMerge)
@@ -1457,6 +1467,78 @@ namespace net.rs64.TexTransTool.NDMF
                         || atlasTexture != texture)
                     {
                         return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool HasOutOfBoundsTargetUv(
+            IRendererTargeting domain,
+            IReadOnlyCollection<Renderer> targetRenderers,
+            IReadOnlyCollection<Material> targetMaterials,
+            UVChannel atlasTargetUvChannel)
+        {
+            const float epsilon = 1e-6f;
+            var uvBuffer = new List<Vector2>();
+            var indexBuffer = new List<int>();
+
+            foreach (var renderer in targetRenderers)
+            {
+                if (renderer == null)
+                    continue;
+
+                var mesh = domain.GetMesh(renderer);
+                if (mesh == null || mesh.subMeshCount == 0)
+                    continue;
+
+                uvBuffer.Clear();
+                mesh.GetUVs((int)atlasTargetUvChannel, uvBuffer);
+                if (uvBuffer.Count == 0)
+                    continue;
+
+                var materials = domain.GetMaterials(renderer);
+                for (var slot = 0; slot < materials.Length; slot += 1)
+                {
+                    var material = materials[slot];
+                    if (material == null
+                        || !targetMaterials.Contains(material))
+                    {
+                        continue;
+                    }
+
+                    var effectiveSubMesh = Math.Clamp(
+                        slot, 0, mesh.subMeshCount - 1);
+                    if (mesh.GetSubMesh(effectiveSubMesh).indexCount == 0)
+                        continue;
+
+                    indexBuffer.Clear();
+                    mesh.GetIndices(indexBuffer, effectiveSubMesh);
+                    foreach (var vertexIndex in indexBuffer)
+                    {
+                        if (vertexIndex < 0
+                            || vertexIndex >= uvBuffer.Count)
+                        {
+                            return true;
+                        }
+
+                        var uv = uvBuffer[vertexIndex];
+                        if (float.IsNaN(uv.x)
+                            || float.IsInfinity(uv.x)
+                            || float.IsNaN(uv.y)
+                            || float.IsInfinity(uv.y)
+                            || uv.x < -epsilon
+                            || uv.x > 1f + epsilon
+                            || uv.y < -epsilon
+                            || uv.y > 1f + epsilon)
+                        {
+                            // TexTransCore atlas sampling clamps source
+                            // coordinates. Without sampler-state equivalence
+                            // analysis, automatic atlasing cannot preserve
+                            // Repeat/Mirror semantics outside the unit square.
+                            return true;
+                        }
                     }
                 }
             }
