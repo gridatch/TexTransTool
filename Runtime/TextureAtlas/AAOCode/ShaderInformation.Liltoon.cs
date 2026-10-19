@@ -33,6 +33,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
             {
                 // _ShiftBackfaceUV
                 if (matInfo.GetFloat("_ShiftBackfaceUV") != 0) return null; // changed depends on face
+
+                // lilParallax / lilPOM mutate uvMain with view-dependent
+                // offsets that cannot be represented by a static affine UV
+                // matrix.
+                if (matInfo.GetInt("_UseParallax") != 0) return null;
+
                 return STAndScrollRotateToMatrix("_MainTex_ST", "_MainTex_ScrollRotate");
             }
 
@@ -80,6 +86,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
                 LIL_GET_SUBTEX("_Main2ndTex", uv2nd);
                 LIL_SAMPLE_2D_WithMat("_Main2ndBlendMask", samp, uvMain, uvMainMatrix);
+                RegisterDissolveShapeUvUsage("_Main2ndDissolveParams");
                 lilCalcDissolveWithOrWithoutNoise(
                     UsingUVChannels.UV0,
                     "_Main2ndDissolveMask",
@@ -121,6 +128,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
                 LIL_GET_SUBTEX("_Main3rdTex", uv3rd);
                 LIL_SAMPLE_2D_WithMat("_Main3rdBlendMask", samp, uvMain, uvMainMatrix);
+                RegisterDissolveShapeUvUsage("_Main3rdDissolveParams");
                 lilCalcDissolveWithOrWithoutNoise(
                     UsingUVChannels.UV0,
                     "_Main3rdDissolveMask",
@@ -279,11 +287,61 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
             {
                 var samp = "_MainTex"; // caller of lilGetGlitter
 
-                LIL_SAMPLE_2D_ST_WithMat("_GlitterColorTex", samp, uvMain, uvMainMatrix);
+                var glitterUv = matInfo.GetInt("_GlitterUVMode") switch
+                {
+                    0 => UsingUVChannels.UV0,
+                    1 => UsingUVChannels.UV1,
+                    _ => UsingUVChannels.UV0 | UsingUVChannels.UV1,
+                };
+                // Glitter's procedural grid consumes the selected mesh UV
+                // directly, independently of texture sampling.
+                matInfo.RegisterOtherUVUsage(glitterUv);
+
+                switch (matInfo.GetInt("_GlitterColorTex_UVMode"))
+                {
+                    case 0:
+                        LIL_SAMPLE_2D_ST_WithMat(
+                            "_GlitterColorTex",
+                            samp,
+                            uvMain,
+                            uvMainMatrix);
+                        break;
+                    case 1:
+                        LIL_SAMPLE_2D_ST(
+                            "_GlitterColorTex",
+                            samp,
+                            UsingUVChannels.UV1);
+                        break;
+                    case 2:
+                        LIL_SAMPLE_2D_ST(
+                            "_GlitterColorTex",
+                            samp,
+                            UsingUVChannels.UV2);
+                        break;
+                    case 3:
+                        LIL_SAMPLE_2D_ST(
+                            "_GlitterColorTex",
+                            samp,
+                            UsingUVChannels.UV3);
+                        break;
+                    default:
+                    case null:
+                        matInfo.RegisterTextureUVUsage(
+                            "_GlitterColorTex",
+                            samp,
+                            UsingUVChannels.UV0
+                            | UsingUVChannels.UV1
+                            | UsingUVChannels.UV2
+                            | UsingUVChannels.UV3,
+                            null);
+                        break;
+                }
+
                 if (matInfo.GetInt("_GlitterApplyShape") != 0)
                 {
-                    // complex uv
-                    LIL_SAMPLE_2D_GRAD("_GlitterShapeTex", SamplerStateInformation.LinearClampSampler,
+                    LIL_SAMPLE_2D_GRAD(
+                        "_GlitterShapeTex",
+                        SamplerStateInformation.LinearClampSampler,
                         UsingUVChannels.NonMesh);
                 }
             }
@@ -474,6 +532,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
             if (matInfo.GetVector("_DissolveParams")?.x != 0)
             {
+                RegisterDissolveShapeUvUsage("_DissolveParams");
                 lilCalcDissolveWithOrWithoutNoise(
                     //fd.col.a,
                     //dissolveAlpha,
@@ -553,9 +612,41 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
         };
             if (idMaskProperties.Any(prop => matInfo.GetInt(prop) != 0))
             {
-                // with _IDMaskFrom = 0..7, uv is used for ID Mask, but it will only use integer part
-                // (cast to int with normal rounding in hlsl) so it's not necessary to register UV usage.
-                matInfo.RegisterVertexIndexUsage();
+                switch (matInfo.GetInt("_IDMaskFrom"))
+                {
+                    case 0:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV0);
+                        break;
+                    case 1:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV1);
+                        break;
+                    case 2:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV2);
+                        break;
+                    case 3:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV3);
+                        break;
+                    case 4:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV4);
+                        break;
+                    case 5:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV5);
+                        break;
+                    case 6:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV6);
+                        break;
+                    case 7:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV7);
+                        break;
+                    case 8:
+                        matInfo.RegisterVertexIndexUsage();
+                        break;
+                    default:
+                    case null:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.Unknown);
+                        matInfo.RegisterVertexIndexUsage();
+                        break;
+                }
             }
 
             // fur shader will use vertex ID, but it's for noise so it's not necessary to register UV usage.
@@ -655,15 +746,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                     var stValueOpt = matInfo.GetVector(st);
                     var rotateValueOpt = matInfo.GetVector(scrollRotate);
                     var angleValueOpt = matInfo.GetFloat(angle);
-                    //var isDecalValueOpt = matInfo.GetFloat(isDecal);
+                    var isDecalValueOpt = matInfo.GetFloat(isDecal);
                     var isLeftOnlyValueOpt = matInfo.GetFloat(isLeftOnly);
                     var isRightOnlyValueOpt = matInfo.GetFloat(isRightOnly);
                     var shouldCopyValueOpt = matInfo.GetFloat(shouldCopy);
                     var shouldFlipMirrorValueOpt = matInfo.GetFloat(shouldFlipMirror);
                     var shouldFlipCopyValueOpt = matInfo.GetFloat(shouldFlipCopy);
-                    //var isMSDFValueOpt = matInfo.GetFloat(isMSDF);
+                    // isMSDF changes sampled color interpretation, not UVs.
                     var decalAnimationValueOpt = matInfo.GetVector(decalAnimation);
-                    // var decalSubParamValueOpt = matInfo.GetVector(decalSubParam);
+                    var decalSubParamValueOpt = matInfo.GetVector(decalSubParam);
 
                     if (stValueOpt is not { } stValue) return null;
                     if (rotateValueOpt is not { } rotateValue) return null;
@@ -680,13 +771,21 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                     // shouldFlipMirror is true => flips
                     if (shouldFlipMirrorValueOpt != 0) return null;
 
-                    // isDecal is true => decal
+                    // Decal mode evaluates the original texture's 0..1
+                    // domain. That domain is not equivalent after relocating UV
+                    // into an atlas sub-region.
+                    if (isDecalValueOpt != 0) return null;
                     if (isLeftOnlyValueOpt != 0) return null;
                     if (isRightOnlyValueOpt != 0) return null;
 
                     // rotation is performed in STAndScrollRotateValueToMatrix
 
-                    if (decalAnimationValueOpt != new Vector4(1.0f, 1.0f, 1.0f, 30.0f)) return null;
+                    if (decalAnimationValueOpt
+                        != new Vector4(1.0f, 1.0f, 1.0f, 30.0f))
+                        return null;
+                    if (decalSubParamValueOpt
+                        != new Vector4(1.0f, 1.0f, 0.0f, 1.0f))
+                        return null;
 
                     return matrix;
                 }
@@ -710,6 +809,25 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
             {
                 LIL_SAMPLE_2D_WithMat(textureName, "_MainTex", uvChannel,
                     STAndScrollRotateToMatrix($"{textureName}_ST", $"{textureName}_ScrollRotate"));
+            }
+
+            void RegisterDissolveShapeUvUsage(
+                string dissolveParamsProperty)
+            {
+                var dissolveParams =
+                    matInfo.GetVector(dissolveParamsProperty);
+                if (dissolveParams is null)
+                {
+                    matInfo.RegisterOtherUVUsage(
+                        UsingUVChannels.Unknown);
+                    return;
+                }
+
+                // lilCalcDissolve mode 2 computes its shape directly from
+                // the supplied UV coordinates instead of only sampling masks.
+                if (dissolveParams.Value.x == 2.0f)
+                    matInfo.RegisterOtherUVUsage(
+                        UsingUVChannels.UV0);
             }
 
             void lilCalcDissolveWithOrWithoutNoise(

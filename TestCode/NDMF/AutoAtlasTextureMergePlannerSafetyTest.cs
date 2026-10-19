@@ -64,8 +64,13 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             internal readonly Dictionary<string, int?> IntValues = new();
             internal readonly Dictionary<string, float?> FloatValues = new();
             internal readonly Dictionary<string, Vector4?> VectorValues = new();
+            internal readonly Dictionary<string, bool?> KeywordValues = new();
+            internal readonly Dictionary<string, Matrix2x3?> TextureMatrices =
+                new();
             internal readonly Dictionary<string, UsingUVChannels>
                 TextureUvChannels = new();
+            internal UsingUVChannels OtherUvUsage;
+            internal bool UsesVertexIndex;
 
             public int? GetInteger(
                 string propertyName,
@@ -85,13 +90,28 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             public Vector4? GetVector(
                 string propertyName,
                 bool considerAnimation = true)
-                => VectorValues.GetValueOrDefault(propertyName, Vector4.zero);
+            {
+                if (VectorValues.TryGetValue(propertyName, out var value))
+                    return value;
+                if (propertyName.EndsWith("_ST"))
+                    return new Vector4(1f, 1f, 0f, 0f);
+                if (propertyName.EndsWith("_ScrollRotate"))
+                    return Vector4.zero;
+                if (propertyName.EndsWith("DecalAnimation"))
+                    return new Vector4(1f, 1f, 1f, 30f);
+                if (propertyName.EndsWith("DecalSubParam"))
+                    return new Vector4(1f, 1f, 0f, 1f);
+                return Vector4.zero;
+            }
 
             public bool? IsShaderKeywordEnabled(string keywordName)
-                => false;
+                => KeywordValues.TryGetValue(keywordName, out var value)
+                    ? value
+                    : false;
 
             public void RegisterOtherUVUsage(UsingUVChannels uvChannel)
             {
+                OtherUvUsage |= uvChannel;
             }
 
             public void RegisterTextureUVUsage(
@@ -100,11 +120,13 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 UsingUVChannels uvChannels,
                 Matrix2x3? uvMatrix)
             {
+                TextureMatrices[textureMaterialPropertyName] = uvMatrix;
                 TextureUvChannels[textureMaterialPropertyName] = uvChannels;
             }
 
             public void RegisterVertexIndexUsage()
             {
+                UsesVertexIndex = true;
             }
         }
 
@@ -467,6 +489,132 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Object.DestroyImmediate(texture);
                 Object.DestroyImmediate(material);
             }
+        }
+
+        [Test]
+        public void LiltoonParallaxMarksMainUvTransformUnknown()
+        {
+            var baseline = new LiltoonMaterialInformationProbe();
+            LiltoonShaderInformation.GetMaterialInformation(
+                baseline,
+                isOutline: false);
+            Assert.That(
+                baseline.TextureMatrices["_MainTex"],
+                Is.EqualTo(Matrix2x3.Identity));
+
+            var parallax = new LiltoonMaterialInformationProbe();
+            parallax.IntValues["_UseParallax"] = 1;
+            LiltoonShaderInformation.GetMaterialInformation(
+                parallax,
+                isOutline: false);
+            Assert.That(
+                parallax.TextureMatrices["_MainTex"],
+                Is.Null);
+        }
+
+        [Test]
+        public void LiltoonDecalModesMarkSubTextureUvTransformUnknown()
+        {
+            var baseline = new LiltoonMaterialInformationProbe();
+            baseline.IntValues["_UseMain2ndTex"] = 1;
+            LiltoonShaderInformation.GetMaterialInformation(
+                baseline,
+                isOutline: false);
+            Assert.That(
+                baseline.TextureMatrices["_Main2ndTex"],
+                Is.EqualTo(Matrix2x3.Identity));
+
+            var decal = new LiltoonMaterialInformationProbe();
+            decal.IntValues["_UseMain2ndTex"] = 1;
+            decal.FloatValues["_Main2ndTexIsDecal"] = 1f;
+            LiltoonShaderInformation.GetMaterialInformation(
+                decal,
+                isOutline: false);
+            Assert.That(
+                decal.TextureMatrices["_Main2ndTex"],
+                Is.Null);
+
+            var animated = new LiltoonMaterialInformationProbe();
+            animated.IntValues["_UseMain2ndTex"] = 1;
+            animated.VectorValues["_Main2ndTexDecalSubParam"] =
+                new Vector4(0.5f, 1f, 0f, 1f);
+            LiltoonShaderInformation.GetMaterialInformation(
+                animated,
+                isOutline: false);
+            Assert.That(
+                animated.TextureMatrices["_Main2ndTex"],
+                Is.Null);
+        }
+
+        [Test]
+        public void LiltoonDissolveShapeReportsRawUv0Usage()
+        {
+            var maskOnly = new LiltoonMaterialInformationProbe();
+            maskOnly.VectorValues["_DissolveParams"] =
+                new Vector4(1f, 0f, 0.5f, 0.1f);
+            LiltoonShaderInformation.GetMaterialInformation(
+                maskOnly,
+                isOutline: false);
+            Assert.That(
+                maskOnly.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo((UsingUVChannels)0));
+
+            var uvShape = new LiltoonMaterialInformationProbe();
+            uvShape.VectorValues["_DissolveParams"] =
+                new Vector4(2f, 0f, 0.5f, 0.1f);
+            LiltoonShaderInformation.GetMaterialInformation(
+                uvShape,
+                isOutline: false);
+            Assert.That(
+                uvShape.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo(UsingUVChannels.UV0));
+        }
+
+        [Test]
+        public void LiltoonGlitterReportsProceduralAndTextureUvSemantics()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.IntValues["_UseGlitter"] = 1;
+            probe.IntValues["_GlitterUVMode"] = 0;
+            probe.IntValues["_GlitterColorTex_UVMode"] = 2;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                probe,
+                isOutline: false);
+
+            Assert.That(
+                probe.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo(UsingUVChannels.UV0));
+            Assert.That(
+                probe.TextureUvChannels["_GlitterColorTex"],
+                Is.EqualTo(UsingUVChannels.UV2));
+        }
+
+        [Test]
+        public void LiltoonIdMaskReportsSelectedRawUvOrVertexId()
+        {
+            var uvBacked = new LiltoonMaterialInformationProbe();
+            uvBacked.IntValues["_IDMask1"] = 1;
+            uvBacked.IntValues["_IDMaskFrom"] = 0;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                uvBacked,
+                isOutline: false);
+
+            Assert.That(
+                uvBacked.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo(UsingUVChannels.UV0));
+            Assert.That(uvBacked.UsesVertexIndex, Is.False);
+
+            var vertexBacked = new LiltoonMaterialInformationProbe();
+            vertexBacked.IntValues["_IDMask1"] = 1;
+            vertexBacked.IntValues["_IDMaskFrom"] = 8;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                vertexBacked,
+                isOutline: false);
+
+            Assert.That(vertexBacked.UsesVertexIndex, Is.True);
         }
 
         [Test]
