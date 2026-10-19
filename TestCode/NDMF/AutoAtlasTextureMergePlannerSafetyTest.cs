@@ -201,6 +201,50 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void GeneratedPropertySafetySkipsPropertiesAbsentFromCurrentShader()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var texture = new Texture2D(4, 4);
+            try
+            {
+                Assert.That(
+                    material.HasShaderTextureProperty("_MainTex"),
+                    Is.True);
+                Assert.That(
+                    material.HasShaderTextureProperty("_FurNoiseMask"),
+                    Is.False);
+
+                var properties =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [material] = new Dictionary<string, Texture>
+                        {
+                            ["_FurNoiseMask"] = texture,
+                        },
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsafeGeneratedPropertyApplication(
+                            new[] { material },
+                            properties,
+                            UVChannel.UV0),
+                    Is.False,
+                    "A generated property that does not exist in the material's current shader is not an application conflict.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
         public void ReferenceCopyRejectsCrossGroupTextureRedirection()
         {
             var shader = Shader.Find("Standard");
