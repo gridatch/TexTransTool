@@ -310,11 +310,62 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
             {
                 var samp = "_MainTex"; // caller of lilGetGlitter
 
-                LIL_SAMPLE_2D_ST_WithMat("_GlitterColorTex", samp, uvMain, uvMainMatrix);
+                var glitterUv = matInfo.GetInt("_GlitterUVMode") switch
+                {
+                    0 => UsingUVChannels.UV0,
+                    1 => UsingUVChannels.UV1,
+                    _ => UsingUVChannels.UV0 | UsingUVChannels.UV1,
+                };
+                // lilCalcGlitter consumes the selected mesh UV directly,
+                // independently of texture sampling.
+                matInfo.RegisterOtherUVUsage(glitterUv);
+
+                switch (matInfo.GetInt("_GlitterColorTex_UVMode"))
+                {
+                    case 0:
+                        LIL_SAMPLE_2D_ST_WithMat(
+                            "_GlitterColorTex",
+                            samp,
+                            uvMain,
+                            uvMainMatrix);
+                        break;
+                    case 1:
+                        LIL_SAMPLE_2D_ST(
+                            "_GlitterColorTex",
+                            samp,
+                            UsingUVChannels.UV1);
+                        break;
+                    case 2:
+                        LIL_SAMPLE_2D_ST(
+                            "_GlitterColorTex",
+                            samp,
+                            UsingUVChannels.UV2);
+                        break;
+                    case 3:
+                        LIL_SAMPLE_2D_ST(
+                            "_GlitterColorTex",
+                            samp,
+                            UsingUVChannels.UV3);
+                        break;
+                    default:
+                    case null:
+                        matInfo.RegisterTextureUVUsage(
+                            "_GlitterColorTex",
+                            samp,
+                            UsingUVChannels.UV0
+                            | UsingUVChannels.UV1
+                            | UsingUVChannels.UV2
+                            | UsingUVChannels.UV3,
+                            null);
+                        break;
+                }
+
                 if (matInfo.GetInt("_GlitterApplyShape") != 0)
                 {
-                    // complex uv
-                    LIL_SAMPLE_2D_GRAD("_GlitterShapeTex", SamplerStateInformation.LinearClampSampler,
+                    // Shape texture coordinates are derived by lilCalcGlitter.
+                    LIL_SAMPLE_2D_GRAD(
+                        "_GlitterShapeTex",
+                        SamplerStateInformation.LinearClampSampler,
                         UsingUVChannels.NonMesh);
                 }
             }

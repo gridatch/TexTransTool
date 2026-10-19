@@ -508,6 +508,26 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void LiltoonGlitterReportsRawUvAndColorTextureUv()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.IntValues["_UseGlitter"] = 1;
+            probe.IntValues["_GlitterUVMode"] = 1;
+            probe.IntValues["_GlitterColorTex_UVMode"] = 2;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                probe,
+                isOutline: false);
+
+            Assert.That(
+                probe.OtherUvUsage,
+                Is.EqualTo(UsingUVChannels.UV1));
+            Assert.That(
+                probe.TextureUvChannels["_GlitterColorTex"],
+                Is.EqualTo(UsingUVChannels.UV2));
+        }
+
+        [Test]
         public void LiltoonFurReportsVertexIndexUsage()
         {
             var regular = new LiltoonMaterialInformationProbe();
