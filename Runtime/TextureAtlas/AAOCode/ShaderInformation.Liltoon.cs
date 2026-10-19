@@ -33,6 +33,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
             {
                 // _ShiftBackfaceUV
                 if (matInfo.GetFloat("_ShiftBackfaceUV") != 0) return null; // changed depends on face
+
+                // lilParallax / lilPOM mutate uvMain in the fragment shader
+                // using view-dependent offsets. That transform is not an
+                // affine material UV matrix and therefore cannot be preserved
+                // by automatic atlas UV remapping.
+                if (matInfo.GetInt("_UseParallax") != 0) return null;
+
                 return STAndScrollRotateToMatrix("_MainTex_ST", "_MainTex_ScrollRotate");
             }
 
@@ -655,15 +662,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                     var stValueOpt = matInfo.GetVector(st);
                     var rotateValueOpt = matInfo.GetVector(scrollRotate);
                     var angleValueOpt = matInfo.GetFloat(angle);
-                    //var isDecalValueOpt = matInfo.GetFloat(isDecal);
+                    var isDecalValueOpt = matInfo.GetFloat(isDecal);
                     var isLeftOnlyValueOpt = matInfo.GetFloat(isLeftOnly);
                     var isRightOnlyValueOpt = matInfo.GetFloat(isRightOnly);
                     var shouldCopyValueOpt = matInfo.GetFloat(shouldCopy);
                     var shouldFlipMirrorValueOpt = matInfo.GetFloat(shouldFlipMirror);
                     var shouldFlipCopyValueOpt = matInfo.GetFloat(shouldFlipCopy);
-                    //var isMSDFValueOpt = matInfo.GetFloat(isMSDF);
+                    // isMSDF changes sampled color interpretation, not UVs.
                     var decalAnimationValueOpt = matInfo.GetVector(decalAnimation);
-                    // var decalSubParamValueOpt = matInfo.GetVector(decalSubParam);
+                    var decalSubParamValueOpt = matInfo.GetVector(decalSubParam);
 
                     if (stValueOpt is not { } stValue) return null;
                     if (rotateValueOpt is not { } rotateValue) return null;
@@ -680,13 +687,29 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                     // shouldFlipMirror is true => flips
                     if (shouldFlipMirrorValueOpt != 0) return null;
 
-                    // isDecal is true => decal
+                    // Decal mode clips alpha against whether the derived
+                    // pre-atlas UV is inside 0..1. After atlas remapping that
+                    // 0..1 domain would mean the whole atlas, not the original
+                    // texture region, so automatic atlasing must fail closed.
+                    if (isDecalValueOpt != 0) return null;
                     if (isLeftOnlyValueOpt != 0) return null;
                     if (isRightOnlyValueOpt != 0) return null;
 
                     // rotation is performed in STAndScrollRotateValueToMatrix
 
-                    if (decalAnimationValueOpt != new Vector4(1.0f, 1.0f, 1.0f, 30.0f)) return null;
+                    // Default decal animation/sub-parameters reduce to identity.
+                    // Any other values can scale/offset/animate UVs in ways that
+                    // are not represented by the static matrix above.
+                    if (decalAnimationValueOpt
+                        != new Vector4(1.0f, 1.0f, 1.0f, 30.0f))
+                    {
+                        return null;
+                    }
+                    if (decalSubParamValueOpt
+                        != new Vector4(1.0f, 1.0f, 0.0f, 1.0f))
+                    {
+                        return null;
+                    }
 
                     return matrix;
                 }
