@@ -434,6 +434,19 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
+                // Material replacement is domain-wide. A currently
+                // active consumer that cannot receive the corresponding UV
+                // rewrite would otherwise get an atlased material on its
+                // original mesh. Disabled/inactive consumers remain outside
+                // this check to preserve AtlasTexture's default targeting.
+                if (HasActiveUntransformedMaterialConsumer(
+                        domain,
+                        group,
+                        atlasRenderers))
+                {
+                    continue;
+                }
+
                 var texturesToReplace = group
                     .SelectMany(material => propertyTextures[material].Values)
                     .Where(texture => texture != null)
@@ -541,7 +554,11 @@ namespace net.rs64.TexTransTool.NDMF
                     .ToHashSet();
 
                 if (atlasRenderers.Length == 0
-                    || !plannedRenderers.SetEquals(atlasRenderers))
+                    || !plannedRenderers.SetEquals(atlasRenderers)
+                    || HasActiveUntransformedMaterialConsumer(
+                        domain,
+                        group,
+                        atlasRenderers))
                 {
                     if (execution.MergeSelection is { } invalidMerge)
                     {
@@ -897,6 +914,38 @@ namespace net.rs64.TexTransTool.NDMF
                 TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
                     string.Join("\n\n", completed),
                     processingTimer.ElapsedMilliseconds));
+        }
+
+        internal static bool HasActiveUntransformedMaterialConsumer(
+            IRendererTargeting domain,
+            IReadOnlyCollection<Material> materials,
+            IReadOnlyCollection<Renderer> transformedRenderers)
+        {
+            var transformed = transformedRenderers.ToHashSet();
+
+            foreach (var renderer in domain.EnumerateRenderer())
+            {
+                if (renderer == null || renderer.tag == "EditorOnly")
+                    continue;
+
+                if (!domain.IsEnable(renderer)
+                    || !domain.IsActive(renderer.gameObject))
+                {
+                    continue;
+                }
+
+                if (!domain.GetMaterials(renderer)
+                        .UOfType<Material>()
+                        .Any(materials.Contains))
+                {
+                    continue;
+                }
+
+                if (!transformed.Contains(renderer))
+                    return true;
+            }
+
+            return false;
         }
 
         internal static bool HasStrictMergePixelBenefit(
