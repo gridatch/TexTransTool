@@ -11,8 +11,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
         public MaterialInformationTranslator(ITTTextureUVUsageWriter uvUsageWriter)
         {
             _uvUsageWriter = uvUsageWriter;
-            if (uvUsageWriter is ITTFullShaderSemanticUsageWriter fullSemanticWriter)
-                fullSemanticWriter.MarkFullShaderSemanticAnalysis();
         }
 
         public float? GetFloat(string propertyName, bool considerAnimation = true)
