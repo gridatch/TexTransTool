@@ -179,7 +179,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
             var versionField = constantsType?.GetField(
                 "currentVersionValue",
                 BindingFlags.Public | BindingFlags.Static);
-            return versionField?.GetValue(null) is int version\n                ? version\n                : null;
+            return versionField?.GetValue(null) is int version
+                ? version
+                : null;
         }
 
         private static string? GetShaderAssetGuid(Shader shader)
