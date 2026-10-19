@@ -176,11 +176,15 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         return false;
                     }
 
-                    block = GetMemoryBlockLayout(format);
-                    mipCount = descriptor.UseMipMap
-                        ? CalculateMemoryMipCount(
-                            texture2D.width, texture2D.height)
-                        : 1;
+                    if (!TryGetMemoryBlockLayout(format, out block))
+                        return false;
+
+                    // A source Texture2D already has a concrete mip chain.
+                    // Using a synthetic full chain can overestimate the
+                    // standalone baseline and make an additional merge look
+                    // beneficial when it is not.
+                    mipCount = GetSourceTextureMipCount(
+                        texture2D, descriptor);
                     return true;
                 }
 
@@ -199,7 +203,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                     if (descriptor == null)
                     {
-                        block = GetMemoryBlockLayout(renderTexture.graphicsFormat);
+                        if (!TryGetMemoryBlockLayout(
+                                renderTexture.graphicsFormat,
+                                out block))
+                        {
+                            return false;
+                        }
+
                         mipCount = renderTexture.useMipMap
                             ? CalculateMemoryMipCount(
                                 renderTexture.width, renderTexture.height)
@@ -217,7 +227,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         return false;
                     }
 
-                    block = GetMemoryBlockLayout(format);
+                    if (!TryGetMemoryBlockLayout(format, out block))
+                        return false;
+
                     mipCount = descriptor.UseMipMap
                         ? CalculateMemoryMipCount(
                             renderTexture.width, renderTexture.height)
@@ -228,6 +240,15 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 default:
                     return false;
             }
+        }
+
+        internal static int GetSourceTextureMipCount(
+            Texture2D texture,
+            TexTransToolTextureDescriptor descriptor)
+        {
+            return descriptor.UseMipMap
+                ? Math.Max(1, texture.mipmapCount)
+                : 1;
         }
 
         internal static string FormatTextureMemory(long bytes)
@@ -303,65 +324,74 @@ namespace net.rs64.TexTransTool.TextureAtlas
             height = Math.Max(1, height);
             mipCount = Math.Max(1, mipCount);
 
+            if (!TryGetMemoryBlockLayout(format, out var block))
+                return false;
+
+            for (var mip = 0; mip < mipCount; mip += 1)
+            {
+                var blocksX =
+                    ((long)width + block.Width - 1) / block.Width;
+                var blocksY =
+                    ((long)height + block.Height - 1) / block.Height;
+                bytes += blocksX * blocksY * block.Size;
+
+                width = Math.Max(1, width >> 1);
+                height = Math.Max(1, height >> 1);
+            }
+
+            return true;
+        }
+
+        internal static bool TryGetMemoryBlockLayout(
+            TextureFormat format,
+            out (uint Width, uint Height, uint Size) block)
+        {
+            block = default;
             try
             {
-                var blockWidth = Math.Max(
-                    1u, GraphicsFormatUtility.GetBlockWidth(format));
-                var blockHeight = Math.Max(
-                    1u, GraphicsFormatUtility.GetBlockHeight(format));
-                var blockSize = Math.Max(
-                    1u, GraphicsFormatUtility.GetBlockSize(format));
+                if (!Enum.IsDefined(typeof(TextureFormat), format))
+                    return false;
 
-                for (var mip = 0; mip < mipCount; mip += 1)
-                {
-                    var blocksX =
-                        ((long)width + blockWidth - 1) / blockWidth;
-                    var blocksY =
-                        ((long)height + blockHeight - 1) / blockHeight;
-                    bytes += blocksX * blocksY * blockSize;
+                var width = GraphicsFormatUtility.GetBlockWidth(format);
+                var height = GraphicsFormatUtility.GetBlockHeight(format);
+                var size = GraphicsFormatUtility.GetBlockSize(format);
+                if (width == 0 || height == 0 || size == 0)
+                    return false;
 
-                    width = Math.Max(1, width >> 1);
-                    height = Math.Max(1, height >> 1);
-                }
-
+                block = (width, height, size);
                 return true;
             }
             catch
             {
-                bytes = 0;
                 return false;
             }
         }
 
-        private static (uint Width, uint Height, uint Size)
-            GetMemoryBlockLayout(TextureFormat format)
+        internal static bool TryGetMemoryBlockLayout(
+            GraphicsFormat format,
+            out (uint Width, uint Height, uint Size) block)
         {
+            block = default;
             try
             {
-                return (
-                    Math.Max(1u, GraphicsFormatUtility.GetBlockWidth(format)),
-                    Math.Max(1u, GraphicsFormatUtility.GetBlockHeight(format)),
-                    Math.Max(1u, GraphicsFormatUtility.GetBlockSize(format)));
-            }
-            catch
-            {
-                return (1u, 1u, 4u);
-            }
-        }
+                if (!Enum.IsDefined(typeof(GraphicsFormat), format)
+                    || format == GraphicsFormat.None)
+                {
+                    return false;
+                }
 
-        private static (uint Width, uint Height, uint Size)
-            GetMemoryBlockLayout(GraphicsFormat format)
-        {
-            try
-            {
-                return (
-                    Math.Max(1u, GraphicsFormatUtility.GetBlockWidth(format)),
-                    Math.Max(1u, GraphicsFormatUtility.GetBlockHeight(format)),
-                    Math.Max(1u, GraphicsFormatUtility.GetBlockSize(format)));
+                var width = GraphicsFormatUtility.GetBlockWidth(format);
+                var height = GraphicsFormatUtility.GetBlockHeight(format);
+                var size = GraphicsFormatUtility.GetBlockSize(format);
+                if (width == 0 || height == 0 || size == 0)
+                    return false;
+
+                block = (width, height, size);
+                return true;
             }
             catch
             {
-                return (1u, 1u, 4u);
+                return false;
             }
         }
     }
