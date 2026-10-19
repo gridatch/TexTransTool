@@ -257,6 +257,13 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        private static string FormatLocalized(
+            string key,
+            params object[] args)
+        {
+            return string.Format(key.GetLocalize(), args);
+        }
+
         internal static AutoAtlasTexture[] GetActiveConfigurations(GameObject root)
         {
             return root.GetComponentsInChildren<AutoAtlasTexture>(true)
@@ -535,18 +542,25 @@ namespace net.rs64.TexTransTool.NDMF
                     .Distinct()
                     .ToHashSet();
 
-                if (atlasRenderers.Length == 0
-                    || !plannedRenderers.SetEquals(atlasRenderers)
-                    || HasActiveUntransformedMaterialConsumer(
+                var hasActiveUntransformedConsumer =
+                    HasActiveUntransformedMaterialConsumer(
                         domain,
                         group,
-                        atlasRenderers))
+                        atlasRenderers);
+                if (atlasRenderers.Length == 0
+                    || !plannedRenderers.SetEquals(atlasRenderers)
+                    || hasActiveUntransformedConsumer)
                 {
                     if (execution.MergeSelection is { } invalidMerge)
                     {
+                        var reason = hasActiveUntransformedConsumer
+                            ? FormatLocalized(
+                                "AutoAtlasTexture:fallback:ActiveUntransformedConsumer")
+                            : FormatLocalized(
+                                "AutoAtlasTexture:fallback:RendererSetChanged");
                         twoDimensionalFallbackReasons.Add(
                             $"groups={string.Join(",", invalidMerge.GroupIds.Select(id => "g" + id))}: "
-                            + "実行時のAtlasTexture対象Renderer集合が計画時と一致しない");
+                            + reason);
                         EnqueueStandaloneFallback(
                             executionGroups, invalidMerge, preparedGroups);
                     }
@@ -626,7 +640,13 @@ namespace net.rs64.TexTransTool.NDMF
                                 {
                                     if (mergeSelection.PackedRegions != null)
                                         twoDimensionalSizeRejection =
-                                            $"出力レイアウトが不適合: actual={metrics.LayoutSize.x}×{metrics.LayoutSize.y}, planned={mergeSelection.PlannedLayoutSize.x}×{mergeSelection.PlannedLayoutSize.y}, outputPixels={metrics.OutputTexturePixelCount}";
+                                            FormatLocalized(
+                                                "AutoAtlasTexture:fallback:LayoutMismatch",
+                                                metrics.LayoutSize.x,
+                                                metrics.LayoutSize.y,
+                                                mergeSelection.PlannedLayoutSize.x,
+                                                mergeSelection.PlannedLayoutSize.y,
+                                                metrics.OutputTexturePixelCount);
                                     return false;
                                 }
 
@@ -641,7 +661,13 @@ namespace net.rs64.TexTransTool.NDMF
                                     {
                                         if (mergeSelection.PackedRegions != null)
                                             twoDimensionalSizeRejection =
-                                                $"プロパティ解像度が不適合: {property.Key} actual={property.Value.x}×{property.Value.y}, planned={plannedSize.x}×{plannedSize.y}";
+                                                FormatLocalized(
+                                                    "AutoAtlasTexture:fallback:PropertyResolutionMismatch",
+                                                    property.Key,
+                                                    property.Value.x,
+                                                    property.Value.y,
+                                                    plannedSize.x,
+                                                    plannedSize.y);
                                         return false;
                                     }
                                 }
@@ -667,7 +693,8 @@ namespace net.rs64.TexTransTool.NDMF
                             var reason = twoDimensionalRelocator?.FailureDetail;
                             if (string.IsNullOrEmpty(reason))
                                 reason = twoDimensionalSizeRejection
-                                    ?? "DoAtlasTextureが失敗（配置・サイズ判定の詳細未取得）";
+                                    ?? FormatLocalized(
+                                        "AutoAtlasTexture:fallback:AtlasExecutionFailed");
                             twoDimensionalFallbackReasons.Add(
                                 $"groups={string.Join(",", failedMerge.GroupIds.Select(id => "g" + id))}, layout={failedMerge.PlannedLayoutSize.x}×{failedMerge.PlannedLayoutSize.y}: {reason}");
                         }
@@ -713,7 +740,9 @@ namespace net.rs64.TexTransTool.NDMF
                             twoDimensionalFallbackReasons.Add(
                                 $"groups={string.Join(",", unresolvedMerge.GroupIds.Select(id => "g" + id))}, "
                                 + $"layout={unresolvedMerge.PlannedLayoutSize.x}×{unresolvedMerge.PlannedLayoutSize.y}: "
-                                + $"必要なAtlas MeshをRenderer '{unresolvedRequiredRenderer.name}' に解決できない");
+                                + FormatLocalized(
+                                    "AutoAtlasTexture:fallback:RequiredMeshResolutionFailed",
+                                    unresolvedRequiredRenderer.name));
                         }
 
                         EnqueueStandaloneFallback(
@@ -749,8 +778,10 @@ namespace net.rs64.TexTransTool.NDMF
                         if (semanticMerge.PackedRegions != null)
                         {
                             var reason = generatedPropertyUnsafe
-                                ? "生成Atlasプロパティが対象外テクスチャを上書きする"
-                                : "ReferenceCopyにより統合前と異なるテクスチャ参照になる";
+                                ? FormatLocalized(
+                                    "AutoAtlasTexture:fallback:GeneratedPropertyApplicationMismatch")
+                                : FormatLocalized(
+                                    "AutoAtlasTexture:fallback:ReferenceCopySemanticsMismatch");
                             twoDimensionalFallbackReasons.Add(
                                 $"groups={string.Join(",", semanticMerge.GroupIds.Select(id => "g" + id))}, "
                                 + $"layout={semanticMerge.PlannedLayoutSize.x}×{semanticMerge.PlannedLayoutSize.y}: "
@@ -807,7 +838,10 @@ namespace net.rs64.TexTransTool.NDMF
                         twoDimensionalFallbackReasons.Add(
                             $"groups={string.Join(",", pixelCheckedMerge.GroupIds.Select(id => "g" + id))}, "
                             + $"layout={pixelCheckedMerge.PlannedLayoutSize.x}×{pixelCheckedMerge.PlannedLayoutSize.y}: "
-                            + $"最終出力ピクセル数が統合前より減少しない: actual={finalOutputPixels}, baseline={pixelCheckedMerge.BaselinePixels}");
+                            + FormatLocalized(
+                                "AutoAtlasTexture:fallback:FinalPixelsNotReduced",
+                                finalOutputPixels,
+                                pixelCheckedMerge.BaselinePixels));
                     }
 
                     EnqueueStandaloneFallback(
@@ -844,8 +878,12 @@ namespace net.rs64.TexTransTool.NDMF
                     if (memoryCheckedMerge.PackedRegions != null)
                     {
                         var reason = !hasExecutionTextureMemory
-                            ? "最終テクスチャメモリを計算できない"
-                            : $"最終テクスチャメモリが削減されない: actual={executionTextureMemoryBytes} bytes, baseline={memoryCheckedMerge.BaselineBytes} bytes";
+                            ? FormatLocalized(
+                                "AutoAtlasTexture:fallback:FinalMemoryUnknown")
+                            : FormatLocalized(
+                                "AutoAtlasTexture:fallback:FinalMemoryNotReduced",
+                                executionTextureMemoryBytes,
+                                memoryCheckedMerge.BaselineBytes);
                         twoDimensionalFallbackReasons.Add(
                             $"groups={string.Join(",", memoryCheckedMerge.GroupIds.Select(id => "g" + id))}, layout={memoryCheckedMerge.PlannedLayoutSize.x}×{memoryCheckedMerge.PlannedLayoutSize.y}: {reason}");
                     }
@@ -902,7 +940,8 @@ namespace net.rs64.TexTransTool.NDMF
                             twoDimensionalFallbackReasons.Add(
                                 $"groups={string.Join(",", retainedSourceMerge.GroupIds.Select(id => "g" + id))}, "
                                 + $"layout={retainedSourceMerge.PlannedLayoutSize.x}×{retainedSourceMerge.PlannedLayoutSize.y}: "
-                                + "生成マテリアルが統合前のソーステクスチャを保持している");
+                                + FormatLocalized(
+                                    "AutoAtlasTexture:fallback:SourceTextureRetained"));
                         }
 
                         EnqueueStandaloneFallback(
