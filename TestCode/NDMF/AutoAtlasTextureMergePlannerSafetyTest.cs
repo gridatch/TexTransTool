@@ -145,6 +145,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 new();
             internal readonly Dictionary<string, UsingUVChannels> TextureUvChannels =
                 new();
+            internal UsingUVChannels OtherUvUsage;
 
             public int? GetInteger(
                 string propertyName,
@@ -197,6 +198,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 
             public void RegisterOtherUVUsage(UsingUVChannels uvChannel)
             {
+                OtherUvUsage |= uvChannel;
             }
 
             public void RegisterTextureUVUsage(
@@ -277,6 +279,32 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             Assert.That(
                 animated.TextureMatrices["_Main2ndTex"],
                 Is.Null);
+        }
+
+        [Test]
+        public void LiltoonDissolveShapeReportsRawUv0Usage()
+        {
+            var maskOnly = new LiltoonMaterialInformationProbe();
+            maskOnly.VectorValues["_DissolveParams"] =
+                new Vector4(1f, 0f, 0.5f, 0.1f);
+            LiltoonShaderInformation.GetMaterialInformation(
+                maskOnly,
+                isOutline: false);
+            Assert.That(
+                maskOnly.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo((UsingUVChannels)0),
+                "Dissolve mode 1 only samples its mask textures.");
+
+            var uvShape = new LiltoonMaterialInformationProbe();
+            uvShape.VectorValues["_DissolveParams"] =
+                new Vector4(2f, 0f, 0.5f, 0.1f);
+            LiltoonShaderInformation.GetMaterialInformation(
+                uvShape,
+                isOutline: false);
+            Assert.That(
+                uvShape.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo(UsingUVChannels.UV0),
+                "Dissolve mode 2 computes its geometric shape directly from fd.uv0.");
         }
 
         [Test]
