@@ -76,10 +76,11 @@ namespace net.rs64.TexTransTool.NDMF
                     .Distinct()
                     .ToArray();
                 if (ids.Length == 1
-                    && ids[0].HasValue
-                    && regions.ContainsKey(ids[0].Value))
+                    && ids[0] is int atomicGroupId
+                    && regions.ContainsKey(atomicGroupId))
                 {
-                    _groupByMaterialGroupId[materialGroupId] = ids[0].Value;
+                    _groupByMaterialGroupId[materialGroupId] =
+                        atomicGroupId;
                 }
                 else
                 {
@@ -106,9 +107,10 @@ namespace net.rs64.TexTransTool.NDMF
                     .Distinct()
                     .ToArray();
 
-                _groupByIsland[index] = ids.Length == 1 && ids[0].HasValue
-                    ? ids[0].Value
-                    : -1;
+                _groupByIsland[index] =
+                    ids.Length == 1 && ids[0] is int atomicGroupId
+                        ? atomicGroupId
+                        : -1;
                 if (_groupByIsland[index] < 0) valid = false;
             }
 
