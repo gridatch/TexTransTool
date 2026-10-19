@@ -1520,13 +1520,10 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     0, id, id % 2 == 0 ? 16 : 24));
 
             var selected = AutoAtlasTextureMergePlanner
-                .SelectTwoDimensionalMerges(
-                    candidates,
-                    out var improvement);
+                .SelectTwoDimensionalMerges(candidates);
 
             Assert.That(selected.Count, Is.EqualTo(1));
             Assert.That(selected[0], Is.SameAs(candidates[1]));
-            Assert.That(improvement, Is.Null);
         }
 
         private static AutoAtlasTextureMergePlanner.MergeSelection
