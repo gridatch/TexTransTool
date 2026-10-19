@@ -508,6 +508,36 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void LiltoonAudioLinkMode2ReportsRawUv0()
+        {
+            var fragment = new LiltoonMaterialInformationProbe();
+            fragment.IntValues["_UseAudioLink"] = 1;
+            fragment.IntValues["_AudioLink2Emission"] = 1;
+            fragment.IntValues["_AudioLinkUVMode"] = 2;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                fragment,
+                isOutline: false);
+
+            Assert.That(
+                fragment.OtherUvUsage,
+                Is.EqualTo(UsingUVChannels.UV0));
+
+            var vertex = new LiltoonMaterialInformationProbe();
+            vertex.IntValues["_UseAudioLink"] = 1;
+            vertex.IntValues["_AudioLink2Vertex"] = 1;
+            vertex.IntValues["_AudioLinkVertexUVMode"] = 2;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                vertex,
+                isOutline: false);
+
+            Assert.That(
+                vertex.OtherUvUsage,
+                Is.EqualTo(UsingUVChannels.UV0));
+        }
+
+        [Test]
         public void LiltoonGlitterReportsRawUvAndColorTextureUv()
         {
             var probe = new LiltoonMaterialInformationProbe();

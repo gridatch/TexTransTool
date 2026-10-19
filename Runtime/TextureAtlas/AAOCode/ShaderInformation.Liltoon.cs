@@ -475,26 +475,61 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                     UsingUVChannels.UV0, null);
             }
 
-            if (matInfo.GetInt("_UseAudioLink") != 0 && (
-                    matInfo.GetInt("_AudioLink2Main2nd") != 0
-                    || matInfo.GetInt("_AudioLink2Main3rd") != 0
-                    || matInfo.GetInt("_AudioLink2Emission") != 0
-                    || matInfo.GetInt("_AudioLink2EmissionGrad") != 0
-                    || matInfo.GetInt("_AudioLink2Emission2nd") != 0
-                    || matInfo.GetInt("_AudioLink2Emission2ndGrad") != 0
-                    || matInfo.GetInt("_AudioLink2Vertex") != 0
-                ))
-            {
-                var _AudioLinkUVMode = matInfo.GetInt("_AudioLinkUVMode");
-                var _AudioLinkVertexUVMode = matInfo.GetInt("_AudioLinkVertexUVMode");
+            var useAudioLink = matInfo.GetInt("_UseAudioLink");
+            var audioLink2Main2nd = matInfo.GetInt("_AudioLink2Main2nd");
+            var audioLink2Main3rd = matInfo.GetInt("_AudioLink2Main3rd");
+            var audioLink2Emission = matInfo.GetInt("_AudioLink2Emission");
+            var audioLink2EmissionGrad =
+                matInfo.GetInt("_AudioLink2EmissionGrad");
+            var audioLink2Emission2nd =
+                matInfo.GetInt("_AudioLink2Emission2nd");
+            var audioLink2Emission2ndGrad =
+                matInfo.GetInt("_AudioLink2Emission2ndGrad");
+            var audioLink2Vertex = matInfo.GetInt("_AudioLink2Vertex");
 
-                if (_AudioLinkUVMode is 3 or 4 or null || _AudioLinkVertexUVMode is 3 or null)
+            var usesFragmentAudioLink =
+                audioLink2Main2nd != 0
+                || audioLink2Main3rd != 0
+                || audioLink2Emission != 0
+                || audioLink2EmissionGrad != 0
+                || audioLink2Emission2nd != 0
+                || audioLink2Emission2ndGrad != 0;
+            var usesVertexAudioLink = audioLink2Vertex != 0;
+
+            if (useAudioLink != 0
+                && (usesFragmentAudioLink || usesVertexAudioLink))
+            {
+                var audioLinkUvMode = matInfo.GetInt("_AudioLinkUVMode");
+                var audioLinkVertexUvMode =
+                    matInfo.GetInt("_AudioLinkVertexUVMode");
+
+                // Fragment mode 2 derives its coordinate directly from uv0.
+                if (usesFragmentAudioLink)
+                {
+                    if (audioLinkUvMode == 2)
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV0);
+                    else if (audioLinkUvMode is null)
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.Unknown);
+                }
+
+                // Vertex AudioLink has the same raw-UV mode.
+                if (usesVertexAudioLink)
+                {
+                    if (audioLinkVertexUvMode == 2)
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV0);
+                    else if (audioLinkVertexUvMode is null)
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.Unknown);
+                }
+
+                if (audioLinkUvMode is 3 or 4 or null
+                    || (usesVertexAudioLink
+                        && audioLinkVertexUvMode is 3 or null))
                 {
                     UsingUVChannels audioLinkUVChannel;
                     Matrix2x3? audioLinkUVMatrix;
-                    // lil_sampler_linear_repeat for _AudioLinkVertexUVMode = 3,
-                    // sampler_AudioLinkMask for _AudioLinkUVMode = 3,4
-                    var sampler = "_AudioLinkMask" | SamplerStateInformation.LinearRepeatSampler;
+                    var sampler =
+                        "_AudioLinkMask"
+                        | SamplerStateInformation.LinearRepeatSampler;
                     switch (matInfo.GetInt("_AudioLinkMask_UVMode"))
                     {
                         case 0:
