@@ -844,26 +844,23 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void LiltoonFullSemanticCoverageRequiresOfficialAssetIdentity()
+        public void LiltoonFullSemanticCoverageRequiresAuditedOfficialShaderGuid()
         {
             Assert.That(
-                ShaderInformationFromAAO.IsOfficialLiltoonShaderIdentity(
-                    "Packages/jp.lilxyzw.liltoon/Shader/lts.shader",
-                    null),
+                ShaderInformationFromAAO.IsKnownFullSemanticLiltoonShaderGuid(
+                    "df12117ecd77c31469c224178886498e"),
                 Is.True);
             Assert.That(
-                ShaderInformationFromAAO.IsOfficialLiltoonShaderIdentity(
-                    "Assets/lilToon/Shader/lts.shader",
-                    "05d1d116436047941ad97d1b9064ee05"),
-                Is.True);
+                ShaderInformationFromAAO.IsKnownFullSemanticLiltoonShaderGuid(
+                    "d6e9e297d960d5341b5fe94e3356353b"),
+                Is.False,
+                "A newly added official shader must remain fail-closed until its semantics are reviewed.");
             Assert.That(
-                ShaderInformationFromAAO.IsOfficialLiltoonShaderIdentity(
-                    "Assets/lilToon/Shader/lts.shader",
+                ShaderInformationFromAAO.IsKnownFullSemanticLiltoonShaderGuid(
                     "00000000000000000000000000000000"),
                 Is.False);
             Assert.That(
-                ShaderInformationFromAAO.IsOfficialLiltoonShaderIdentity(
-                    "Assets/CustomShaders/lilToonCustom.shader",
+                ShaderInformationFromAAO.IsKnownFullSemanticLiltoonShaderGuid(
                     null),
                 Is.False);
         }
