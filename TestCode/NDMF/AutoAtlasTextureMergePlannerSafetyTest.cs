@@ -453,7 +453,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 var subSet =
                     AtlasSubMeshIndexIDSetContext.BuildAtlasSubSet(
                         mesh,
-                        new Material?[] { material },
+                        new Material[] { material },
                         7,
                         targetMaterials,
                         grouping);
@@ -502,7 +502,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 var mixed =
                     AtlasSubMeshIndexIDSetContext.BuildAtlasSubSet(
                         mesh,
-                        new Material?[] { material, material },
+                        new Material[] { material, material },
                         3,
                         targetMaterials,
                         grouping);
@@ -513,7 +513,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 var repeated =
                     AtlasSubMeshIndexIDSetContext.BuildAtlasSubSet(
                         mesh,
-                        new Material?[] { material, material, material },
+                        new Material[] { material, material, material },
                         3,
                         targetMaterials,
                         grouping);
