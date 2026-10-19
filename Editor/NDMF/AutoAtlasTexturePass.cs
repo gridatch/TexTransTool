@@ -1134,7 +1134,7 @@ namespace net.rs64.TexTransTool.NDMF
 
                 foreach (var property in generatedProperties)
                 {
-                    if (!material.HasTexture(property))
+                    if (!material.HasShaderTextureProperty(property))
                         continue;
 
                     var currentTexture = material.GetTexture(property);
