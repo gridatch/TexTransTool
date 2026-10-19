@@ -9,14 +9,23 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
         [TexTransCoreEngineForUnity.TexTransInitialize]
         internal static void ShaderInformationRegistering()
         {
-            var lilOutLine = new LiltoonShaderInformationWithOutline();
-            var lil = new LiltoonShaderInformationWithOutOutline();
             foreach (var shader in TexTransCoreEngineForUnity.TexTransCoreRuntime.LoadAssetsAtType(typeof(Shader)).Cast<Shader>())
             {
                 if (shader.name.Contains("lilToon"))
                 {
-                    if (shader.name.Contains("Outline")) { TTShaderTextureUsageInformationRegistry.RegisterTTShaderTextureUsageInformation(shader, lilOutLine); }
-                    else { TTShaderTextureUsageInformationRegistry.RegisterTTShaderTextureUsageInformation(shader, lil); }
+                    var usesFurVertexId = shader.name.IndexOf(
+                        "Fur",
+                        System.StringComparison.OrdinalIgnoreCase) >= 0;
+                    ITTShaderTextureUsageInformation information =
+                        shader.name.Contains("Outline")
+                            ? new LiltoonShaderInformationWithOutline(
+                                usesFurVertexId)
+                            : new LiltoonShaderInformationWithOutOutline(
+                                usesFurVertexId);
+                    TTShaderTextureUsageInformationRegistry
+                        .RegisterTTShaderTextureUsageInformation(
+                            shader,
+                            information);
                 }
             }
 

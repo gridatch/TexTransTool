@@ -618,6 +618,71 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void LiltoonAudioLinkMode2ReportsRawUv0Usage()
+        {
+            var fragment = new LiltoonMaterialInformationProbe();
+            fragment.IntValues["_UseAudioLink"] = 1;
+            fragment.IntValues["_AudioLink2Main2nd"] = 1;
+            fragment.IntValues["_AudioLinkUVMode"] = 2;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                fragment,
+                isOutline: false);
+
+            Assert.That(
+                fragment.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo(UsingUVChannels.UV0));
+
+            var vertex = new LiltoonMaterialInformationProbe();
+            vertex.IntValues["_UseAudioLink"] = 1;
+            vertex.IntValues["_AudioLink2Vertex"] = 1;
+            vertex.IntValues["_AudioLinkVertexUVMode"] = 2;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                vertex,
+                isOutline: false);
+
+            Assert.That(
+                vertex.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo(UsingUVChannels.UV0));
+        }
+
+        [Test]
+        public void LiltoonFurRandomizeReportsVertexIndexUsage()
+        {
+            var disabledRandomize = new LiltoonMaterialInformationProbe();
+            LiltoonShaderInformation.GetMaterialInformation(
+                disabledRandomize,
+                isOutline: false,
+                shaderUsesFurVertexId: true);
+            Assert.That(disabledRandomize.UsesVertexIndex, Is.False);
+
+            var dedicatedFur = new LiltoonMaterialInformationProbe();
+            dedicatedFur.FloatValues["_FurRandomize"] = 0.5f;
+            LiltoonShaderInformation.GetMaterialInformation(
+                dedicatedFur,
+                isOutline: false,
+                shaderUsesFurVertexId: true);
+            Assert.That(dedicatedFur.UsesVertexIndex, Is.True);
+
+            var multiFur = new LiltoonMaterialInformationProbe();
+            multiFur.IntValues["_TransparentMode"] = 4;
+            multiFur.FloatValues["_FurRandomize"] = 0.5f;
+            LiltoonShaderInformation.GetMaterialInformation(
+                multiFur,
+                isOutline: false);
+            Assert.That(multiFur.UsesVertexIndex, Is.True);
+
+            var multiNonFur = new LiltoonMaterialInformationProbe();
+            multiNonFur.IntValues["_TransparentMode"] = 2;
+            multiNonFur.FloatValues["_FurRandomize"] = 0.5f;
+            LiltoonShaderInformation.GetMaterialInformation(
+                multiNonFur,
+                isOutline: false);
+            Assert.That(multiNonFur.UsesVertexIndex, Is.False);
+        }
+
+        [Test]
         public void LiltoonMain2ndUsesItsOwnUvMode()
         {
             var probe = new LiltoonMaterialInformationProbe();

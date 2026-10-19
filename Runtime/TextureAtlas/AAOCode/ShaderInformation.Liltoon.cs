@@ -6,16 +6,38 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 {
     internal class LiltoonShaderInformationWithOutline : ITTShaderTextureUsageInformation
     {
+        private readonly bool _shaderUsesFurVertexId;
+
+        internal LiltoonShaderInformationWithOutline(
+            bool shaderUsesFurVertexId = false)
+        {
+            _shaderUsesFurVertexId = shaderUsesFurVertexId;
+        }
+
         public void GetMaterialTextureUVUsage(ITTTextureUVUsageWriter writer)
         {
-            LiltoonShaderInformation.GetMaterialInformation(new MaterialInformationTranslator(writer), true);
+            LiltoonShaderInformation.GetMaterialInformation(
+                new MaterialInformationTranslator(writer),
+                true,
+                _shaderUsesFurVertexId);
         }
     }
     internal class LiltoonShaderInformationWithOutOutline : ITTShaderTextureUsageInformation
     {
+        private readonly bool _shaderUsesFurVertexId;
+
+        internal LiltoonShaderInformationWithOutOutline(
+            bool shaderUsesFurVertexId = false)
+        {
+            _shaderUsesFurVertexId = shaderUsesFurVertexId;
+        }
+
         public void GetMaterialTextureUVUsage(ITTTextureUVUsageWriter writer)
         {
-            LiltoonShaderInformation.GetMaterialInformation(new MaterialInformationTranslator(writer), false);
+            LiltoonShaderInformation.GetMaterialInformation(
+                new MaterialInformationTranslator(writer),
+                false,
+                _shaderUsesFurVertexId);
         }
     }
     internal class LiltoonShaderInformation
@@ -23,7 +45,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
         // Based on Avatar Optimizer 6a63910a423d5b7d73e726fcccb4940716f5ee0d,
         // with AudioLink fixes 3000aff45f99ca7cb2d073ea01d5f105cd51a4e3 and
         // 126bfe6a55cbae8a35c96dcbf6d11f3b00d7a342.
-        public static void GetMaterialInformation(IMaterialInformationCallbackAbstractionInterface matInfo, bool isOutline)
+        public static void GetMaterialInformation(
+            IMaterialInformationCallbackAbstractionInterface matInfo,
+            bool isOutline,
+            bool shaderUsesFurVertexId = false)
         {
             var uvMain = UsingUVChannels.UV0;
             // var uvMainScaleOffset = "_MainTex_ST";
@@ -451,26 +476,60 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                     UsingUVChannels.UV0, null);
             }
 
-            if (matInfo.GetInt("_UseAudioLink") != 0 && (
-                    matInfo.GetInt("_AudioLink2Main2nd") != 0
-                    || matInfo.GetInt("_AudioLink2Main3rd") != 0
-                    || matInfo.GetInt("_AudioLink2Emission") != 0
-                    || matInfo.GetInt("_AudioLink2EmissionGrad") != 0
-                    || matInfo.GetInt("_AudioLink2Emission2nd") != 0
-                    || matInfo.GetInt("_AudioLink2Emission2ndGrad") != 0
-                    || matInfo.GetInt("_AudioLink2Vertex") != 0
-                ))
-            {
-                var _AudioLinkUVMode = matInfo.GetInt("_AudioLinkUVMode");
-                var _AudioLinkVertexUVMode = matInfo.GetInt("_AudioLinkVertexUVMode");
+            var useAudioLink = matInfo.GetInt("_UseAudioLink");
+            var audioLink2Main2nd = matInfo.GetInt("_AudioLink2Main2nd");
+            var audioLink2Main3rd = matInfo.GetInt("_AudioLink2Main3rd");
+            var audioLink2Emission = matInfo.GetInt("_AudioLink2Emission");
+            var audioLink2EmissionGrad =
+                matInfo.GetInt("_AudioLink2EmissionGrad");
+            var audioLink2Emission2nd =
+                matInfo.GetInt("_AudioLink2Emission2nd");
+            var audioLink2Emission2ndGrad =
+                matInfo.GetInt("_AudioLink2Emission2ndGrad");
+            var audioLink2Vertex = matInfo.GetInt("_AudioLink2Vertex");
 
-                if (_AudioLinkUVMode is 3 or 4 or null || _AudioLinkVertexUVMode is 3 or null)
+            var usesFragmentAudioLink =
+                audioLink2Main2nd != 0
+                || audioLink2Main3rd != 0
+                || audioLink2Emission != 0
+                || audioLink2EmissionGrad != 0
+                || audioLink2Emission2nd != 0
+                || audioLink2Emission2ndGrad != 0;
+            var usesVertexAudioLink = audioLink2Vertex != 0;
+
+            if (useAudioLink != 0
+                && (usesFragmentAudioLink || usesVertexAudioLink))
+            {
+                var audioLinkUvMode = matInfo.GetInt("_AudioLinkUVMode");
+                var audioLinkVertexUvMode =
+                    matInfo.GetInt("_AudioLinkVertexUVMode");
+
+                // Current lilToon derives AudioLink mode 2 directly from
+                // raw mesh UV0 in both fragment and vertex paths.
+                if (usesFragmentAudioLink)
+                {
+                    if (audioLinkUvMode == 2)
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV0);
+                    else if (audioLinkUvMode is null)
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.Unknown);
+                }
+
+                if (usesVertexAudioLink)
+                {
+                    if (audioLinkVertexUvMode == 2)
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV0);
+                    else if (audioLinkVertexUvMode is null)
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.Unknown);
+                }
+
+                if (audioLinkUvMode is 3 or 4 or null
+                    || (usesVertexAudioLink
+                        && audioLinkVertexUvMode is 3 or null))
                 {
                     UsingUVChannels audioLinkUVChannel;
                     Matrix2x3? audioLinkUVMatrix;
-                    // lil_sampler_linear_repeat for _AudioLinkVertexUVMode = 3,
-                    // sampler_AudioLinkMask for _AudioLinkUVMode = 3,4
-                    var sampler = "_AudioLinkMask" | SamplerStateInformation.LinearRepeatSampler;
+                    var sampler = "_AudioLinkMask"
+                        | SamplerStateInformation.LinearRepeatSampler;
                     switch (matInfo.GetInt("_AudioLinkMask_UVMode"))
                     {
                         case 0:
@@ -649,7 +708,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                 }
             }
 
-            // fur shader will use vertex ID, but it's for noise so it's not necessary to register UV usage.
+            // Fur geometry uses SV_VertexID only to seed the random
+            // fur-vector perturbation. Reindexing is observable only while
+            // that perturbation is enabled.
+            if ((shaderUsesFurVertexId
+                    || matInfo.GetInt("_TransparentMode") is 4 or 5)
+                && matInfo.GetFloat("_FurRandomize") != 0)
+            {
+                matInfo.RegisterVertexIndexUsage();
+            }
 
             return;
 
