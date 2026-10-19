@@ -6,7 +6,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
     // Unity builtin "Standard" shader
     // https://github.com/TwoTailsGames/Unity-Built-in-Shaders/blob/master/DefaultResourcesExtra/Standard.shader
-    internal class StandardShaderInformation : ITTFullShaderSemanticUsageInformation
+    internal class StandardShaderInformation : ITTShaderTextureUsageInformation
     {
         internal static void Register()
         {

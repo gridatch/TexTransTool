@@ -820,9 +820,6 @@ msgstr "the AtlasTexture target renderer set changed between planning and execut
 msgid "AutoAtlasTexture:fallback:ActiveUntransformedConsumer"
 msgstr "a currently active material consumer cannot receive the corresponding atlas mesh/UV rewrite"
 
-msgid "AutoAtlasTexture:fallback:TargetUvOutOfBounds"
-msgstr "target-material geometry uses non-finite UVs or UVs outside the 0..1 atlas-safe range"
-
 msgid "AutoAtlasTexture:fallback:LayoutMismatch"
 msgstr "output layout mismatch: actual={0}×{1}, planned={2}×{3}, outputPixels={4}"
 

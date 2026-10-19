@@ -51,7 +51,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 32 => UsageUVChannel.UV5,
                 64 => UsageUVChannel.UV6,
                 128 => UsageUVChannel.UV7,
-                (int)UsingUVChannels.NonMesh => UsageUVChannel.NonMesh,
                 _ => UsageUVChannel.Unknown,
             };
             if (_uvUsageWriter is ITTTextureUVTransformUsageWriter transformUsageWriter)
@@ -62,13 +61,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         public void RegisterVertexIndexUsage()
         {
-            if (_uvUsageWriter is ITTVertexIndexUsageWriter vertexIndexWriter)
-                vertexIndexWriter.WriteVertexIndexUsage();
+            // Do nothing
         }
         public void RegisterOtherUVUsage(UsingUVChannels uvChannel)
         {
-            if (_uvUsageWriter is ITTTextureOtherUVUsageWriter otherUsageWriter)
-                otherUsageWriter.WriteOtherUVUsage(uvChannel);
+            // Do nothing
         }
     }
 }

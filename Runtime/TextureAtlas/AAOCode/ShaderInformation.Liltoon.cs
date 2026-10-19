@@ -4,40 +4,18 @@ using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 {
-    internal class LiltoonShaderInformationWithOutline : ITTFullShaderSemanticUsageInformation
+    internal class LiltoonShaderInformationWithOutline : ITTShaderTextureUsageInformation
     {
-        private readonly bool _shaderUsesFurVertexId;
-
-        internal LiltoonShaderInformationWithOutline(
-            bool shaderUsesFurVertexId = false)
-        {
-            _shaderUsesFurVertexId = shaderUsesFurVertexId;
-        }
-
         public void GetMaterialTextureUVUsage(ITTTextureUVUsageWriter writer)
         {
-            LiltoonShaderInformation.GetMaterialInformation(
-                new MaterialInformationTranslator(writer),
-                true,
-                _shaderUsesFurVertexId);
+            LiltoonShaderInformation.GetMaterialInformation(new MaterialInformationTranslator(writer), true);
         }
     }
-    internal class LiltoonShaderInformationWithOutOutline : ITTFullShaderSemanticUsageInformation
+    internal class LiltoonShaderInformationWithOutOutline : ITTShaderTextureUsageInformation
     {
-        private readonly bool _shaderUsesFurVertexId;
-
-        internal LiltoonShaderInformationWithOutOutline(
-            bool shaderUsesFurVertexId = false)
-        {
-            _shaderUsesFurVertexId = shaderUsesFurVertexId;
-        }
-
         public void GetMaterialTextureUVUsage(ITTTextureUVUsageWriter writer)
         {
-            LiltoonShaderInformation.GetMaterialInformation(
-                new MaterialInformationTranslator(writer),
-                false,
-                _shaderUsesFurVertexId);
+            LiltoonShaderInformation.GetMaterialInformation(new MaterialInformationTranslator(writer), false);
         }
     }
     internal class LiltoonShaderInformation
@@ -45,10 +23,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
         // Based on Avatar Optimizer 6a63910a423d5b7d73e726fcccb4940716f5ee0d,
         // with AudioLink fixes 3000aff45f99ca7cb2d073ea01d5f105cd51a4e3 and
         // 126bfe6a55cbae8a35c96dcbf6d11f3b00d7a342.
-        public static void GetMaterialInformation(
-            IMaterialInformationCallbackAbstractionInterface matInfo,
-            bool isOutline,
-            bool shaderUsesFurVertexId = false)
+        public static void GetMaterialInformation(IMaterialInformationCallbackAbstractionInterface matInfo, bool isOutline)
         {
             var uvMain = UsingUVChannels.UV0;
             // var uvMainScaleOffset = "_MainTex_ST";
@@ -58,12 +33,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
             {
                 // _ShiftBackfaceUV
                 if (matInfo.GetFloat("_ShiftBackfaceUV") != 0) return null; // changed depends on face
-
-                // lilParallax / lilPOM mutate uvMain with view-dependent
-                // offsets that cannot be represented by a static affine UV
-                // matrix.
-                if (matInfo.GetInt("_UseParallax") != 0) return null;
-
                 return STAndScrollRotateToMatrix("_MainTex_ST", "_MainTex_ScrollRotate");
             }
 
@@ -111,7 +80,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
                 LIL_GET_SUBTEX("_Main2ndTex", uv2nd);
                 LIL_SAMPLE_2D_WithMat("_Main2ndBlendMask", samp, uvMain, uvMainMatrix);
-                RegisterDissolveShapeUvUsage("_Main2ndDissolveParams");
                 lilCalcDissolveWithOrWithoutNoise(
                     UsingUVChannels.UV0,
                     "_Main2ndDissolveMask",
@@ -153,7 +121,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
                 LIL_GET_SUBTEX("_Main3rdTex", uv3rd);
                 LIL_SAMPLE_2D_WithMat("_Main3rdBlendMask", samp, uvMain, uvMainMatrix);
-                RegisterDissolveShapeUvUsage("_Main3rdDissolveParams");
                 lilCalcDissolveWithOrWithoutNoise(
                     UsingUVChannels.UV0,
                     "_Main3rdDissolveMask",
@@ -312,16 +279,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
             {
                 var samp = "_MainTex"; // caller of lilGetGlitter
 
-                var glitterUv = matInfo.GetInt("_GlitterUVMode") switch
-                {
-                    0 => UsingUVChannels.UV0,
-                    1 => UsingUVChannels.UV1,
-                    _ => UsingUVChannels.UV0 | UsingUVChannels.UV1,
-                };
-                // Glitter's procedural grid consumes the selected mesh UV
-                // directly, independently of texture sampling.
-                matInfo.RegisterOtherUVUsage(glitterUv);
-
                 switch (matInfo.GetInt("_GlitterColorTex_UVMode"))
                 {
                     case 0:
@@ -364,9 +321,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
                 if (matInfo.GetInt("_GlitterApplyShape") != 0)
                 {
-                    LIL_SAMPLE_2D_GRAD(
-                        "_GlitterShapeTex",
-                        SamplerStateInformation.LinearClampSampler,
+                    // complex uv
+                    LIL_SAMPLE_2D_GRAD("_GlitterShapeTex", SamplerStateInformation.LinearClampSampler,
                         UsingUVChannels.NonMesh);
                 }
             }
@@ -476,60 +432,26 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                     UsingUVChannels.UV0, null);
             }
 
-            var useAudioLink = matInfo.GetInt("_UseAudioLink");
-            var audioLink2Main2nd = matInfo.GetInt("_AudioLink2Main2nd");
-            var audioLink2Main3rd = matInfo.GetInt("_AudioLink2Main3rd");
-            var audioLink2Emission = matInfo.GetInt("_AudioLink2Emission");
-            var audioLink2EmissionGrad =
-                matInfo.GetInt("_AudioLink2EmissionGrad");
-            var audioLink2Emission2nd =
-                matInfo.GetInt("_AudioLink2Emission2nd");
-            var audioLink2Emission2ndGrad =
-                matInfo.GetInt("_AudioLink2Emission2ndGrad");
-            var audioLink2Vertex = matInfo.GetInt("_AudioLink2Vertex");
-
-            var usesFragmentAudioLink =
-                audioLink2Main2nd != 0
-                || audioLink2Main3rd != 0
-                || audioLink2Emission != 0
-                || audioLink2EmissionGrad != 0
-                || audioLink2Emission2nd != 0
-                || audioLink2Emission2ndGrad != 0;
-            var usesVertexAudioLink = audioLink2Vertex != 0;
-
-            if (useAudioLink != 0
-                && (usesFragmentAudioLink || usesVertexAudioLink))
+            if (matInfo.GetInt("_UseAudioLink") != 0 && (
+                    matInfo.GetInt("_AudioLink2Main2nd") != 0
+                    || matInfo.GetInt("_AudioLink2Main3rd") != 0
+                    || matInfo.GetInt("_AudioLink2Emission") != 0
+                    || matInfo.GetInt("_AudioLink2EmissionGrad") != 0
+                    || matInfo.GetInt("_AudioLink2Emission2nd") != 0
+                    || matInfo.GetInt("_AudioLink2Emission2ndGrad") != 0
+                    || matInfo.GetInt("_AudioLink2Vertex") != 0
+                ))
             {
-                var audioLinkUvMode = matInfo.GetInt("_AudioLinkUVMode");
-                var audioLinkVertexUvMode =
-                    matInfo.GetInt("_AudioLinkVertexUVMode");
+                var _AudioLinkUVMode = matInfo.GetInt("_AudioLinkUVMode");
+                var _AudioLinkVertexUVMode = matInfo.GetInt("_AudioLinkVertexUVMode");
 
-                // Current lilToon derives AudioLink mode 2 directly from
-                // raw mesh UV0 in both fragment and vertex paths.
-                if (usesFragmentAudioLink)
-                {
-                    if (audioLinkUvMode == 2)
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV0);
-                    else if (audioLinkUvMode is null)
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.Unknown);
-                }
-
-                if (usesVertexAudioLink)
-                {
-                    if (audioLinkVertexUvMode == 2)
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV0);
-                    else if (audioLinkVertexUvMode is null)
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.Unknown);
-                }
-
-                if (audioLinkUvMode is 3 or 4 or null
-                    || (usesVertexAudioLink
-                        && audioLinkVertexUvMode is 3 or null))
+                if (_AudioLinkUVMode is 3 or 4 or null || _AudioLinkVertexUVMode is 3 or null)
                 {
                     UsingUVChannels audioLinkUVChannel;
                     Matrix2x3? audioLinkUVMatrix;
-                    var sampler = "_AudioLinkMask"
-                        | SamplerStateInformation.LinearRepeatSampler;
+                    // lil_sampler_linear_repeat for _AudioLinkVertexUVMode = 3,
+                    // sampler_AudioLinkMask for _AudioLinkUVMode = 3,4
+                    var sampler = "_AudioLinkMask" | SamplerStateInformation.LinearRepeatSampler;
                     switch (matInfo.GetInt("_AudioLinkMask_UVMode"))
                     {
                         case 0:
@@ -591,7 +513,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
             if (matInfo.GetVector("_DissolveParams")?.x != 0)
             {
-                RegisterDissolveShapeUvUsage("_DissolveParams");
                 lilCalcDissolveWithOrWithoutNoise(
                     //fd.col.a,
                     //dissolveAlpha,
@@ -671,52 +592,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
         };
             if (idMaskProperties.Any(prop => matInfo.GetInt(prop) != 0))
             {
-                switch (matInfo.GetInt("_IDMaskFrom"))
-                {
-                    case 0:
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV0);
-                        break;
-                    case 1:
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV1);
-                        break;
-                    case 2:
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV2);
-                        break;
-                    case 3:
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV3);
-                        break;
-                    case 4:
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV4);
-                        break;
-                    case 5:
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV5);
-                        break;
-                    case 6:
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV6);
-                        break;
-                    case 7:
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV7);
-                        break;
-                    case 8:
-                        matInfo.RegisterVertexIndexUsage();
-                        break;
-                    default:
-                    case null:
-                        matInfo.RegisterOtherUVUsage(UsingUVChannels.Unknown);
-                        matInfo.RegisterVertexIndexUsage();
-                        break;
-                }
-            }
-
-            // Fur geometry uses SV_VertexID only to seed the random
-            // fur-vector perturbation. Reindexing is observable only while
-            // that perturbation is enabled.
-            if ((shaderUsesFurVertexId
-                    || matInfo.GetInt("_TransparentMode") is 4 or 5)
-                && matInfo.GetFloat("_FurRandomize") != 0)
-            {
+                // with _IDMaskFrom = 0..7, uv is used for ID Mask, but it will only use integer part
+                // (cast to int with normal rounding in hlsl) so it's not necessary to register UV usage.
                 matInfo.RegisterVertexIndexUsage();
             }
+
+            // fur shader will use vertex ID, but it's for noise so it's not necessary to register UV usage.
 
             return;
 
@@ -813,15 +694,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                     var stValueOpt = matInfo.GetVector(st);
                     var rotateValueOpt = matInfo.GetVector(scrollRotate);
                     var angleValueOpt = matInfo.GetFloat(angle);
-                    var isDecalValueOpt = matInfo.GetFloat(isDecal);
+                    //var isDecalValueOpt = matInfo.GetFloat(isDecal);
                     var isLeftOnlyValueOpt = matInfo.GetFloat(isLeftOnly);
                     var isRightOnlyValueOpt = matInfo.GetFloat(isRightOnly);
                     var shouldCopyValueOpt = matInfo.GetFloat(shouldCopy);
                     var shouldFlipMirrorValueOpt = matInfo.GetFloat(shouldFlipMirror);
                     var shouldFlipCopyValueOpt = matInfo.GetFloat(shouldFlipCopy);
-                    // isMSDF changes sampled color interpretation, not UVs.
+                    //var isMSDFValueOpt = matInfo.GetFloat(isMSDF);
                     var decalAnimationValueOpt = matInfo.GetVector(decalAnimation);
-                    var decalSubParamValueOpt = matInfo.GetVector(decalSubParam);
+                    // var decalSubParamValueOpt = matInfo.GetVector(decalSubParam);
 
                     if (stValueOpt is not { } stValue) return null;
                     if (rotateValueOpt is not { } rotateValue) return null;
@@ -838,21 +719,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                     // shouldFlipMirror is true => flips
                     if (shouldFlipMirrorValueOpt != 0) return null;
 
-                    // Decal mode evaluates the original texture's 0..1
-                    // domain. That domain is not equivalent after relocating UV
-                    // into an atlas sub-region.
-                    if (isDecalValueOpt != 0) return null;
+                    // isDecal is true => decal
                     if (isLeftOnlyValueOpt != 0) return null;
                     if (isRightOnlyValueOpt != 0) return null;
 
                     // rotation is performed in STAndScrollRotateValueToMatrix
 
-                    if (decalAnimationValueOpt
-                        != new Vector4(1.0f, 1.0f, 1.0f, 30.0f))
-                        return null;
-                    if (decalSubParamValueOpt
-                        != new Vector4(1.0f, 1.0f, 0.0f, 1.0f))
-                        return null;
+                    if (decalAnimationValueOpt != new Vector4(1.0f, 1.0f, 1.0f, 30.0f)) return null;
 
                     return matrix;
                 }
@@ -876,25 +749,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
             {
                 LIL_SAMPLE_2D_WithMat(textureName, "_MainTex", uvChannel,
                     STAndScrollRotateToMatrix($"{textureName}_ST", $"{textureName}_ScrollRotate"));
-            }
-
-            void RegisterDissolveShapeUvUsage(
-                string dissolveParamsProperty)
-            {
-                var dissolveParams =
-                    matInfo.GetVector(dissolveParamsProperty);
-                if (dissolveParams is null)
-                {
-                    matInfo.RegisterOtherUVUsage(
-                        UsingUVChannels.Unknown);
-                    return;
-                }
-
-                // lilCalcDissolve mode 2 computes its shape directly from
-                // the supplied UV coordinates instead of only sampling masks.
-                if (dissolveParams.Value.x == 2.0f)
-                    matInfo.RegisterOtherUVUsage(
-                        UsingUVChannels.UV0);
             }
 
             void lilCalcDissolveWithOrWithoutNoise(

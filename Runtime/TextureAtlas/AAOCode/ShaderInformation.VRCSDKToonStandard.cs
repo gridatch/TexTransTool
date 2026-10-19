@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 {
-    internal class VRCSDKToonStandardShaderInformation : ITTFullShaderSemanticUsageInformation
+    internal class VRCSDKToonStandardShaderInformation : ITTShaderTextureUsageInformation
     {
         private readonly bool _withOutline;
 
@@ -98,16 +98,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
             if (matInfo.IsShaderKeywordEnabled("USE_AUDIOLINK") != false)
             {
-                var effectUv = SelectUV4(
-                    matInfo.GetFloat("_ALEffectUVChannel"));
-                // Toon Standard uses Effect UV directly for AudioLink mode,
-                // band, scroll, and bar calculations in addition to sampling
-                // _AudioLinkMask.
-                matInfo.RegisterOtherUVUsage(effectUv);
-
-                var audioLinkUV =
-                    SelectUV4(matInfo.GetFloat("_ALMaskUVChannel"))
-                    | effectUv;
+                var audioLinkUV = SelectUV4(matInfo.GetFloat("_ALMaskUVChannel"))
+                    | SelectUV4(matInfo.GetFloat("_ALEffectUVChannel"));
                 Register("_AudioLinkMask", audioLinkUV);
 
                 static UsingUVChannels SelectUV4(float? channel) => channel switch
