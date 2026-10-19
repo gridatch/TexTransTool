@@ -162,6 +162,86 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void RegisteredShaderUsageMayOmitUnsampledAssignedTexture()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var mainTexture = new Texture2D(4, 4);
+            var unusedTexture = new Texture2D(4, 4);
+            var registry = TTShaderTextureUsageInformationRegistry.s_information;
+            var hadPrevious = registry.TryGetValue(shader, out var previous);
+            try
+            {
+                material.SetTexture("_MainTex", mainTexture);
+                material.SetTexture("_BumpMap", unusedTexture);
+                registry[shader] = new TestShaderUsageInformation();
+
+                var grouping = new MaterialGroupingContext(
+                    new HashSet<Material> { material },
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasUnsupportedTextureUvSampling(
+                        new[] { material },
+                        grouping.ContainsTextureDictionaries,
+                        UVChannel.UV0),
+                    Is.False,
+                    "A registered provider may omit an assigned texture when the current shader state does not sample that property.");
+            }
+            finally
+            {
+                if (hadPrevious)
+                    registry[shader] = previous;
+                else
+                    registry.Remove(shader);
+                Object.DestroyImmediate(unusedTexture);
+                Object.DestroyImmediate(mainTexture);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void AutoAtlasRejectsUnregisteredShaderUsage()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var texture = new Texture2D(4, 4);
+            var registry = TTShaderTextureUsageInformationRegistry.s_information;
+            var hadPrevious = registry.TryGetValue(shader, out var previous);
+            try
+            {
+                material.SetTexture("_MainTex", texture);
+                registry.Remove(shader);
+
+                var grouping = new MaterialGroupingContext(
+                    new HashSet<Material> { material },
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasUnsupportedTextureUvSampling(
+                        new[] { material },
+                        grouping.ContainsTextureDictionaries,
+                        UVChannel.UV0),
+                    Is.True);
+            }
+            finally
+            {
+                if (hadPrevious)
+                    registry[shader] = previous;
+                else
+                    registry.Remove(shader);
+                Object.DestroyImmediate(texture);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
         public void AutoAtlasRejectsReportedNonTextureUseOfTargetUv()
         {
             var shader = Shader.Find("Standard");

@@ -1278,6 +1278,15 @@ namespace net.rs64.TexTransTool.NDMF
                 if (material == null)
                     continue;
 
+                // The legacy fallback is intentionally sufficient for manual
+                // AtlasTexture only. AutoAtlas needs an actual shader provider
+                // before it can treat an omitted texture property as unused.
+                if (!TTShaderTextureUsageInformationUtil
+                        .HasRegisteredShaderUsageInformation(material))
+                {
+                    return true;
+                }
+
                 propertyTextures.TryGetValue(
                     material,
                     out var atlasProperties);
@@ -1294,18 +1303,19 @@ namespace net.rs64.TexTransTool.NDMF
                     return true;
                 }
 
-                // Use the current shader's texture properties only. Serialized
-                // properties left behind by a previous shader must not make
-                // automatic atlasing fail spuriously.
-                foreach (var property in material.GetTextureReferences())
+                // ITTShaderTextureUsageInformation describes texture sampling,
+                // not every serialized texture reference. A disabled shader
+                // feature may legitimately retain an assigned texture while
+                // omitting it from this usage map.
+                foreach (var property in usages)
                 {
                     var propertyName = property.Key;
-                    var texture = property.Value;
+                    var usage = property.Value;
+                    var texture = material.GetTexture(propertyName);
+                    if (texture == null)
+                        continue;
 
-                    if (!usages.TryGetValue(
-                            propertyName,
-                            out var usage)
-                        || usage.UVChannel == UsageUVChannel.Unknown)
+                    if (usage.UVChannel == UsageUVChannel.Unknown)
                     {
                         return true;
                     }
