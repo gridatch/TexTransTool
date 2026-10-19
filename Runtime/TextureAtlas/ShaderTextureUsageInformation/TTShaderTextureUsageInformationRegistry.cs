@@ -61,6 +61,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
             return GetMaterialUVUsageProvider(material).UsesVertexIndex;
         }
 
+        internal static IReadOnlyCollection<string>
+            GetQueriedMaterialProperties(Material material)
+        {
+            return GetMaterialUVUsageProvider(material)
+                .QueriedMaterialProperties;
+        }
+
         internal static bool HasFullShaderSemanticAnalysis(
             Material material)
         {
