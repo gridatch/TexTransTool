@@ -147,6 +147,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             internal readonly Dictionary<string, UsingUVChannels> TextureUvChannels =
                 new();
             internal UsingUVChannels OtherUvUsage;
+            internal bool UsesVertexIndex;
 
             public int? GetInteger(
                 string propertyName,
@@ -216,6 +217,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 
             public void RegisterVertexIndexUsage()
             {
+                UsesVertexIndex = true;
             }
         }
 
@@ -326,6 +328,49 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 probe.TextureUvChannels["_Main3rdTex"],
                 Is.EqualTo(UsingUVChannels.UV1),
                 "Main3rd UV selection must not reuse Main2nd's UV mode property.");
+        }
+
+        [Test]
+        public void LiltoonFurReportsVertexIndexUsage()
+        {
+            var regular = new LiltoonMaterialInformationProbe();
+            LiltoonShaderInformation.GetMaterialInformation(
+                regular,
+                isOutline: false,
+                shaderUsesFurVertexId: false);
+            Assert.That(regular.UsesVertexIndex, Is.False);
+
+            var dedicatedFur = new LiltoonMaterialInformationProbe();
+            LiltoonShaderInformation.GetMaterialInformation(
+                dedicatedFur,
+                isOutline: false,
+                shaderUsesFurVertexId: true);
+            Assert.That(
+                dedicatedFur.UsesVertexIndex,
+                Is.True,
+                "Dedicated lilToon fur shaders seed fur randomness from SV_VertexID.");
+
+            var multiFur = new LiltoonMaterialInformationProbe();
+            multiFur.IntValues["_TransparentMode"] = 4;
+            LiltoonShaderInformation.GetMaterialInformation(
+                multiFur,
+                isOutline: false,
+                shaderUsesFurVertexId: false);
+            Assert.That(
+                multiFur.UsesVertexIndex,
+                Is.True,
+                "lilToon Multi mode 4 (Fur) must preserve vertex-index semantics.");
+
+            var multiFurCutout = new LiltoonMaterialInformationProbe();
+            multiFurCutout.IntValues["_TransparentMode"] = 5;
+            LiltoonShaderInformation.GetMaterialInformation(
+                multiFurCutout,
+                isOutline: false,
+                shaderUsesFurVertexId: false);
+            Assert.That(
+                multiFurCutout.UsesVertexIndex,
+                Is.True,
+                "lilToon Multi mode 5 (FurCutout) must preserve vertex-index semantics.");
         }
 
         [Test]
