@@ -834,6 +834,61 @@ namespace net.rs64.TexTransTool.NDMF
                     item => engine.GetReferenceRenderTexture(item.Value));
                 var retainedRenderTextures = tuningResult.TextureDescriptors.Keys.ToHashSet();
 
+                var atlasMaterialMaps =
+                    AtlasTexture.GenerateAtlasedMaterialMaps(
+                        domain,
+                        group,
+                        settings,
+                        (new List<AtlasTexture.MaterialMergeGroup>(), null, null),
+                        resultingTextures,
+                        atlasResult.PreserveBump2ndMaterials,
+                        atlasResult.PreservedOriginalUVChannel);
+                var generatedAtlasMaterials =
+                    atlasMaterialMaps.materialMap.Values
+                        .Concat(
+                            atlasMaterialMaps
+                                .domainsMaterial2ReplaceMaterial.Values)
+                        .Distinct()
+                        .ToArray();
+
+                // The merge cost model assumes every source texture can be
+                // released. Validate the actual generated materials before
+                // mutating the domain; any retained source invalidates that
+                // assumption and must fall back to standalone groups.
+                if (RetainsAnySourceTexture(
+                        generatedAtlasMaterials,
+                        execution.SourceTextures))
+                {
+                    DestroyUnappliedAtlasedMaterials(
+                        generatedAtlasMaterials);
+                    foreach (var rt in compiledTextures.Values
+                                 .Concat(tuningResult.TextureDescriptors.Keys)
+                                 .Distinct())
+                    {
+                        rt.Dispose();
+                    }
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes!);
+
+                    if (execution.MergeSelection is { } retainedSourceMerge)
+                    {
+                        if (retainedSourceMerge.PackedRegions != null)
+                        {
+                            twoDimensionalFallbackReasons.Add(
+                                $"groups={string.Join(",", retainedSourceMerge.GroupIds.Select(id => "g" + id))}, "
+                                + $"layout={retainedSourceMerge.PlannedLayoutSize.x}×{retainedSourceMerge.PlannedLayoutSize.y}: "
+                                + "生成マテリアルが統合前のソーステクスチャを保持している");
+                        }
+
+                        EnqueueStandaloneFallback(
+                            executionGroups,
+                            retainedSourceMerge,
+                            preparedGroups);
+                    }
+
+                    continue;
+                }
+
                 var resolutionRoutes = AtlasResolutionRouteReport
                     .Collect(atlasContext, tuningResult);
                 var block = string.Format(materialBlock,
@@ -859,14 +914,10 @@ namespace net.rs64.TexTransTool.NDMF
 
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
-                AtlasTexture.ReplaceAtlasedMaterials(
+                AtlasTexture.ApplyAtlasedMaterialMaps(
                     domain,
-                    group,
-                    settings,
-                    (new List<AtlasTexture.MaterialMergeGroup>(), null, null),
-                    resultingTextures,
-                    atlasResult.PreserveBump2ndMaterials,
-                    atlasResult.PreservedOriginalUVChannel);
+                    atlasMaterialMaps.materialMap,
+                    atlasMaterialMaps.domainsMaterial2ReplaceMaterial);
 
                 foreach (var rt in compiledTextures.Values)
                     if (!retainedRenderTextures.Contains(rt)) rt.Dispose();
@@ -914,6 +965,28 @@ namespace net.rs64.TexTransTool.NDMF
                 TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
                     string.Join("\n\n", completed),
                     processingTimer.ElapsedMilliseconds));
+        }
+
+        internal static bool RetainsAnySourceTexture(
+            IEnumerable<Material> materials,
+            HashSet<Texture> sourceTextures)
+        {
+            return materials
+                .Where(material => material != null)
+                .SelectMany(material =>
+                    material.EnumerateReferencedTextures())
+                .Any(sourceTextures.Contains);
+        }
+
+        internal static void DestroyUnappliedAtlasedMaterials(
+            IEnumerable<Material> materials)
+        {
+            foreach (var material in materials
+                         .Where(material => material != null)
+                         .Distinct())
+            {
+                UnityEngine.Object.DestroyImmediate(material);
+            }
         }
 
         internal static bool HasActiveUntransformedMaterialConsumer(
