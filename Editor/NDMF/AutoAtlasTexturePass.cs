@@ -542,6 +542,15 @@ namespace net.rs64.TexTransTool.NDMF
                 // rewrite would otherwise get an atlased material on its
                 // original mesh. Disabled/inactive consumers remain outside
                 // this check to preserve AtlasTexture's default targeting.
+                if (HasOutOfBoundsTargetUv(
+                        domain,
+                        atlasRenderers,
+                        group,
+                        settings.AtlasTargetUVChannel))
+                {
+                    continue;
+                }
+
                 if (HasActiveUntransformedMaterialConsumer(
                         domain,
                         group,
@@ -670,6 +679,12 @@ namespace net.rs64.TexTransTool.NDMF
                     .Distinct()
                     .ToHashSet();
 
+                var hasOutOfBoundsTargetUv =
+                    HasOutOfBoundsTargetUv(
+                        domain,
+                        atlasRenderers,
+                        group,
+                        settings.AtlasTargetUVChannel);
                 var hasActiveUntransformedConsumer =
                     HasActiveUntransformedMaterialConsumer(
                         domain,
@@ -677,6 +692,7 @@ namespace net.rs64.TexTransTool.NDMF
                         atlasRenderers);
                 if (atlasRenderers.Length == 0
                     || !plannedRenderers.SetEquals(atlasRenderers)
+                    || hasOutOfBoundsTargetUv
                     || hasActiveUntransformedConsumer)
                 {
                     if (execution.MergeSelection is { } invalidMerge)
@@ -1468,6 +1484,79 @@ namespace net.rs64.TexTransTool.NDMF
                         || atlasTexture != texture)
                     {
                         return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool HasOutOfBoundsTargetUv(
+            IRendererTargeting domain,
+            IReadOnlyCollection<Renderer> targetRenderers,
+            IReadOnlyCollection<Material> targetMaterials,
+            UVChannel atlasTargetUvChannel)
+        {
+            const float epsilon = 1e-6f;
+            var uvBuffer = new List<Vector2>();
+            var indexBuffer = new List<int>();
+
+            foreach (var renderer in targetRenderers)
+            {
+                if (renderer == null)
+                    continue;
+
+                var mesh = domain.GetMesh(renderer);
+                if (mesh == null || mesh.subMeshCount == 0)
+                    continue;
+
+                uvBuffer.Clear();
+                mesh.GetUVs((int)atlasTargetUvChannel, uvBuffer);
+                if (uvBuffer.Count == 0)
+                    continue;
+
+                var materials = domain.GetMaterials(renderer);
+                for (var slot = 0; slot < materials.Length; slot += 1)
+                {
+                    var material = materials[slot];
+                    if (material == null
+                        || !targetMaterials.Contains(material))
+                    {
+                        continue;
+                    }
+
+                    // Unity repeats the final submesh when the renderer has
+                    // more material slots than the mesh has submeshes.
+                    var effectiveSubMesh = Math.Clamp(
+                        slot, 0, mesh.subMeshCount - 1);
+                    if (mesh.GetSubMesh(effectiveSubMesh).indexCount == 0)
+                        continue;
+
+                    indexBuffer.Clear();
+                    mesh.GetIndices(indexBuffer, effectiveSubMesh);
+                    foreach (var vertexIndex in indexBuffer)
+                    {
+                        if (vertexIndex < 0
+                            || vertexIndex >= uvBuffer.Count)
+                        {
+                            return true;
+                        }
+
+                        var uv = uvBuffer[vertexIndex];
+                        if (float.IsNaN(uv.x)
+                            || float.IsInfinity(uv.x)
+                            || float.IsNaN(uv.y)
+                            || float.IsInfinity(uv.y)
+                            || uv.x < -epsilon
+                            || uv.x > 1f + epsilon
+                            || uv.y < -epsilon
+                            || uv.y > 1f + epsilon)
+                        {
+                            // TexTransCore's atlas transfer sampler clamps
+                            // source coordinates. UVs outside 0..1 can change
+                            // Repeat/Mirror sampling after automatic atlasing.
+                            return true;
+                        }
                     }
                 }
             }
