@@ -675,6 +675,8 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         rt.Dispose();
                     }
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes!);
                     continue;
                 }
 
@@ -699,6 +701,8 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         rt.Dispose();
                     }
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes!);
 
                     if (memoryCheckedMerge.PackedRegions != null)
                     {
@@ -798,6 +802,17 @@ namespace net.rs64.TexTransTool.NDMF
                 TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
                     string.Join("\n\n", completed),
                     processingTimer.ElapsedMilliseconds));
+        }
+
+        internal static void DestroyUnappliedAtlasedMeshes(
+            IEnumerable<Mesh> meshes)
+        {
+            foreach (var mesh in meshes
+                         .Where(mesh => mesh != null)
+                         .Distinct())
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
         }
 
         internal static bool IsExcludedFromTextureMerging(
