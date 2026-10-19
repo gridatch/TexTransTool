@@ -140,14 +140,35 @@ msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x \nOver
 msgid "AtlasTexture:info:RelocateResultWithResolution"
 msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOverall shrink: {2}x\n{3}\nTotal relocate count: {4}\nTime taken relocate: {5}ms"
 
+msgid "AutoAtlasTexture:info:TwoDimensionalFallback"
+msgstr "2D texture merging could not complete; individual atlas processing was retried.\n{0}"
+
 msgid "AutoAtlasTexture:info:RelocateResult"
-msgstr "Auto Atlas Relocate Result\n{0}\n\nTotal relocate count: {1}\nTime taken relocate: {2}ms"
+msgstr "Auto Atlas Relocate Result\n{0}\nTotal Auto Atlas processing time: {1}ms"
+
+msgid "AutoAtlasTexture:info:TargetNotFound"
+msgstr "Atlas target not found!\nTotal Auto Atlas processing time: {0}ms"
 
 msgid "AutoAtlasTexture:info:MaterialBlock"
 msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 
+msgid "AtlasTexture:info:TargetTextureMemory"
+msgstr "Target texture memory: {0} → {1}"
+
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2} cases"
+
+msgid "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging"
+msgstr "Merge textures into unused atlas space"
+
+msgid "AutoAtlasTexture:prop:ExcludeVisibilityAnimatedItemsFromTextureMerging"
+msgstr "Do not merge textures of items with visibility animations"
+
+msgid "AutoAtlasTexture:prop:TextureMergingExcludedRenderers"
+msgstr "Renderers excluded from texture merging"
+
+msgid "AutoAtlasTexture:prop:TextureMergingExcludedMaterials"
+msgstr "Materials excluded from texture merging"
 
 msgid "AutoAtlasTexture:prop:ExcludedRenderers"
 msgstr "Excluded Renderers"
@@ -166,7 +187,6 @@ msgstr "LimitCandidateMaterials"
 
 msgid "AtlasTexture:prop:LimitCandidateMaterials:tooltip"
 msgstr "Limit candidate materials to GameObject subordinates."
-
 
 msgid "AtlasTexture:button:BakeAtlas"
 msgstr "Bake Atlasing"
@@ -215,7 +235,6 @@ msgstr "SelectedMaterial"
 
 msgid "AtlasTexture:prop:SelectedMaterialView:tooltip"
 msgstr "view for special operations such as prefab override settings"
-
 
 msgid "AtlasTexture:label:AtlasSettings"
 msgstr "AtlasSettings"
@@ -376,7 +395,6 @@ msgstr "Size"
 msgid "TextureFineTuning:prop:Resize:Size:tooltip"
 msgstr "Texture size"
 
-
 msgid "TextureFineTuning:prop:Compress"
 msgstr "Compress"
 
@@ -406,7 +424,6 @@ msgstr "SimpleFormatChoices"
 
 msgid "TextureFineTuning:prop:SimpleFormatChoices:tooltip"
 msgstr "Choice texture format in enumerate frequently use."
-
 
 msgid "TextureFineTuning:prop:UnknownTargetPlatform"
 msgstr "UnknownTargetPlatform"
@@ -793,3 +810,63 @@ msgstr "PropertyNameAsPath"
 
 msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "SelectTexturePreview"
+
+msgid "AutoAtlasTexture:fallback:RendererSetChanged"
+msgstr "the AtlasTexture target renderer set changed between planning and execution"
+
+msgid "AutoAtlasTexture:fallback:ActiveUntransformedConsumer"
+msgstr "a currently active material consumer cannot receive the corresponding atlas mesh/UV rewrite"
+
+msgid "AutoAtlasTexture:fallback:LayoutMismatch"
+msgstr "output layout mismatch: actual={0}×{1}, planned={2}×{3}, outputPixels={4}"
+
+msgid "AutoAtlasTexture:fallback:PropertyResolutionMismatch"
+msgstr "property resolution mismatch: {0} actual={1}×{2}, planned={3}×{4}"
+
+msgid "AutoAtlasTexture:fallback:AtlasExecutionFailed"
+msgstr "DoAtlasTexture failed without a detailed placement or size reason"
+
+msgid "AutoAtlasTexture:fallback:RequiredMeshResolutionFailed"
+msgstr "required atlased mesh could not be resolved for renderer: {0}"
+
+msgid "AutoAtlasTexture:fallback:GeneratedPropertyApplicationMismatch"
+msgstr "combined atlas properties would overwrite a material texture property that was not transformed for this atlas"
+
+msgid "AutoAtlasTexture:fallback:ReferenceCopySemanticsMismatch"
+msgstr "automatic merge was rejected because ReferenceCopy could substitute different texture content"
+
+msgid "AutoAtlasTexture:fallback:FinalPixelsNotReduced"
+msgstr "final output pixel count is invalid or not reduced: actual={0}, baseline={1}"
+
+msgid "AutoAtlasTexture:fallback:FinalMemoryUnknown"
+msgstr "final texture memory could not be calculated"
+
+msgid "AutoAtlasTexture:fallback:FinalMemoryNotReduced"
+msgstr "final texture memory is not reduced: actual={0} bytes, baseline={1} bytes"
+
+msgid "AutoAtlasTexture:fallback:SourceTextureRetained"
+msgstr "generated atlased materials still reference one or more source textures"
+
+msgid "AutoAtlasTexture:fallback:InvalidPlannedRegions"
+msgstr "planned regions overlap, are out of bounds, or are incomplete"
+
+msgid "AutoAtlasTexture:fallback:AtomicGroupMappingMismatch"
+msgstr "source UV islands do not map consistently to atomic groups"
+
+msgid "AutoAtlasTexture:fallback:InvalidIslandContext"
+msgstr "invalid island count or target height: islands={0}, map={1}, targetHeight={2}"
+
+msgid "AutoAtlasTexture:fallback:GroupCountMismatch"
+msgstr "runtime group count mismatch: actual={0}, planned={1}"
+
+msgid "AutoAtlasTexture:fallback:MissingGroupRegion"
+msgstr "g{0} has no planned region"
+
+msgid "AutoAtlasTexture:fallback:NfdhComparerFailure"
+msgstr "g{0} NFDH comparison failed: {1}"
+
+msgid "AutoAtlasTexture:fallback:RegionPackingFailed"
+msgstr "g{0} NFDH placement failed inside region: region={1}, islands={2}, profilePadding={3}"
+
+msgid "AutoAtlasTexture:fallback:RegionPaddingFailed"
+msgstr "g{0} placement does not preserve required region padding: region={1}, box=({2},{3},{4},{5}), profilePadding={6}, regionPadding={7}"

@@ -18,6 +18,15 @@ namespace net.rs64.TexTransTool.TextureAtlas
         [Range(0f, 0.05f)]
         public float IslandPadding = 0.01f;
 
+        // Enabled for newly added components. Unity preserves serialized values
+        // on existing components, including when users explicitly disable merging.
+        public bool EnableAdditionalAtlasMerging = true;
+        public bool ExcludeVisibilityAnimatedItemsFromTextureMerging = false;
+
+        // Apply only to texture merging; standalone atlasing is unaffected.
+        public List<Renderer> TextureMergingExcludedRenderers = new();
+        public List<Material> TextureMergingExcludedMaterials = new();
+
         public List<Renderer> ExcludedRenderers = new();
         public List<Material> ExcludedMaterials = new();
     }
