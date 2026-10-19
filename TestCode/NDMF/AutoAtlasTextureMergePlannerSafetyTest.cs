@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 
@@ -78,6 +79,164 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 
             Assert.That(first == null, Is.True);
             Assert.That(second == null, Is.True);
+        }
+
+        [Test]
+        public void GeneratedPropertyApplicationRejectsExcludedSameNamedTexture()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var first = new Material(shader);
+            var second = new Material(shader);
+            var firstTexture = new Texture2D(4, 4);
+            var secondTexture = new Texture2D(4, 4);
+            try
+            {
+                first.SetTexture("_MainTex", firstTexture);
+                second.SetTexture("_MainTex", secondTexture);
+
+                var unsafeProperties =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [first] = new Dictionary<string, Texture>
+                        {
+                            ["_MainTex"] = firstTexture,
+                        },
+                        [second] = new Dictionary<string, Texture>(),
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsafeGeneratedPropertyApplication(
+                            new[] { first, second },
+                            unsafeProperties,
+                            UVChannel.UV0),
+                    Is.True);
+
+                var safeProperties =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [first] = new Dictionary<string, Texture>
+                        {
+                            ["_MainTex"] = firstTexture,
+                        },
+                        [second] = new Dictionary<string, Texture>
+                        {
+                            ["_MainTex"] = secondTexture,
+                        },
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsafeGeneratedPropertyApplication(
+                            new[] { first, second },
+                            safeProperties,
+                            UVChannel.UV0),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(firstTexture);
+                Object.DestroyImmediate(secondTexture);
+                Object.DestroyImmediate(first);
+                Object.DestroyImmediate(second);
+            }
+        }
+
+        [Test]
+        public void ReferenceCopyRejectsCrossGroupTextureRedirection()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var mainMaterial = new Material(shader);
+            var bumpMaterial = new Material(shader);
+            var mainTexture = new Texture2D(4, 4);
+            var bumpTexture = new Texture2D(4, 4);
+            try
+            {
+                mainMaterial.SetTexture("_MainTex", mainTexture);
+                mainMaterial.SetTexture("_BumpMap", null);
+                bumpMaterial.SetTexture("_MainTex", null);
+                bumpMaterial.SetTexture("_BumpMap", bumpTexture);
+
+                var settings = new AtlasSetting
+                {
+                    TextureFineTuning = new List<ITextureFineTuning>
+                    {
+                        new ReferenceCopy
+                        {
+                            SourcePropertyName = new PropertyName("_MainTex"),
+                            TargetPropertyNameList =
+                                new List<PropertyName>
+                                {
+                                    new PropertyName("_BumpMap"),
+                                },
+                        },
+                    },
+                };
+
+                var unsafeProperties =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [mainMaterial] = new Dictionary<string, Texture>
+                        {
+                            ["_MainTex"] = mainTexture,
+                        },
+                        [bumpMaterial] = new Dictionary<string, Texture>
+                        {
+                            ["_BumpMap"] = bumpTexture,
+                        },
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            new[] { mainMaterial, bumpMaterial },
+                            unsafeProperties,
+                            settings),
+                    Is.False,
+                    "Merging makes _MainTex exist and would redirect the other atomic group's _BumpMap.");
+
+                bumpMaterial.SetTexture("_MainTex", bumpTexture);
+                var safeProperties =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [mainMaterial] = new Dictionary<string, Texture>
+                        {
+                            ["_MainTex"] = mainTexture,
+                        },
+                        [bumpMaterial] = new Dictionary<string, Texture>
+                        {
+                            ["_MainTex"] = bumpTexture,
+                            ["_BumpMap"] = bumpTexture,
+                        },
+                    };
+
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            new[] { mainMaterial, bumpMaterial },
+                            safeProperties,
+                            settings),
+                    Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(mainTexture);
+                Object.DestroyImmediate(bumpTexture);
+                Object.DestroyImmediate(mainMaterial);
+                Object.DestroyImmediate(bumpMaterial);
+            }
         }
 
         [Test]
