@@ -12,6 +12,20 @@ namespace net.rs64.TexTransTool.TextureAtlas
     {
         void GetMaterialTextureUVUsage(ITTTextureUVUsageWriter writer);
     }
+
+    /// <summary>
+    /// Marker for shader providers that intentionally model the mesh semantics
+    /// AutoAtlas can change: texture UV sampling, non-texture UV usage, and
+    /// vertex-index usage.
+    /// </summary>
+    /// <remarks>
+    /// Legacy providers remain valid for manual AtlasTexture. AutoAtlas fails
+    /// closed unless this stronger contract is present.
+    /// </remarks>
+    public interface ITTFullShaderSemanticUsageInformation
+        : ITTShaderTextureUsageInformation
+    {
+    }
     public interface ITTTextureUVUsageWriter
     {
         // なぜこのあたりの Property の取得にインターフェースを用いさせるかと言うと ... 今後 TTT 内で完全に Unity のマテリアルを捨てる可能性がなくはないから。

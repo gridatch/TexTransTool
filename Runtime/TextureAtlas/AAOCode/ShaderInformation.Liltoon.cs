@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 {
-    internal class LiltoonShaderInformationWithOutline : ITTShaderTextureUsageInformation
+    internal class LiltoonShaderInformationWithOutline : ITTFullShaderSemanticUsageInformation
     {
         private readonly bool _shaderUsesFurVertexId;
 
@@ -22,7 +22,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                 _shaderUsesFurVertexId);
         }
     }
-    internal class LiltoonShaderInformationWithOutOutline : ITTShaderTextureUsageInformation
+    internal class LiltoonShaderInformationWithOutOutline : ITTFullShaderSemanticUsageInformation
     {
         private readonly bool _shaderUsesFurVertexId;
 

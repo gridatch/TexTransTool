@@ -7,7 +7,7 @@ using UnityEngine;
 namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 {
     // VRChat SDK Mobile Shaders
-    internal class VRCSDKStandardLiteShaderInformation : ITTShaderTextureUsageInformation
+    internal class VRCSDKStandardLiteShaderInformation : ITTFullShaderSemanticUsageInformation
     {
 
         internal static void Register()
@@ -49,7 +49,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
         }
     }
 
-    internal class VRCSDKToonLitShaderInformation : ITTShaderTextureUsageInformation
+    internal class VRCSDKToonLitShaderInformation : ITTFullShaderSemanticUsageInformation
     {
         internal static void Register()
         {

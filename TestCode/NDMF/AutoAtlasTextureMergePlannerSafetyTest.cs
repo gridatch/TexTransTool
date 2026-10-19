@@ -13,7 +13,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
         private sealed class TestShaderUsageInformation
-            : ITTShaderTextureUsageInformation
+            : ITTFullShaderSemanticUsageInformation
         {
             internal UsageUVChannel TextureUvChannel = UsageUVChannel.UV0;
             internal Matrix2x3? TextureUvMatrix = Matrix2x3.Identity;
@@ -55,6 +55,18 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     translator.RegisterOtherUVUsage(OtherUvUsage);
                 if (UsesVertexIndex)
                     translator.RegisterVertexIndexUsage();
+            }
+        }
+
+        private sealed class LegacyTextureUsageInformation
+            : ITTShaderTextureUsageInformation
+        {
+            public void GetMaterialTextureUVUsage(
+                ITTTextureUVUsageWriter writer)
+            {
+                writer.WriteTextureUVUsage(
+                    "_MainTex",
+                    UsageUVChannel.UV0);
             }
         }
 
@@ -239,6 +251,45 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             {
                 material.SetTexture("_MainTex", texture);
                 registry.Remove(shader);
+
+                var grouping = new MaterialGroupingContext(
+                    new HashSet<Material> { material },
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+
+                Assert.That(
+                    AutoAtlasTextureProcessor.HasUnsupportedTextureUvSampling(
+                        new[] { material },
+                        grouping.ContainsTextureDictionaries,
+                        UVChannel.UV0),
+                    Is.True);
+            }
+            finally
+            {
+                if (hadPrevious)
+                    registry[shader] = previous;
+                else
+                    registry.Remove(shader);
+                Object.DestroyImmediate(texture);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void AutoAtlasRejectsLegacyRegisteredProviderWithoutFullSemantics()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var texture = new Texture2D(4, 4);
+            var registry = TTShaderTextureUsageInformationRegistry.s_information;
+            var hadPrevious = registry.TryGetValue(shader, out var previous);
+            try
+            {
+                material.SetTexture("_MainTex", texture);
+                registry[shader] =
+                    new LegacyTextureUsageInformation();
 
                 var grouping = new MaterialGroupingContext(
                     new HashSet<Material> { material },
@@ -773,6 +824,48 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     & (UsingUVChannels.UV0 | UsingUVChannels.UV1),
                 Is.EqualTo(
                     UsingUVChannels.UV0 | UsingUVChannels.UV1));
+        }
+
+        [Test]
+        public void LiltoonFullSemanticCoverageIsVersionBounded()
+        {
+            Assert.That(
+                ShaderInformationFromAAO.IsSupportedLiltoonVersion(null),
+                Is.False);
+            Assert.That(
+                ShaderInformationFromAAO.IsSupportedLiltoonVersion(
+                    ShaderInformationFromAAO.FullSemanticSupportedLiltoonVersion),
+                Is.True);
+            Assert.That(
+                ShaderInformationFromAAO.IsSupportedLiltoonVersion(
+                    ShaderInformationFromAAO.FullSemanticSupportedLiltoonVersion
+                    + 1),
+                Is.False);
+        }
+
+        [Test]
+        public void LiltoonFullSemanticCoverageRequiresOfficialAssetIdentity()
+        {
+            Assert.That(
+                ShaderInformationFromAAO.IsOfficialLiltoonShaderIdentity(
+                    "Packages/jp.lilxyzw.liltoon/Shader/lts.shader",
+                    null),
+                Is.True);
+            Assert.That(
+                ShaderInformationFromAAO.IsOfficialLiltoonShaderIdentity(
+                    "Assets/lilToon/Shader/lts.shader",
+                    "05d1d116436047941ad97d1b9064ee05"),
+                Is.True);
+            Assert.That(
+                ShaderInformationFromAAO.IsOfficialLiltoonShaderIdentity(
+                    "Assets/lilToon/Shader/lts.shader",
+                    "00000000000000000000000000000000"),
+                Is.False);
+            Assert.That(
+                ShaderInformationFromAAO.IsOfficialLiltoonShaderIdentity(
+                    "Assets/CustomShaders/lilToonCustom.shader",
+                    null),
+                Is.False);
         }
 
         [Test]

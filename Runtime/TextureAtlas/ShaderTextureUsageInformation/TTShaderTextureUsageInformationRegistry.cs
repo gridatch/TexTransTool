@@ -68,12 +68,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 .QueriedMaterialProperties;
         }
 
-        internal static bool HasRegisteredShaderUsageInformation(
+        internal static bool HasFullShaderSemanticAnalysis(
             Material material)
         {
             return material.shader != null
                 && TTShaderTextureUsageInformationRegistry.s_information
-                    .ContainsKey(material.shader);
+                    .TryGetValue(material.shader, out var information)
+                && information is ITTFullShaderSemanticUsageInformation;
         }
 
         private static MaterialUVUsageProvider GetMaterialUVUsageProvider(

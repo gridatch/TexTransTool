@@ -1408,7 +1408,7 @@ namespace net.rs64.TexTransTool.NDMF
                 // AtlasTexture only. AutoAtlas needs an actual shader provider
                 // before it can treat an omitted texture property as unused.
                 if (!TTShaderTextureUsageInformationUtil
-                        .HasRegisteredShaderUsageInformation(material))
+                        .HasFullShaderSemanticAnalysis(material))
                 {
                     return true;
                 }
@@ -1593,7 +1593,7 @@ namespace net.rs64.TexTransTool.NDMF
                             continue;
 
                         if (!TTShaderTextureUsageInformationUtil
-                                .HasRegisteredShaderUsageInformation(material)
+                                .HasFullShaderSemanticAnalysis(material)
                             || TTShaderTextureUsageInformationUtil
                                 .UsesVertexIndex(material))
                         {
@@ -1624,7 +1624,7 @@ namespace net.rs64.TexTransTool.NDMF
             foreach (var material in materials)
             {
                 if (!TTShaderTextureUsageInformationUtil
-                        .HasRegisteredShaderUsageInformation(material))
+                        .HasFullShaderSemanticAnalysis(material))
                 {
                     return true;
                 }
