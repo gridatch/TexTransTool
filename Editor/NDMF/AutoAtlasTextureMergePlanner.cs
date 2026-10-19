@@ -720,19 +720,40 @@ namespace net.rs64.TexTransTool.NDMF
                             continue;
                         }
 
-                        if (!grouping.ContainsTextureDictionaries
-                                .TryGetValue(
-                                    material,
-                                    out var atlasProperties)
-                            || !atlasProperties.TryGetValue(
+                        // ReferenceCopy can create a generated target property
+                        // even when that property was not otherwise atlased.
+                        // It is safe only when the target samples the rewritten
+                        // atlas UV directly, without an additional transform.
+                        var usages =
+                            TTShaderTextureUsageInformationUtil
+                                .GetContainsUVTransformUsage(material);
+                        if (!usages.TryGetValue(
                                 targetProperty,
-                                out var targetAtlasTexture)
-                            || targetAtlasTexture != targetTexture
-                            || !atlasProperties.TryGetValue(
-                                sourceProperty,
-                                out var sourceAtlasTexture)
-                            || sourceAtlasTexture != targetTexture)
+                                out var targetUsage)
+                            || (((int)targetUsage.UVChannel) - 1)
+                                != (int)settings.AtlasTargetUVChannel
+                            || !TTShaderTextureUsageInformationUtil
+                                .IsIdentityUVMatrix(targetUsage.UVMatrix))
                         {
+                            return false;
+                        }
+
+                        var materialGroupId =
+                            grouping.GetMaterialGroupID(material);
+                        if (materialGroupId < 0)
+                            return false;
+
+                        var groupedTextures =
+                            grouping.GroupMaterials[
+                                materialGroupId].GroupedTexture;
+                        if (!groupedTextures.TryGetValue(
+                                sourceProperty,
+                                out var sourceTexture)
+                            || sourceTexture != targetTexture)
+                        {
+                            // The copied atlas is drawn from sourceProperty for
+                            // this material group. The target property must have
+                            // sampled those exact source pixels beforehand.
                             return false;
                         }
                     }
