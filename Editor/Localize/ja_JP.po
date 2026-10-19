@@ -873,3 +873,6 @@ msgstr "アトラス用Meshの正規化により、Shaderが使用する頂点in
 
 msgid "AutoAtlasTexture:fallback:TargetUvOutOfBounds"
 msgstr "アトラス対象UVが0～1範囲外にあり、元のサンプラーとの等価性を保証できない"
+
+msgid "AutoAtlasTexture:fallback:PreservedUvChannelConflict"
+msgstr "元UV保存先のUV{0}が対象Renderer上の別shader用途で使用されている"
