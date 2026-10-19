@@ -331,6 +331,23 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void LiltoonOutlineVectorUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.IntValues["_OutlineVectorUVMode"] = 2;
+            probe.IntValues["_AudioLinkMask_UVMode"] = 0;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                probe,
+                isOutline: true);
+
+            Assert.That(
+                probe.TextureUvChannels["_OutlineVectorTex"],
+                Is.EqualTo(UsingUVChannels.UV2),
+                "Outline vector sampling is selected by _OutlineVectorUVMode, not the unrelated AudioLink mask UV mode.");
+        }
+
+        [Test]
         public void LiltoonFurReportsVertexIndexUsage()
         {
             var regular = new LiltoonMaterialInformationProbe();
