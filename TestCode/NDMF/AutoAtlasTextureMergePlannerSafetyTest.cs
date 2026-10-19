@@ -18,7 +18,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             internal UsageUVChannel TextureUvChannel = UsageUVChannel.UV0;
             internal Matrix2x3? TextureUvMatrix = Matrix2x3.Identity;
             internal bool UseLegacyTextureRegistration;
-            internal string? QueriedProperty;
+            internal string QueriedProperty;
             internal UsingUVChannels OtherUvUsage;
             internal bool UsesVertexIndex;
 
