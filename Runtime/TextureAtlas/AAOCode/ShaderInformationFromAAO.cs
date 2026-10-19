@@ -33,7 +33,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                 "14006db8206fb304aa86110d57626d40",
                 "bdf24b2e925ce8a4fb0e903889a52e0e",
                 "fba17785d6b2c594ab6c0303c834da65",
-                "62df797f407281640a224178886498cc",
+                "62df797f407281640a224388953448cc",
                 "afa1a194f5a2fd243bda3a17bca1b36e",
                 "b269573b9937b8340b3e9e191a3ba5a8",
                 "165365ab7100a044ca85fc8c33548a62",
@@ -46,7 +46,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                 "33aad051c4a3a844a8f9330addb86a97",
                 "0e3ece1bd59542743bccadb21f68318e",
                 "381af8ba8e1740a41b9768ccfb0416c2",
-                "d7af54cdd86902d41aa3d6f7cbbd99a",
+                "d7af54cdd86902d41b8c240e06b93009",
                 "8cf5267d397b04846856f6d3d9561da0",
                 "90f83c35b0769a748abba5d0880f36d5",
                 "3c79b10c7e0b2784aaa4c2f8dd17d55e",
@@ -179,7 +179,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
             var versionField = constantsType?.GetField(
                 "currentVersionValue",
                 BindingFlags.Public | BindingFlags.Static);
-            return versionField?.GetValue(null) as int?;
+            return versionField?.GetValue(null) is int version\n                ? version\n                : null;
         }
 
         private static string? GetShaderAssetGuid(Shader shader)
