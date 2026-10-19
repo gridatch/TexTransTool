@@ -400,6 +400,40 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 "AudioLink mask sampling can use both mask and effect UV channels.");
         }
 
+        [Test]
+        public void LiltoonFullSemanticCoverageIsVersionBounded()
+        {
+            Assert.That(
+                ShaderInformationFromAAO.IsSupportedLiltoonVersion(null),
+                Is.False);
+            Assert.That(
+                ShaderInformationFromAAO.IsSupportedLiltoonVersion(
+                    ShaderInformationFromAAO.FullSemanticSupportedLiltoonVersion),
+                Is.True);
+            Assert.That(
+                ShaderInformationFromAAO.IsSupportedLiltoonVersion(
+                    ShaderInformationFromAAO.FullSemanticSupportedLiltoonVersion
+                    + 1),
+                Is.False);
+        }
+
+        [Test]
+        public void LiltoonFullSemanticCoverageRequiresOfficialShaderIdentity()
+        {
+            Assert.That(
+                ShaderInformationFromAAO.IsKnownFullSemanticLiltoonShaderGuid(
+                    "df12117ecd77c31469c224178886498e"),
+                Is.True);
+            Assert.That(
+                ShaderInformationFromAAO.IsKnownFullSemanticLiltoonShaderGuid(
+                    "00000000000000000000000000000000"),
+                Is.False);
+            Assert.That(
+                ShaderInformationFromAAO.IsKnownFullSemanticLiltoonShaderGuid(
+                    null),
+                Is.False);
+        }
+
         [TestCase(1L, 2L, true)]
         [TestCase(0L, 2L, false)]
         [TestCase(2L, 2L, false)]
