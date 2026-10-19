@@ -143,6 +143,8 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             internal readonly Dictionary<string, Vector4?> VectorValues = new();
             internal readonly Dictionary<string, Matrix2x3?> TextureMatrices =
                 new();
+            internal readonly Dictionary<string, UsingUVChannels> TextureUvChannels =
+                new();
 
             public int? GetInteger(
                 string propertyName,
@@ -204,6 +206,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Matrix2x3? uvMatrix)
             {
                 TextureMatrices[textureMaterialPropertyName] = uvMatrix;
+                TextureUvChannels[textureMaterialPropertyName] = uvChannels;
             }
 
             public void RegisterVertexIndexUsage()
@@ -274,6 +277,24 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             Assert.That(
                 animated.TextureMatrices["_Main2ndTex"],
                 Is.Null);
+        }
+
+        [Test]
+        public void LiltoonMain3rdUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.IntValues["_UseMain3rdTex"] = 1;
+            probe.IntValues["_Main2ndTex_UVMode"] = 0;
+            probe.IntValues["_Main3rdTex_UVMode"] = 1;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                probe,
+                isOutline: false);
+
+            Assert.That(
+                probe.TextureUvChannels["_Main3rdTex"],
+                Is.EqualTo(UsingUVChannels.UV1),
+                "Main3rd UV selection must not reuse Main2nd's UV mode property.");
         }
 
         [TestCase(1L, 2L, true)]
