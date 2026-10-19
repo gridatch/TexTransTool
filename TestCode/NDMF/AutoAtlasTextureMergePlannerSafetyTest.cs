@@ -66,6 +66,8 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             internal readonly Dictionary<string, Vector4?> VectorValues = new();
             internal readonly Dictionary<string, UsingUVChannels>
                 TextureUvChannels = new();
+            internal readonly HashSet<string> EnabledKeywords = new();
+            internal UsingUVChannels OtherUvUsage;
 
             public int? GetInteger(
                 string propertyName,
@@ -88,10 +90,11 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 => VectorValues.GetValueOrDefault(propertyName, Vector4.zero);
 
             public bool? IsShaderKeywordEnabled(string keywordName)
-                => false;
+                => EnabledKeywords.Contains(keywordName);
 
             public void RegisterOtherUVUsage(UsingUVChannels uvChannel)
             {
+                OtherUvUsage |= uvChannel;
             }
 
             public void RegisterTextureUVUsage(
@@ -420,6 +423,25 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             Assert.That(
                 probe.TextureUvChannels["_OutlineVectorTex"],
                 Is.EqualTo(UsingUVChannels.UV2));
+        }
+
+        [Test]
+        public void ToonStandardAudioLinkReportsRawEffectUvUsage()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.EnabledKeywords.Add("USE_AUDIOLINK");
+            probe.FloatValues["_ALMaskUVChannel"] = 0f;
+            probe.FloatValues["_ALEffectUVChannel"] = 1f;
+
+            new VRCSDKToonStandardShaderInformation(withOutline: false)
+                .GetMaterialInformation(probe);
+
+            Assert.That(
+                probe.OtherUvUsage,
+                Is.EqualTo(UsingUVChannels.UV1));
+            Assert.That(
+                probe.TextureUvChannels["_AudioLinkMask"],
+                Is.EqualTo(UsingUVChannels.UV0 | UsingUVChannels.UV1));
         }
 
         [Test]

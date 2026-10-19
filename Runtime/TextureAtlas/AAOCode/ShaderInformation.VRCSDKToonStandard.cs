@@ -98,8 +98,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
             if (matInfo.IsShaderKeywordEnabled("USE_AUDIOLINK") != false)
             {
-                var audioLinkUV = SelectUV4(matInfo.GetFloat("_ALMaskUVChannel"))
-                    | SelectUV4(matInfo.GetFloat("_ALEffectUVChannel"));
+                var effectUv = SelectUV4(
+                    matInfo.GetFloat("_ALEffectUVChannel"));
+                // Effect UV is consumed directly for AudioLink mode/scroll/bar
+                // calculations in addition to texture sampling.
+                matInfo.RegisterOtherUVUsage(effectUv);
+
+                var audioLinkUV =
+                    SelectUV4(matInfo.GetFloat("_ALMaskUVChannel"))
+                    | effectUv;
                 Register("_AudioLinkMask", audioLinkUV);
 
                 static UsingUVChannels SelectUV4(float? channel) => channel switch
