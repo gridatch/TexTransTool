@@ -68,6 +68,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 TextureUvChannels = new();
             internal readonly HashSet<string> EnabledKeywords = new();
             internal UsingUVChannels OtherUvUsage;
+            internal bool UsesVertexIndex;
 
             public int? GetInteger(
                 string propertyName,
@@ -108,6 +109,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 
             public void RegisterVertexIndexUsage()
             {
+                UsesVertexIndex = true;
             }
         }
 
@@ -423,6 +425,40 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             Assert.That(
                 probe.TextureUvChannels["_OutlineVectorTex"],
                 Is.EqualTo(UsingUVChannels.UV2));
+        }
+
+        [TestCase(0, UsingUVChannels.UV0)]
+        [TestCase(1, UsingUVChannels.UV1)]
+        [TestCase(7, UsingUVChannels.UV7)]
+        public void LiltoonIdMaskReportsSelectedRawUv(
+            int idMaskFrom,
+            UsingUVChannels expected)
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.IntValues["_IDMask1"] = 1;
+            probe.IntValues["_IDMaskFrom"] = idMaskFrom;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                probe,
+                isOutline: false);
+
+            Assert.That(probe.OtherUvUsage, Is.EqualTo(expected));
+            Assert.That(probe.UsesVertexIndex, Is.False);
+        }
+
+        [Test]
+        public void LiltoonIdMaskReportsVertexIdWhenSelected()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.IntValues["_IDMask1"] = 1;
+            probe.IntValues["_IDMaskFrom"] = 8;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                probe,
+                isOutline: false);
+
+            Assert.That(probe.OtherUvUsage, Is.EqualTo(0));
+            Assert.That(probe.UsesVertexIndex, Is.True);
         }
 
         [Test]
