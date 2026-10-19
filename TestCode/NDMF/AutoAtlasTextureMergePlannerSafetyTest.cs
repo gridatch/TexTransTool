@@ -348,6 +348,92 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void LiltoonGlitterReportsProceduralAndTextureUvSemantics()
+        {
+            var probe = new LiltoonMaterialInformationProbe();
+            probe.IntValues["_UseGlitter"] = 1;
+            probe.IntValues["_GlitterUVMode"] = 0;
+            probe.IntValues["_GlitterColorTex_UVMode"] = 2;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                probe,
+                isOutline: false);
+
+            Assert.That(
+                probe.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo(UsingUVChannels.UV0),
+                "Procedural glitter consumes raw UV0 independently of texture sampling.");
+            Assert.That(
+                probe.TextureUvChannels["_GlitterColorTex"],
+                Is.EqualTo(UsingUVChannels.UV2),
+                "Glitter color texture must use its own UV-mode property.");
+        }
+
+        [Test]
+        public void LiltoonAudioLinkMode2ReportsRawUv0Usage()
+        {
+            var fragment = new LiltoonMaterialInformationProbe();
+            fragment.IntValues["_UseAudioLink"] = 1;
+            fragment.IntValues["_AudioLink2Main2nd"] = 1;
+            fragment.IntValues["_AudioLinkUVMode"] = 2;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                fragment,
+                isOutline: false);
+
+            Assert.That(
+                fragment.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo(UsingUVChannels.UV0),
+                "AudioLink fragment mode 2 derives its effect coordinate directly from raw UV0.");
+
+            var vertex = new LiltoonMaterialInformationProbe();
+            vertex.IntValues["_UseAudioLink"] = 1;
+            vertex.IntValues["_AudioLink2Vertex"] = 1;
+            vertex.IntValues["_AudioLinkVertexUVMode"] = 2;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                vertex,
+                isOutline: false);
+
+            Assert.That(
+                vertex.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo(UsingUVChannels.UV0),
+                "AudioLink vertex mode 2 derives its effect coordinate directly from raw UV0.");
+        }
+
+        [Test]
+        public void LiltoonIdMaskReportsSelectedRawUvOrVertexId()
+        {
+            var uvBacked = new LiltoonMaterialInformationProbe();
+            uvBacked.IntValues["_IDMask1"] = 1;
+            uvBacked.IntValues["_IDMaskFrom"] = 0;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                uvBacked,
+                isOutline: false);
+
+            Assert.That(
+                uvBacked.OtherUvUsage & UsingUVChannels.UV0,
+                Is.EqualTo(UsingUVChannels.UV0),
+                "UV-backed ID masks consume the raw UV value before converting it to an integer.");
+            Assert.That(
+                uvBacked.UsesVertexIndex,
+                Is.False);
+
+            var vertexBacked = new LiltoonMaterialInformationProbe();
+            vertexBacked.IntValues["_IDMask1"] = 1;
+            vertexBacked.IntValues["_IDMaskFrom"] = 8;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                vertexBacked,
+                isOutline: false);
+
+            Assert.That(
+                vertexBacked.UsesVertexIndex,
+                Is.True);
+        }
+
+        [Test]
         public void LiltoonFurReportsVertexIndexUsage()
         {
             var regular = new LiltoonMaterialInformationProbe();
