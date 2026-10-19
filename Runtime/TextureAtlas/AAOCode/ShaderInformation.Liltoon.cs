@@ -678,9 +678,45 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
         };
             if (idMaskProperties.Any(prop => matInfo.GetInt(prop) != 0))
             {
-                // with _IDMaskFrom = 0..7, uv is used for ID Mask, but it will only use integer part
-                // (cast to int with normal rounding in hlsl) so it's not necessary to register UV usage.
-                matInfo.RegisterVertexIndexUsage();
+                // IDMask consumes either a raw UV component or SV_VertexID.
+                // Atlas UV relocation changes the integer value as well, so a
+                // UV-backed ID mask is observable even though the shader later
+                // converts the value to an integer.
+                switch (matInfo.GetInt("_IDMaskFrom"))
+                {
+                    case 0:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV0);
+                        break;
+                    case 1:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV1);
+                        break;
+                    case 2:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV2);
+                        break;
+                    case 3:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV3);
+                        break;
+                    case 4:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV4);
+                        break;
+                    case 5:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV5);
+                        break;
+                    case 6:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV6);
+                        break;
+                    case 7:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.UV7);
+                        break;
+                    case 8:
+                        matInfo.RegisterVertexIndexUsage();
+                        break;
+                    default:
+                    case null:
+                        matInfo.RegisterOtherUVUsage(UsingUVChannels.Unknown);
+                        matInfo.RegisterVertexIndexUsage();
+                        break;
+                }
             }
 
             // Fur geometry shaders use SV_VertexID as a random seed. Atlas mesh
