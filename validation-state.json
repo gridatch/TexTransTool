@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.18+wdt.ttt.1.0.2",
-  "lastDebugSerial": 902,
-  "currentDebugVersion": "0.1.18+wdt.ttt.1.0.2.debug.902.autoatlas-shader-safety.66aafb7",
+  "lastDebugSerial": 903,
+  "currentDebugVersion": "0.1.18+wdt.ttt.1.0.2.debug.903.autoatlas-shader-safety.a0bf35f",
   "currentDebugChange": "autoatlas-shader-safety",
   "currentDebugBranch": "fix/autoatlas-shader-safety",
-  "currentDebugCommit": "66aafb7bd1016b721224c3f9d355cb652360de8d",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.18+wdt.ttt.1.0.2.debug.902.autoatlas-shader-safety.66aafb7.zip"
+  "currentDebugCommit": "a0bf35f9f3301003a1bbe4e60e8641e4ba76d82c",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.18+wdt.ttt.1.0.2.debug.903.autoatlas-shader-safety.a0bf35f.zip"
 }
