@@ -601,6 +601,73 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             }
         }
 
+        [Test]
+        public void ActiveUntransformedMaterialConsumerFailsClosed()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var root = new GameObject("active-consumer-root");
+            try
+            {
+                MeshRenderer AddRenderer(string name)
+                {
+                    var go = new GameObject(name);
+                    go.transform.SetParent(root.transform, false);
+                    var renderer = go.AddComponent<MeshRenderer>();
+                    renderer.sharedMaterial = material;
+                    return renderer;
+                }
+
+                var transformed = AddRenderer("transformed");
+                var unsupported = AddRenderer("unsupported");
+                var disabled = AddRenderer("disabled");
+                disabled.enabled = false;
+
+                var targeting = new RendererTargetingForTest(
+                    new Renderer[]
+                    {
+                        transformed,
+                        unsupported,
+                        disabled,
+                    });
+                var group = new HashSet<Material> { material };
+
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasActiveUntransformedMaterialConsumer(
+                            targeting,
+                            group,
+                            new Renderer[] { transformed }),
+                    Is.True);
+
+                unsupported.enabled = false;
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasActiveUntransformedMaterialConsumer(
+                            targeting,
+                            group,
+                            new Renderer[] { transformed }),
+                    Is.False);
+
+                unsupported.enabled = true;
+                unsupported.gameObject.SetActive(false);
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasActiveUntransformedMaterialConsumer(
+                            targeting,
+                            group,
+                            new Renderer[] { transformed }),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(material);
+            }
+        }
+
         private sealed class RendererTargetingForTest : IRendererTargeting
         {
             private readonly Renderer[] _renderers;
