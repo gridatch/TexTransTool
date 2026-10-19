@@ -381,17 +381,17 @@
           },
           "zipSHA256": "d0a2d0369b99e98229bc6b8329a6328942b376af27171a2a524ea476baca9bf8"
         },
-        "0.1.18+wdt.ttt.1.0.2.debug.897.wdt-nullable-warnings.0f82bce": {
+        "0.1.18+wdt.ttt.1.0.2.debug.898.autoatlas-shader-safety.edc65a0": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.18+wdt.ttt.1.0.2.debug.897.wdt-nullable-warnings.0f82bce",
+          "version": "0.1.18+wdt.ttt.1.0.2.debug.898.autoatlas-shader-safety.edc65a0",
           "unity": "2022.3",
-          "description": "Debug build 897 for wdt-nullable-warnings from fix/wdt-nullable-warnings at 0f82bce. Based on WDT 0.1.18+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 898 for autoatlas-shader-safety from fix/autoatlas-shader-safety at edc65a0. Based on WDT 0.1.18+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.18+wdt.ttt.1.0.2.debug.897.wdt-nullable-warnings.0f82bce.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.18+wdt.ttt.1.0.2.debug.898.autoatlas-shader-safety.edc65a0.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -404,7 +404,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "0ed00b5fb09857404329476f899689a2dc37f7e6ee148ecfe92816d75ff3a5cc"
+          "zipSHA256": "a30c6016ea3e0f16de39b883251c3dbd2fda3865b792ef7e5f5c8a608fa8192f"
         }
       }
     }
