@@ -12,6 +12,20 @@ namespace net.rs64.TexTransTool.TextureAtlas
     {
         void GetMaterialTextureUVUsage(ITTTextureUVUsageWriter writer);
     }
+    /// <summary>
+    /// Marker for shader-usage providers that model every mesh semantic which
+    /// automatic atlasing can change: texture UV sampling, non-texture mesh UV
+    /// usage, and vertex-index usage.
+    /// </summary>
+    /// <remarks>
+    /// AutoAtlas fails closed for providers that implement only the legacy
+    /// texture-UV interface.
+    /// </remarks>
+    public interface ITTFullShaderSemanticUsageInformation
+        : ITTShaderTextureUsageInformation
+    {
+    }
+
     public interface ITTTextureUVUsageWriter
     {
         // なぜこのあたりの Property の取得にインターフェースを用いさせるかと言うと ... 今後 TTT 内で完全に Unity のマテリアルを捨てる可能性がなくはないから。
@@ -55,11 +69,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
         void WriteVertexIndexUsage();
     }
 
-    internal interface ITTFullShaderSemanticUsageWriter
-    {
-        void MarkFullShaderSemanticAnalysis();
-    }
-
     public enum UsageUVChannel
     {
         Unknown = 0,
@@ -83,19 +92,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
         ITTTextureUVUsageWriter,
         ITTTextureUVTransformUsageWriter,
         ITTTextureOtherUVUsageWriter,
-        ITTVertexIndexUsageWriter,
-        ITTFullShaderSemanticUsageWriter
+        ITTVertexIndexUsageWriter
     {
         Material _material;
         readonly HashSet<string> _texturePropertyNames;
         Dictionary<string, TextureUVUsage> _uvUsage = new();
         private UsingUVChannels _otherUVUsage;
         private bool _usesVertexIndex;
-        private bool _fullShaderSemanticAnalysis;
         public IReadOnlyDictionary<string, TextureUVUsage> UVUsageWithTransform => _uvUsage;
         internal UsingUVChannels OtherUVUsage => _otherUVUsage;
         internal bool UsesVertexIndex => _usesVertexIndex;
-        internal bool FullShaderSemanticAnalysis => _fullShaderSemanticAnalysis;
         public MaterialUVUsageProvider(Material material)
         {
             _material = material;
@@ -168,11 +174,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
         public void WriteVertexIndexUsage()
         {
             _usesVertexIndex = true;
-        }
-
-        public void MarkFullShaderSemanticAnalysis()
-        {
-            _fullShaderSemanticAnalysis = true;
         }
     }
 }
