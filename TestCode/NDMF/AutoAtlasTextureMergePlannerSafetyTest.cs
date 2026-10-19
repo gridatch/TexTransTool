@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
-using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.Utils;
 using UnityEngine;
@@ -12,859 +11,6 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 {
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
-        private sealed class TestShaderUsageInformation
-            : ITTFullShaderSemanticUsageInformation
-        {
-            internal UsageUVChannel TextureUvChannel = UsageUVChannel.UV0;
-            internal Matrix2x3? TextureUvMatrix = Matrix2x3.Identity;
-            internal bool UseLegacyTextureRegistration;
-            internal UsingUVChannels OtherUvUsage;
-            internal bool UsesVertexIndex;
-
-            public void GetMaterialTextureUVUsage(
-                ITTTextureUVUsageWriter writer)
-            {
-                if (UseLegacyTextureRegistration)
-                {
-                    writer.WriteTextureUVUsage(
-                        "_MainTex",
-                        TextureUvChannel);
-                    return;
-                }
-
-                var translator = new MaterialInformationTranslator(writer);
-                translator.RegisterTextureUVUsage(
-                    "_MainTex",
-                    SamplerStateInformation.LinearRepeatSampler,
-                    TextureUvChannel switch
-                    {
-                        UsageUVChannel.UV0 => UsingUVChannels.UV0,
-                        UsageUVChannel.UV1 => UsingUVChannels.UV1,
-                        UsageUVChannel.UV2 => UsingUVChannels.UV2,
-                        UsageUVChannel.UV3 => UsingUVChannels.UV3,
-                        UsageUVChannel.UV4 => UsingUVChannels.UV4,
-                        UsageUVChannel.UV5 => UsingUVChannels.UV5,
-                        UsageUVChannel.UV6 => UsingUVChannels.UV6,
-                        UsageUVChannel.UV7 => UsingUVChannels.UV7,
-                        UsageUVChannel.NonMesh => UsingUVChannels.NonMesh,
-                        _ => UsingUVChannels.Unknown,
-                    },
-                    TextureUvMatrix);
-
-                if (OtherUvUsage != 0)
-                    translator.RegisterOtherUVUsage(OtherUvUsage);
-                if (UsesVertexIndex)
-                    translator.RegisterVertexIndexUsage();
-            }
-        }
-
-        private sealed class LegacyTextureUsageInformation
-            : ITTShaderTextureUsageInformation
-        {
-            public void GetMaterialTextureUVUsage(
-                ITTTextureUVUsageWriter writer)
-            {
-                writer.WriteTextureUVUsage(
-                    "_MainTex",
-                    UsageUVChannel.UV0);
-            }
-        }
-
-        private sealed class LiltoonMaterialInformationProbe
-            : IMaterialInformationCallbackAbstractionInterface
-        {
-            internal readonly Dictionary<string, int?> IntValues = new();
-            internal readonly Dictionary<string, float?> FloatValues = new();
-            internal readonly Dictionary<string, Vector4?> VectorValues = new();
-            internal readonly Dictionary<string, bool?> KeywordValues = new();
-            internal readonly Dictionary<string, Matrix2x3?> TextureMatrices =
-                new();
-            internal readonly Dictionary<string, UsingUVChannels>
-                TextureUvChannels = new();
-            internal UsingUVChannels OtherUvUsage;
-            internal bool UsesVertexIndex;
-
-            public int? GetInteger(
-                string propertyName,
-                bool considerAnimation = true)
-                => IntValues.GetValueOrDefault(propertyName, 0);
-
-            public int? GetInt(
-                string propertyName,
-                bool considerAnimation = true)
-                => IntValues.GetValueOrDefault(propertyName, 0);
-
-            public float? GetFloat(
-                string propertyName,
-                bool considerAnimation = true)
-                => FloatValues.GetValueOrDefault(propertyName, 0f);
-
-            public Vector4? GetVector(
-                string propertyName,
-                bool considerAnimation = true)
-            {
-                if (VectorValues.TryGetValue(propertyName, out var value))
-                    return value;
-                if (propertyName.EndsWith("_ST"))
-                    return new Vector4(1f, 1f, 0f, 0f);
-                if (propertyName.EndsWith("_ScrollRotate"))
-                    return Vector4.zero;
-                if (propertyName.EndsWith("DecalAnimation"))
-                    return new Vector4(1f, 1f, 1f, 30f);
-                if (propertyName.EndsWith("DecalSubParam"))
-                    return new Vector4(1f, 1f, 0f, 1f);
-                return Vector4.zero;
-            }
-
-            public bool? IsShaderKeywordEnabled(string keywordName)
-                => KeywordValues.TryGetValue(keywordName, out var value)
-                    ? value
-                    : false;
-
-            public void RegisterOtherUVUsage(UsingUVChannels uvChannel)
-            {
-                OtherUvUsage |= uvChannel;
-            }
-
-            public void RegisterTextureUVUsage(
-                string textureMaterialPropertyName,
-                SamplerStateInformation samplerState,
-                UsingUVChannels uvChannels,
-                Matrix2x3? uvMatrix)
-            {
-                TextureMatrices[textureMaterialPropertyName] = uvMatrix;
-                TextureUvChannels[textureMaterialPropertyName] = uvChannels;
-            }
-
-            public void RegisterVertexIndexUsage()
-            {
-                UsesVertexIndex = true;
-            }
-        }
-
-        [Test]
-        public void LegacyTextureUsageDoesNotProveIdentityTransform()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var material = new Material(shader);
-            var texture = new Texture2D(4, 4);
-            var registry = TTShaderTextureUsageInformationRegistry.s_information;
-            var hadPrevious = registry.TryGetValue(shader, out var previous);
-            try
-            {
-                material.SetTexture("_MainTex", texture);
-                registry[shader] = new TestShaderUsageInformation
-                {
-                    UseLegacyTextureRegistration = true,
-                };
-
-                var usage = TTShaderTextureUsageInformationUtil
-                    .GetContainsUVTransformUsage(material)["_MainTex"];
-                Assert.That(
-                    TTShaderTextureUsageInformationUtil
-                        .IsIdentityUVMatrix(usage.UVMatrix),
-                    Is.True,
-                    "Manual AtlasTexture keeps the legacy identity assumption.");
-                Assert.That(
-                    TTShaderTextureUsageInformationUtil
-                        .IsKnownIdentityUVMatrix(usage),
-                    Is.False,
-                    "AutoAtlas must distinguish an assumed identity from an explicitly reported one.");
-
-                var grouping = new MaterialGroupingContext(
-                    new HashSet<Material> { material },
-                    UVChannel.UV0,
-                    primaryTexturePropertyOrMaximum: null);
-                Assert.That(
-                    AutoAtlasTextureProcessor.HasUnsupportedTextureUvSampling(
-                        new[] { material },
-                        grouping.ContainsTextureDictionaries,
-                        UVChannel.UV0),
-                    Is.True);
-            }
-            finally
-            {
-                if (hadPrevious)
-                    registry[shader] = previous;
-                else
-                    registry.Remove(shader);
-                Object.DestroyImmediate(texture);
-                Object.DestroyImmediate(material);
-            }
-        }
-
-        [Test]
-        public void RegisteredShaderUsageMayOmitUnsampledAssignedTexture()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var material = new Material(shader);
-            var mainTexture = new Texture2D(4, 4);
-            var unusedTexture = new Texture2D(4, 4);
-            var registry = TTShaderTextureUsageInformationRegistry.s_information;
-            var hadPrevious = registry.TryGetValue(shader, out var previous);
-            try
-            {
-                material.SetTexture("_MainTex", mainTexture);
-                material.SetTexture("_BumpMap", unusedTexture);
-                registry[shader] = new TestShaderUsageInformation();
-
-                var grouping = new MaterialGroupingContext(
-                    new HashSet<Material> { material },
-                    UVChannel.UV0,
-                    primaryTexturePropertyOrMaximum: null);
-
-                Assert.That(
-                    AutoAtlasTextureProcessor.HasUnsupportedTextureUvSampling(
-                        new[] { material },
-                        grouping.ContainsTextureDictionaries,
-                        UVChannel.UV0),
-                    Is.False,
-                    "A registered provider may omit an assigned texture when the current shader state does not sample that property.");
-            }
-            finally
-            {
-                if (hadPrevious)
-                    registry[shader] = previous;
-                else
-                    registry.Remove(shader);
-                Object.DestroyImmediate(unusedTexture);
-                Object.DestroyImmediate(mainTexture);
-                Object.DestroyImmediate(material);
-            }
-        }
-
-        [Test]
-        public void AutoAtlasRejectsUnregisteredShaderUsage()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var material = new Material(shader);
-            var texture = new Texture2D(4, 4);
-            var registry = TTShaderTextureUsageInformationRegistry.s_information;
-            var hadPrevious = registry.TryGetValue(shader, out var previous);
-            try
-            {
-                material.SetTexture("_MainTex", texture);
-                registry.Remove(shader);
-
-                var grouping = new MaterialGroupingContext(
-                    new HashSet<Material> { material },
-                    UVChannel.UV0,
-                    primaryTexturePropertyOrMaximum: null);
-
-                Assert.That(
-                    AutoAtlasTextureProcessor.HasUnsupportedTextureUvSampling(
-                        new[] { material },
-                        grouping.ContainsTextureDictionaries,
-                        UVChannel.UV0),
-                    Is.True);
-            }
-            finally
-            {
-                if (hadPrevious)
-                    registry[shader] = previous;
-                else
-                    registry.Remove(shader);
-                Object.DestroyImmediate(texture);
-                Object.DestroyImmediate(material);
-            }
-        }
-
-        [Test]
-        public void AutoAtlasRejectsLegacyRegisteredProviderWithoutFullSemantics()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var material = new Material(shader);
-            var texture = new Texture2D(4, 4);
-            var registry = TTShaderTextureUsageInformationRegistry.s_information;
-            var hadPrevious = registry.TryGetValue(shader, out var previous);
-            try
-            {
-                material.SetTexture("_MainTex", texture);
-                registry[shader] =
-                    new LegacyTextureUsageInformation();
-
-                var grouping = new MaterialGroupingContext(
-                    new HashSet<Material> { material },
-                    UVChannel.UV0,
-                    primaryTexturePropertyOrMaximum: null);
-
-                Assert.That(
-                    AutoAtlasTextureProcessor.HasUnsupportedTextureUvSampling(
-                        new[] { material },
-                        grouping.ContainsTextureDictionaries,
-                        UVChannel.UV0),
-                    Is.True);
-            }
-            finally
-            {
-                if (hadPrevious)
-                    registry[shader] = previous;
-                else
-                    registry.Remove(shader);
-                Object.DestroyImmediate(texture);
-                Object.DestroyImmediate(material);
-            }
-        }
-
-        [Test]
-        public void AutoAtlasRejectsReportedNonTextureUseOfTargetUv()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var material = new Material(shader);
-            var texture = new Texture2D(4, 4);
-            var registry = TTShaderTextureUsageInformationRegistry.s_information;
-            var hadPrevious = registry.TryGetValue(shader, out var previous);
-            try
-            {
-                material.SetTexture("_MainTex", texture);
-                var provider = new TestShaderUsageInformation
-                {
-                    OtherUvUsage = UsingUVChannels.UV1,
-                };
-                registry[shader] = provider;
-
-                var grouping = new MaterialGroupingContext(
-                    new HashSet<Material> { material },
-                    UVChannel.UV0,
-                    primaryTexturePropertyOrMaximum: null);
-
-                Assert.That(
-                    AutoAtlasTextureProcessor.HasUnsupportedTextureUvSampling(
-                        new[] { material },
-                        grouping.ContainsTextureDictionaries,
-                        UVChannel.UV0),
-                    Is.False);
-
-                provider.OtherUvUsage = UsingUVChannels.UV0;
-                Assert.That(
-                    AutoAtlasTextureProcessor.HasUnsupportedTextureUvSampling(
-                        new[] { material },
-                        grouping.ContainsTextureDictionaries,
-                        UVChannel.UV0),
-                    Is.True);
-            }
-            finally
-            {
-                if (hadPrevious)
-                    registry[shader] = previous;
-                else
-                    registry.Remove(shader);
-                Object.DestroyImmediate(texture);
-                Object.DestroyImmediate(material);
-            }
-        }
-
-        [Test]
-        public void AutoAtlasProtectsVertexIndexOnlyWhenMeshWillBeReindexed()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var material = new Material(shader);
-            var texture = new Texture2D(4, 4);
-            var root = new GameObject("VertexIndexSafety");
-            var simpleMesh = new Mesh();
-            var crossMesh = new Mesh();
-            var registry = TTShaderTextureUsageInformationRegistry.s_information;
-            var hadPrevious = registry.TryGetValue(shader, out var previous);
-            try
-            {
-                material.SetTexture("_MainTex", texture);
-                registry[shader] = new TestShaderUsageInformation
-                {
-                    UsesVertexIndex = true,
-                };
-
-                void SetGeometry(Mesh mesh, bool crossSubMesh)
-                {
-                    mesh.vertices = new[]
-                    {
-                        Vector3.zero,
-                        Vector3.right,
-                        Vector3.up,
-                        Vector3.one,
-                    };
-                    mesh.uv = new[]
-                    {
-                        Vector2.zero,
-                        Vector2.right,
-                        Vector2.up,
-                        Vector2.one,
-                    };
-
-                    if (crossSubMesh)
-                    {
-                        mesh.subMeshCount = 2;
-                        mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
-                        mesh.SetTriangles(new[] { 0, 2, 3 }, 1);
-                    }
-                    else
-                    {
-                        mesh.subMeshCount = 1;
-                        mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
-                    }
-                }
-
-                MeshRenderer AddRenderer(
-                    string name,
-                    Mesh mesh,
-                    Material[] materials)
-                {
-                    var go = new GameObject(name);
-                    go.transform.SetParent(root.transform, false);
-                    var filter = go.AddComponent<MeshFilter>();
-                    filter.sharedMesh = mesh;
-                    var renderer = go.AddComponent<MeshRenderer>();
-                    renderer.sharedMaterials = materials;
-                    return renderer;
-                }
-
-                SetGeometry(simpleMesh, crossSubMesh: false);
-                var simple = AddRenderer(
-                    "simple",
-                    simpleMesh,
-                    new[] { material });
-                var simpleTargeting = new RendererTargetingForTest(
-                    new Renderer[] { simple });
-                Assert.That(
-                    AutoAtlasTextureProcessor.HasUnsafeVertexIndexUsage(
-                        simpleTargeting,
-                        new Renderer[] { simple }),
-                    Is.False);
-
-                SetGeometry(crossMesh, crossSubMesh: true);
-                var cross = AddRenderer(
-                    "cross",
-                    crossMesh,
-                    new[] { material, material });
-                var crossTargeting = new RendererTargetingForTest(
-                    new Renderer[] { cross });
-                Assert.That(
-                    AutoAtlasTextureProcessor.HasUnsafeVertexIndexUsage(
-                        crossTargeting,
-                        new Renderer[] { cross }),
-                    Is.True);
-            }
-            finally
-            {
-                if (hadPrevious)
-                    registry[shader] = previous;
-                else
-                    registry.Remove(shader);
-                Object.DestroyImmediate(root);
-                Object.DestroyImmediate(simpleMesh);
-                Object.DestroyImmediate(crossMesh);
-                Object.DestroyImmediate(texture);
-                Object.DestroyImmediate(material);
-            }
-        }
-
-        [Test]
-        public void PreservedOriginalUvChannelRejectsExistingShaderUsage()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var material = new Material(shader);
-            var texture = new Texture2D(4, 4);
-            var root = new GameObject("PreservedUvSafety");
-            var mesh = new Mesh();
-            var registry = TTShaderTextureUsageInformationRegistry.s_information;
-            var hadPrevious = registry.TryGetValue(shader, out var previous);
-            try
-            {
-                material.SetTexture("_MainTex", texture);
-                mesh.vertices = new[]
-                {
-                    Vector3.zero,
-                    Vector3.right,
-                    Vector3.up,
-                };
-                mesh.uv = new[]
-                {
-                    Vector2.zero,
-                    Vector2.right,
-                    Vector2.up,
-                };
-                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
-
-                var filter = root.AddComponent<MeshFilter>();
-                filter.sharedMesh = mesh;
-                var renderer = root.AddComponent<MeshRenderer>();
-                renderer.sharedMaterial = material;
-                var targeting = new RendererTargetingForTest(
-                    new Renderer[] { renderer });
-
-                registry[shader] = new TestShaderUsageInformation
-                {
-                    TextureUvChannel = UsageUVChannel.UV0,
-                };
-                Assert.That(
-                    AutoAtlasTextureProcessor
-                        .HasUnsafePreservedOriginalUvUsage(
-                            targeting,
-                            new Renderer[] { renderer },
-                            preservedUvChannel: 1),
-                    Is.False);
-
-                registry[shader] = new TestShaderUsageInformation
-                {
-                    TextureUvChannel = UsageUVChannel.UV1,
-                };
-                Assert.That(
-                    AutoAtlasTextureProcessor
-                        .HasUnsafePreservedOriginalUvUsage(
-                            targeting,
-                            new Renderer[] { renderer },
-                            preservedUvChannel: 1),
-                    Is.True);
-            }
-            finally
-            {
-                if (hadPrevious)
-                    registry[shader] = previous;
-                else
-                    registry.Remove(shader);
-                Object.DestroyImmediate(root);
-                Object.DestroyImmediate(mesh);
-                Object.DestroyImmediate(texture);
-                Object.DestroyImmediate(material);
-            }
-        }
-
-        [Test]
-        public void LiltoonParallaxMarksMainUvTransformUnknown()
-        {
-            var baseline = new LiltoonMaterialInformationProbe();
-            LiltoonShaderInformation.GetMaterialInformation(
-                baseline,
-                isOutline: false);
-            Assert.That(
-                baseline.TextureMatrices["_MainTex"],
-                Is.EqualTo(Matrix2x3.Identity));
-
-            var parallax = new LiltoonMaterialInformationProbe();
-            parallax.IntValues["_UseParallax"] = 1;
-            LiltoonShaderInformation.GetMaterialInformation(
-                parallax,
-                isOutline: false);
-            Assert.That(
-                parallax.TextureMatrices["_MainTex"],
-                Is.Null);
-        }
-
-        [Test]
-        public void LiltoonDecalModesMarkSubTextureUvTransformUnknown()
-        {
-            var baseline = new LiltoonMaterialInformationProbe();
-            baseline.IntValues["_UseMain2ndTex"] = 1;
-            LiltoonShaderInformation.GetMaterialInformation(
-                baseline,
-                isOutline: false);
-            Assert.That(
-                baseline.TextureMatrices["_Main2ndTex"],
-                Is.EqualTo(Matrix2x3.Identity));
-
-            var decal = new LiltoonMaterialInformationProbe();
-            decal.IntValues["_UseMain2ndTex"] = 1;
-            decal.FloatValues["_Main2ndTexIsDecal"] = 1f;
-            LiltoonShaderInformation.GetMaterialInformation(
-                decal,
-                isOutline: false);
-            Assert.That(
-                decal.TextureMatrices["_Main2ndTex"],
-                Is.Null);
-
-            var animated = new LiltoonMaterialInformationProbe();
-            animated.IntValues["_UseMain2ndTex"] = 1;
-            animated.VectorValues["_Main2ndTexDecalSubParam"] =
-                new Vector4(0.5f, 1f, 0f, 1f);
-            LiltoonShaderInformation.GetMaterialInformation(
-                animated,
-                isOutline: false);
-            Assert.That(
-                animated.TextureMatrices["_Main2ndTex"],
-                Is.Null);
-        }
-
-        [Test]
-        public void LiltoonDissolveShapeReportsRawUv0Usage()
-        {
-            var maskOnly = new LiltoonMaterialInformationProbe();
-            maskOnly.VectorValues["_DissolveParams"] =
-                new Vector4(1f, 0f, 0.5f, 0.1f);
-            LiltoonShaderInformation.GetMaterialInformation(
-                maskOnly,
-                isOutline: false);
-            Assert.That(
-                maskOnly.OtherUvUsage & UsingUVChannels.UV0,
-                Is.EqualTo((UsingUVChannels)0));
-
-            var uvShape = new LiltoonMaterialInformationProbe();
-            uvShape.VectorValues["_DissolveParams"] =
-                new Vector4(2f, 0f, 0.5f, 0.1f);
-            LiltoonShaderInformation.GetMaterialInformation(
-                uvShape,
-                isOutline: false);
-            Assert.That(
-                uvShape.OtherUvUsage & UsingUVChannels.UV0,
-                Is.EqualTo(UsingUVChannels.UV0));
-        }
-
-        [Test]
-        public void LiltoonGlitterReportsProceduralAndTextureUvSemantics()
-        {
-            var probe = new LiltoonMaterialInformationProbe();
-            probe.IntValues["_UseGlitter"] = 1;
-            probe.IntValues["_GlitterUVMode"] = 0;
-            probe.IntValues["_GlitterColorTex_UVMode"] = 2;
-
-            LiltoonShaderInformation.GetMaterialInformation(
-                probe,
-                isOutline: false);
-
-            Assert.That(
-                probe.OtherUvUsage & UsingUVChannels.UV0,
-                Is.EqualTo(UsingUVChannels.UV0));
-            Assert.That(
-                probe.TextureUvChannels["_GlitterColorTex"],
-                Is.EqualTo(UsingUVChannels.UV2));
-        }
-
-        [Test]
-        public void LiltoonIdMaskReportsSelectedRawUvOrVertexId()
-        {
-            var uvBacked = new LiltoonMaterialInformationProbe();
-            uvBacked.IntValues["_IDMask1"] = 1;
-            uvBacked.IntValues["_IDMaskFrom"] = 0;
-
-            LiltoonShaderInformation.GetMaterialInformation(
-                uvBacked,
-                isOutline: false);
-
-            Assert.That(
-                uvBacked.OtherUvUsage & UsingUVChannels.UV0,
-                Is.EqualTo(UsingUVChannels.UV0));
-            Assert.That(uvBacked.UsesVertexIndex, Is.False);
-
-            var vertexBacked = new LiltoonMaterialInformationProbe();
-            vertexBacked.IntValues["_IDMask1"] = 1;
-            vertexBacked.IntValues["_IDMaskFrom"] = 8;
-
-            LiltoonShaderInformation.GetMaterialInformation(
-                vertexBacked,
-                isOutline: false);
-
-            Assert.That(vertexBacked.UsesVertexIndex, Is.True);
-        }
-
-        [Test]
-        public void LiltoonAudioLinkMode2ReportsRawUv0Usage()
-        {
-            var fragment = new LiltoonMaterialInformationProbe();
-            fragment.IntValues["_UseAudioLink"] = 1;
-            fragment.IntValues["_AudioLink2Main2nd"] = 1;
-            fragment.IntValues["_AudioLinkUVMode"] = 2;
-
-            LiltoonShaderInformation.GetMaterialInformation(
-                fragment,
-                isOutline: false);
-
-            Assert.That(
-                fragment.OtherUvUsage & UsingUVChannels.UV0,
-                Is.EqualTo(UsingUVChannels.UV0));
-
-            var vertex = new LiltoonMaterialInformationProbe();
-            vertex.IntValues["_UseAudioLink"] = 1;
-            vertex.IntValues["_AudioLink2Vertex"] = 1;
-            vertex.IntValues["_AudioLinkVertexUVMode"] = 2;
-
-            LiltoonShaderInformation.GetMaterialInformation(
-                vertex,
-                isOutline: false);
-
-            Assert.That(
-                vertex.OtherUvUsage & UsingUVChannels.UV0,
-                Is.EqualTo(UsingUVChannels.UV0));
-        }
-
-        [Test]
-        public void LiltoonFurRandomizeReportsVertexIndexUsage()
-        {
-            var disabledRandomize = new LiltoonMaterialInformationProbe();
-            LiltoonShaderInformation.GetMaterialInformation(
-                disabledRandomize,
-                isOutline: false,
-                shaderUsesFurVertexId: true);
-            Assert.That(disabledRandomize.UsesVertexIndex, Is.False);
-
-            var dedicatedFur = new LiltoonMaterialInformationProbe();
-            dedicatedFur.FloatValues["_FurRandomize"] = 0.5f;
-            LiltoonShaderInformation.GetMaterialInformation(
-                dedicatedFur,
-                isOutline: false,
-                shaderUsesFurVertexId: true);
-            Assert.That(dedicatedFur.UsesVertexIndex, Is.True);
-
-            var multiFur = new LiltoonMaterialInformationProbe();
-            multiFur.IntValues["_TransparentMode"] = 4;
-            multiFur.FloatValues["_FurRandomize"] = 0.5f;
-            LiltoonShaderInformation.GetMaterialInformation(
-                multiFur,
-                isOutline: false);
-            Assert.That(multiFur.UsesVertexIndex, Is.True);
-
-            var multiNonFur = new LiltoonMaterialInformationProbe();
-            multiNonFur.IntValues["_TransparentMode"] = 2;
-            multiNonFur.FloatValues["_FurRandomize"] = 0.5f;
-            LiltoonShaderInformation.GetMaterialInformation(
-                multiNonFur,
-                isOutline: false);
-            Assert.That(multiNonFur.UsesVertexIndex, Is.False);
-        }
-
-        [Test]
-        public void LiltoonMain2ndUsesItsOwnUvMode()
-        {
-            var probe = new LiltoonMaterialInformationProbe();
-            probe.IntValues["_UseMain2ndTex"] = 1;
-            probe.IntValues["_Main2ndTex_UVMode"] = 2;
-            probe.IntValues["_Main3rdTex_UVMode"] = 0;
-
-            LiltoonShaderInformation.GetMaterialInformation(
-                probe,
-                isOutline: false);
-
-            Assert.That(
-                probe.TextureUvChannels["_Main2ndTex"],
-                Is.EqualTo(UsingUVChannels.UV2));
-        }
-
-        [Test]
-        public void LiltoonMain3rdUsesItsOwnUvMode()
-        {
-            var probe = new LiltoonMaterialInformationProbe();
-            probe.IntValues["_UseMain3rdTex"] = 1;
-            probe.IntValues["_Main2ndTex_UVMode"] = 0;
-            probe.IntValues["_Main3rdTex_UVMode"] = 1;
-
-            LiltoonShaderInformation.GetMaterialInformation(
-                probe,
-                isOutline: false);
-
-            Assert.That(
-                probe.TextureUvChannels["_Main3rdTex"],
-                Is.EqualTo(UsingUVChannels.UV1));
-        }
-
-        [Test]
-        public void LiltoonAudioLinkMaskUsesItsOwnUvMode()
-        {
-            var probe = new LiltoonMaterialInformationProbe();
-            probe.IntValues["_UseAudioLink"] = 1;
-            probe.IntValues["_AudioLink2Main2nd"] = 1;
-            probe.IntValues["_AudioLinkUVMode"] = 3;
-            probe.IntValues["_AudioLinkMask_UVMode"] = 1;
-            probe.IntValues["_OutlineVectorUVMode"] = 0;
-
-            LiltoonShaderInformation.GetMaterialInformation(
-                probe,
-                isOutline: false);
-
-            Assert.That(
-                probe.TextureUvChannels["_AudioLinkMask"],
-                Is.EqualTo(UsingUVChannels.UV1));
-        }
-
-        [Test]
-        public void LiltoonOutlineVectorUsesItsOwnUvMode()
-        {
-            var probe = new LiltoonMaterialInformationProbe();
-            probe.IntValues["_OutlineVectorUVMode"] = 2;
-            probe.IntValues["_AudioLinkMask_UVMode"] = 0;
-
-            LiltoonShaderInformation.GetMaterialInformation(
-                probe,
-                isOutline: true);
-
-            Assert.That(
-                probe.TextureUvChannels["_OutlineVectorTex"],
-                Is.EqualTo(UsingUVChannels.UV2));
-        }
-
-        [Test]
-        public void ToonStandardAudioLinkReportsRawEffectUvUsage()
-        {
-            var probe = new LiltoonMaterialInformationProbe();
-            probe.KeywordValues["USE_AUDIOLINK"] = true;
-            probe.FloatValues["_ALMaskUVChannel"] = 1f;
-            probe.FloatValues["_ALEffectUVChannel"] = 0f;
-
-            new VRCSDKToonStandardShaderInformation(withOutline: false)
-                .GetMaterialInformation(probe);
-
-            Assert.That(
-                probe.OtherUvUsage & UsingUVChannels.UV0,
-                Is.EqualTo(UsingUVChannels.UV0));
-            Assert.That(
-                probe.OtherUvUsage & UsingUVChannels.UV1,
-                Is.EqualTo((UsingUVChannels)0));
-            Assert.That(
-                probe.TextureUvChannels["_AudioLinkMask"]
-                    & (UsingUVChannels.UV0 | UsingUVChannels.UV1),
-                Is.EqualTo(
-                    UsingUVChannels.UV0 | UsingUVChannels.UV1));
-        }
-
-        [Test]
-        public void LiltoonFullSemanticCoverageIsVersionBounded()
-        {
-            Assert.That(
-                ShaderInformationFromAAO.IsSupportedLiltoonVersion(null),
-                Is.False);
-            Assert.That(
-                ShaderInformationFromAAO.IsSupportedLiltoonVersion(
-                    ShaderInformationFromAAO.FullSemanticSupportedLiltoonVersion),
-                Is.True);
-            Assert.That(
-                ShaderInformationFromAAO.IsSupportedLiltoonVersion(
-                    ShaderInformationFromAAO.FullSemanticSupportedLiltoonVersion
-                    + 1),
-                Is.False);
-        }
-
-        [Test]
-        public void LiltoonFullSemanticCoverageRequiresAuditedOfficialShaderGuid()
-        {
-            Assert.That(
-                ShaderInformationFromAAO.IsKnownFullSemanticLiltoonShaderGuid(
-                    "df12117ecd77c31469c224178886498e"),
-                Is.True);
-            Assert.That(
-                ShaderInformationFromAAO.IsKnownFullSemanticLiltoonShaderGuid(
-                    "d6e9e297d960d5341b5fe94e3356353b"),
-                Is.False,
-                "A newly added official shader must remain fail-closed until its semantics are reviewed.");
-            Assert.That(
-                ShaderInformationFromAAO.IsKnownFullSemanticLiltoonShaderGuid(
-                    "00000000000000000000000000000000"),
-                Is.False);
-            Assert.That(
-                ShaderInformationFromAAO.IsKnownFullSemanticLiltoonShaderGuid(
-                    null),
-                Is.False);
-        }
-
         [Test]
         public void UnknownMemoryBlockLayoutsFailClosed()
         {
@@ -988,118 +134,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void GeneratedPropertyApplicationRejectsExcludedSameNamedTexture()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var first = new Material(shader);
-            var second = new Material(shader);
-            var firstTexture = new Texture2D(4, 4);
-            var secondTexture = new Texture2D(4, 4);
-            try
-            {
-                first.SetTexture("_MainTex", firstTexture);
-                second.SetTexture("_MainTex", secondTexture);
-
-                var unsafeProperties =
-                    new Dictionary<
-                        Material,
-                        IReadOnlyDictionary<string, Texture>>
-                    {
-                        [first] = new Dictionary<string, Texture>
-                        {
-                            ["_MainTex"] = firstTexture,
-                        },
-                        [second] = new Dictionary<string, Texture>(),
-                    };
-
-                Assert.That(
-                    AutoAtlasTextureProcessor
-                        .HasUnsafeGeneratedPropertyApplication(
-                            new[] { first, second },
-                            unsafeProperties,
-                            UVChannel.UV0),
-                    Is.True);
-
-                var safeProperties =
-                    new Dictionary<
-                        Material,
-                        IReadOnlyDictionary<string, Texture>>
-                    {
-                        [first] = new Dictionary<string, Texture>
-                        {
-                            ["_MainTex"] = firstTexture,
-                        },
-                        [second] = new Dictionary<string, Texture>
-                        {
-                            ["_MainTex"] = secondTexture,
-                        },
-                    };
-
-                Assert.That(
-                    AutoAtlasTextureProcessor
-                        .HasUnsafeGeneratedPropertyApplication(
-                            new[] { first, second },
-                            safeProperties,
-                            UVChannel.UV0),
-                    Is.False);
-            }
-            finally
-            {
-                Object.DestroyImmediate(firstTexture);
-                Object.DestroyImmediate(secondTexture);
-                Object.DestroyImmediate(first);
-                Object.DestroyImmediate(second);
-            }
-        }
-
-        [Test]
-        public void GeneratedPropertySafetySkipsPropertiesAbsentFromCurrentShader()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var material = new Material(shader);
-            var texture = new Texture2D(4, 4);
-            try
-            {
-                Assert.That(
-                    material.HasShaderTextureProperty("_MainTex"),
-                    Is.True);
-                Assert.That(
-                    material.HasShaderTextureProperty("_FurNoiseMask"),
-                    Is.False);
-
-                var properties =
-                    new Dictionary<
-                        Material,
-                        IReadOnlyDictionary<string, Texture>>
-                    {
-                        [material] = new Dictionary<string, Texture>
-                        {
-                            ["_FurNoiseMask"] = texture,
-                        },
-                    };
-
-                Assert.That(
-                    AutoAtlasTextureProcessor
-                        .HasUnsafeGeneratedPropertyApplication(
-                            new[] { material },
-                            properties,
-                            UVChannel.UV0),
-                    Is.False,
-                    "A generated property that does not exist in the material's current shader is not an application conflict.");
-            }
-            finally
-            {
-                Object.DestroyImmediate(texture);
-                Object.DestroyImmediate(material);
-            }
-        }
-
-        [Test]
-        public void ReferenceCopyRejectsCrossGroupTextureRedirection()
+        public void ReferenceCopyRejectsOnlyMergeIntroducedSourceProperty()
         {
             var shader = Shader.Find("Standard");
             Assert.That(shader, Is.Not.Null);
@@ -1111,8 +146,6 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             try
             {
                 mainMaterial.SetTexture("_MainTex", mainTexture);
-                mainMaterial.SetTexture("_BumpMap", null);
-                bumpMaterial.SetTexture("_MainTex", null);
                 bumpMaterial.SetTexture("_BumpMap", bumpTexture);
 
                 var settings = new AtlasSetting
@@ -1131,7 +164,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     },
                 };
 
-                var unsafeProperties =
+                var propertyTextures =
                     new Dictionary<
                         Material,
                         IReadOnlyDictionary<string, Texture>>
@@ -1145,52 +178,45 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                             ["_BumpMap"] = bumpTexture,
                         },
                     };
-
-                Assert.That(
-                    AutoAtlasTextureMergePlanner
-                        .PreservesReferenceCopySemantics(
-                            new[] { mainMaterial, bumpMaterial },
-                            unsafeProperties,
-                            settings),
-                    Is.False,
-                    "Merging makes _MainTex exist and would redirect the other atomic group's _BumpMap.");
-
-                bumpMaterial.SetTexture("_BumpMap", mainTexture);
-                var equivalentSourcePixels =
-                    new Dictionary<
-                        Material,
-                        IReadOnlyDictionary<string, Texture>>
+                var mainGroup =
+                    new AutoAtlasTextureMergePlanner.PreparedGroup
                     {
-                        [mainMaterial] = new Dictionary<string, Texture>
-                        {
-                            ["_MainTex"] = mainTexture,
-                        },
-                        [bumpMaterial] = new Dictionary<string, Texture>
-                        {
-                            ["_BumpMap"] = mainTexture,
-                        },
+                        Id = 0,
+                        Materials = new HashSet<Material> { mainMaterial },
+                    };
+                var bumpGroup =
+                    new AutoAtlasTextureMergePlanner.PreparedGroup
+                    {
+                        Id = 1,
+                        Materials = new HashSet<Material> { bumpMaterial },
                     };
 
                 Assert.That(
                     AutoAtlasTextureMergePlanner
                         .PreservesReferenceCopySemantics(
-                            new[] { mainMaterial, bumpMaterial },
-                            equivalentSourcePixels,
+                            new[] { mainGroup },
+                            propertyTextures,
                             settings),
                     Is.True,
-                    "ReferenceCopy is safe when the material group source atlas is drawn from the exact texture already sampled by the target.");
+                    "Standalone AutoAtlas follows normal AtlasTexture semantics.");
 
-                bumpMaterial.SetTextureScale(
-                    "_BumpMap",
-                    new Vector2(2f, 1f));
                 Assert.That(
                     AutoAtlasTextureMergePlanner
                         .PreservesReferenceCopySemantics(
-                            new[] { mainMaterial, bumpMaterial },
-                            equivalentSourcePixels,
+                            new[] { bumpGroup },
+                            propertyTextures,
+                            settings),
+                    Is.True,
+                    "A standalone group without the copy source must not be rejected.");
+
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            new[] { mainGroup, bumpGroup },
+                            propertyTextures,
                             settings),
                     Is.False,
-                    "Equivalent source pixels are insufficient when the target property applies a different UV transform.");
+                    "Merging must not introduce a copy source that redirects another atomic group's target.");
             }
             finally
             {
@@ -1198,6 +224,92 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Object.DestroyImmediate(bumpTexture);
                 Object.DestroyImmediate(mainMaterial);
                 Object.DestroyImmediate(bumpMaterial);
+            }
+        }
+
+        [Test]
+        public void ReferenceCopyDoesNotRevalidateNormalAtlasSemantics()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var first = new Material(shader);
+            var second = new Material(shader);
+            var firstMain = new Texture2D(4, 4);
+            var firstBump = new Texture2D(4, 4);
+            var secondMain = new Texture2D(4, 4);
+            var secondBump = new Texture2D(4, 4);
+            try
+            {
+                first.SetTexture("_MainTex", firstMain);
+                first.SetTexture("_BumpMap", firstBump);
+                first.SetTextureScale("_BumpMap", new Vector2(2f, 1f));
+                second.SetTexture("_MainTex", secondMain);
+                second.SetTexture("_BumpMap", secondBump);
+
+                var settings = new AtlasSetting
+                {
+                    TextureFineTuning = new List<ITextureFineTuning>
+                    {
+                        new ReferenceCopy
+                        {
+                            SourcePropertyName = new PropertyName("_MainTex"),
+                            TargetPropertyNameList =
+                                new List<PropertyName>
+                                {
+                                    new PropertyName("_BumpMap"),
+                                },
+                        },
+                    },
+                };
+
+                var propertyTextures =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [first] = new Dictionary<string, Texture>
+                        {
+                            ["_MainTex"] = firstMain,
+                            ["_BumpMap"] = firstBump,
+                        },
+                        [second] = new Dictionary<string, Texture>
+                        {
+                            ["_MainTex"] = secondMain,
+                            ["_BumpMap"] = secondBump,
+                        },
+                    };
+                var groups = new[]
+                {
+                    new AutoAtlasTextureMergePlanner.PreparedGroup
+                    {
+                        Id = 0,
+                        Materials = new HashSet<Material> { first },
+                    },
+                    new AutoAtlasTextureMergePlanner.PreparedGroup
+                    {
+                        Id = 1,
+                        Materials = new HashSet<Material> { second },
+                    },
+                };
+
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            groups,
+                            propertyTextures,
+                            settings),
+                    Is.True,
+                    "Different target textures or UV transforms are normal AtlasTexture semantics, not an AutoAtlas merge veto.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(firstMain);
+                Object.DestroyImmediate(firstBump);
+                Object.DestroyImmediate(secondMain);
+                Object.DestroyImmediate(secondBump);
+                Object.DestroyImmediate(first);
+                Object.DestroyImmediate(second);
             }
         }
 
@@ -1538,97 +650,6 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 });
 
             Assert.That(Candidate(baseline, merged).IsAdoptable, Is.False);
-        }
-
-        [Test]
-        public void AutoAtlasRejectsOutOfRangeUvOnlyOnTargetMaterialGeometry()
-        {
-            var shader = Shader.Find("Hidden/InternalErrorShader");
-            Assert.That(shader, Is.Not.Null);
-
-            var targetMaterial = new Material(shader);
-            var otherMaterial = new Material(shader);
-            var mesh = new Mesh();
-            var root = new GameObject("UvBounds");
-            try
-            {
-                mesh.vertices = new[]
-                {
-                    Vector3.zero,
-                    Vector3.right,
-                    Vector3.up,
-                    Vector3.one,
-                    Vector3.one + Vector3.right,
-                    Vector3.one + Vector3.up,
-                };
-                mesh.uv = new[]
-                {
-                    new Vector2(0f, 0f),
-                    new Vector2(1f, 0f),
-                    new Vector2(0f, 1f),
-                    new Vector2(1.25f, 0f),
-                    new Vector2(1.5f, 0f),
-                    new Vector2(1.25f, 1f),
-                };
-                mesh.subMeshCount = 2;
-                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
-                mesh.SetTriangles(new[] { 3, 4, 5 }, 1);
-
-                var filter = root.AddComponent<MeshFilter>();
-                filter.sharedMesh = mesh;
-                var renderer = root.AddComponent<MeshRenderer>();
-                renderer.sharedMaterials =
-                    new[] { targetMaterial, otherMaterial };
-                var targeting = new RendererTargetingForTest(
-                    new Renderer[] { renderer });
-                var targets = new HashSet<Material> { targetMaterial };
-
-                Assert.That(
-                    AutoAtlasTextureProcessor.HasOutOfBoundsTargetUv(
-                        targeting,
-                        new Renderer[] { renderer },
-                        targets,
-                        UVChannel.UV0),
-                    Is.False);
-
-                var uv = mesh.uv;
-                uv[1] = new Vector2(1.25f, 0f);
-                mesh.uv = uv;
-                Assert.That(
-                    AutoAtlasTextureProcessor.HasOutOfBoundsTargetUv(
-                        targeting,
-                        new Renderer[] { renderer },
-                        targets,
-                        UVChannel.UV0),
-                    Is.True);
-
-                uv[1] = new Vector2(float.NaN, 0f);
-                mesh.uv = uv;
-                Assert.That(
-                    AutoAtlasTextureProcessor.HasOutOfBoundsTargetUv(
-                        targeting,
-                        new Renderer[] { renderer },
-                        targets,
-                        UVChannel.UV0),
-                    Is.True);
-
-                uv[1] = new Vector2(float.PositiveInfinity, 0f);
-                mesh.uv = uv;
-                Assert.That(
-                    AutoAtlasTextureProcessor.HasOutOfBoundsTargetUv(
-                        targeting,
-                        new Renderer[] { renderer },
-                        targets,
-                        UVChannel.UV0),
-                    Is.True);
-            }
-            finally
-            {
-                Object.DestroyImmediate(root);
-                Object.DestroyImmediate(mesh);
-                Object.DestroyImmediate(targetMaterial);
-                Object.DestroyImmediate(otherMaterial);
-            }
         }
 
         [Test]
@@ -2653,132 +1674,6 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             {
                 foreach (var texture in textures)
                     UnityEngine.Object.DestroyImmediate(texture);
-            }
-        }
-
-        [Test]
-        public void ShaderPropertyAnimationDetectorRejectsQueriedUvSemanticsOnly()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var registry = TTShaderTextureUsageInformationRegistry.s_information;
-            var hadPrevious = registry.TryGetValue(shader, out var previous);
-            var material = new Material(shader);
-            var mainTexture = new Texture2D(4, 4);
-            var root = new GameObject("Avatar");
-            var child = new GameObject("Body");
-            try
-            {
-                registry[shader] = new StandardShaderInformation();
-                material.SetTexture("_MainTex", mainTexture);
-                child.transform.SetParent(root.transform);
-                var renderer = child.AddComponent<MeshRenderer>();
-                renderer.sharedMaterial = material;
-
-                var clip = nadena.dev.ndmf.animator.VirtualClip.Create(
-                    "material-animation");
-                clip.SetFloatCurve(
-                    UnityEditor.EditorCurveBinding.FloatCurve(
-                        "Body",
-                        typeof(MeshRenderer),
-                        "material._MainTex_ST.x"),
-                    AnimationCurve.Constant(0f, 1f, 2f));
-                clip.SetFloatCurve(
-                    UnityEditor.EditorCurveBinding.FloatCurve(
-                        "Body",
-                        typeof(MeshRenderer),
-                        "material._Color.r"),
-                    AnimationCurve.Constant(0f, 1f, 0.5f));
-
-                var index = new nadena.dev.ndmf.animator.AnimationIndex(
-                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
-
-                Assert.That(
-                    AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
-                        index,
-                        new Renderer[] { renderer },
-                        new[] { material },
-                        _ => new[] { "Body" }),
-                    Is.True);
-
-                var queried = TTShaderTextureUsageInformationUtil
-                    .GetQueriedMaterialProperties(material);
-                Assert.That(queried, Does.Contain("_MainTex_ST"));
-                Assert.That(
-                    AutoAtlasTextureShaderPropertyAnimationDetector
-                        .MatchesQueriedMaterialProperty(
-                            "material._Color.r",
-                            queried),
-                    Is.False);
-            }
-            finally
-            {
-                if (hadPrevious)
-                    registry[shader] = previous;
-                else
-                    registry.Remove(shader);
-                Object.DestroyImmediate(root);
-                Object.DestroyImmediate(material);
-                Object.DestroyImmediate(mainTexture);
-            }
-        }
-
-        [Test]
-        public void ShaderPropertyAnimationDetectorChecksMappedAliases()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var registry = TTShaderTextureUsageInformationRegistry.s_information;
-            var hadPrevious = registry.TryGetValue(shader, out var previous);
-            var material = new Material(shader);
-            var mainTexture = new Texture2D(4, 4);
-            var root = new GameObject("Avatar");
-            var child = new GameObject("NewBody");
-            try
-            {
-                registry[shader] = new StandardShaderInformation();
-                material.SetTexture("_MainTex", mainTexture);
-                child.transform.SetParent(root.transform);
-                var renderer = child.AddComponent<MeshRenderer>();
-                renderer.sharedMaterial = material;
-
-                var clip = nadena.dev.ndmf.animator.VirtualClip.Create(
-                    "old-material-path");
-                clip.SetFloatCurve(
-                    UnityEditor.EditorCurveBinding.FloatCurve(
-                        "OldBody",
-                        typeof(MeshRenderer),
-                        "material._MainTex_ST.z"),
-                    AnimationCurve.Constant(0f, 1f, 0.25f));
-                var index = new nadena.dev.ndmf.animator.AnimationIndex(
-                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
-
-                Assert.That(
-                    AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
-                        index,
-                        new Renderer[] { renderer },
-                        new[] { material },
-                        _ => new[] { "NewBody" }),
-                    Is.False);
-                Assert.That(
-                    AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
-                        index,
-                        new Renderer[] { renderer },
-                        new[] { material },
-                        _ => new[] { "NewBody", "OldBody" }),
-                    Is.True);
-            }
-            finally
-            {
-                if (hadPrevious)
-                    registry[shader] = previous;
-                else
-                    registry.Remove(shader);
-                Object.DestroyImmediate(root);
-                Object.DestroyImmediate(material);
-                Object.DestroyImmediate(mainTexture);
             }
         }
 

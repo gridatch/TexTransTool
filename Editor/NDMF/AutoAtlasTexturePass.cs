@@ -7,7 +7,6 @@ using nadena.dev.ndmf.animator;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
-using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.Editor;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
@@ -43,13 +42,16 @@ namespace net.rs64.TexTransTool.NDMF
                 .ToArray();
             var configuration = configurations[0];
             var animationServices =
-                context.Extension<AnimatorServicesContext>();
+                configuration.EnableAdditionalAtlasMerging
+                && configuration.ExcludeVisibilityAnimatedItemsFromTextureMerging
+                    ? context.Extension<AnimatorServicesContext>()
+                    : null;
             AutoAtlasTextureProcessor.Execute(
                 session.Domain,
                 configuration,
                 manualAtlases,
-                animationServices.AnimationIndex,
-                animationServices.ObjectPathRemapper,
+                animationServices?.AnimationIndex,
+                animationServices?.ObjectPathRemapper,
                 context.AvatarRootTransform);
         }
     }
@@ -181,105 +183,6 @@ namespace net.rs64.TexTransTool.NDMF
                 !float.IsNaN(key.value)
                 && !float.IsInfinity(key.value)
                 && (key.value >= 0.5f) != currentValue);
-        }
-    }
-
-    /// <summary>
-    /// Detects animation of material properties that were actually queried
-    /// while deriving shader UV / vertex semantics. Runtime changes to those
-    /// values can invalidate AutoAtlas's static safety proof.
-    /// </summary>
-    internal static class AutoAtlasTextureShaderPropertyAnimationDetector
-    {
-        internal static bool Detect(
-            AnimationIndex animationIndex,
-            ObjectPathRemapper pathRemapper,
-            IEnumerable<Renderer> renderers,
-            IEnumerable<Material> materials)
-        {
-            return Detect(
-                animationIndex,
-                renderers,
-                materials,
-                transform =>
-                {
-                    pathRemapper.GetVirtualPathForObject(transform);
-                    return pathRemapper.GetAllPathsForObject(transform);
-                });
-        }
-
-        internal static bool Detect(
-            AnimationIndex animationIndex,
-            IEnumerable<Renderer> renderers,
-            IEnumerable<Material> materials,
-            Func<Transform, IEnumerable<string>> pathsForObject)
-        {
-            var queriedProperties = materials
-                .Where(material => material != null)
-                .SelectMany(material =>
-                    TTShaderTextureUsageInformationUtil
-                        .GetQueriedMaterialProperties(material))
-                .Where(property => !string.IsNullOrWhiteSpace(property))
-                .ToHashSet(StringComparer.Ordinal);
-
-            if (queriedProperties.Count == 0)
-                return false;
-
-            foreach (var renderer in renderers
-                         .Where(renderer => renderer != null))
-            {
-                var rendererType = renderer.GetType();
-                foreach (var path in pathsForObject(renderer.transform)
-                             .Distinct(StringComparer.Ordinal))
-                {
-                    foreach (var clip in animationIndex
-                                 .GetClipsForObjectPath(path))
-                    {
-                        foreach (var binding in clip.GetFloatCurveBindings())
-                        {
-                            if (binding.path != path
-                                || binding.type == null
-                                || !binding.type.IsAssignableFrom(rendererType))
-                            {
-                                continue;
-                            }
-
-                            if (MatchesQueriedMaterialProperty(
-                                    binding.propertyName,
-                                    queriedProperties))
-                            {
-                                return true;
-                            }
-                        }
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        internal static bool MatchesQueriedMaterialProperty(
-            string? bindingPropertyName,
-            IReadOnlyCollection<string> queriedProperties)
-        {
-            const string prefix = "material.";
-            if (string.IsNullOrEmpty(bindingPropertyName)
-                || !bindingPropertyName.StartsWith(
-                    prefix, StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            var materialProperty =
-                bindingPropertyName.Substring(prefix.Length);
-            return queriedProperties.Any(property =>
-                string.Equals(
-                    materialProperty,
-                    property,
-                    StringComparison.Ordinal)
-                || materialProperty.StartsWith(
-                    property + ".",
-                    StringComparison.Ordinal));
         }
     }
 
@@ -543,30 +446,10 @@ namespace net.rs64.TexTransTool.NDMF
                 // rewrite would otherwise get an atlased material on its
                 // original mesh. Disabled/inactive consumers remain outside
                 // this check to preserve AtlasTexture's default targeting.
-                if (HasOutOfBoundsTargetUv(
-                        domain,
-                        atlasRenderers,
-                        group,
-                        settings.AtlasTargetUVChannel))
-                {
-                    continue;
-                }
-
                 if (HasActiveUntransformedMaterialConsumer(
                         domain,
                         group,
                         atlasRenderers))
-                {
-                    continue;
-                }
-
-                if (animationIndex != null
-                    && objectPathRemapper != null
-                    && AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
-                        animationIndex,
-                        objectPathRemapper,
-                        atlasRenderers,
-                        group))
                 {
                     continue;
                 }
@@ -589,51 +472,6 @@ namespace net.rs64.TexTransTool.NDMF
                         group,
                         propertyTextures,
                         texturesToReplace))
-                {
-                    continue;
-                }
-
-                // AutoAtlas applies every generated property to every target
-                // material exposing that property. Prove that this cannot
-                // overwrite a same-named texture whose sampling was excluded
-                // from the atlas operation.
-                if (HasUnsafeGeneratedPropertyApplication(
-                        group,
-                        propertyTextures,
-                        settings.AtlasTargetUVChannel))
-                {
-                    continue;
-                }
-
-                // AutoAtlas rewrites the target mesh UV channel. Only adopt
-                // materials when every current shader texture using that
-                // channel has a proven identity transform and is regenerated,
-                // and no reported non-texture shader calculation uses it.
-                if (HasUnsupportedTextureUvSampling(
-                        group,
-                        propertyTextures,
-                        settings.AtlasTargetUVChannel))
-                {
-                    continue;
-                }
-
-                // Atlas mesh normalization can duplicate/reindex vertices.
-                // Preserve shaders that observe vertex indices.
-                if (HasUnsafeVertexIndexUsage(
-                        domain,
-                        atlasRenderers))
-                {
-                    continue;
-                }
-
-                // ReferenceCopy can create/redirect a property only because a
-                // second atomic group contributes its source property. Keep
-                // standalone fallback valid as well as merged execution.
-                if (!AutoAtlasTextureMergePlanner
-                        .PreservesReferenceCopySemantics(
-                            group,
-                            propertyTextures,
-                            settings))
                 {
                     continue;
                 }
@@ -680,12 +518,6 @@ namespace net.rs64.TexTransTool.NDMF
                     .Distinct()
                     .ToHashSet();
 
-                var hasOutOfBoundsTargetUv =
-                    HasOutOfBoundsTargetUv(
-                        domain,
-                        atlasRenderers,
-                        group,
-                        settings.AtlasTargetUVChannel);
                 var hasActiveUntransformedConsumer =
                     HasActiveUntransformedMaterialConsumer(
                         domain,
@@ -693,7 +525,6 @@ namespace net.rs64.TexTransTool.NDMF
                         atlasRenderers);
                 if (atlasRenderers.Length == 0
                     || !plannedRenderers.SetEquals(atlasRenderers)
-                    || hasOutOfBoundsTargetUv
                     || hasActiveUntransformedConsumer)
                 {
                     if (execution.MergeSelection is { } invalidMerge)
@@ -701,30 +532,13 @@ namespace net.rs64.TexTransTool.NDMF
                         var reason = hasActiveUntransformedConsumer
                             ? FormatLocalized(
                                 "AutoAtlasTexture:fallback:ActiveUntransformedConsumer")
-                            : hasOutOfBoundsTargetUv
-                                ? FormatLocalized(
-                                    "AutoAtlasTexture:fallback:TargetUvOutOfBounds")
-                                : FormatLocalized(
-                                    "AutoAtlasTexture:fallback:RendererSetChanged");
+                            : FormatLocalized(
+                                "AutoAtlasTexture:fallback:RendererSetChanged");
                         twoDimensionalFallbackReasons.Add(
                             $"groups={string.Join(",", invalidMerge.GroupIds.Select(id => "g" + id))}: "
                             + reason);
                         EnqueueStandaloneFallback(
                             executionGroups, invalidMerge, preparedGroups);
-                    }
-                    continue;
-                }
-
-                if (HasUnsafeVertexIndexUsage(domain, atlasRenderers)
-                    || HasUnsupportedTextureUvSampling(
-                        group,
-                        propertyTextures,
-                        settings.AtlasTargetUVChannel))
-                {
-                    if (execution.MergeSelection is { } unsafeMerge)
-                    {
-                        EnqueueStandaloneFallback(
-                            executionGroups, unsafeMerge, preparedGroups);
                     }
                     continue;
                 }
@@ -872,29 +686,6 @@ namespace net.rs64.TexTransTool.NDMF
                 using var atlasContext = atlasResult.AtlasContext!;
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
 
-                if (atlasResult.PreservedOriginalUVChannel
-                        is int preservedUvChannel
-                    && HasUnsafePreservedOriginalUvUsage(
-                        domain,
-                        atlasRenderers,
-                        preservedUvChannel))
-                {
-                    foreach (var rt in compiledTextures.Values.Distinct())
-                        rt.Dispose();
-                    DestroyUnappliedAtlasedMeshes(
-                        atlasResult.AtlasedMeshes!);
-
-                    if (execution.MergeSelection is { } preservedUvMerge)
-                    {
-                        EnqueueStandaloneFallback(
-                            executionGroups,
-                            preservedUvMerge,
-                            preparedGroups);
-                    }
-
-                    continue;
-                }
-
                 // ReplaceMesh silently skips a renderer when no corresponding
                 // generated atlas mesh can be resolved. That is only harmless
                 // when the target material has no drawable geometry on that
@@ -933,60 +724,6 @@ namespace net.rs64.TexTransTool.NDMF
                         EnqueueStandaloneFallback(
                             executionGroups,
                             unresolvedMerge,
-                            preparedGroups);
-                    }
-
-                    continue;
-                }
-
-                var textureUvUnsafe =
-                    HasUnsupportedTextureUvSampling(
-                        group,
-                        atlasContext.MaterialGroupingCtx
-                            .ContainsTextureDictionaries,
-                        settings.AtlasTargetUVChannel);
-                var generatedPropertyUnsafe =
-                    HasUnsafeGeneratedPropertyApplication(
-                        group,
-                        atlasContext.MaterialGroupingCtx
-                            .ContainsTextureDictionaries,
-                        settings.AtlasTargetUVChannel);
-                var referenceCopyUnsafe =
-                    !AutoAtlasTextureMergePlanner
-                        .PreservesReferenceCopySemantics(
-                            group,
-                            atlasContext.MaterialGroupingCtx,
-                            settings);
-                if (textureUvUnsafe
-                    || generatedPropertyUnsafe
-                    || referenceCopyUnsafe)
-                {
-                    foreach (var rt in compiledTextures.Values.Distinct())
-                        rt.Dispose();
-                    DestroyUnappliedAtlasedMeshes(
-                        atlasResult.AtlasedMeshes!);
-
-                    if (execution.MergeSelection is { } semanticMerge)
-                    {
-                        if (semanticMerge.PackedRegions != null)
-                        {
-                            var reason = textureUvUnsafe
-                                ? FormatLocalized(
-                                    "AutoAtlasTexture:fallback:AtlasExecutionFailed")
-                                : generatedPropertyUnsafe
-                                    ? FormatLocalized(
-                                        "AutoAtlasTexture:fallback:GeneratedPropertyApplicationMismatch")
-                                    : FormatLocalized(
-                                        "AutoAtlasTexture:fallback:ReferenceCopySemanticsMismatch");
-                            twoDimensionalFallbackReasons.Add(
-                                $"groups={string.Join(",", semanticMerge.GroupIds.Select(id => "g" + id))}, "
-                                + $"layout={semanticMerge.PlannedLayoutSize.x}×{semanticMerge.PlannedLayoutSize.y}: "
-                                + reason);
-                        }
-
-                        EnqueueStandaloneFallback(
-                            executionGroups,
-                            semanticMerge,
                             preparedGroups);
                     }
 
@@ -1301,360 +1038,6 @@ namespace net.rs64.TexTransTool.NDMF
         {
             return finalOutputPixels > 0
                 && finalOutputPixels < standaloneBaselinePixels;
-        }
-
-        internal static bool HasUnsafeGeneratedPropertyApplication(
-            IReadOnlyCollection<Material> materials,
-            IReadOnlyDictionary<
-                Material,
-                IReadOnlyDictionary<string, Texture>>
-                propertyTextures,
-            UVChannel atlasTargetUvChannel)
-        {
-            var generatedProperties = materials
-                .Where(propertyTextures.ContainsKey)
-                .SelectMany(material => propertyTextures[material].Keys)
-                .ToHashSet(StringComparer.Ordinal);
-
-            foreach (var material in materials)
-            {
-                if (material == null)
-                    continue;
-
-                propertyTextures.TryGetValue(
-                    material,
-                    out var atlasProperties);
-                var usages =
-                    TTShaderTextureUsageInformationUtil
-                        .GetContainsUVTransformUsage(material);
-
-                foreach (var property in generatedProperties)
-                {
-                    if (!material.HasShaderTextureProperty(property))
-                        continue;
-
-                    var currentTexture = material.GetTexture(property);
-                    if (currentTexture == null
-                        || currentTexture is not Texture2D
-                            and not RenderTexture)
-                    {
-                        // AutoAtlas uses ForceSetTexture=false, so
-                        // GenerateAtlasMat leaves these properties unchanged.
-                        continue;
-                    }
-
-                    if (atlasProperties != null
-                        && atlasProperties.TryGetValue(
-                            property,
-                            out var atlasTexture)
-                        && atlasTexture == currentTexture)
-                    {
-                        continue;
-                    }
-
-                    if (property == "_Bump2ndMap"
-                        && usages.TryGetValue(property, out var usage)
-                        && TTShaderTextureUsageInformationUtil
-                            .RequiresBump2ndOriginalUVPreservation(
-                                property,
-                                usage,
-                                atlasTargetUvChannel))
-                    {
-                        // AtlasTexture intentionally leaves this texture
-                        // untouched and switches it to the preserved original
-                        // UV channel.
-                        continue;
-                    }
-
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        internal static bool HasOtherUvUsageOnTarget(
-            UsingUVChannels usage,
-            UVChannel atlasTargetUvChannel)
-        {
-            var target = atlasTargetUvChannel switch
-            {
-                UVChannel.UV0 => UsingUVChannels.UV0,
-                UVChannel.UV1 => UsingUVChannels.UV1,
-                UVChannel.UV2 => UsingUVChannels.UV2,
-                UVChannel.UV3 => UsingUVChannels.UV3,
-                UVChannel.UV4 => UsingUVChannels.UV4,
-                UVChannel.UV5 => UsingUVChannels.UV5,
-                UVChannel.UV6 => UsingUVChannels.UV6,
-                UVChannel.UV7 => UsingUVChannels.UV7,
-                _ => UsingUVChannels.Unknown,
-            };
-            return (usage & target) != 0;
-        }
-
-        internal static bool HasUnsupportedTextureUvSampling(
-            IReadOnlyCollection<Material> materials,
-            IReadOnlyDictionary<
-                Material,
-                IReadOnlyDictionary<string, Texture>>
-                propertyTextures,
-            UVChannel atlasTargetUvChannel)
-        {
-            foreach (var material in materials)
-            {
-                if (material == null)
-                    continue;
-
-                // The legacy fallback is intentionally sufficient for manual
-                // AtlasTexture only. AutoAtlas needs an actual shader provider
-                // before it can treat an omitted texture property as unused.
-                if (!TTShaderTextureUsageInformationUtil
-                        .HasFullShaderSemanticAnalysis(material))
-                {
-                    return true;
-                }
-
-                propertyTextures.TryGetValue(
-                    material,
-                    out var atlasProperties);
-                var usages =
-                    TTShaderTextureUsageInformationUtil
-                        .GetContainsUVTransformUsage(material);
-                var otherUvUsage =
-                    TTShaderTextureUsageInformationUtil
-                        .GetOtherUVUsage(material);
-                if (HasOtherUvUsageOnTarget(
-                        otherUvUsage,
-                        atlasTargetUvChannel))
-                {
-                    return true;
-                }
-
-                // ITTShaderTextureUsageInformation describes texture sampling,
-                // not every serialized texture reference. A disabled shader
-                // feature may legitimately retain an assigned texture while
-                // omitting it from this usage map.
-                foreach (var property in usages)
-                {
-                    var propertyName = property.Key;
-                    var usage = property.Value;
-                    var texture = material.GetTexture(propertyName);
-                    if (texture == null)
-                        continue;
-
-                    if (usage.UVChannel == UsageUVChannel.Unknown)
-                    {
-                        return true;
-                    }
-
-                    if (usage.UVChannel == UsageUVChannel.NonMesh)
-                    {
-                        continue;
-                    }
-
-                    var usageChannel =
-                        ((int)usage.UVChannel) - 1;
-                    if (usageChannel != (int)atlasTargetUvChannel)
-                    {
-                        continue;
-                    }
-
-                    if (propertyName == "_Bump2ndMap"
-                        && TTShaderTextureUsageInformationUtil
-                            .RequiresBump2ndOriginalUVPreservation(
-                                propertyName,
-                                usage,
-                                atlasTargetUvChannel))
-                    {
-                        continue;
-                    }
-
-                    if (texture is not Texture2D
-                        and not RenderTexture)
-                    {
-                        return true;
-                    }
-
-                    if (!TTShaderTextureUsageInformationUtil
-                            .IsKnownIdentityUVMatrix(usage))
-                    {
-                        return true;
-                    }
-
-                    if (atlasProperties == null
-                        || !atlasProperties.TryGetValue(
-                            propertyName,
-                            out var atlasTexture)
-                        || atlasTexture != texture)
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        internal static bool HasOutOfBoundsTargetUv(
-            IRendererTargeting domain,
-            IReadOnlyCollection<Renderer> targetRenderers,
-            IReadOnlyCollection<Material> targetMaterials,
-            UVChannel atlasTargetUvChannel)
-        {
-            const float epsilon = 1e-6f;
-            var uvBuffer = new List<Vector2>();
-            var indexBuffer = new List<int>();
-
-            foreach (var renderer in targetRenderers)
-            {
-                if (renderer == null)
-                    continue;
-
-                var mesh = domain.GetMesh(renderer);
-                if (mesh == null || mesh.subMeshCount == 0)
-                    continue;
-
-                uvBuffer.Clear();
-                mesh.GetUVs((int)atlasTargetUvChannel, uvBuffer);
-                if (uvBuffer.Count == 0)
-                    continue;
-
-                var materials = domain.GetMaterials(renderer);
-                for (var slot = 0; slot < materials.Length; slot += 1)
-                {
-                    var material = materials[slot];
-                    if (material == null
-                        || !targetMaterials.Contains(material))
-                    {
-                        continue;
-                    }
-
-                    // Unity repeats the final submesh when the renderer has
-                    // more material slots than the mesh has submeshes.
-                    var effectiveSubMesh = Math.Clamp(
-                        slot, 0, mesh.subMeshCount - 1);
-                    if (mesh.GetSubMesh(effectiveSubMesh).indexCount == 0)
-                        continue;
-
-                    indexBuffer.Clear();
-                    mesh.GetIndices(indexBuffer, effectiveSubMesh);
-                    foreach (var vertexIndex in indexBuffer)
-                    {
-                        if (vertexIndex < 0
-                            || vertexIndex >= uvBuffer.Count)
-                        {
-                            return true;
-                        }
-
-                        var uv = uvBuffer[vertexIndex];
-                        if (float.IsNaN(uv.x)
-                            || float.IsInfinity(uv.x)
-                            || float.IsNaN(uv.y)
-                            || float.IsInfinity(uv.y)
-                            || uv.x < -epsilon
-                            || uv.x > 1f + epsilon
-                            || uv.y < -epsilon
-                            || uv.y > 1f + epsilon)
-                        {
-                            // TexTransCore's atlas transfer sampler clamps
-                            // source coordinates. UVs outside 0..1 can change
-                            // Repeat/Mirror sampling after automatic atlasing.
-                            return true;
-                        }
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        internal static bool HasUnsafeVertexIndexUsage(
-            IRendererTargeting domain,
-            IReadOnlyCollection<Renderer> targetRenderers)
-        {
-            foreach (var meshGroup in targetRenderers
-                         .Where(renderer => renderer != null)
-                         .GroupBy(domain.GetMesh))
-            {
-                var mesh = meshGroup.Key;
-                if (mesh == null
-                    || !AtlasMeshSourceContext.RequiresVertexReindexing(
-                        domain, mesh, meshGroup))
-                {
-                    continue;
-                }
-
-                var checkedMaterials = new HashSet<Material>();
-                foreach (var renderer in meshGroup)
-                {
-                    foreach (var material in domain.GetMaterials(renderer)
-                                 .UOfType<Material>())
-                    {
-                        if (!checkedMaterials.Add(material))
-                            continue;
-
-                        if (!TTShaderTextureUsageInformationUtil
-                                .HasFullShaderSemanticAnalysis(material)
-                            || TTShaderTextureUsageInformationUtil
-                                .UsesVertexIndex(material))
-                        {
-                            return true;
-                        }
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        internal static bool HasUnsafePreservedOriginalUvUsage(
-            IRendererTargeting domain,
-            IEnumerable<Renderer> renderers,
-            int preservedUvChannel)
-        {
-            if (preservedUvChannel < 0 || preservedUvChannel > 7)
-                return true;
-
-            var atlasUvChannel = (UVChannel)preservedUvChannel;
-            var materials = renderers
-                .Where(renderer => renderer != null)
-                .SelectMany(domain.GetMaterials)
-                .UOfType<Material>()
-                .Distinct();
-
-            foreach (var material in materials)
-            {
-                if (!TTShaderTextureUsageInformationUtil
-                        .HasFullShaderSemanticAnalysis(material))
-                {
-                    return true;
-                }
-
-                var usages = TTShaderTextureUsageInformationUtil
-                    .GetContainsUVTransformUsage(material);
-                foreach (var usage in usages.Values)
-                {
-                    if (usage.UVChannel == UsageUVChannel.NonMesh)
-                        continue;
-                    if (usage.UVChannel == UsageUVChannel.Unknown)
-                        return true;
-                    if (((int)usage.UVChannel) - 1
-                        == preservedUvChannel)
-                    {
-                        return true;
-                    }
-                }
-
-                if (HasOtherUvUsageOnTarget(
-                        TTShaderTextureUsageInformationUtil
-                            .GetOtherUVUsage(material),
-                        atlasUvChannel))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         internal static void DestroyUnappliedAtlasedMeshes(
