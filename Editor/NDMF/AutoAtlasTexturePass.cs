@@ -610,10 +610,11 @@ namespace net.rs64.TexTransTool.NDMF
                             executionMetrics = metrics;
                             if (execution.MergeSelection is { } mergeSelection)
                             {
-                                // The planner models atomic groups as independently
-                                // valid horizontal bands. Accept only if execution
-                                // stays within both the predicted layout and every
-                                // predicted property-resolution envelope.
+                                // The planner reserves an independently valid
+                                // 2D rectangle for each atomic group. Accept only
+                                // if execution stays within both the predicted
+                                // layout and every predicted property-resolution
+                                // envelope.
                                 if (metrics.OutputTexturePixelCount <= 0
                                     || (mergeSelection.PackedRegions != null
                                         && metrics.LayoutSize.x
