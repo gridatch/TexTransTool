@@ -630,6 +630,116 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void AtlasRendererEligibilityRejectsMeshWithoutSubMeshes()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var mesh = new Mesh();
+            var gameObject = new GameObject("NoSubMeshes");
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.uv = new[]
+                {
+                    Vector2.zero,
+                    Vector2.right,
+                    Vector2.up,
+                };
+                mesh.subMeshCount = 0;
+
+                var filter = gameObject.AddComponent<MeshFilter>();
+                filter.sharedMesh = mesh;
+                var renderer = gameObject.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+
+                Assert.That(
+                    AtlasTexture.IsAtlasAllowedRenderer(renderer),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void AtlasRendererEligibilityRequiresDrawableTriangles()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var mesh = new Mesh();
+            var gameObject = new GameObject("Topology");
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.uv = new[]
+                {
+                    Vector2.zero,
+                    Vector2.right,
+                    Vector2.up,
+                };
+                mesh.subMeshCount = 1;
+
+                var filter = gameObject.AddComponent<MeshFilter>();
+                filter.sharedMesh = mesh;
+                var renderer = gameObject.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+
+                mesh.SetIndices(
+                    System.Array.Empty<int>(),
+                    MeshTopology.Triangles,
+                    0);
+                Assert.That(
+                    AtlasTexture.IsAtlasAllowedRenderer(renderer),
+                    Is.False);
+
+                mesh.SetIndices(
+                    System.Array.Empty<int>(),
+                    MeshTopology.Lines,
+                    0);
+                Assert.That(
+                    AtlasTexture.IsAtlasAllowedRenderer(renderer),
+                    Is.False,
+                    "Even an empty non-triangle submesh is unsupported because AtlasTexture reads every submesh through triangle-only APIs.");
+
+                mesh.SetIndices(
+                    new[] { 0, 1 },
+                    MeshTopology.Lines,
+                    0);
+                Assert.That(
+                    AtlasTexture.IsAtlasAllowedRenderer(renderer),
+                    Is.False);
+
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                Assert.That(
+                    AtlasTexture.IsAtlasAllowedRenderer(renderer),
+                    Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
         public void AutoAtlasRendererEligibilityMatchesManualAtlasDefault()
         {
             var shader = Shader.Find("Hidden/InternalErrorShader");
