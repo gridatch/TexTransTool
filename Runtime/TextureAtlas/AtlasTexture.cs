@@ -453,20 +453,19 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 return null;
             }
 
-            var meshID = atlasContext.NormalizedMeshCtx.Normalized2MeshID[normalizedMesh];
-            var matIDs = targeting.GetMaterials(renderer)
-                .Select(material => material != null
-                    ? atlasContext.MaterialGroupingCtx.GetMaterialGroupID(material)
-                    : -1)
-                .ToArray();
+            var meshID =
+                atlasContext.NormalizedMeshCtx.Normalized2MeshID[
+                    normalizedMesh];
+            var subSet =
+                AtlasSubMeshIndexIDSetContext.BuildAtlasSubSet(
+                    mesh,
+                    targeting.GetMaterials(renderer),
+                    meshID,
+                    targetMaterials: null,
+                    atlasContext.MaterialGroupingCtx);
 
-            var subSet = new AtlasSubMeshIndexID?[matIDs.Length];
-            for (var i = 0; i < subSet.Length; i += 1)
-            {
-                var matID = matIDs[i];
-                if (matID is -1) { subSet[i] = null; }
-                else { subSet[i] = new AtlasSubMeshIndexID(meshID, i, matID); }
-            }
+            if (!subSet.Any(item => item.HasValue))
+                return null;
 
             var identicalSubSetID = atlasContext.AtlasSubMeshIndexSetCtx.AtlasSubSets
                 .FindIndex(candidate =>
@@ -1003,7 +1002,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             foreach (var texKV in atlasTex)
             {
                 if (remapBump2ndUV && texKV.Key == "_Bump2ndMap") { continue; }
-                if (editableTMat.HasTexture(texKV.Key) is false) { continue; }
+                if (editableTMat.HasShaderTextureProperty(texKV.Key) is false) { continue; }
                 var tex = editableTMat.GetTexture(texKV.Key);
                 if (tex == null) { tex = null; }//これは Unity側の Null を C# の Null にしてるやつ
 
@@ -1105,8 +1104,30 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal static bool IsAtlasAllowedRenderer(Renderer item)
         {
             if (item.tag == "EditorOnly") return false;
-            if (item.GetMesh() == null) return false;
-            if (item.GetMesh().uv.Any() == false) return false;
+
+            var mesh = item.GetMesh();
+            if (mesh == null) return false;
+            if (mesh.subMeshCount == 0) return false;
+
+            var hasDrawableTriangles = false;
+            for (var subMeshIndex = 0;
+                 subMeshIndex < mesh.subMeshCount;
+                 subMeshIndex += 1)
+            {
+                var subMesh = mesh.GetSubMesh(subMeshIndex);
+
+                // AtlasMeshSourceContext and MeshData enumerate every submesh
+                // through triangle-only paths. Even an empty non-triangle
+                // submesh is outside that contract.
+                if (subMesh.topology != MeshTopology.Triangles)
+                    return false;
+
+                if (subMesh.indexCount != 0)
+                    hasDrawableTriangles = true;
+            }
+
+            if (!hasDrawableTriangles) return false;
+            if (mesh.uv.Any() == false) return false;
             if (item.sharedMaterials.Length == 0) return false;
             if (item.GetComponent<AtlasExcludeTag>() != null) return false;
 
