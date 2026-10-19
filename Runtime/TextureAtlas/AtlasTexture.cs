@@ -557,6 +557,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 preservedOriginalUVChannel
             );
 
+            ApplyAtlasedMaterialMaps(
+                domain,
+                materialMap,
+                domainsMaterial2ReplaceMaterial);
+        }
+
+        internal static void ApplyAtlasedMaterialMaps(
+            IDomain domain,
+            Dictionary<Material, Material> materialMap,
+            Dictionary<Material, Material> domainsMaterial2ReplaceMaterial)
+        {
             domain.ReplaceMaterials(materialMap);
             domain.RegisterReplaces(domainsMaterial2ReplaceMaterial);
         }
