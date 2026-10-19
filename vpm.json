@@ -381,17 +381,17 @@
           },
           "zipSHA256": "d0a2d0369b99e98229bc6b8329a6328942b376af27171a2a524ea476baca9bf8"
         },
-        "0.1.18+wdt.ttt.1.0.2.debug.904.autoatlas-shader-safety.b62deb1": {
+        "0.1.18+wdt.ttt.1.0.2.debug.905.autoatlas-shader-safety.0bc3118": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.18+wdt.ttt.1.0.2.debug.904.autoatlas-shader-safety.b62deb1",
+          "version": "0.1.18+wdt.ttt.1.0.2.debug.905.autoatlas-shader-safety.0bc3118",
           "unity": "2022.3",
-          "description": "Debug build 904 for autoatlas-shader-safety from fix/autoatlas-shader-safety at b62deb1. Based on WDT 0.1.18+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 905 for autoatlas-shader-safety from fix/autoatlas-shader-safety at 0bc3118. Based on WDT 0.1.18+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.18+wdt.ttt.1.0.2.debug.904.autoatlas-shader-safety.b62deb1.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.18+wdt.ttt.1.0.2.debug.905.autoatlas-shader-safety.0bc3118.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -404,7 +404,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "88857c66989b28e28fa3b0dca3b5affcf33e10ec66866f5db0ddf4d4c2ce9f60"
+          "zipSHA256": "d977db05218d84a3e2ad430e7d9c9b21a3ffffd846b41c96aebe326ab7a7f59c"
         }
       }
     }
