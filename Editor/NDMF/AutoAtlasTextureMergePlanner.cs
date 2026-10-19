@@ -706,7 +706,7 @@ namespace net.rs64.TexTransTool.NDMF
                     foreach (var material in materials)
                     {
                         if (material == null
-                            || !material.HasTexture(targetProperty))
+                            || !material.HasShaderTextureProperty(targetProperty))
                         {
                             continue;
                         }
