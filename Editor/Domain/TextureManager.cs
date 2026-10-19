@@ -437,30 +437,47 @@ namespace net.rs64.TexTransTool
 
         public void Dispose()
         {
-            foreach (var originTex in _originDict.Values)
-                if (AssetDatabase.Contains(originTex) is false)
-                    UnityEngine.Object.DestroyImmediate(originTex);
+            foreach (var pair in _originDict)
+                DestroyOwnedOriginalTexture(pair.Key, pair.Value);
 
             _originDict.Clear();
             _originLoadInfoDict.Clear();
 #if SYSTEM_DRAWING
-            foreach (var task in _asyncOriginLoaders.Values)
+            foreach (var pair in _asyncOriginLoaders)
             {
                 try
                 {
+                    var task = pair.Value;
                     if (!task.Wait(60_000))
                     {
                         // なんか壊れたらEditorが固まらないための安全装置
                         throw new TimeoutException("Async image loader timed out");
                     }
                     var tex = task.Result();
-                    UnityEngine.Object.DestroyImmediate(tex);
+                    DestroyOwnedOriginalTexture(pair.Key, tex);
                 }
                 catch (Exception e) { TTLog.Exception(e); }
             }
             _asyncOriginLoaders.Clear();
             _asyncOriginSize.Clear();
 #endif
+        }
+
+        private static void DestroyOwnedOriginalTexture(
+            Texture2D sourceTexture,
+            Texture2D loadedTexture)
+        {
+            if (loadedTexture == null) { return; }
+
+            // Runtime-generated textures from upstream NDMF plugins (for example
+            // texture compressors) are returned as-is by EditorTextureUtility.
+            // They are borrowed inputs, not temporary textures owned by this
+            // UnityDiskUtil, and must remain alive for materials that still
+            // reference them after TexTransTool finishes.
+            if (ReferenceEquals(sourceTexture, loadedTexture)) { return; }
+
+            if (AssetDatabase.Contains(loadedTexture) is false)
+                UnityEngine.Object.DestroyImmediate(loadedTexture);
         }
 
         internal class UnityDiskTexture : ITTDiskTexture
