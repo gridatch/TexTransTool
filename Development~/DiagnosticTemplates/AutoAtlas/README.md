@@ -34,6 +34,7 @@ Cleanup removed the temporary comparison searches, watched-path/rejection report
 - Physical-pixel padding preservation for 2D merge profiles/execution.
 - Final FineTuning memory revalidation before mutation.
 - Final merge pixel-count revalidation before mutation.
+- AutoAtlas rejects target-material mesh UV coordinates outside the 0..1 range, or non-finite UVs, because TexTransCore atlas transfer clamps source coordinates and cannot prove Repeat/Mirror sampler equivalence automatically.
 - Unknown texture-memory formats fail closed instead of assuming 4 B/px.
 - Generated AutoAtlas materials are checked for retained source-texture references before mutation.
 - Automatic texture sampling is accepted only when shader metadata proves that target-UV sampling uses an identity transform; unknown/legacy channel-only transforms fail closed for AutoAtlas while manual AtlasTexture keeps its existing behavior.
