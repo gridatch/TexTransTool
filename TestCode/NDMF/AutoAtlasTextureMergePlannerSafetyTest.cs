@@ -48,27 +48,38 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             public void GetMaterialTextureUVUsage(
                 ITTTextureUVUsageWriter writer)
             {
-                if (writer is ITTTextureUVTransformUsageWriter transformWriter)
-                {
-                    transformWriter.WriteTextureUVUsage(
-                        "_MainTex",
-                        UsageUVChannel.UV0,
-                        Matrix2x3.Identity);
-                    if (_includeBumpMap)
-                        transformWriter.WriteTextureUVUsage(
-                            "_BumpMap",
-                            _bumpMapUv,
-                            Matrix2x3.Identity);
-                    return;
-                }
-
-                writer.WriteTextureUVUsage(
+                var translator = new MaterialInformationTranslator(writer);
+                translator.RegisterTextureUVUsage(
                     "_MainTex",
-                    UsageUVChannel.UV0);
+                    SamplerStateInformation.LinearRepeatSampler,
+                    UsingUVChannels.UV0,
+                    Matrix2x3.Identity);
                 if (_includeBumpMap)
-                    writer.WriteTextureUVUsage(
+                {
+                    translator.RegisterTextureUVUsage(
                         "_BumpMap",
-                        _bumpMapUv);
+                        SamplerStateInformation.LinearRepeatSampler,
+                        ToUsingUv(_bumpMapUv),
+                        Matrix2x3.Identity);
+                }
+            }
+
+            private static UsingUVChannels ToUsingUv(
+                UsageUVChannel channel)
+            {
+                return channel switch
+                {
+                    UsageUVChannel.UV0 => UsingUVChannels.UV0,
+                    UsageUVChannel.UV1 => UsingUVChannels.UV1,
+                    UsageUVChannel.UV2 => UsingUVChannels.UV2,
+                    UsageUVChannel.UV3 => UsingUVChannels.UV3,
+                    UsageUVChannel.UV4 => UsingUVChannels.UV4,
+                    UsageUVChannel.UV5 => UsingUVChannels.UV5,
+                    UsageUVChannel.UV6 => UsingUVChannels.UV6,
+                    UsageUVChannel.UV7 => UsingUVChannels.UV7,
+                    UsageUVChannel.NonMesh => UsingUVChannels.NonMesh,
+                    _ => UsingUVChannels.Unknown,
+                };
             }
         }
 
@@ -1851,6 +1862,65 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                             UVChannel.UV0),
                     Is.True,
                     "Unknown non-texture UV usage must fail closed.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
+        public void AutoAtlasRequiresFullShaderSemanticAnalysis()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var texture = new Texture2D(4, 4);
+            var material = new Material(shader);
+            try
+            {
+                material.SetTexture("_MainTex", texture);
+                var materials = new HashSet<Material> { material };
+
+                TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                    new LegacyChannelOnlyShaderTextureUsageInformation();
+                var legacyGrouping = new MaterialGroupingContext(
+                    materials,
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+                Assert.That(
+                    TTShaderTextureUsageInformationUtil
+                        .HasFullShaderSemanticAnalysis(material),
+                    Is.False);
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsupportedTextureUvSampling(
+                            materials,
+                            legacyGrouping.ContainsTextureDictionaries,
+                            UVChannel.UV0),
+                    Is.True,
+                    "A legacy texture-only provider cannot prove that raw UV or vertex-index semantics are preserved.");
+
+                TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                    new TestShaderTextureUsageInformation(
+                        includeBumpMap: false,
+                        UsageUVChannel.Unknown);
+                var fullGrouping = new MaterialGroupingContext(
+                    materials,
+                    UVChannel.UV0,
+                    primaryTexturePropertyOrMaximum: null);
+                Assert.That(
+                    TTShaderTextureUsageInformationUtil
+                        .HasFullShaderSemanticAnalysis(material),
+                    Is.True);
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnsupportedTextureUvSampling(
+                            materials,
+                            fullGrouping.ContainsTextureDictionaries,
+                            UVChannel.UV0),
+                    Is.False);
             }
             finally
             {
