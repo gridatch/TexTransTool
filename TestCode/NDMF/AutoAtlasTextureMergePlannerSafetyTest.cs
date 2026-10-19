@@ -66,6 +66,8 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             internal readonly Dictionary<string, Vector4?> VectorValues = new();
             internal readonly Dictionary<string, UsingUVChannels>
                 TextureUvChannels = new();
+            internal readonly Dictionary<string, Matrix2x3?>
+                TextureMatrices = new();
             internal readonly HashSet<string> EnabledKeywords = new();
             internal UsingUVChannels OtherUvUsage;
             internal bool UsesVertexIndex;
@@ -105,6 +107,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Matrix2x3? uvMatrix)
             {
                 TextureUvChannels[textureMaterialPropertyName] = uvChannels;
+                TextureMatrices[textureMaterialPropertyName] = uvMatrix;
             }
 
             public void RegisterVertexIndexUsage()
@@ -392,6 +395,83 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Object.DestroyImmediate(texture);
                 Object.DestroyImmediate(material);
             }
+        }
+
+        [Test]
+        public void LiltoonParallaxMarksMainUvTransformUnknown()
+        {
+            var regular = new LiltoonMaterialInformationProbe();
+            regular.VectorValues["_MainTex_ST"] =
+                new Vector4(1f, 1f, 0f, 0f);
+            regular.VectorValues["_MainTex_ScrollRotate"] = Vector4.zero;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                regular,
+                isOutline: false);
+            Assert.That(
+                regular.TextureMatrices["_MainTex"],
+                Is.Not.Null);
+
+            var parallax = new LiltoonMaterialInformationProbe();
+            parallax.VectorValues["_MainTex_ST"] =
+                new Vector4(1f, 1f, 0f, 0f);
+            parallax.VectorValues["_MainTex_ScrollRotate"] = Vector4.zero;
+            parallax.IntValues["_UseParallax"] = 1;
+
+            LiltoonShaderInformation.GetMaterialInformation(
+                parallax,
+                isOutline: false);
+            Assert.That(
+                parallax.TextureMatrices["_MainTex"],
+                Is.Null);
+        }
+
+        [Test]
+        public void LiltoonDecalModesMarkSubTextureUvTransformUnknown()
+        {
+            LiltoonMaterialInformationProbe CreateProbe()
+            {
+                var probe = new LiltoonMaterialInformationProbe();
+                probe.IntValues["_UseMain2ndTex"] = 1;
+                probe.IntValues["_Main2ndTex_UVMode"] = 0;
+                probe.VectorValues["_Main2ndTex_ST"] =
+                    new Vector4(1f, 1f, 0f, 0f);
+                probe.VectorValues["_Main2ndTex_ScrollRotate"] =
+                    Vector4.zero;
+                probe.FloatValues["_Main2ndTexAngle"] = 0f;
+                probe.VectorValues["_Main2ndTexDecalAnimation"] =
+                    new Vector4(1f, 1f, 1f, 30f);
+                probe.VectorValues["_Main2ndTexDecalSubParam"] =
+                    new Vector4(1f, 1f, 0f, 1f);
+                return probe;
+            }
+
+            var regular = CreateProbe();
+            LiltoonShaderInformation.GetMaterialInformation(
+                regular,
+                isOutline: false);
+            Assert.That(
+                regular.TextureMatrices["_Main2ndTex"],
+                Is.Not.Null);
+
+            var decal = CreateProbe();
+            decal.FloatValues["_Main2ndTexIsDecal"] = 1f;
+            LiltoonShaderInformation.GetMaterialInformation(
+                decal,
+                isOutline: false);
+            Assert.That(
+                decal.TextureMatrices["_Main2ndTex"],
+                Is.Null);
+
+            var animatedAtlas = CreateProbe();
+            animatedAtlas.VectorValues["_Main2ndTexDecalSubParam"] =
+                new Vector4(2f, 1f, 0f, 1f);
+            LiltoonShaderInformation.GetMaterialInformation(
+                animatedAtlas,
+                isOutline: false);
+            Assert.That(
+                animatedAtlas.TextureMatrices["_Main2ndTex"],
+                Is.Null);
         }
 
         [Test]
