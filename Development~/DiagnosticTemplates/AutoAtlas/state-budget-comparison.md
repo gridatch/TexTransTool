@@ -93,7 +93,7 @@ A valid run must make it possible to answer:
 3. Did extra candidates actually improve the final selected plan?
 
 Captured multi-project result:
-- Seiran: 1024=141 candidates; 2048/4096=188; final plan unchanged.
+- Seiran_Test_Atlas: 1024=141 candidates; 2048/4096=188; final plan unchanged.
 - SailorCupid: 1024=6; 2048=26; 4096=31; final plan unchanged.
 - Other benchmark fixtures: no final plan change across tested budgets.
 
