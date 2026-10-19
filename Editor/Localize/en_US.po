@@ -879,3 +879,6 @@ msgstr "atlas mesh normalization would change vertex indices used by the shader"
 
 msgid "AutoAtlasTexture:fallback:TargetUvOutOfBounds"
 msgstr "target atlas UV coordinates extend outside the 0-1 range and source sampler equivalence cannot be proven"
+
+msgid "AutoAtlasTexture:fallback:PreservedUvChannelConflict"
+msgstr "preserved original UV channel UV{0} is used by another shader semantic on the target renderer"
