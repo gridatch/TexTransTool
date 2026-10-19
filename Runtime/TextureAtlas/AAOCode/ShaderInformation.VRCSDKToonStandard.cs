@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 {
-    internal class VRCSDKToonStandardShaderInformation : ITTShaderTextureUsageInformation
+    internal class VRCSDKToonStandardShaderInformation : ITTFullShaderSemanticUsageInformation
     {
         private readonly bool _withOutline;
 
