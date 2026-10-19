@@ -97,9 +97,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
         Material _material;
         readonly HashSet<string> _texturePropertyNames;
         Dictionary<string, TextureUVUsage> _uvUsage = new();
+        private readonly HashSet<string> _queriedMaterialProperties =
+            new(StringComparer.Ordinal);
         private UsingUVChannels _otherUVUsage;
         private bool _usesVertexIndex;
         public IReadOnlyDictionary<string, TextureUVUsage> UVUsageWithTransform => _uvUsage;
+        internal IReadOnlyCollection<string> QueriedMaterialProperties =>
+            _queriedMaterialProperties;
         internal UsingUVChannels OtherUVUsage => _otherUVUsage;
         internal bool UsesVertexIndex => _usesVertexIndex;
         public MaterialUVUsageProvider(Material material)
@@ -109,21 +113,25 @@ namespace net.rs64.TexTransTool.TextureAtlas
         }
         public float GetFloat(string propertyName)
         {
+            _queriedMaterialProperties.Add(propertyName);
             return _material.HasFloat(propertyName) ? _material.GetFloat(propertyName) : 0f;
         }
 
         public int GetInt(string propertyName)
         {
+            _queriedMaterialProperties.Add(propertyName);
             return _material.HasInt(propertyName) ? _material.GetInt(propertyName) : 0;
         }
 
         public int GetInteger(string propertyName)
         {
+            _queriedMaterialProperties.Add(propertyName);
             return _material.HasInteger(propertyName) ? _material.GetInteger(propertyName) : 0;
         }
 
         public Vector4 GetVector(string propertyName)
         {
+            _queriedMaterialProperties.Add(propertyName);
             const string textureSTSuffix = "_ST";
             if (propertyName.EndsWith(textureSTSuffix, StringComparison.Ordinal))
             {
