@@ -508,6 +508,39 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void LiltoonDissolveMode2ReportsRawUv0()
+        {
+            var textureMode = new LiltoonMaterialInformationProbe();
+            textureMode.VectorValues["_DissolveParams"] =
+                new Vector4(1f, 0f, 0.5f, 0.1f);
+            LiltoonShaderInformation.GetMaterialInformation(
+                textureMode,
+                isOutline: false);
+            Assert.That(textureMode.OtherUvUsage, Is.EqualTo(0));
+
+            var uvShapeMode = new LiltoonMaterialInformationProbe();
+            uvShapeMode.VectorValues["_DissolveParams"] =
+                new Vector4(2f, 0f, 0.5f, 0.1f);
+            LiltoonShaderInformation.GetMaterialInformation(
+                uvShapeMode,
+                isOutline: false);
+            Assert.That(
+                uvShapeMode.OtherUvUsage,
+                Is.EqualTo(UsingUVChannels.UV0));
+
+            var layer = new LiltoonMaterialInformationProbe();
+            layer.IntValues["_UseMain2ndTex"] = 1;
+            layer.VectorValues["_Main2ndDissolveParams"] =
+                new Vector4(2f, 0f, 0.5f, 0.1f);
+            LiltoonShaderInformation.GetMaterialInformation(
+                layer,
+                isOutline: false);
+            Assert.That(
+                layer.OtherUvUsage,
+                Is.EqualTo(UsingUVChannels.UV0));
+        }
+
+        [Test]
         public void LiltoonAudioLinkMode2ReportsRawUv0()
         {
             var fragment = new LiltoonMaterialInformationProbe();

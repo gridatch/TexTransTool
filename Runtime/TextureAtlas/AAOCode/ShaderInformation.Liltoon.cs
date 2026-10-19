@@ -111,6 +111,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
                 LIL_GET_SUBTEX("_Main2ndTex", uv2nd);
                 LIL_SAMPLE_2D_WithMat("_Main2ndBlendMask", samp, uvMain, uvMainMatrix);
+                RegisterDissolveShapeUvUsage(
+                    "_Main2ndDissolveParams");
                 lilCalcDissolveWithOrWithoutNoise(
                     UsingUVChannels.UV0,
                     "_Main2ndDissolveMask",
@@ -152,6 +154,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
                 LIL_GET_SUBTEX("_Main3rdTex", uv3rd);
                 LIL_SAMPLE_2D_WithMat("_Main3rdBlendMask", samp, uvMain, uvMainMatrix);
+                RegisterDissolveShapeUvUsage(
+                    "_Main3rdDissolveParams");
                 lilCalcDissolveWithOrWithoutNoise(
                     UsingUVChannels.UV0,
                     "_Main3rdDissolveMask",
@@ -591,6 +595,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 
             if (matInfo.GetVector("_DissolveParams")?.x != 0)
             {
+                RegisterDissolveShapeUvUsage("_DissolveParams");
                 lilCalcDissolveWithOrWithoutNoise(
                     //fd.col.a,
                     //dissolveAlpha,
@@ -884,6 +889,25 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
             {
                 LIL_SAMPLE_2D_WithMat(textureName, "_MainTex", uvChannel,
                     STAndScrollRotateToMatrix($"{textureName}_ST", $"{textureName}_ScrollRotate"));
+            }
+
+            void RegisterDissolveShapeUvUsage(
+                string dissolveParamsProperty)
+            {
+                var dissolveParams =
+                    matInfo.GetVector(dissolveParamsProperty);
+                if (dissolveParams is null)
+                {
+                    matInfo.RegisterOtherUVUsage(
+                        UsingUVChannels.Unknown);
+                    return;
+                }
+
+                // lilCalcDissolve mode 2 evaluates its shape directly from
+                // mesh UV0. Modes 1 and 3 use texture/object-space inputs.
+                if (dissolveParams.Value.x == 2.0f)
+                    matInfo.RegisterOtherUVUsage(
+                        UsingUVChannels.UV0);
             }
 
             void lilCalcDissolveWithOrWithoutNoise(
