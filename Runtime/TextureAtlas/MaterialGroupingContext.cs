@@ -14,18 +14,77 @@ namespace net.rs64.TexTransTool.TextureAtlas
         public readonly IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> ContainsTextureDictionaries;
 
         public readonly string? PrimaryTexturePropertyOrMaximum;
-        public MaterialGroupingContext(HashSet<Material> targetMaterials, UVChannel atlasingTargetUVChannel, string? primaryTexturePropertyOrMaximum)
+        public MaterialGroupingContext(
+            HashSet<Material> targetMaterials,
+            UVChannel atlasingTargetUVChannel,
+            string? primaryTexturePropertyOrMaximum)
+            : this(
+                BuildContainsTextureDictionaries(
+                    targetMaterials,
+                    atlasingTargetUVChannel),
+                primaryTexturePropertyOrMaximum)
         {
-            ContainsTextureDictionaries = targetMaterials
+        }
+
+        internal MaterialGroupingContext(
+            HashSet<Material> targetMaterials,
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>>
+                precomputedContainsTextureDictionaries,
+            string? primaryTexturePropertyOrMaximum)
+            : this(
+                targetMaterials.ToDictionary(
+                    material => material,
+                    material =>
+                        precomputedContainsTextureDictionaries.TryGetValue(
+                            material, out var textures)
+                            ? textures
+                            : (IReadOnlyDictionary<string, Texture>)
+                                new Dictionary<string, Texture>()),
+                primaryTexturePropertyOrMaximum)
+        {
+        }
+
+        private MaterialGroupingContext(
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>>
+                containsTextureDictionaries,
+            string? primaryTexturePropertyOrMaximum)
+        {
+            ContainsTextureDictionaries = containsTextureDictionaries;
+            GroupMaterials = BuildGroups(containsTextureDictionaries);
+            PrimaryTexturePropertyOrMaximum =
+                primaryTexturePropertyOrMaximum;
+        }
+
+        private static IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>>
+            BuildContainsTextureDictionaries(
+                HashSet<Material> targetMaterials,
+                UVChannel atlasingTargetUVChannel)
+        {
+            return targetMaterials
                 .Select(m => (
                     m,
-                    Usage: TTShaderTextureUsageInformationUtil.GetContainsUVTransformUsage(m),
+                    Usage: TTShaderTextureUsageInformationUtil
+                        .GetContainsUVTransformUsage(m),
                     TextureProperties: m.GetTexturePropertyNames().ToHashSet()
                 ))
                 .Select(kv => (
                     kv.m,
-                    kv.Usage.Where(u => (((int)u.Value.UVChannel) - 1) == (int)atlasingTargetUVChannel)
-                        .Where(u => TTShaderTextureUsageInformationUtil.RequiresBump2ndOriginalUVPreservation(u.Key, u.Value, atlasingTargetUVChannel) is false)
+                    kv.Usage
+                        .Where(u =>
+                            (((int)u.Value.UVChannel) - 1)
+                                == (int)atlasingTargetUVChannel)
+                        .Where(u =>
+                            TTShaderTextureUsageInformationUtil
+                                .RequiresBump2ndOriginalUVPreservation(
+                                    u.Key,
+                                    u.Value,
+                                    atlasingTargetUVChannel) is false)
                         .Where(u => kv.TextureProperties.Contains(u.Key))
                         .Select(u => (u.Key, kv.m.GetTexture(u.Key)))
                         .Where(u => u.Item2 != null)
@@ -34,23 +93,46 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             u => u.Item2
                         )
                     )
-                ).ToDictionary(kv => kv.m, kv => kv.Item2 as IReadOnlyDictionary<string, Texture>);
+                )
+                .ToDictionary(
+                    kv => kv.m,
+                    kv => kv.Item2
+                        as IReadOnlyDictionary<string, Texture>);
+        }
 
+        private static GroupMaterial[] BuildGroups(
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>>
+                containsTextureDictionaries)
+        {
             var groupMaterials = new List<GroupMaterial>();
-            foreach (var (keyMat, containsTextures) in ContainsTextureDictionaries)
+            foreach (var (keyMat, containsTextures)
+                     in containsTextureDictionaries)
             {
-                AddGroups(keyMat, containsTextures);
-                void AddGroups(Material keyMat, IReadOnlyDictionary<string, Texture> containsTextures)
+                var added = false;
+                foreach (var group in groupMaterials)
                 {
-                    foreach (var group in groupMaterials)
+                    if (group.Add(keyMat, containsTextures)
+                        is GroupMaterial.AddResult.Success
+                        or GroupMaterial.AddResult.Already)
                     {
-                        if (group.Add(keyMat, containsTextures) is GroupMaterial.AddResult.Success or GroupMaterial.AddResult.Already) { return; }
+                        added = true;
+                        break;
                     }
-                    groupMaterials.Add(new GroupMaterial { { keyMat, containsTextures } });
+                }
+
+                if (!added)
+                {
+                    groupMaterials.Add(
+                        new GroupMaterial
+                        {
+                            { keyMat, containsTextures },
+                        });
                 }
             }
-            GroupMaterials = groupMaterials.ToArray();
-            PrimaryTexturePropertyOrMaximum = primaryTexturePropertyOrMaximum;
+
+            return groupMaterials.ToArray();
         }
 
 
