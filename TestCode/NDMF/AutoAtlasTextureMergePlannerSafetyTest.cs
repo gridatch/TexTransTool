@@ -427,6 +427,40 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Is.EqualTo(UsingUVChannels.UV2));
         }
 
+        [Test]
+        public void LiltoonFurReportsVertexIndexUsage()
+        {
+            var regular = new LiltoonMaterialInformationProbe();
+            LiltoonShaderInformation.GetMaterialInformation(
+                regular,
+                isOutline: false,
+                shaderUsesFurVertexId: false);
+            Assert.That(regular.UsesVertexIndex, Is.False);
+
+            var dedicatedFur = new LiltoonMaterialInformationProbe();
+            LiltoonShaderInformation.GetMaterialInformation(
+                dedicatedFur,
+                isOutline: false,
+                shaderUsesFurVertexId: true);
+            Assert.That(dedicatedFur.UsesVertexIndex, Is.True);
+
+            var multiFur = new LiltoonMaterialInformationProbe();
+            multiFur.IntValues["_TransparentMode"] = 4;
+            LiltoonShaderInformation.GetMaterialInformation(
+                multiFur,
+                isOutline: false,
+                shaderUsesFurVertexId: false);
+            Assert.That(multiFur.UsesVertexIndex, Is.True);
+
+            var multiFurCutout = new LiltoonMaterialInformationProbe();
+            multiFurCutout.IntValues["_TransparentMode"] = 5;
+            LiltoonShaderInformation.GetMaterialInformation(
+                multiFurCutout,
+                isOutline: false,
+                shaderUsesFurVertexId: false);
+            Assert.That(multiFurCutout.UsesVertexIndex, Is.True);
+        }
+
         [TestCase(0, UsingUVChannels.UV0)]
         [TestCase(1, UsingUVChannels.UV1)]
         [TestCase(7, UsingUVChannels.UV7)]

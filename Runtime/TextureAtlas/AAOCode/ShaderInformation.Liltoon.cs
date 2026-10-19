@@ -6,16 +6,38 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 {
     internal class LiltoonShaderInformationWithOutline : ITTShaderTextureUsageInformation
     {
+        private readonly bool _shaderUsesFurVertexId;
+
+        internal LiltoonShaderInformationWithOutline(
+            bool shaderUsesFurVertexId = false)
+        {
+            _shaderUsesFurVertexId = shaderUsesFurVertexId;
+        }
+
         public void GetMaterialTextureUVUsage(ITTTextureUVUsageWriter writer)
         {
-            LiltoonShaderInformation.GetMaterialInformation(new MaterialInformationTranslator(writer), true);
+            LiltoonShaderInformation.GetMaterialInformation(
+                new MaterialInformationTranslator(writer),
+                true,
+                _shaderUsesFurVertexId);
         }
     }
     internal class LiltoonShaderInformationWithOutOutline : ITTShaderTextureUsageInformation
     {
+        private readonly bool _shaderUsesFurVertexId;
+
+        internal LiltoonShaderInformationWithOutOutline(
+            bool shaderUsesFurVertexId = false)
+        {
+            _shaderUsesFurVertexId = shaderUsesFurVertexId;
+        }
+
         public void GetMaterialTextureUVUsage(ITTTextureUVUsageWriter writer)
         {
-            LiltoonShaderInformation.GetMaterialInformation(new MaterialInformationTranslator(writer), false);
+            LiltoonShaderInformation.GetMaterialInformation(
+                new MaterialInformationTranslator(writer),
+                false,
+                _shaderUsesFurVertexId);
         }
     }
     internal class LiltoonShaderInformation
@@ -23,7 +45,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
         // Based on Avatar Optimizer 6a63910a423d5b7d73e726fcccb4940716f5ee0d,
         // with AudioLink fixes 3000aff45f99ca7cb2d073ea01d5f105cd51a4e3 and
         // 126bfe6a55cbae8a35c96dcbf6d11f3b00d7a342.
-        public static void GetMaterialInformation(IMaterialInformationCallbackAbstractionInterface matInfo, bool isOutline)
+        public static void GetMaterialInformation(
+            IMaterialInformationCallbackAbstractionInterface matInfo,
+            bool isOutline,
+            bool shaderUsesFurVertexId = false)
         {
             var uvMain = UsingUVChannels.UV0;
             // var uvMainScaleOffset = "_MainTex_ST";
@@ -594,7 +619,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                 }
             }
 
-            // Fur shader vertex-index handling is registered separately.
+            // Fur geometry uses SV_VertexID to seed _FurRandomize.
+            // Atlas mesh normalization can duplicate/reindex vertices, so this
+            // dependency is observable for AutoAtlas even though AAO may treat
+            // it as noise. Multi selects Fur/FurCutout through modes 4/5.
+            if (shaderUsesFurVertexId
+                || matInfo.GetInt("_TransparentMode") is 4 or 5)
+            {
+                matInfo.RegisterVertexIndexUsage();
+            }
 
             return;
 
