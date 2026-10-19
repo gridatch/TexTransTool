@@ -4,14 +4,14 @@ using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
 {
-    internal class LiltoonShaderInformationWithOutline : ITTShaderTextureUsageInformation
+    internal class LiltoonShaderInformationWithOutline : ITTFullShaderSemanticUsageInformation
     {
         public void GetMaterialTextureUVUsage(ITTTextureUVUsageWriter writer)
         {
             LiltoonShaderInformation.GetMaterialInformation(new MaterialInformationTranslator(writer), true);
         }
     }
-    internal class LiltoonShaderInformationWithOutOutline : ITTShaderTextureUsageInformation
+    internal class LiltoonShaderInformationWithOutOutline : ITTFullShaderSemanticUsageInformation
     {
         public void GetMaterialTextureUVUsage(ITTTextureUVUsageWriter writer)
         {
