@@ -6,6 +6,7 @@ using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
+using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 
@@ -482,6 +483,8 @@ namespace net.rs64.TexTransTool.NDMF
         internal enum CandidateRejectionReason
         {
             None,
+            GeneratedPropertyApplication,
+            ReferenceCopySemantics,
             PixelCount,
             FullResidentMemory,
             Sampling,
@@ -505,7 +508,9 @@ namespace net.rs64.TexTransTool.NDMF
                 TextureCostPlan baseline,
                 TextureCostPlan merged,
                 Vector2Int layoutSize,
-                IReadOnlyDictionary<string, Vector2Int> propertySizes)
+                IReadOnlyDictionary<string, Vector2Int> propertySizes,
+                bool preservesGeneratedPropertyApplication = true,
+                bool preservesReferenceCopySemantics = true)
             {
                 GroupIds = groupIds;
                 Baseline = baseline;
@@ -518,14 +523,18 @@ namespace net.rs64.TexTransTool.NDMF
                     : (float)SavingBytes / baseline.FullResidentBytes;
 
                 RejectionReason =
-                    merged.PixelCount >= baseline.PixelCount
-                        ? CandidateRejectionReason.PixelCount
-                        : merged.FullResidentBytes >= baseline.FullResidentBytes
-                            ? CandidateRejectionReason.FullResidentMemory
-                            : HasSamplingRegression(
-                                baseline, merged, groupIds)
-                                ? CandidateRejectionReason.Sampling
-                                : CandidateRejectionReason.None;
+                    !preservesGeneratedPropertyApplication
+                        ? CandidateRejectionReason.GeneratedPropertyApplication
+                        : !preservesReferenceCopySemantics
+                            ? CandidateRejectionReason.ReferenceCopySemantics
+                            : merged.PixelCount >= baseline.PixelCount
+                                ? CandidateRejectionReason.PixelCount
+                                : merged.FullResidentBytes >= baseline.FullResidentBytes
+                                    ? CandidateRejectionReason.FullResidentMemory
+                                    : HasSamplingRegression(
+                                        baseline, merged, groupIds)
+                                        ? CandidateRejectionReason.Sampling
+                                        : CandidateRejectionReason.None;
 
                 IsAdoptable =
                     RejectionReason == CandidateRejectionReason.None;
@@ -603,6 +612,103 @@ namespace net.rs64.TexTransTool.NDMF
                 MipCount = Math.Max(1, mipCount);
                 FullResidentBytes = CalculateBytes(this);
             }
+        }
+
+        internal static bool PreservesReferenceCopySemantics(
+            IReadOnlyCollection<Material> materials,
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>>
+                propertyTextures,
+            AtlasSetting settings)
+        {
+            if (materials.Count == 0)
+                return true;
+
+            var grouping = new MaterialGroupingContext(
+                materials.ToHashSet(),
+                propertyTextures,
+                primaryTexturePropertyOrMaximum: null);
+            return PreservesReferenceCopySemantics(
+                materials,
+                grouping,
+                settings);
+        }
+
+        internal static bool PreservesReferenceCopySemantics(
+            IReadOnlyCollection<Material> materials,
+            MaterialGroupingContext grouping,
+            AtlasSetting settings)
+        {
+            var referenceCopies = settings.TextureFineTuning
+                .OfType<ReferenceCopy>()
+                .ToArray();
+            if (referenceCopies.Length == 0)
+                return true;
+
+            var generatedProperties =
+                grouping.GetContainsAllProperties();
+
+            foreach (var referenceCopy in referenceCopies)
+            {
+                var sourceProperty =
+                    (string)referenceCopy.SourcePropertyName;
+                if (string.IsNullOrWhiteSpace(sourceProperty)
+                    || !generatedProperties.Contains(sourceProperty))
+                {
+                    continue;
+                }
+
+                foreach (var targetPropertyName
+                         in referenceCopy.TargetPropertyNameList)
+                {
+                    var targetProperty = (string)targetPropertyName;
+                    if (string.IsNullOrWhiteSpace(targetProperty)
+                        || string.Equals(
+                            sourceProperty,
+                            targetProperty,
+                            StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    foreach (var material in materials)
+                    {
+                        if (material == null
+                            || !material.HasTexture(targetProperty))
+                        {
+                            continue;
+                        }
+
+                        var targetTexture =
+                            material.GetTexture(targetProperty);
+                        if (targetTexture == null
+                            || targetTexture is not Texture2D
+                                and not RenderTexture)
+                        {
+                            continue;
+                        }
+
+                        if (!grouping.ContainsTextureDictionaries
+                                .TryGetValue(
+                                    material,
+                                    out var atlasProperties)
+                            || !atlasProperties.TryGetValue(
+                                targetProperty,
+                                out var targetAtlasTexture)
+                            || targetAtlasTexture != targetTexture
+                            || !atlasProperties.TryGetValue(
+                                sourceProperty,
+                                out var sourceAtlasTexture)
+                            || sourceAtlasTexture != targetTexture)
+                        {
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            return true;
         }
 
         internal static PlanResult Plan(
@@ -973,6 +1079,12 @@ namespace net.rs64.TexTransTool.NDMF
                 new Dictionary<GroupLayoutKey, ShadowCostProjection>();
             var candidateCache =
                 new Dictionary<GroupLayoutKey, Candidate>();
+            var mergeSemanticSafetyCache =
+                new Dictionary<
+                    string,
+                    (bool GeneratedPropertyApplication,
+                     bool ReferenceCopy)>(
+                    StringComparer.Ordinal);
 
             ShadowCostProjection GetProjection(
                 int[] ids,
@@ -1018,12 +1130,41 @@ namespace net.rs64.TexTransTool.NDMF
                     return cached;
 
                 var projection = GetProjection(ids, layoutSize);
+                var groupSetKey = string.Join(",", ids);
+                if (!mergeSemanticSafetyCache.TryGetValue(
+                        groupSetKey,
+                        out var semanticSafety))
+                {
+                    var selectedMaterials = ids
+                        .Select(id => byId[id])
+                        .SelectMany(group => group.Materials)
+                        .ToHashSet();
+                    var grouping = new MaterialGroupingContext(
+                        selectedMaterials,
+                        propertyTextures,
+                        primaryTexturePropertyOrMaximum: null);
+                    semanticSafety = (
+                        !AutoAtlasTextureProcessor
+                            .HasUnsafeGeneratedPropertyApplication(
+                                selectedMaterials,
+                                propertyTextures,
+                                settings.AtlasTargetUVChannel),
+                        PreservesReferenceCopySemantics(
+                            selectedMaterials,
+                            grouping,
+                            settings));
+                    mergeSemanticSafetyCache[groupSetKey] =
+                        semanticSafety;
+                }
+
                 var candidate = new Candidate(
                     ids,
                     projection.Baseline,
                     projection.Merged,
                     layoutSize,
-                    projection.PropertySizes);
+                    projection.PropertySizes,
+                    semanticSafety.GeneratedPropertyApplication,
+                    semanticSafety.ReferenceCopy);
                 candidateCache[layoutKey] = candidate;
                 return candidate;
             }
