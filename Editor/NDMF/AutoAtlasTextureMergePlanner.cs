@@ -1211,9 +1211,12 @@ namespace net.rs64.TexTransTool.NDMF
                     projection.Merged,
                     layoutSize,
                     projection.PropertySizes,
-                    semanticSafety.AtomicGroupMapping,
-                    semanticSafety.GeneratedPropertyApplication,
-                    semanticSafety.ReferenceCopy);
+                    preservesAtomicGroupMapping:
+                        semanticSafety.AtomicGroupMapping,
+                    preservesGeneratedPropertyApplication:
+                        semanticSafety.GeneratedPropertyApplication,
+                    preservesReferenceCopySemantics:
+                        semanticSafety.ReferenceCopy);
                 candidateCache[layoutKey] = candidate;
                 return candidate;
             }
