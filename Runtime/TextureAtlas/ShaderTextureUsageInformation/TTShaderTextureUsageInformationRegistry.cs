@@ -47,12 +47,29 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         public static IReadOnlyDictionary<string, TextureUVUsage> GetContainsUVTransformUsage(Material material)
         {
+            return GetMaterialUVUsageProvider(material)
+                .UVUsageWithTransform;
+        }
+
+        internal static UsingUVChannels GetOtherUVUsage(Material material)
+        {
+            return GetMaterialUVUsageProvider(material).OtherUVUsage;
+        }
+
+        internal static bool UsesVertexIndex(Material material)
+        {
+            return GetMaterialUVUsageProvider(material).UsesVertexIndex;
+        }
+
+        private static MaterialUVUsageProvider GetMaterialUVUsageProvider(
+            Material material)
+        {
             if (TTShaderTextureUsageInformationRegistry.s_information.TryGetValue(material.shader, out var info) is false)
                 info = new FallbackShaderTextureUsage();
 
             var provider = new MaterialUVUsageProvider(material);
             info.GetMaterialTextureUVUsage(provider);
-            return provider.UVUsageWithTransform;
+            return provider;
         }
 
         public static bool RequiresBump2ndOriginalUVPreservation(string propertyName, TextureUVUsage usage, UVChannel atlasTargetUVChannel)
@@ -60,6 +77,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
             if (propertyName != "_Bump2ndMap") { return false; }
             if ((((int)usage.UVChannel) - 1) != (int)atlasTargetUVChannel) { return false; }
             return IsIdentityUVMatrix(usage.UVMatrix) is false;
+        }
+
+        public static bool IsKnownIdentityUVMatrix(
+            TextureUVUsage usage)
+        {
+            return usage.UVMatrixExplicitlyReported
+                && IsIdentityUVMatrix(usage.UVMatrix);
         }
 
         public static bool IsIdentityUVMatrix(Matrix2x3? uvMatrix)
@@ -83,6 +107,18 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             public void GetMaterialTextureUVUsage(ITTTextureUVUsageWriter writer)
             {
+                if (writer is ITTTextureUVTransformUsageWriter transformWriter)
+                {
+                    // Unknown shaders keep manual AtlasTexture's conventional
+                    // _MainTex/UV0 eligibility, but AutoAtlas must not assume
+                    // an identity transform that was never reported.
+                    transformWriter.WriteTextureUVUsage(
+                        "_MainTex",
+                        UsageUVChannel.UV0,
+                        null);
+                    return;
+                }
+
                 writer.WriteTextureUVUsage("_MainTex", UsageUVChannel.UV0);
             }
         }

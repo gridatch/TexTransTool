@@ -73,13 +73,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
             {
                 pf.Split(MkR.Key.name);
                 var mesh = MkR.Key;
-                var materialSlotCount = mesh.subMeshCount;
-                foreach (var r in MkR) { materialSlotCount = Mathf.Max(targeting.GetMaterials(r).Length, materialSlotCount); }
+                var materialSlotCount =
+                    GetNormalizedMaterialSlotCount(targeting, mesh, MkR);
+                var requiresVertexReindexing =
+                    RequiresVertexReindexing(mesh, materialSlotCount);
 
-                var isOverSubMesh = materialSlotCount > mesh.subMeshCount;
-                var isCrossSubMesh = IsCrossSubMesh(mesh);
-
-                if (isOverSubMesh is false && isCrossSubMesh is false) { normalizedMesh[mesh] = UnityEngine.Object.Instantiate(mesh); continue; }
+                if (requiresVertexReindexing is false) { normalizedMesh[mesh] = UnityEngine.Object.Instantiate(mesh); continue; }
 
                 // Profiler.BeginSample(MkR.Key.name + "-Normalize");
                 using (new PFScope("Normalizing"))
@@ -88,6 +87,47 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
             return normalizedMesh;
 
+        }
+
+        internal static bool RequiresVertexReindexing(
+            IRendererTargeting targeting,
+            Mesh mesh,
+            IEnumerable<Renderer> renderers)
+        {
+            var materialSlotCount =
+                GetNormalizedMaterialSlotCount(
+                    targeting, mesh, renderers);
+            return RequiresVertexReindexing(
+                mesh, materialSlotCount);
+        }
+
+        private static int GetNormalizedMaterialSlotCount(
+            IRendererTargeting targeting,
+            Mesh mesh,
+            IEnumerable<Renderer> renderers)
+        {
+            var materialSlotCount = mesh.subMeshCount;
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null
+                    || targeting.GetMesh(renderer) != mesh)
+                {
+                    continue;
+                }
+
+                materialSlotCount = Mathf.Max(
+                    targeting.GetMaterials(renderer).Length,
+                    materialSlotCount);
+            }
+            return materialSlotCount;
+        }
+
+        private static bool RequiresVertexReindexing(
+            Mesh mesh,
+            int materialSlotCount)
+        {
+            return materialSlotCount > mesh.subMeshCount
+                || IsCrossSubMesh(mesh);
         }
 
         static bool IsCrossSubMesh(Mesh mesh)

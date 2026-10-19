@@ -27,17 +27,32 @@ namespace net.rs64.TexTransTool.TextureAtlas
     {
         public readonly UsageUVChannel UVChannel;
         public readonly Matrix2x3? UVMatrix;
+        public readonly bool UVMatrixExplicitlyReported;
 
-        public TextureUVUsage(UsageUVChannel uvChannel, Matrix2x3? uvMatrix)
+        public TextureUVUsage(
+            UsageUVChannel uvChannel,
+            Matrix2x3? uvMatrix,
+            bool uvMatrixExplicitlyReported = true)
         {
             UVChannel = uvChannel;
             UVMatrix = uvMatrix;
+            UVMatrixExplicitlyReported = uvMatrixExplicitlyReported;
         }
     }
 
     internal interface ITTTextureUVTransformUsageWriter
     {
         void WriteTextureUVUsage(string propertyName, UsageUVChannel uvChannel, Matrix2x3? uvMatrix);
+    }
+
+    internal interface ITTTextureOtherUVUsageWriter
+    {
+        void WriteOtherUVUsage(UsingUVChannels uvChannels);
+    }
+
+    internal interface ITTVertexIndexUsageWriter
+    {
+        void WriteVertexIndexUsage();
     }
 
     public enum UsageUVChannel
@@ -52,13 +67,27 @@ namespace net.rs64.TexTransTool.TextureAtlas
         UV5 = 6,
         UV6 = 7,
         UV7 = 8,
+
+        /// <summary>
+        /// Sampling that is known not to use mesh UV channels, such as
+        /// screen-space or vertex-color-derived coordinates.
+        /// </summary>
+        NonMesh = 9,
     }
-    class MaterialUVUsageProvider : ITTTextureUVUsageWriter, ITTTextureUVTransformUsageWriter
+    class MaterialUVUsageProvider :
+        ITTTextureUVUsageWriter,
+        ITTTextureUVTransformUsageWriter,
+        ITTTextureOtherUVUsageWriter,
+        ITTVertexIndexUsageWriter
     {
         Material _material;
         readonly HashSet<string> _texturePropertyNames;
         Dictionary<string, TextureUVUsage> _uvUsage = new();
+        private UsingUVChannels _otherUVUsage;
+        private bool _usesVertexIndex;
         public IReadOnlyDictionary<string, TextureUVUsage> UVUsageWithTransform => _uvUsage;
+        internal UsingUVChannels OtherUVUsage => _otherUVUsage;
+        internal bool UsesVertexIndex => _usesVertexIndex;
         public MaterialUVUsageProvider(Material material)
         {
             _material = material;
@@ -103,13 +132,32 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         public void WriteTextureUVUsage(string propertyName, UsageUVChannel uVChannel)
         {
-            WriteTextureUVUsage(propertyName, uVChannel, Matrix2x3.Identity);
+            if (_material.HasTexture(propertyName) is false) { return; }
+            // Preserve the legacy channel-only API for manual AtlasTexture,
+            // while remembering that no transform was actually proven.
+            _uvUsage[propertyName] = new TextureUVUsage(
+                uVChannel,
+                Matrix2x3.Identity,
+                uvMatrixExplicitlyReported: false);
         }
 
         public void WriteTextureUVUsage(string propertyName, UsageUVChannel uVChannel, Matrix2x3? uvMatrix)
         {
             if (_material.HasTexture(propertyName) is false) { return; }
-            _uvUsage[propertyName] = new TextureUVUsage(uVChannel, uvMatrix);
+            _uvUsage[propertyName] = new TextureUVUsage(
+                uVChannel,
+                uvMatrix,
+                uvMatrixExplicitlyReported: true);
+        }
+
+        public void WriteOtherUVUsage(UsingUVChannels uvChannels)
+        {
+            _otherUVUsage |= uvChannels;
+        }
+
+        public void WriteVertexIndexUsage()
+        {
+            _usesVertexIndex = true;
         }
     }
 }

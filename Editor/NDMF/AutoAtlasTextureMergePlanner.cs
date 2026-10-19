@@ -734,7 +734,7 @@ namespace net.rs64.TexTransTool.NDMF
                             || (((int)targetUsage.UVChannel) - 1)
                                 != (int)settings.AtlasTargetUVChannel
                             || !TTShaderTextureUsageInformationUtil
-                                .IsIdentityUVMatrix(targetUsage.UVMatrix))
+                                .IsKnownIdentityUVMatrix(targetUsage))
                         {
                             return false;
                         }
