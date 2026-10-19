@@ -137,6 +137,13 @@ namespace net.rs64.TexTransTool
     }
 
     internal interface ITexTransToolTextureFormat { public (TextureFormat CompressFormat, int Quality) Get(Texture2D texture2D); }
+    internal interface ITexTransToolTextureFormatMemoryEstimate
+    {
+        bool TryGetMemoryEstimateFormat(
+            Texture texture,
+            bool hasAlpha,
+            out TextureFormat format);
+    }
 
     internal class TexTransToolTextureDescriptor
     {
