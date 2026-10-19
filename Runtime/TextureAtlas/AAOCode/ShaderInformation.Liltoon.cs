@@ -538,7 +538,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                 // _OutlineVectorTex SamplerStateInformation.LinearRepeatSampler
                 // UVs _OutlineVectorUVMode main,1,2,3
 
-                switch (matInfo.GetInt("_AudioLinkMask_UVMode"))
+                switch (matInfo.GetInt("_OutlineVectorUVMode"))
                 {
                     case 0:
                         LIL_SAMPLE_2D_WithMat("_OutlineVectorTex", SamplerStateInformation.LinearRepeatSampler, uvMain,
