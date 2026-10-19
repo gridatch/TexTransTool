@@ -61,6 +61,14 @@ namespace net.rs64.TexTransTool.TextureAtlas
             return GetMaterialUVUsageProvider(material).UsesVertexIndex;
         }
 
+        internal static bool HasRegisteredShaderUsageInformation(
+            Material material)
+        {
+            return material.shader != null
+                && TTShaderTextureUsageInformationRegistry.s_information
+                    .ContainsKey(material.shader);
+        }
+
         private static MaterialUVUsageProvider GetMaterialUVUsageProvider(
             Material material)
         {
