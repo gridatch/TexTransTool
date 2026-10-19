@@ -456,6 +456,30 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
+                // AutoAtlas applies every generated property to every target
+                // material exposing that property. Prove that this cannot
+                // overwrite a same-named texture whose sampling was excluded
+                // from the atlas operation.
+                if (HasUnsafeGeneratedPropertyApplication(
+                        group,
+                        propertyTextures,
+                        settings.AtlasTargetUVChannel))
+                {
+                    continue;
+                }
+
+                // ReferenceCopy can create/redirect a property only because a
+                // second atomic group contributes its source property. Keep
+                // standalone fallback valid as well as merged execution.
+                if (!AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            group,
+                            propertyTextures,
+                            settings))
+                {
+                    continue;
+                }
+
                 preparedGroups.Add(new AutoAtlasTextureMergePlanner.PreparedGroup
                 {
                     Id = preparedGroups.Count,
@@ -658,6 +682,48 @@ namespace net.rs64.TexTransTool.NDMF
 
                 using var atlasContext = atlasResult.AtlasContext!;
                 var compiledTextures = atlasResult.CompiledAtlasTextures!;
+
+                var generatedPropertyUnsafe =
+                    HasUnsafeGeneratedPropertyApplication(
+                        group,
+                        atlasContext.MaterialGroupingCtx
+                            .ContainsTextureDictionaries,
+                        settings.AtlasTargetUVChannel);
+                var referenceCopyUnsafe =
+                    !AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            group,
+                            atlasContext.MaterialGroupingCtx,
+                            settings);
+                if (generatedPropertyUnsafe || referenceCopyUnsafe)
+                {
+                    foreach (var rt in compiledTextures.Values.Distinct())
+                        rt.Dispose();
+                    DestroyUnappliedAtlasedMeshes(
+                        atlasResult.AtlasedMeshes!);
+
+                    if (execution.MergeSelection is { } semanticMerge)
+                    {
+                        if (semanticMerge.PackedRegions != null)
+                        {
+                            var reason = generatedPropertyUnsafe
+                                ? "生成Atlasプロパティが対象外テクスチャを上書きする"
+                                : "ReferenceCopyにより統合前と異なるテクスチャ参照になる";
+                            twoDimensionalFallbackReasons.Add(
+                                $"groups={string.Join(",", semanticMerge.GroupIds.Select(id => "g" + id))}, "
+                                + $"layout={semanticMerge.PlannedLayoutSize.x}×{semanticMerge.PlannedLayoutSize.y}: "
+                                + reason);
+                        }
+
+                        EnqueueStandaloneFallback(
+                            executionGroups,
+                            semanticMerge,
+                            preparedGroups);
+                    }
+
+                    continue;
+                }
+
                 var tuningResult = AtlasTexture.DoTextureFinTuning(
                     engine, atlasContext, settings, compiledTextures, null);
 
@@ -802,6 +868,76 @@ namespace net.rs64.TexTransTool.NDMF
                 TTTLog.Info("AutoAtlasTexture:info:RelocateResult",
                     string.Join("\n\n", completed),
                     processingTimer.ElapsedMilliseconds));
+        }
+
+        internal static bool HasUnsafeGeneratedPropertyApplication(
+            IReadOnlyCollection<Material> materials,
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>>
+                propertyTextures,
+            UVChannel atlasTargetUvChannel)
+        {
+            var generatedProperties = materials
+                .Where(propertyTextures.ContainsKey)
+                .SelectMany(material => propertyTextures[material].Keys)
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var material in materials)
+            {
+                if (material == null)
+                    continue;
+
+                propertyTextures.TryGetValue(
+                    material,
+                    out var atlasProperties);
+                var usages =
+                    TTShaderTextureUsageInformationUtil
+                        .GetContainsUVTransformUsage(material);
+
+                foreach (var property in generatedProperties)
+                {
+                    if (!material.HasTexture(property))
+                        continue;
+
+                    var currentTexture = material.GetTexture(property);
+                    if (currentTexture == null
+                        || currentTexture is not Texture2D
+                            and not RenderTexture)
+                    {
+                        // AutoAtlas uses ForceSetTexture=false, so
+                        // GenerateAtlasMat leaves these properties unchanged.
+                        continue;
+                    }
+
+                    if (atlasProperties != null
+                        && atlasProperties.TryGetValue(
+                            property,
+                            out var atlasTexture)
+                        && atlasTexture == currentTexture)
+                    {
+                        continue;
+                    }
+
+                    if (property == "_Bump2ndMap"
+                        && usages.TryGetValue(property, out var usage)
+                        && TTShaderTextureUsageInformationUtil
+                            .RequiresBump2ndOriginalUVPreservation(
+                                property,
+                                usage,
+                                atlasTargetUvChannel))
+                    {
+                        // AtlasTexture intentionally leaves this texture
+                        // untouched and switches it to the preserved original
+                        // UV channel.
+                        continue;
+                    }
+
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static void DestroyUnappliedAtlasedMeshes(
