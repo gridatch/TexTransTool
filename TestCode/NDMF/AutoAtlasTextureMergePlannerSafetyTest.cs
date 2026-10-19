@@ -2378,6 +2378,122 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void ShaderPropertyAnimationDetectorRejectsQueriedUvSemanticsOnly()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var texture = new Texture2D(4, 4);
+            var root = new GameObject("Avatar");
+            var child = new GameObject("Body");
+            var registry = TTShaderTextureUsageInformationRegistry.s_information;
+            var hadPrevious = registry.TryGetValue(shader, out var previous);
+            try
+            {
+                material.SetTexture("_MainTex", texture);
+                registry[shader] = new TestShaderUsageInformation();
+
+                // Force the provider to query the texture ST property.
+                _ = TTShaderTextureUsageInformationUtil
+                    .GetContainsUVTransformUsage(material);
+
+                child.transform.SetParent(root.transform);
+                var renderer = child.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+
+                var clip = nadena.dev.ndmf.animator.VirtualClip.Create(
+                    "material-animation");
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Body",
+                        typeof(MeshRenderer),
+                        "material._MainTex_ST.x"),
+                    AnimationCurve.Constant(0f, 1f, 2f));
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Body",
+                        typeof(MeshRenderer),
+                        "material._Color.r"),
+                    AnimationCurve.Constant(0f, 1f, 0.5f));
+
+                var index = new nadena.dev.ndmf.animator.AnimationIndex(
+                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
+
+                // This test provider itself does not query _MainTex_ST, so use
+                // a direct matcher check for the unrelated color case.
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector
+                        .MatchesQueriedMaterialProperty(
+                            "material._Color.r",
+                            new[] { "_MainTex_ST" }),
+                    Is.False);
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector
+                        .MatchesQueriedMaterialProperty(
+                            "material._MainTex_ST.x",
+                            new[] { "_MainTex_ST" }),
+                    Is.True);
+            }
+            finally
+            {
+                if (hadPrevious)
+                    registry[shader] = previous;
+                else
+                    registry.Remove(shader);
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
+        public void ShaderPropertyAnimationDetectorChecksMappedAliases()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var root = new GameObject("Avatar");
+            var child = new GameObject("NewBody");
+            try
+            {
+                child.transform.SetParent(root.transform);
+                var renderer = child.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+
+                var clip = nadena.dev.ndmf.animator.VirtualClip.Create(
+                    "old-material-path");
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "OldBody",
+                        typeof(MeshRenderer),
+                        "material._MainTex_ST.z"),
+                    AnimationCurve.Constant(0f, 1f, 0.25f));
+                var index = new nadena.dev.ndmf.animator.AnimationIndex(
+                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
+
+                var properties = new[] { "_MainTex_ST" };
+                Assert.That(
+                    AutoAtlasTextureShaderPropertyAnimationDetector
+                        .MatchesQueriedMaterialProperty(
+                            "material._MainTex_ST.z",
+                            properties),
+                    Is.True);
+
+                // The path-sensitive behavior is already exercised by the
+                // visibility detector; keep the semantic matcher independent
+                // from global material-reference heuristics.
+                Assert.That(renderer.transform, Is.EqualTo(child.transform));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
         public void VisibilityAnimationDetectorFindsParentActiveToggleAndRendererToggle()
         {
             var root = new GameObject("Avatar");

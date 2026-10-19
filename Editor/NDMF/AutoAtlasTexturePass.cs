@@ -43,16 +43,13 @@ namespace net.rs64.TexTransTool.NDMF
                 .ToArray();
             var configuration = configurations[0];
             var animationServices =
-                configuration.EnableAdditionalAtlasMerging
-                && configuration.ExcludeVisibilityAnimatedItemsFromTextureMerging
-                    ? context.Extension<AnimatorServicesContext>()
-                    : null;
+                context.Extension<AnimatorServicesContext>();
             AutoAtlasTextureProcessor.Execute(
                 session.Domain,
                 configuration,
                 manualAtlases,
-                animationServices?.AnimationIndex,
-                animationServices?.ObjectPathRemapper,
+                animationServices.AnimationIndex,
+                animationServices.ObjectPathRemapper,
                 context.AvatarRootTransform);
         }
     }
@@ -184,6 +181,103 @@ namespace net.rs64.TexTransTool.NDMF
                 !float.IsNaN(key.value)
                 && !float.IsInfinity(key.value)
                 && (key.value >= 0.5f) != currentValue);
+        }
+    }
+
+    /// <summary>
+    /// Detects animation of material properties that were actually queried
+    /// while proving shader UV/vertex semantics. If one of those values can
+    /// change at runtime, the static AutoAtlas proof is no longer valid.
+    /// </summary>
+    internal static class AutoAtlasTextureShaderPropertyAnimationDetector
+    {
+        internal static bool Detect(
+            AnimationIndex animationIndex,
+            ObjectPathRemapper pathRemapper,
+            IEnumerable<Renderer> renderers,
+            IEnumerable<Material> materials)
+        {
+            return Detect(
+                animationIndex,
+                renderers,
+                materials,
+                transform =>
+                {
+                    pathRemapper.GetVirtualPathForObject(transform);
+                    return pathRemapper.GetAllPathsForObject(transform);
+                });
+        }
+
+        internal static bool Detect(
+            AnimationIndex animationIndex,
+            IEnumerable<Renderer> renderers,
+            IEnumerable<Material> materials,
+            Func<Transform, IEnumerable<string>> pathsForObject)
+        {
+            var queriedProperties = materials
+                .Where(material => material != null)
+                .SelectMany(material =>
+                    TTShaderTextureUsageInformationUtil
+                        .GetQueriedMaterialProperties(material))
+                .Where(property => !string.IsNullOrWhiteSpace(property))
+                .ToHashSet(StringComparer.Ordinal);
+
+            if (queriedProperties.Count == 0)
+                return false;
+
+            foreach (var renderer in renderers.Where(renderer => renderer != null))
+            {
+                var rendererType = renderer.GetType();
+                foreach (var path in pathsForObject(renderer.transform)
+                             .Distinct(StringComparer.Ordinal))
+                {
+                    foreach (var clip in animationIndex.GetClipsForObjectPath(path))
+                    {
+                        foreach (var binding in clip.GetFloatCurveBindings())
+                        {
+                            if (binding.path != path
+                                || binding.type == null
+                                || !binding.type.IsAssignableFrom(rendererType))
+                            {
+                                continue;
+                            }
+
+                            if (MatchesQueriedMaterialProperty(
+                                    binding.propertyName,
+                                    queriedProperties))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool MatchesQueriedMaterialProperty(
+            string? bindingPropertyName,
+            IReadOnlyCollection<string> queriedProperties)
+        {
+            const string prefix = "material.";
+            if (string.IsNullOrEmpty(bindingPropertyName)
+                || !bindingPropertyName.StartsWith(
+                    prefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var materialProperty =
+                bindingPropertyName.Substring(prefix.Length);
+            return queriedProperties.Any(property =>
+                string.Equals(
+                    materialProperty,
+                    property,
+                    StringComparison.Ordinal)
+                || materialProperty.StartsWith(
+                    property + ".",
+                    StringComparison.Ordinal));
         }
     }
 
@@ -438,6 +532,17 @@ namespace net.rs64.TexTransTool.NDMF
                 var atlasRenderers = ResolveAutoAtlasTargetRenderers(
                     domain, configuration, group);
                 if (atlasRenderers.Length == 0)
+                {
+                    continue;
+                }
+
+                if (animationIndex != null
+                    && objectPathRemapper != null
+                    && AutoAtlasTextureShaderPropertyAnimationDetector.Detect(
+                        animationIndex,
+                        objectPathRemapper,
+                        atlasRenderers,
+                        group))
                 {
                     continue;
                 }
