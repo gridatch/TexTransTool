@@ -388,9 +388,15 @@ Later WDT changes hardened safety, canonical texture names, normal-map import, a
 
 Part Atlas is a **standalone Prefab extraction tool**, not an AtlasTexture component workflow.
 
-Current menu entry:
+Current `wdt` menu entry:
 
 `Tools/TexTransTool/WDT/Prefab抽出・アトラス化...`
+
+Accepted UI cleanup in Draft PR #28 changes the display path to:
+
+`Tools/TexTransTool/Prefab抽出・アトラス化 [WDT]`
+
+The `[WDT]` marker is intentionally a suffix so menu sorting follows the original feature name rather than the provenance marker.
 
 Architecture:
 
@@ -619,7 +625,7 @@ Do not cherry-pick or recreate PR #24's conservative conditions simply because t
 
 ## 6.3 Component and execution placement
 
-`AutoAtlasTexture` is a stable component added from the same TTT Hierarchy/GameObject creation path as AtlasTexture.
+`AutoAtlasTexture` is a stable component added from the same TTT Hierarchy/GameObject creation path as AtlasTexture. Accepted UI cleanup in Draft PR #28 displays it there as `TTT AutoAtlasTexture [WDT]`; `[WDT]` is a suffix so the original feature name continues to determine menu sorting, while `AddComponentMenu` / serialized component identity remain unchanged.
 
 It has:
 
