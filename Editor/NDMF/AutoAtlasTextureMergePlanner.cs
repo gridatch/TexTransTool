@@ -659,7 +659,7 @@ namespace net.rs64.TexTransTool.NDMF
             if (referenceCopies.Length == 0)
                 return true;
 
-            var propertiesByGroup = groups
+            var generatedPropertiesByGroup = groups
                 .ToDictionary(
                     group => group.Id,
                     group => group.Materials
@@ -667,7 +667,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .SelectMany(material => propertyTextures[material].Keys)
                         .ToHashSet(StringComparer.Ordinal));
 
-            var mergedProperties = propertiesByGroup.Values
+            var mergedProperties = generatedPropertiesByGroup.Values
                 .SelectMany(properties => properties)
                 .ToHashSet(StringComparer.Ordinal);
 
@@ -694,17 +694,45 @@ namespace net.rs64.TexTransTool.NDMF
                         continue;
                     }
 
-                    foreach (var properties in propertiesByGroup.Values)
+                    foreach (var group in groups)
                     {
-                        // Standalone AutoAtlas would leave this group's target
-                        // property independent because the copy source does not
-                        // exist in the group. A merge must not introduce that
-                        // source from another atomic group and redirect it.
-                        if (properties.Contains(targetProperty)
-                            && !properties.Contains(sourceProperty))
+                        var standaloneGeneratedProperties =
+                            generatedPropertiesByGroup[group.Id];
+
+                        // If this group already generates the copy source,
+                        // standalone AtlasTexture already applies the same
+                        // ReferenceCopy rule. This is not a merge-only change.
+                        if (standaloneGeneratedProperties.Contains(
+                                sourceProperty))
                         {
-                            return false;
+                            continue;
                         }
+
+                        // ReferenceCopy can create a target output even when
+                        // the target itself is not part of the atlased UV
+                        // property set. GenerateAtlasMat then applies that
+                        // output to any material that already has a supported,
+                        // non-null texture in the target property. Detect only
+                        // this concrete merge-introduced rewrite; do not
+                        // revalidate the target property's UV semantics.
+                        var mergeIntroducesTargetRewrite =
+                            group.Materials.Any(material =>
+                            {
+                                if (material == null
+                                    || !material.HasShaderTextureProperty(
+                                        targetProperty))
+                                {
+                                    return false;
+                                }
+
+                                var targetTexture =
+                                    material.GetTexture(targetProperty);
+                                return targetTexture is Texture2D
+                                    or RenderTexture;
+                            });
+
+                        if (mergeIntroducesTargetRewrite)
+                            return false;
                     }
                 }
             }

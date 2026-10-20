@@ -309,10 +309,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                         {
                             ["_MainTex"] = mainTexture,
                         },
-                        [bumpMaterial] = new Dictionary<string, Texture>
-                        {
-                            ["_BumpMap"] = bumpTexture,
-                        },
+                        [bumpMaterial] = new Dictionary<string, Texture>(),
                     };
                 var mainGroup =
                     new AutoAtlasTextureMergePlanner.PreparedGroup
@@ -352,7 +349,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                             propertyTextures,
                             settings),
                     Is.False,
-                    "Merging must not introduce a copy source that redirects another atomic group's target.");
+                    "Merging must not introduce a copy source that rewrites another atomic group's existing target texture, even when that target is not itself atlased.");
             }
             finally
             {
