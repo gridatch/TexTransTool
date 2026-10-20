@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.19+wdt.ttt.1.0.2",
-  "lastDebugSerial": 933,
-  "currentDebugVersion": "0.1.19+wdt.ttt.1.0.2.debug.933.atlas-equivalent-output-sharing.df2a074",
+  "lastDebugSerial": 934,
+  "currentDebugVersion": "0.1.19+wdt.ttt.1.0.2.debug.934.atlas-equivalent-output-sharing.5d92f9a",
   "currentDebugChange": "atlas-equivalent-output-sharing",
   "currentDebugBranch": "fix/atlas-equivalent-output-sharing",
-  "currentDebugCommit": "df2a07417991882ed87796a9b02d7294700a26f1",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.19+wdt.ttt.1.0.2.debug.933.atlas-equivalent-output-sharing.df2a074.zip"
+  "currentDebugCommit": "5d92f9ad831222c5b1a2838a4cc4078908670166",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.19+wdt.ttt.1.0.2.debug.934.atlas-equivalent-output-sharing.5d92f9a.zip"
 }
