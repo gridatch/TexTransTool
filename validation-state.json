@@ -1,5 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.19+wdt.ttt.1.0.2",
-  "lastDebugSerial": 925
+  "lastDebugSerial": 926,
+  "currentDebugVersion": "0.1.19+wdt.ttt.1.0.2.debug.926.atlas-memory-increase-diagnostic.01fc1cd",
+  "currentDebugChange": "atlas-memory-increase-diagnostic",
+  "currentDebugBranch": "fix/atlas-memory-increase-diagnostic",
+  "currentDebugCommit": "01fc1cda6289a192702307ce27b6ab3b696ad4fe",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.19+wdt.ttt.1.0.2.debug.926.atlas-memory-increase-diagnostic.01fc1cd.zip"
 }
