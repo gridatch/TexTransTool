@@ -406,17 +406,17 @@
           },
           "zipSHA256": "e08569bcbc452e30551ed4c4261776d63ff79b824f9e96ea1febe26e18f54d56"
         },
-        "0.1.19+wdt.ttt.1.0.2.debug.932.atlas-equivalent-output-sharing.471e389": {
+        "0.1.19+wdt.ttt.1.0.2.debug.933.atlas-equivalent-output-sharing.df2a074": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.19+wdt.ttt.1.0.2.debug.932.atlas-equivalent-output-sharing.471e389",
+          "version": "0.1.19+wdt.ttt.1.0.2.debug.933.atlas-equivalent-output-sharing.df2a074",
           "unity": "2022.3",
-          "description": "Debug build 932 for atlas-equivalent-output-sharing from fix/atlas-equivalent-output-sharing at 471e389. Based on WDT 0.1.19+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 933 for atlas-equivalent-output-sharing from fix/atlas-equivalent-output-sharing at df2a074. Based on WDT 0.1.19+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.19+wdt.ttt.1.0.2.debug.932.atlas-equivalent-output-sharing.471e389.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.19+wdt.ttt.1.0.2.debug.933.atlas-equivalent-output-sharing.df2a074.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -429,7 +429,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "a2cee714941378c6cef39aed296b53d8909d5dd86526d64f53496c19549fb819"
+          "zipSHA256": "dc3617b71da4c39e1491dff80e64f73f7b46b2b800f557ba0afdf15fd2cf42d4"
         }
       }
     }
