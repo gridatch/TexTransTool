@@ -38,6 +38,22 @@ In particular:
 - the existence of NUnit/EditMode tests is not evidence that they were executed;
 - an old audit branch is not a source of truth merely because it contains apparently stricter checks.
 
+## 1.1 Critical invariants — establish these before interpreting implementation details
+
+These are deliberately repeated here even though later sections explain them in detail.
+
+- **AutoAtlasTexture is normal AtlasTexture + automatic selection + lossless automatic optimization.** It is not a separate shader-compatibility proof system.
+- AutoAtlas-only restrictions require a concrete failure introduced by AutoAtlas itself. Shared AtlasTexture defects belong in shared AtlasTexture.
+- Texture merging may be stricter than standalone AutoAtlas only where merging atomic groups introduces new semantics/costs; failed merged execution falls back to standalone atomic groups.
+- AutoAtlas renderer eligibility follows normal AtlasTexture's default targeting semantics, including `IncludeDisabledRenderer=false`.
+- Lossy texture resizing is opt-in. The old default 512px Resize was removed when property-aware lossless output sizing became shared Atlas behavior.
+- Independently tiled lilToon `_Bump2ndMap` preservation is a shared normal-Atlas rule that predates AutoAtlas.
+- The user-facing total AutoAtlas processing-time log is permanent production behavior, not temporary diagnostic instrumentation.
+- Persistent Bake intentionally updates one stable named output with manifest/GUID preservation and rollback. Part Atlas intentionally creates new versioned standalone generations instead of overwriting an older generation.
+- PR #24 and old rejected-audit branches are investigation history, not current AutoAtlas specification.
+- Archived `Development~/DiagnosticTemplates/AutoAtlas/` files are reconstruction references. Only behavior explicitly classified as permanent remains normative.
+- GitHub package/debug workflow success does not prove Unity compilation, Unity Test Runner/NUnit execution, or visual/runtime correctness.
+
 ## 2. WDT extension map
 
 Relative to upstream `master`, WDT adds or changes these major areas:
