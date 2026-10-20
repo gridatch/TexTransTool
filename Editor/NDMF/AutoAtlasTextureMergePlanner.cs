@@ -1778,17 +1778,23 @@ namespace net.rs64.TexTransTool.NDMF
             var tuningHolders =
                 TexFineTuningUtility.InitTexFineTuningHolders(
                     propertySizes.Keys);
-            foreach (var fineTuning in settings.TextureFineTuning)
-                fineTuning?.AddSetting(tuningHolders);
-
             var selectedMaterials = groups
                 .SelectMany(group => group.Materials)
                 .Where(material => material != null)
                 .Distinct()
                 .ToArray();
+            TexFineTuningUtility.ApplySourceMipMapDefaults(
+                selectedMaterials,
+                propertyTextures,
+                tuningHolders);
+
+            foreach (var fineTuning in settings.TextureFineTuning)
+                fineTuning?.AddSetting(tuningHolders);
+
+            var selectedMaterialsAlreadyResolved = selectedMaterials;
             var automaticCopies =
                 TexFineTuningUtility.AddEquivalentOutputReferenceCopies(
-                    selectedMaterials,
+                    selectedMaterialsAlreadyResolved,
                     propertyTextures,
                     propertySizes,
                     tuningHolders);

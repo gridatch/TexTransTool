@@ -128,6 +128,48 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
             return texFineTuningTargets;
         }
 
+        internal static void ApplySourceMipMapDefaults(
+            IReadOnlyCollection<Material> materials,
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>> propertyTextures,
+            Dictionary<string, TexFineTuningHolder> tuningHolders)
+        {
+            foreach (var pair in tuningHolders)
+            {
+                var hasSource = false;
+                var useMipMap = false;
+                foreach (var material in materials)
+                {
+                    if (!propertyTextures.TryGetValue(
+                            material, out var textures)
+                        || !textures.TryGetValue(pair.Key, out var texture)
+                        || texture == null)
+                    {
+                        continue;
+                    }
+
+                    hasSource = true;
+                    if (!SourceTextureUsesMipMap(texture)) continue;
+                    useMipMap = true;
+                    break;
+                }
+
+                if (hasSource)
+                    pair.Value.Get<MipMapData>().UseMipMap = useMipMap;
+            }
+        }
+
+        private static bool SourceTextureUsesMipMap(Texture texture)
+        {
+            return texture switch
+            {
+                Texture2D texture2D => texture2D.mipmapCount > 1,
+                RenderTexture renderTexture => renderTexture.useMipMap,
+                _ => true,
+            };
+        }
+
         internal static Dictionary<string, string>
             AddEquivalentOutputReferenceCopies(
                 IReadOnlyCollection<Material> materials,

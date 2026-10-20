@@ -76,6 +76,70 @@ namespace net.rs64.TexTransTool.TestCode
         }
 
         [Test]
+        public void SourceMipMapDefaultsPreserveOnlyExistingMipUsage()
+        {
+            var shader = UnityEngine.Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var noMip = new UnityEngine.Texture2D(
+                16, 16, UnityEngine.TextureFormat.RGBA32, false);
+            var withMip = new UnityEngine.Texture2D(
+                16, 16, UnityEngine.TextureFormat.RGBA32, true);
+            var first = new UnityEngine.Material(shader);
+            var second = new UnityEngine.Material(shader);
+            try
+            {
+                first.SetTexture("_MainTex", noMip);
+                second.SetTexture("_MainTex", noMip);
+
+                var materials = new[] { first, second };
+                var propertyTextures =
+                    new System.Collections.Generic.Dictionary<
+                        UnityEngine.Material,
+                        System.Collections.Generic.IReadOnlyDictionary<
+                            string, UnityEngine.Texture>>
+                    {
+                        [first] = new System.Collections.Generic.Dictionary<
+                            string, UnityEngine.Texture>
+                        {
+                            ["_MainTex"] = noMip,
+                        },
+                        [second] = new System.Collections.Generic.Dictionary<
+                            string, UnityEngine.Texture>
+                        {
+                            ["_MainTex"] = noMip,
+                        },
+                    };
+
+                var holders = TexFineTuningUtility
+                    .InitTexFineTuningHolders(new[] { "_MainTex" });
+                TexFineTuningUtility.ApplySourceMipMapDefaults(
+                    materials, propertyTextures, holders);
+                Assert.That(
+                    holders["_MainTex"].Get<MipMapData>().UseMipMap,
+                    Is.False);
+
+                ((System.Collections.Generic.Dictionary<
+                    string, UnityEngine.Texture>)propertyTextures[second])
+                    ["_MainTex"] = withMip;
+                holders = TexFineTuningUtility
+                    .InitTexFineTuningHolders(new[] { "_MainTex" });
+                TexFineTuningUtility.ApplySourceMipMapDefaults(
+                    materials, propertyTextures, holders);
+                Assert.That(
+                    holders["_MainTex"].Get<MipMapData>().UseMipMap,
+                    Is.True);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(first);
+                UnityEngine.Object.DestroyImmediate(second);
+                UnityEngine.Object.DestroyImmediate(noMip);
+                UnityEngine.Object.DestroyImmediate(withMip);
+            }
+        }
+
+        [Test]
         public void StandaloneAtlasSearchIncludesSmallWidths()
         {
             Assert.That(

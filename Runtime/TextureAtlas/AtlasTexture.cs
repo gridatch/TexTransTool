@@ -456,6 +456,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
         {
             var atlasTexFineTuningTargets = TexFineTuningUtility.InitTexFineTuningHolders(compiledAtlasTextures.Keys);
 
+            var sourceMaterials = atlasContext.MaterialGroupingCtx
+                .ContainsTextureDictionaries.Keys.ToArray();
+            TexFineTuningUtility.ApplySourceMipMapDefaults(
+                sourceMaterials,
+                atlasContext.MaterialGroupingCtx.ContainsTextureDictionaries,
+                atlasTexFineTuningTargets);
+
             // AutoTunings
             if (experimentalOptions?.AutoTextureSizeSetting ?? false) SetSizeDataMaxSize(atlasTexFineTuningTargets, atlasContext.MaterialGroupingCtx);
             if (experimentalOptions?.AutoMergeTextureSetting ?? false) DefaultMargeTextureDictTuning(atlasTexFineTuningTargets, atlasContext.MaterialGroupingCtx);
@@ -471,9 +478,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     pair.Value.Hight),
                 StringComparer.Ordinal);
             TexFineTuningUtility.AddEquivalentOutputReferenceCopies(
-                atlasContext.MaterialGroupingCtx.ContainsTextureDictionaries
-                    .Keys
-                    .ToArray(),
+                sourceMaterials,
                 atlasContext.MaterialGroupingCtx.ContainsTextureDictionaries,
                 propertySizes,
                 atlasTexFineTuningTargets);
