@@ -39,6 +39,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal HashSet<Material> Materials = new();
             internal Renderer[] Renderers = Array.Empty<Renderer>();
             internal HashSet<Texture> SourceTextures = new();
+            internal HashSet<Texture> RetainedSourceTextures = new();
             internal long OriginalPixels;
 
             internal AtlasTexture.AtlasExecutionMetrics? StandaloneMetrics;
@@ -49,6 +50,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Dictionary<string, int> PropertyUseCount =
                 new(StringComparer.Ordinal);
             internal TextureCostPlan BaselineCost = TextureCostPlan.Empty;
+            internal TextureCostPlan RetainedSourceCost = TextureCostPlan.Empty;
             internal bool BaselineCostKnown;
         }
 
@@ -811,6 +813,15 @@ namespace net.rs64.TexTransTool.NDMF
                     group.PropertyUseCount[property] = 1;
                 }
 
+                var originalCost = TryBuildOriginalCost(
+                    domain, group, propertyTextures);
+                var retainedSourceCost = TryBuildTextureCost(
+                    domain, group.RetainedSourceTextures);
+                if (originalCost == null || retainedSourceCost == null)
+                    continue;
+
+                group.RetainedSourceCost = retainedSourceCost;
+
                 var standaloneGeneratedCost = BuildGeneratedCost(
                     new[] { group },
                     propertyTextures,
@@ -818,23 +829,22 @@ namespace net.rs64.TexTransTool.NDMF
                     settings,
                     alphaCache,
                     UnknownAlphaAssumption.AssumeAbsent);
+                var standaloneTotalCost = TextureCostPlan.Combine(
+                    new[] { standaloneGeneratedCost, retainedSourceCost });
 
                 if (standaloneGeneratedCost.PixelCount > 0
-                    && standaloneGeneratedCost.PixelCount < group.OriginalPixels)
+                    && standaloneTotalCost.PixelCount < originalCost.PixelCount
+                    && standaloneTotalCost.FullResidentBytes
+                        < originalCost.FullResidentBytes)
                 {
-                    group.BaselineCost = standaloneGeneratedCost;
-                    group.BaselineCostKnown = true;
+                    group.BaselineCost = standaloneTotalCost;
                 }
                 else
                 {
-                    var originalCost = TryBuildOriginalCost(
-                        domain, group, propertyTextures);
-                    if (originalCost != null)
-                    {
-                        group.BaselineCost = originalCost;
-                        group.BaselineCostKnown = true;
-                    }
+                    group.BaselineCost = originalCost;
                 }
+
+                group.BaselineCostKnown = true;
             }
 
             var byId = groups.ToDictionary(group => group.Id);
@@ -1128,13 +1138,17 @@ namespace net.rs64.TexTransTool.NDMF
                 var baseline = TextureCostPlan.Combine(
                     selectedGroups.Select(
                         group => group.BaselineCost));
-                var merged = BuildGeneratedCost(
+                var mergedGenerated = BuildGeneratedCost(
                     selectedGroups,
                     propertyTextures,
                     propertySizes,
                     settings,
                     alphaCache,
                     UnknownAlphaAssumption.AssumePresent);
+                var merged = TextureCostPlan.Combine(
+                    new[] { mergedGenerated }
+                        .Concat(selectedGroups.Select(
+                            group => group.RetainedSourceCost)));
                 var projection = new ShadowCostProjection(
                     baseline,
                     merged,
@@ -1716,6 +1730,32 @@ namespace net.rs64.TexTransTool.NDMF
 
                 return standalone;
             }
+        }
+
+        private static TextureCostPlan? TryBuildTextureCost(
+            IDomain domain,
+            IEnumerable<Texture> textures)
+        {
+            var entries = new List<TextureCostEntry>();
+            foreach (var texture in textures.Distinct())
+            {
+                if (!AtlasTexture.TryGetOriginalTextureCostInfo(
+                        domain,
+                        texture,
+                        out var block,
+                        out var mipCount))
+                {
+                    return null;
+                }
+
+                entries.Add(new TextureCostEntry(
+                    texture.width,
+                    texture.height,
+                    block,
+                    mipCount));
+            }
+
+            return new TextureCostPlan(entries);
         }
 
         private static TextureCostPlan? TryBuildOriginalCost(

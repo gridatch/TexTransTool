@@ -193,17 +193,20 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly HashSet<Material> Materials;
             internal readonly Renderer[] Renderers;
             internal readonly HashSet<Texture> SourceTextures;
+            internal readonly HashSet<Texture> RetainedSourceTextures;
             internal readonly AutoAtlasTextureMergePlanner.MergeSelection? MergeSelection;
 
             internal ExecutionGroup(
                 HashSet<Material> materials,
                 Renderer[] renderers,
                 HashSet<Texture> sourceTextures,
+                HashSet<Texture> retainedSourceTextures,
                 AutoAtlasTextureMergePlanner.MergeSelection? mergeSelection)
             {
                 Materials = materials;
                 Renderers = renderers;
                 SourceTextures = sourceTextures;
+                RetainedSourceTextures = retainedSourceTextures;
                 MergeSelection = mergeSelection;
             }
         }
@@ -225,6 +228,7 @@ namespace net.rs64.TexTransTool.NDMF
                     selected.SelectMany(group => group.Materials).ToHashSet(),
                     selected.SelectMany(group => group.Renderers).Distinct().ToArray(),
                     selected.SelectMany(group => group.SourceTextures).ToHashSet(),
+                    selected.SelectMany(group => group.RetainedSourceTextures).ToHashSet(),
                     selection));
             }
 
@@ -235,6 +239,7 @@ namespace net.rs64.TexTransTool.NDMF
                     prepared.Materials,
                     prepared.Renderers,
                     prepared.SourceTextures,
+                    prepared.RetainedSourceTextures,
                     null));
             }
 
@@ -253,6 +258,7 @@ namespace net.rs64.TexTransTool.NDMF
                     prepared.Materials,
                     prepared.Renderers,
                     prepared.SourceTextures,
+                    prepared.RetainedSourceTextures,
                     null));
             }
         }
@@ -463,18 +469,12 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
-                // A source texture cannot be removed if it is also referenced by a
-                // property outside this atlas operation. The complete source set
-                // must be eligible; otherwise generating an additional atlas can
-                // increase memory usage.
-                if (!ReferencesAreExclusive(
+                var retainedSourceTextures =
+                    FindRetainedSourceTextures(
                         allReferencedMaterials,
                         group,
                         propertyTextures,
-                        texturesToReplace))
-                {
-                    continue;
-                }
+                        texturesToReplace);
 
                 preparedGroups.Add(new AutoAtlasTextureMergePlanner.PreparedGroup
                 {
@@ -482,6 +482,7 @@ namespace net.rs64.TexTransTool.NDMF
                     Materials = group,
                     Renderers = atlasRenderers,
                     SourceTextures = texturesToReplace,
+                    RetainedSourceTextures = retainedSourceTextures,
                     OriginalPixels = texturesToReplace.Sum(texture =>
                         (long)texture.width * texture.height),
                     ExcludedFromTextureMerging = IsExcludedFromTextureMerging(
@@ -1061,29 +1062,38 @@ namespace net.rs64.TexTransTool.NDMF
                 || renderers.Any(excludedRenderers.Contains);
         }
 
-        private static bool ReferencesAreExclusive(
+        internal static HashSet<Texture> FindRetainedSourceTextures(
             HashSet<Material> allReferencedMaterials,
             HashSet<Material> group,
-            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>> propertyTextures,
             HashSet<Texture> replacedTextures)
         {
+            var retained = new HashSet<Texture>();
             foreach (var material in allReferencedMaterials)
             {
                 var isTarget = group.Contains(material);
-                propertyTextures.TryGetValue(material, out var atlasProperties);
-                // Reuse TTT's shader-aware property enumeration. The old
-                // implementation only saw renderer materials and could overlook
-                // materials referenced exclusively by animations.
+                propertyTextures.TryGetValue(
+                    material, out var atlasProperties);
+
+                // A texture remains resident when any reference is outside the
+                // exact property rewrite performed for this atlas group.
                 foreach (var property in material.GetTextureReferences())
                 {
                     if (!replacedTextures.Contains(property.Value)) continue;
-                    if (!isTarget || atlasProperties == null ||
-                        !atlasProperties.TryGetValue(property.Key, out var atlasTexture) ||
-                        atlasTexture != property.Value)
-                        return false;
+                    if (!isTarget
+                        || atlasProperties == null
+                        || !atlasProperties.TryGetValue(
+                            property.Key, out var atlasTexture)
+                        || atlasTexture != property.Value)
+                    {
+                        retained.Add(property.Value);
+                    }
                 }
             }
-            return true;
+
+            return retained;
         }
 
         private static List<HashSet<Material>> MakeTextureConnectedGroups(
