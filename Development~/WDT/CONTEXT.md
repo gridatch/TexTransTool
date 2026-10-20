@@ -1278,6 +1278,7 @@ This is not a debugging diary. It maps every substantive commit in the current W
 - `69e9dcdb` — shared material/mesh hardening, including effective/empty submesh handling.
 - `c6faee4b` — preserve borrowed runtime texture ownership.
 - `d530ac7b` — user-facing normal Atlas texture-memory before/after reporting.
+- Equivalent-output sharing validation (PR #30): `Seiran_Test_Atlas` removed one redundant 2048² `_OutlineTex` output (`4.1 MiB -> 6.8 MiB` became `4.1 MiB -> 4.1 MiB`), and `Seiran_SailorCupid` / `Mat_Skirt_White_Blue_custom` changed to `2.0 MiB -> 1.0 MiB`, matching its 50% resolution-area reduction.
 - `19d8632d` / PR #26 — concrete lilToon selector corrections.
 - `0df70359` / PR #26 — safe preflight for physically impossible NFDH candidates.
 
