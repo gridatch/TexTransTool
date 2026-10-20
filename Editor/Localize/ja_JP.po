@@ -168,7 +168,7 @@ msgid "AutoAtlasTexture:prop:ExcludeVisibilityAnimatedItemsFromTextureMerging"
 msgstr "オンオフ可能なアイテムは統合しない"
 
 msgid "AutoAtlasTexture:prop:TextureMergingExcludedRenderers"
-msgstr "テクスチャ統合から除外するRenderer"
+msgstr "テクスチャ統合から除外するレンダラー"
 
 msgid "AutoAtlasTexture:prop:TextureMergingExcludedMaterials"
 msgstr "テクスチャ統合から除外するマテリアル"
@@ -195,7 +195,7 @@ msgid "AtlasTexture:button:BakeAtlas"
 msgstr "アトラス化をベイク"
 
 msgid "AtlasTexture:button:BakeAtlas:tooltip"
-msgstr "AtlasTextureの処理結果をMesh / Material / Texture Assetとして生成し、現在の対象Rendererへ反映します。GameObjectやその他のComponentは維持されます。"
+msgstr "AtlasTextureの処理結果をMesh / Material / Texture Assetとして生成し、現在の対象レンダラーへ反映します。GameObjectやその他のComponentは維持されます。"
 
 msgid "AtlasTexture:label:BakeSection"
 msgstr "アトラス化をベイク"
@@ -204,10 +204,10 @@ msgid "AtlasTexture:prop:BakeName"
 msgstr "ベイク名"
 
 msgid "AtlasTexture:label:BakeTargetRenderers"
-msgstr "ベイク対象Renderer ({0}/{1})"
+msgstr "ベイク対象レンダラー ({0}/{1})"
 
 msgid "AtlasTexture:info:NoBakeTargetRenderers"
-msgstr "現在選択されているマテリアルとAtlas設定に一致するベイク対象Rendererはありません。"
+msgstr "現在選択されているマテリアルとAtlas設定に一致するベイク対象レンダラーはありません。"
 
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "リフレッシュマテリアル"
@@ -809,7 +809,7 @@ msgid "TextureSelector:prop:SelectTexturePreview"
 msgstr "選択テクスチャーのプレビュー"
 
 msgid "AutoAtlasTexture:fallback:RendererSetChanged"
-msgstr "実行時のAtlasTexture対象Renderer集合が計画時と一致しない"
+msgstr "実行時のAtlasTexture対象レンダラー集合が計画時と一致しない"
 
 msgid "AutoAtlasTexture:fallback:ActiveUntransformedConsumer"
 msgstr "現在アクティブなMaterial共有先の一部へ対応するAtlas Mesh/UV変換を適用できない"
@@ -824,7 +824,7 @@ msgid "AutoAtlasTexture:fallback:AtlasExecutionFailed"
 msgstr "DoAtlasTextureが失敗（配置・サイズ判定の詳細未取得）"
 
 msgid "AutoAtlasTexture:fallback:RequiredMeshResolutionFailed"
-msgstr "必要なアトラス化MeshをRendererに解決できない: {0}"
+msgstr "必要なアトラス化Meshをレンダラーに解決できない: {0}"
 
 msgid "AutoAtlasTexture:fallback:GeneratedPropertyApplicationMismatch"
 msgstr "統合後のアトラスプロパティが、このアトラス向けに変換されていないMaterialのテクスチャプロパティを上書きする"

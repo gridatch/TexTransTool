@@ -74,7 +74,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private const float RightPaneMinWidth = 560f;
         private const float InspectorPaneMinWidth = 300f;
 
-        [MenuItem("Tools/TexTransTool/WDT/Prefab抽出・アトラス化...")]
+        [MenuItem("Tools/TexTransTool/Prefab抽出・アトラス化 [WDT]")]
         private static void OpenFromMenu()
         {
             Open();
@@ -266,6 +266,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private void DrawLegacyPanels()
         {
+            // Own only the IMGUI layout state this window depends on. Keep
+            // GUI.skin / EditorStyles untouched so Unity theme and user style
+            // customizations continue to flow through.
+            using var guiState = PartAtlasGuiStateScope.Enter();
+
             EnsureAtlasSettings();
             EnsureHierarchyView();
 
@@ -577,6 +582,80 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
         }
 
+        private readonly struct PartAtlasGuiStateScope : IDisposable
+        {
+            private readonly float _labelWidth;
+            private readonly float _fieldWidth;
+            private readonly bool _hierarchyMode;
+            private readonly int _indentLevel;
+            private readonly bool _showMixedValue;
+
+            private PartAtlasGuiStateScope(
+                float labelWidth,
+                float fieldWidth,
+                bool hierarchyMode,
+                int indentLevel,
+                bool showMixedValue
+            )
+            {
+                _labelWidth = labelWidth;
+                _fieldWidth = fieldWidth;
+                _hierarchyMode = hierarchyMode;
+                _indentLevel = indentLevel;
+                _showMixedValue = showMixedValue;
+            }
+
+            internal static PartAtlasGuiStateScope Enter()
+            {
+                var scope = new PartAtlasGuiStateScope(
+                    EditorGUIUtility.labelWidth,
+                    EditorGUIUtility.fieldWidth,
+                    EditorGUIUtility.hierarchyMode,
+                    EditorGUI.indentLevel,
+                    EditorGUI.showMixedValue
+                );
+
+                // Reset layout state that can persist across IMGUI drawing.
+                // Do not reset GUI.skin / EditorStyles or color state here.
+                EditorGUIUtility.labelWidth = 0f;
+                EditorGUIUtility.fieldWidth = 0f;
+                EditorGUIUtility.hierarchyMode = false;
+                EditorGUI.indentLevel = 0;
+                EditorGUI.showMixedValue = false;
+
+                return scope;
+            }
+
+            public void Dispose()
+            {
+                EditorGUI.showMixedValue = _showMixedValue;
+                EditorGUI.indentLevel = _indentLevel;
+                EditorGUIUtility.hierarchyMode = _hierarchyMode;
+                EditorGUIUtility.fieldWidth = _fieldWidth;
+                EditorGUIUtility.labelWidth = _labelWidth;
+            }
+        }
+
+        private readonly struct WideLabelScope : IDisposable
+        {
+            private readonly float _previousLabelWidth;
+
+            internal WideLabelScope(float contentWidth)
+            {
+                _previousLabelWidth = EditorGUIUtility.labelWidth;
+                EditorGUIUtility.labelWidth = Mathf.Clamp(
+                    contentWidth - 60f,
+                    150f,
+                    320f
+                );
+            }
+
+            public void Dispose()
+            {
+                EditorGUIUtility.labelWidth = _previousLabelWidth;
+            }
+        }
+
         private bool DrawMediumSectionFoldout(bool expanded, string title)
         {
             var rect = EditorGUILayout.GetControlRect(
@@ -770,7 +849,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             var keptCount = _entries.Count(entry => entry.Keep);
             EditorGUILayout.LabelField(
-                $"抽出するRenderer（{keptCount}/{_entries.Count}）",
+                $"抽出するレンダラー（{keptCount}/{_entries.Count}）",
                 MediumSectionLabelStyle
             );
 
@@ -807,7 +886,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (unknownUnchecked > 0)
                 {
                     EditorGUILayout.HelpBox(
-                        "用途が「不明」でチェックの入っていないRendererが "
+                        "用途が「不明」でチェックの入っていないレンダラーが "
                         + unknownUnchecked
                         + " 件あります。用途推定は名前からの推定なので、必要なものが混じっていないか確認してください。",
                         MessageType.Warning
@@ -830,7 +909,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         EditorGUILayout.HelpBox(
                             "残すSkinnedMeshRendererのうち "
                             + unreadableEntries.Length
-                            + " 件でMeshのRead/Writeが無効です。松川ツールはそのRendererについてBone Weightを読めないため、ボーン配列の全ボーンを残します。",
+                            + " 件でMeshのRead/Writeが無効です。松川ツールはそのレンダラーについてBone Weightを読めないため、ボーン配列の全ボーンを残します。",
                             MessageType.Warning
                         );
 
@@ -1081,7 +1160,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 else
                 {
                     EditorGUILayout.HelpBox(
-                        "現在の抽出対象RendererにはMaterialがありません。",
+                        "現在の抽出対象レンダラーにはMaterialがありません。",
                         MessageType.Info
                     );
                 }
@@ -1102,8 +1181,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (_atlasSettings == null || _atlasSettingsObject == null)
                 return;
 
-            var previousLabelWidth = BeginWideLabels(contentWidth);
-            try
+            using (new WideLabelScope(contentWidth))
             {
                 _atlasSettingsObject.Update();
 
@@ -1188,10 +1266,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     _atlasSettingsObject.UpdateIfRequiredOrScript();
                 }
             }
-            finally
-            {
-                EditorGUIUtility.labelWidth = previousLabelWidth;
-            }
 
             EditorGUILayout.Space(4f);
         }
@@ -1207,59 +1281,52 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (!_showOptions) return;
 
             using (new InspectorIndentScope(contentWidth))
+            using (new WideLabelScope(contentWidth))
             {
-                var previousLabelWidth = BeginWideLabels(contentWidth);
-                try
-                {
-                    EditorGUI.BeginChangeCheck();
+                EditorGUI.BeginChangeCheck();
 
-                    _options.BoneMode = (MatsukawaBoneMode)EditorGUILayout.Popup(
-                        "残すボーン",
-                        (int)_options.BoneMode,
-                        new[]
-                        {
-                            "ウェイトのあるボーンだけ残す（推奨）",
-                            "メッシュが参照しているボーンは全部残す",
-                        }
-                    );
-
-                    if (_options.BoneMode == MatsukawaBoneMode.WeightedOnly)
+                _options.BoneMode = (MatsukawaBoneMode)EditorGUILayout.Popup(
+                    "残すボーン",
+                    (int)_options.BoneMode,
+                    new[]
                     {
-                        _options.WeightThreshold = EditorGUILayout.Slider(
-                            new GUIContent(
-                                "ウェイトのしきい値",
-                                "これ以下のウェイトしか持たないボーンは使っていないと見なします。"
-                            ),
-                            _options.WeightThreshold,
-                            0f,
-                            0.01f
-                        );
+                        "ウェイトのあるボーンだけ残す（推奨）",
+                        "メッシュが参照しているボーンは全部残す",
                     }
+                );
 
-                    _options.KeepPhysBoneChains = EditorGUILayout.Toggle(
-                        "PhysBoneのチェーンとコライダーを残す",
-                        _options.KeepPhysBoneChains
-                    );
-                    _options.KeepReferencedObjects = EditorGUILayout.Toggle(
-                        "参照されているオブジェクトを残す",
-                        _options.KeepReferencedObjects
-                    );
-                    _options.ProtectOtherComponents = EditorGUILayout.Toggle(
-                        "他のコンポーネント付きは削除しない",
-                        _options.ProtectOtherComponents
-                    );
-                    _options.KeepHumanoidBones = EditorGUILayout.Toggle(
-                        "Humanoidボーンは常に残す",
-                        _options.KeepHumanoidBones
-                    );
-
-                    if (EditorGUI.EndChangeCheck())
-                        InvalidateAnalysis();
-                }
-                finally
+                if (_options.BoneMode == MatsukawaBoneMode.WeightedOnly)
                 {
-                    EditorGUIUtility.labelWidth = previousLabelWidth;
+                    _options.WeightThreshold = EditorGUILayout.Slider(
+                        new GUIContent(
+                            "ウェイトのしきい値",
+                            "これ以下のウェイトしか持たないボーンは使っていないと見なします。"
+                        ),
+                        _options.WeightThreshold,
+                        0f,
+                        0.01f
+                    );
                 }
+
+                _options.KeepPhysBoneChains = EditorGUILayout.Toggle(
+                    "PhysBoneのチェーンとコライダーを残す",
+                    _options.KeepPhysBoneChains
+                );
+                _options.KeepReferencedObjects = EditorGUILayout.Toggle(
+                    "参照されているオブジェクトを残す",
+                    _options.KeepReferencedObjects
+                );
+                _options.ProtectOtherComponents = EditorGUILayout.Toggle(
+                    "他のコンポーネント付きは削除しない",
+                    _options.ProtectOtherComponents
+                );
+                _options.KeepHumanoidBones = EditorGUILayout.Toggle(
+                    "Humanoidボーンは常に残す",
+                    _options.KeepHumanoidBones
+                );
+
+                if (EditorGUI.EndChangeCheck())
+                    InvalidateAnalysis();
             }
 
             EditorGUILayout.Space(4f);
@@ -1300,7 +1367,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 );
                 EditorGUILayout.LabelField("解析結果", EditorStyles.boldLabel);
                 EditorGUILayout.LabelField(
-                    $"オブジェクト {total} → {after} / 削除Renderer {_analysis.DeleteRendererCount} / Trim {_analysis.TrimTargetCount}",
+                    $"オブジェクト {total} → {after} / 削除レンダラー {_analysis.DeleteRendererCount} / Trim {_analysis.TrimTargetCount}",
                     EditorStyles.wordWrappedLabel
                 );
 
@@ -1546,7 +1613,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (atlasRequested && automaticTargets.Length == 0)
             {
                 EditorGUILayout.HelpBox(
-                    "選択したMaterialを使用する抽出対象Rendererに、アトラス化可能なRendererがありません。",
+                    "選択したMaterialを使用する抽出対象レンダラーに、アトラス化可能なレンダラーがありません。",
                     MessageType.Warning
                 );
             }
@@ -1585,7 +1652,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (atlasRequested)
             {
                 confirm +=
-                    "\nアトラス化するRenderer: "
+                    "\nアトラス化するレンダラー: "
                     + atlasCount
                     + " 件";
             }
@@ -1594,7 +1661,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (unknownUnchecked > 0)
             {
                 confirm +=
-                    "\n\n⚠ 用途が「不明」でチェックの入っていないRendererが "
+                    "\n\n⚠ 用途が「不明」でチェックの入っていないレンダラーが "
                     + unknownUnchecked
                     + " 件あります。残すべきものが混じっていないか確認してください。";
             }
@@ -2043,17 +2110,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _rendererLinkHighlightObject = transform.gameObject;
             _rendererLinkHighlightUntil = EditorApplication.timeSinceStartup + 0.75d;
             Repaint();
-        }
-
-        private static float BeginWideLabels(float contentWidth)
-        {
-            var previous = EditorGUIUtility.labelWidth;
-            EditorGUIUtility.labelWidth = Mathf.Clamp(
-                contentWidth - 60f,
-                150f,
-                320f
-            );
-            return previous;
         }
 
         private bool IsAvatarSource()
