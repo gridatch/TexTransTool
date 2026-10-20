@@ -1128,6 +1128,7 @@ This map exists so a maintainer auditing one feature knows where cross-cutting b
 - `Runtime/TextureAtlas/AtlasSetting.cs`
 - `Runtime/TextureAtlas/AtlasSetting.AutoSize.cs`
 - `Runtime/TextureAtlas/AtlasTexture.cs`
+- `Runtime/TextureAtlas/AtlasTexture.BakeSettings.cs`
 - `Runtime/TextureAtlas/AtlasTexture.ExecutionOptions.cs`
 - `Runtime/TextureAtlas/AtlasTexture.Memory.cs`
 - `Runtime/TextureAtlas/AtlasTextureResolutionPlan.cs`
