@@ -261,7 +261,8 @@ AutoAtlas merge cost projection must model the same sharing rule; otherwise stan
 Validated reproduction:
 - `Seiran_Test_Atlas`: redundant 2048² `_OutlineTex` output was removed; `4.1 MiB -> 6.8 MiB` became `4.1 MiB -> 4.1 MiB`.
 - `Seiran_SailorCupid` / `Mat_Skirt_White_Blue_custom`: `2.0 MiB -> 1.0 MiB`, matching the 50% output-area reduction.
-- User smoke/visual validation reported no behavioral or visual issue before the final conservative UV-equivalence guard was added. Final Unity compilation/smoke validation of that guard remains pending until PR #30 is re-tested.
+- PR #30 merged to `wdt` as merge commit `383b12ea9145a0ca86a5ededb6bfb82840446bea`, preserving the implementation and regression-test commits.
+- User confirmed Unity compilation and smoke/visual validation after the final conservative UV-equivalence guard; no behavioral or visual issue was observed.
 
 ## 3.9 Resolution and memory reporting
 
