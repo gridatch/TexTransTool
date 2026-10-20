@@ -398,6 +398,8 @@ Accepted UI cleanup in Draft PR #28 changes the display path to:
 
 The `[WDT]` marker is intentionally a suffix so menu sorting follows the original feature name rather than the provenance marker.
 
+Validation: the suffix menu placement and Part Atlas UI hardening from Draft PR #28 were confirmed in Unity by the user on 2026-10-20; compilation, display, and basic operation were reported working.
+
 Architecture:
 
 1. user selects a Project Prefab Asset;
