@@ -692,7 +692,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var normalizedHeight = Mathf.NextPowerOfTwo(requiredPixels);
             return Mathf.Clamp(normalizedHeight, 4, atlasTextureSize);
         }
-        internal static readonly int[] AutoAtlasTextureSizeCandidates = { 256, 512, 1024, 2048, 4096 };
+        internal static readonly int[] AutoAtlasTextureSizeCandidates =
+            { 64, 128, 256, 512, 1024, 2048, 4096 };
 
         static Vector2Int GetAtlasTextureSize(AtlasSetting atlasSetting)
         {
@@ -746,11 +747,18 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             IslandTransform[]? selectedIslands = null;
             IslandRelocationManager.RelocateResult? selectedResult = null;
-            var maxCandidateSize = AutoAtlasTextureSizeCandidates[AutoAtlasTextureSizeCandidates.Length - 1];
-            var selectedSize = new Vector2Int(maxCandidateSize, maxCandidateSize);
+            var maxCandidateSize =
+                AutoAtlasTextureSizeCandidates[
+                    AutoAtlasTextureSizeCandidates.Length - 1];
+            var selectedSize =
+                new Vector2Int(maxCandidateSize, maxCandidateSize);
             long totalRelocationTime = 0;
 
-            foreach (var size in AutoAtlasTextureSizeCandidates)
+            var pivotIndex = Array.IndexOf(
+                AutoAtlasTextureSizeCandidates, 256);
+            Debug.Assert(pivotIndex >= 0);
+
+            bool Probe(int size)
             {
                 var candidateSize = new Vector2Int(size, size);
                 var (candidateIslands, candidateResult) = IslandProcessing(
@@ -767,10 +775,29 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 selectedSize = candidateSize;
                 selectedIslands = candidateIslands;
                 selectedResult = candidateResult;
+                return IsLosslessRelocation(candidateResult);
+            }
 
-                if (IsLosslessRelocation(candidateResult))
+            if (Probe(AutoAtlasTextureSizeCandidates[pivotIndex]))
+            {
+                for (var index = pivotIndex - 1; index >= 0; index -= 1)
                 {
-                    break;
+                    if (!Probe(AutoAtlasTextureSizeCandidates[index]))
+                    {
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                for (var index = pivotIndex + 1;
+                     index < AutoAtlasTextureSizeCandidates.Length;
+                     index += 1)
+                {
+                    if (Probe(AutoAtlasTextureSizeCandidates[index]))
+                    {
+                        break;
+                    }
                 }
             }
 

@@ -28,6 +28,8 @@ namespace net.rs64.TexTransTool.NDMF
         // only bound cheap integer-DP state retention, not expensive atlas probes.
         private const int ShadowPackingStatesPerHost = 1024;
         private const int PackingGridUnit = 256;
+        internal static readonly int[] AutoAtlasMergeHostWidthCandidates =
+            { 256, 512, 1024, 2048, 4096 };
         private const double Epsilon = 1e-8;
 
         internal sealed class PreparedGroup
@@ -1357,7 +1359,7 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             foreach (var targetWidth in
-                     AtlasTexture.AutoAtlasTextureSizeCandidates)
+                     AutoAtlasMergeHostWidthCandidates)
             {
                 if (targetWidth < PackingGridUnit
                     || targetWidth % PackingGridUnit != 0)
@@ -1695,7 +1697,7 @@ namespace net.rs64.TexTransTool.NDMF
                         // execution converts that padding into final-atlas UV
                         // units from the reserved region width.
                         foreach (var atlasWidth in
-                                 AtlasTexture.AutoAtlasTextureSizeCandidates)
+                                 AutoAtlasMergeHostWidthCandidates)
                         {
                             if (atlasWidth <= size) continue;
                             group.TwoDimensionalProfileHeights[

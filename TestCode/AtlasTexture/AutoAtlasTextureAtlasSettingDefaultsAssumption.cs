@@ -75,6 +75,14 @@ namespace net.rs64.TexTransTool.TestCode
                 actualFineTuning);
         }
 
+        [Test]
+        public void StandaloneAtlasSearchIncludesSmallWidths()
+        {
+            Assert.That(
+                AtlasTexture.AutoAtlasTextureSizeCandidates,
+                Is.EqualTo(new[] { 64, 128, 256, 512, 1024, 2048, 4096 }));
+        }
+
         [TestCase(512, 512, 2048, 2048, 2048, 2048, 512, 512)]
         [TestCase(512, 512, 2048, 2048, 512, 512, 128, 128)]
         [TestCase(512, 512, 2048, 2048, 256, 256, 64, 64)]
