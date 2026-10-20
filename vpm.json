@@ -406,17 +406,17 @@
           },
           "zipSHA256": "e08569bcbc452e30551ed4c4261776d63ff79b824f9e96ea1febe26e18f54d56"
         },
-        "0.1.19+wdt.ttt.1.0.2.debug.926.atlas-memory-increase-diagnostic.01fc1cd": {
+        "0.1.19+wdt.ttt.1.0.2.debug.927.atlas-memory-increase-diagnostic.14492eb": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.19+wdt.ttt.1.0.2.debug.926.atlas-memory-increase-diagnostic.01fc1cd",
+          "version": "0.1.19+wdt.ttt.1.0.2.debug.927.atlas-memory-increase-diagnostic.14492eb",
           "unity": "2022.3",
-          "description": "Debug build 926 for atlas-memory-increase-diagnostic from fix/atlas-memory-increase-diagnostic at 01fc1cd. Based on WDT 0.1.19+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 927 for atlas-memory-increase-diagnostic from fix/atlas-memory-increase-diagnostic at 14492eb. Based on WDT 0.1.19+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.19+wdt.ttt.1.0.2.debug.926.atlas-memory-increase-diagnostic.01fc1cd.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.19+wdt.ttt.1.0.2.debug.927.atlas-memory-increase-diagnostic.14492eb.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -429,7 +429,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "5a321d43bdd0853a1051879f6b595277bb09bef2636f59d7cdf3f4c705de95e1"
+          "zipSHA256": "17a1949bdcb87ed1e270d47bb34f4f298a77edf238d34d7670543e2c8545f326"
         }
       }
     }
