@@ -464,6 +464,20 @@ namespace net.rs64.TexTransTool.TextureAtlas
             foreach (var fineTuning in atlasSetting.TextureFineTuning) { fineTuning?.AddSetting(atlasTexFineTuningTargets); }
             if (experimentalOptions is not null) IndividualTuningAddSettings(atlasTexFineTuningTargets, experimentalOptions.TextureIndividualFineTuning);
 
+            var propertySizes = compiledAtlasTextures.ToDictionary(
+                pair => pair.Key,
+                pair => new Vector2Int(
+                    pair.Value.Width,
+                    pair.Value.Hight),
+                StringComparer.Ordinal);
+            TexFineTuningUtility.AddEquivalentOutputReferenceCopies(
+                atlasContext.MaterialGroupingCtx.ContainsTextureDictionaries
+                    .Keys
+                    .ToArray(),
+                atlasContext.MaterialGroupingCtx.ContainsTextureDictionaries,
+                propertySizes,
+                atlasTexFineTuningTargets);
+
             var tunedAtlasTextures = TexFineTuningUtility.ProcessingTextureFineTuning(engine, atlasTexFineTuningTargets, compiledAtlasTextures);
             return tunedAtlasTextures;
         }

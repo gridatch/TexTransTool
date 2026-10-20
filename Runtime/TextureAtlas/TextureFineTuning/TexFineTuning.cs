@@ -30,6 +30,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
     {
         Dictionary<Type, ITuningData> _tuningDataDict;
         internal TexFineTuningHolder() { _tuningDataDict = new(); }
+        internal IEnumerable<Type> TuningDataTypes => _tuningDataDict.Keys;
 
         internal TuningData? Find<TuningData>() where TuningData : class, ITuningData, new()
         {
@@ -125,6 +126,289 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
                 texKv.Value.Set(new TextureCompressionTuningData());
             }
             return texFineTuningTargets;
+        }
+
+        internal static Dictionary<string, string>
+            AddEquivalentOutputReferenceCopies(
+                IReadOnlyCollection<Material> materials,
+                IReadOnlyDictionary<
+                    Material,
+                    IReadOnlyDictionary<string, Texture>> propertyTextures,
+                IReadOnlyDictionary<string, Vector2Int> propertySizes,
+                Dictionary<string, TexFineTuningHolder> tuningHolders)
+        {
+            var uvUsages = materials.ToDictionary(
+                material => material,
+                TTShaderTextureUsageInformationUtil
+                    .GetContainsUVTransformUsage);
+
+            return AddEquivalentOutputReferenceCopies(
+                materials,
+                propertyTextures,
+                uvUsages,
+                propertySizes,
+                tuningHolders);
+        }
+
+        internal static Dictionary<string, string>
+            AddEquivalentOutputReferenceCopies(
+                IReadOnlyCollection<Material> materials,
+                IReadOnlyDictionary<
+                    Material,
+                    IReadOnlyDictionary<string, Texture>> propertyTextures,
+                IReadOnlyDictionary<
+                    Material,
+                    IReadOnlyDictionary<string, TextureUVUsage>> uvUsages,
+                IReadOnlyDictionary<string, Vector2Int> propertySizes,
+                Dictionary<string, TexFineTuningHolder> tuningHolders)
+        {
+            var automaticCopies =
+                new Dictionary<string, string>(StringComparer.Ordinal);
+
+            var mergeParticipants =
+                new HashSet<string>(StringComparer.Ordinal);
+            foreach (var tuning in tuningHolders)
+            {
+                var merge = tuning.Value.Find<MergeTextureData>();
+                if (merge == null
+                    || string.IsNullOrWhiteSpace(merge.MargeParent))
+                {
+                    continue;
+                }
+
+                mergeParticipants.Add(tuning.Key);
+                mergeParticipants.Add(merge.MargeParent);
+            }
+
+            var existingReferenceSources = tuningHolders
+                .Select(pair => pair.Value.Find<ReferenceCopyData>()?.CopySource)
+                .Where(source => !string.IsNullOrWhiteSpace(source))
+                .Select(source => source!)
+                .ToHashSet(StringComparer.Ordinal);
+
+            var candidates = propertySizes.Keys
+                .Where(tuningHolders.ContainsKey)
+                .Where(property => IsEquivalentOutputCandidate(
+                    property,
+                    tuningHolders[property],
+                    mergeParticipants))
+                .OrderBy(property =>
+                    existingReferenceSources.Contains(property) ? 0 : 1)
+                .ThenBy(property =>
+                    string.Equals(
+                        property, "_MainTex",
+                        StringComparison.Ordinal) ? 0 : 1)
+                .ThenBy(property => property, StringComparer.Ordinal)
+                .ToArray();
+
+            var canonicalProperties = new List<string>();
+            foreach (var property in candidates)
+            {
+                var source = canonicalProperties.FirstOrDefault(candidate =>
+                    AreEquivalentAtlasOutputs(
+                        candidate,
+                        property,
+                        materials,
+                        propertyTextures,
+                        uvUsages,
+                        propertySizes,
+                        tuningHolders));
+
+                if (source == null)
+                {
+                    canonicalProperties.Add(property);
+                    continue;
+                }
+
+                tuningHolders[property]
+                    .Get<ReferenceCopyData>()
+                    .CopySource = source;
+                automaticCopies[property] = source;
+            }
+
+            return automaticCopies;
+        }
+
+        private static bool IsEquivalentOutputCandidate(
+            string property,
+            TexFineTuningHolder holder,
+            HashSet<string> mergeParticipants)
+        {
+            if (mergeParticipants.Contains(property))
+                return false;
+
+            var referenceCopy = holder.Find<ReferenceCopyData>();
+            if (referenceCopy != null
+                && !string.IsNullOrWhiteSpace(referenceCopy.CopySource))
+            {
+                return false;
+            }
+
+            // Pixel-changing or output-removing tunings are deliberately
+            // outside this first sharing optimization. Sharing is limited to
+            // outputs whose pixels are produced by the same atlas rendering
+            // path and whose descriptor-only tunings are equivalent.
+            if (holder.Find<DiscardAlphaChannelData>() != null
+                || holder.Find<SizeData>() != null
+                || holder.Find<RemoveData>() != null)
+            {
+                return false;
+            }
+
+            foreach (var type in holder.TuningDataTypes)
+            {
+                if (type == typeof(MipMapData)
+                    || type == typeof(TextureCompressionTuningData)
+                    || type == typeof(ColorSpaceData)
+                    || type == typeof(ReferenceCopyData)
+                    || type == typeof(MergeTextureData))
+                {
+                    continue;
+                }
+
+                // A future/unknown tuning may change either pixels or the
+                // resulting descriptor. Do not silently share across it.
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool AreEquivalentAtlasOutputs(
+            string leftProperty,
+            string rightProperty,
+            IReadOnlyCollection<Material> materials,
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, Texture>> propertyTextures,
+            IReadOnlyDictionary<
+                Material,
+                IReadOnlyDictionary<string, TextureUVUsage>> uvUsages,
+            IReadOnlyDictionary<string, Vector2Int> propertySizes,
+            Dictionary<string, TexFineTuningHolder> tuningHolders)
+        {
+            if (!propertySizes.TryGetValue(leftProperty, out var leftSize)
+                || !propertySizes.TryGetValue(rightProperty, out var rightSize)
+                || leftSize != rightSize)
+            {
+                return false;
+            }
+
+            foreach (var material in materials)
+            {
+                Texture? leftTexture = null;
+                Texture? rightTexture = null;
+                if (propertyTextures.TryGetValue(
+                        material, out var properties))
+                {
+                    properties.TryGetValue(
+                        leftProperty, out leftTexture);
+                    properties.TryGetValue(
+                        rightProperty, out rightTexture);
+                }
+
+                if (!ReferenceEquals(leftTexture, rightTexture))
+                    return false;
+
+                if (leftTexture == null)
+                    continue;
+
+                if (!uvUsages.TryGetValue(material, out var usages)
+                    || !usages.TryGetValue(
+                        leftProperty, out var leftUsage)
+                    || !usages.TryGetValue(
+                        rightProperty, out var rightUsage)
+                    || !AreEquivalentTextureUvUsages(
+                        leftUsage, rightUsage))
+                {
+                    return false;
+                }
+            }
+
+            return HaveEquivalentFineTuning(
+                tuningHolders[leftProperty],
+                tuningHolders[rightProperty],
+                leftSize);
+        }
+
+        internal static bool AreEquivalentTextureUvUsages(
+            TextureUVUsage left,
+            TextureUVUsage right)
+        {
+            if (left.UVChannel != right.UVChannel)
+                return false;
+
+            if (left.UVMatrix is not { } leftMatrix
+                || right.UVMatrix is not { } rightMatrix)
+            {
+                // A null matrix means the transform could not be described
+                // statically. Equality is not proven even when both are null.
+                return false;
+            }
+
+            return Mathf.Approximately(leftMatrix.M00, rightMatrix.M00)
+                && Mathf.Approximately(leftMatrix.M01, rightMatrix.M01)
+                && Mathf.Approximately(leftMatrix.M02, rightMatrix.M02)
+                && Mathf.Approximately(leftMatrix.M10, rightMatrix.M10)
+                && Mathf.Approximately(leftMatrix.M11, rightMatrix.M11)
+                && Mathf.Approximately(leftMatrix.M12, rightMatrix.M12);
+        }
+
+        private static bool HaveEquivalentFineTuning(
+            TexFineTuningHolder left,
+            TexFineTuningHolder right,
+            Vector2Int initialSize)
+        {
+            var leftColorSpace =
+                left.Find<ColorSpaceData>()?.AsLinear ?? false;
+            var rightColorSpace =
+                right.Find<ColorSpaceData>()?.AsLinear ?? false;
+            if (leftColorSpace != rightColorSpace)
+                return false;
+
+            var leftMipMap = left.Find<MipMapData>();
+            var rightMipMap = right.Find<MipMapData>();
+            var leftUseMipMap = leftMipMap?.UseMipMap ?? true;
+            var rightUseMipMap = rightMipMap?.UseMipMap ?? true;
+            if (leftUseMipMap != rightUseMipMap)
+                return false;
+
+            var leftMipAlgorithm =
+                leftMipMap?.MipMapGenerateAlgorithm
+                ?? ITexTransToolForUnity.DS_ALGORITHM_DEFAULT;
+            var rightMipAlgorithm =
+                rightMipMap?.MipMapGenerateAlgorithm
+                ?? ITexTransToolForUnity.DS_ALGORITHM_DEFAULT;
+            if (!string.Equals(
+                    leftMipAlgorithm,
+                    rightMipAlgorithm,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var leftCompression =
+                left.Find<TextureCompressionTuningData>();
+            var rightCompression =
+                right.Find<TextureCompressionTuningData>();
+
+            if ((leftCompression?.FormatQualityValue
+                    ?? FormatQuality.Normal)
+                    != (rightCompression?.FormatQualityValue
+                        ?? FormatQuality.Normal)
+                || (leftCompression?.UseOverride ?? false)
+                    != (rightCompression?.UseOverride ?? false)
+                || (leftCompression?.OverrideTextureFormat
+                    ?? TextureFormat.BC7)
+                    != (rightCompression?.OverrideTextureFormat
+                        ?? TextureFormat.BC7)
+                || (leftCompression?.CompressionQuality ?? 50)
+                    != (rightCompression?.CompressionQuality ?? 50))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         public static TexFineTuningResult ProcessingTextureFineTuning(ITexTransToolForUnity engine, Dictionary<string, TexFineTuningHolder> tuningHolder, Dictionary<string, ITTRenderTexture> atlasedTextures)
