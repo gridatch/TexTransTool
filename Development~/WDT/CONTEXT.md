@@ -392,13 +392,13 @@ Current `wdt` menu entry:
 
 `Tools/TexTransTool/WDT/Prefab抽出・アトラス化...`
 
-Accepted UI cleanup in Draft PR #28 changes the display path to:
+Merged UI cleanup from PR #28 changed the display path to:
 
 `Tools/TexTransTool/Prefab抽出・アトラス化 [WDT]`
 
 The `[WDT]` marker is intentionally a suffix so menu sorting follows the original feature name rather than the provenance marker.
 
-Validation: the suffix menu placement and Part Atlas UI hardening from Draft PR #28 were confirmed in Unity by the user on 2026-10-20; compilation, display, and basic operation were reported working.
+Validation: the suffix menu placement and Part Atlas UI hardening from PR #28 were confirmed in Unity by the user on 2026-10-20; compilation, display, and basic operation were reported working. PR #28 was then merged into `wdt` as merge commit `01fc1cda6289a192702307ce27b6ab3b696ad4fe`.
 
 Architecture:
 
@@ -627,7 +627,7 @@ Do not cherry-pick or recreate PR #24's conservative conditions simply because t
 
 ## 6.3 Component and execution placement
 
-`AutoAtlasTexture` is a stable component added from the same TTT Hierarchy/GameObject creation path as AtlasTexture. Accepted UI cleanup in Draft PR #28 displays it there as `TTT AutoAtlasTexture [WDT]`; `[WDT]` is a suffix so the original feature name continues to determine menu sorting, while `AddComponentMenu` / serialized component identity remain unchanged.
+`AutoAtlasTexture` is a stable component added from the same TTT Hierarchy/GameObject creation path as AtlasTexture. Merged UI cleanup from PR #28 displays it there as `TTT AutoAtlasTexture [WDT]`; `[WDT]` is a suffix so the original feature name continues to determine menu sorting, while `AddComponentMenu` / serialized component identity remain unchanged.
 
 It has:
 
