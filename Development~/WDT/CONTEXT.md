@@ -1334,4 +1334,5 @@ Before changing WDT behavior:
 8. do not describe package workflow success as Unity compilation/test success;
 9. keep user-facing Japanese terminology `テクスチャ統合`; do not introduce `追加統合` as a UI/product term;
 10. when a new design decision changes one of these invariants, update this file in the **same feature change**, not later as a handoff cleanup.
+11. maintenance of this document is an implementation responsibility: update, correct, reorganize, and prune it as needed without requesting separate user approval for documentation-only maintenance, provided the changes faithfully reflect accepted implementation/design state and do not change product behavior.
 
