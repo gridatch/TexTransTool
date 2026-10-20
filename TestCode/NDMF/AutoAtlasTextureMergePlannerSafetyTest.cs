@@ -4,6 +4,7 @@ using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
+using net.rs64.TexTransTool.TextureAtlas.IslandRelocator;
 using net.rs64.TexTransTool.Utils;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
