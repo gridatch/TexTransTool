@@ -103,6 +103,29 @@ namespace net.rs64.TexTransTool.TestCode
                 new UnityEngine.Vector2Int(expectedWidth, expectedHeight)));
         }
 
+        [TestCase(1024, 512, 2048, 2048, 2048, 1024, 1024, 256)]
+        [TestCase(1024, 512, 2048, 2048, 1024, 2048, 512, 512)]
+        public void PropertyResolutionMinimizesAxesIndependently(
+            int layoutWidth,
+            int layoutHeight,
+            int primaryWidth,
+            int primaryHeight,
+            int sourceWidth,
+            int sourceHeight,
+            int expectedWidth,
+            int expectedHeight)
+        {
+            var result = CalculatePropertySize(
+                new UnityEngine.Vector2Int(layoutWidth, layoutHeight),
+                autoSize: true,
+                new UnityEngine.Vector2Int?(new UnityEngine.Vector2Int(
+                    primaryWidth, primaryHeight)),
+                new UnityEngine.Vector2Int(sourceWidth, sourceHeight));
+
+            Assert.That(result, Is.EqualTo(
+                new UnityEngine.Vector2Int(expectedWidth, expectedHeight)));
+        }
+
         [Test]
         public void PropertyResolutionUsesLargestRequirementAcrossGroups()
         {
