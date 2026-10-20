@@ -4,6 +4,7 @@ using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
+using net.rs64.TexTransTool.TextureAtlas.IslandRelocator;
 using net.rs64.TexTransTool.Utils;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
@@ -87,6 +88,63 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             Assert.That(
                 probe.TextureUvChannels["_OutlineVectorTex"],
                 Is.EqualTo(UsingUVChannels.UV2));
+        }
+
+        [Test]
+        public void NfdhOversizedIslandsFailWithoutInvokingBrokenSort()
+        {
+            var islands = new[]
+            {
+                new net.rs64.TexTransCore.UVIsland.IslandTransform
+                {
+                    Size = new System.Numerics.Vector2(4f, 3f),
+                },
+                new net.rs64.TexTransCore.UVIsland.IslandTransform
+                {
+                    Size = new System.Numerics.Vector2(0.5f, 0.25f),
+                },
+            };
+
+            Assert.That(
+                IslandRelocationManager.IsGuaranteedNfdhFailure(
+                    islands,
+                    targetHeight: 1f,
+                    padding: 0.01f),
+                Is.True);
+
+            Assert.DoesNotThrow(() =>
+            {
+                var result = IslandRelocationManager.RelocateSafely(
+                    new net.rs64.TexTransCore.UVIsland.NFDHPlasFC(),
+                    new net.rs64.TexTransCore.UVIsland.RelocationContext(
+                        1f,
+                        0.01f),
+                    islands);
+                Assert.That(result.IsSuccess, Is.False);
+            });
+        }
+
+        [Test]
+        public void NfdhPreflightAllowsFitCapableIslands()
+        {
+            var islands = new[]
+            {
+                new net.rs64.TexTransCore.UVIsland.IslandTransform
+                {
+                    Size = new System.Numerics.Vector2(0.4f, 0.2f),
+                },
+                new net.rs64.TexTransCore.UVIsland.IslandTransform
+                {
+                    Size = new System.Numerics.Vector2(0.25f, 0.1f),
+                },
+            };
+
+            Assert.That(
+                IslandRelocationManager.IsGuaranteedNfdhFailure(
+                    islands,
+                    targetHeight: 1f,
+                    padding: 0.01f),
+                Is.False);
         }
 
         [Test]

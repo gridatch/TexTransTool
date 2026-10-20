@@ -61,8 +61,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.IslandRelocator
             if (ForceSizePriority is false)
             {
                 relocateResult.IslandRelocationResult =
-                    _islandRelocator.Relocation(
-                        relocationContext, workVirtualIslands);
+                    RelocateSafely(
+                        _islandRelocator,
+                        relocationContext,
+                        workVirtualIslands);
                 RestoreWorkVirtualIslandOrder();
                 if (relocateResult.IslandRelocationResult.IsSuccess)
                     return;
@@ -84,7 +86,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.IslandRelocator
                     relocateResult.PriorityDownScale = 0;
                     VirtualIslandCopy(workVirtualIslands, minPrioritySizeRect);
 
-                    relocateResult.IslandRelocationResult = _islandRelocator.Relocation(relocationContext, workVirtualIslands);
+                    relocateResult.IslandRelocationResult = RelocateSafely(_islandRelocator, relocationContext, workVirtualIslands);
                     RestoreWorkVirtualIslandOrder();
                     if (relocateResult.IslandRelocationResult.IsSuccess) { return; }
                 }
@@ -94,7 +96,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.IslandRelocator
                     {
                         VirtualIslandLerp(workVirtualIslands, minPrioritySizeRect, virtualIslandBackUp, lerpValue);
 
-                        relocateResult.IslandRelocationResult = _islandRelocator.Relocation(relocationContext, workVirtualIslands);
+                        relocateResult.IslandRelocationResult = RelocateSafely(_islandRelocator, relocationContext, workVirtualIslands);
                         RestoreWorkVirtualIslandOrder();
                         if (relocateResult.IslandRelocationResult.IsSuccess)
                         {
@@ -136,7 +138,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.IslandRelocator
                 for (var i = 0; lastRelocated.Length > i; i += 1) { lastRelocated[i] = workVirtualIslands[i].Clone(); }
                 loopCount = 0;
 
-                var lastRelocationResult = _islandRelocator.Relocation(relocationContext, workVirtualIslands);
+                var lastRelocationResult = RelocateSafely(_islandRelocator, relocationContext, workVirtualIslands);
                 RestoreWorkVirtualIslandOrder();
                 relocationResult = lastRelocationResult;
 
@@ -148,7 +150,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.IslandRelocator
                     RectAllScaleUp(workVirtualIslands, 1.01f);
                     relocationResult = lastRelocationResult;
 
-                    lastRelocationResult = _islandRelocator.Relocation(relocationContext, workVirtualIslands);
+                    lastRelocationResult = RelocateSafely(_islandRelocator, relocationContext, workVirtualIslands);
                     RestoreWorkVirtualIslandOrder();
                 }
                 VirtualIslandCopy(workVirtualIslands, lastRelocated);
@@ -186,6 +188,70 @@ namespace net.rs64.TexTransTool.TextureAtlas.IslandRelocator
                 }
             }
         }
+        internal static RelocationResult RelocateSafely(
+            IIslandRelocator islandRelocator,
+            RelocationContext relocationContext,
+            IslandTransform[] islands)
+        {
+            if (islandRelocator is NFDHPlasFC
+                && IsGuaranteedNfdhFailure(
+                    islands,
+                    relocationContext.TargetHeight,
+                    relocationContext.Padding))
+            {
+                return new RelocationResult(
+                    isSuccess: false,
+                    isRectangleMove: true);
+            }
+
+            return islandRelocator.Relocation(
+                relocationContext,
+                islands);
+        }
+
+        internal static bool IsGuaranteedNfdhFailure(
+            IReadOnlyList<IslandTransform> islands,
+            float targetHeight,
+            float padding)
+        {
+            if (float.IsNaN(targetHeight)
+                || float.IsInfinity(targetHeight)
+                || float.IsNaN(padding)
+                || float.IsInfinity(padding))
+            {
+                return true;
+            }
+
+            foreach (var island in islands)
+            {
+                var x = island.Size.X;
+                var y = island.Size.Y;
+                if (float.IsNaN(x)
+                    || float.IsInfinity(x)
+                    || float.IsNaN(y)
+                    || float.IsInfinity(y))
+                {
+                    return true;
+                }
+
+                // NFDHPlasFC rotates the longer side onto X before packing
+                // into a fixed width of 1. The first placement in a row has
+                // the least restrictive horizontal padding (1.5x), so
+                // failing this bound means the island cannot fit anywhere.
+                var packedWidth = Math.Max(x, y);
+                if (packedWidth + padding * 1.5f >= 1f)
+                    return true;
+
+                // The first row starts at +padding and the final success
+                // check reserves another padding at the top.
+                var packedHeight = Math.Min(x, y);
+                if (packedHeight + padding * 2f > targetHeight)
+                    return true;
+            }
+
+            return false;
+        }
+
         internal static float CalculateAllAreaSum(IslandTransform[] virtualIslands)
         {
             var sum = 0f;
