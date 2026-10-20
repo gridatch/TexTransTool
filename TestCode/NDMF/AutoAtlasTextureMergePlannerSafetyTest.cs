@@ -148,6 +148,71 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void MergeHostWidthsRemainAtLeast256()
+        {
+            Assert.That(
+                AutoAtlasTextureMergePlanner.AutoAtlasMergeHostWidthCandidates,
+                Is.EqualTo(new[] { 256, 512, 1024, 2048, 4096 }));
+        }
+
+        [Test]
+        public void SharedSourceOutsideAtlasGroupIsClassifiedAsRetained()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var source = new Texture2D(4, 4);
+            var target = new Material(shader);
+            var external = new Material(shader);
+            try
+            {
+                target.SetTexture("_MainTex", source);
+                external.SetTexture("_MainTex", source);
+
+                var group = new HashSet<Material> { target };
+                var propertyTextures =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [target] = new Dictionary<string, Texture>
+                        {
+                            ["_MainTex"] = source,
+                        },
+                    };
+                var allMaterials = new HashSet<Material>
+                {
+                    target,
+                    external,
+                };
+                var retained =
+                    AutoAtlasTextureProcessor.FindRetainedSourceTextures(
+                        allMaterials,
+                        group,
+                        propertyTextures,
+                        new HashSet<Texture> { source });
+
+                Assert.That(retained, Is.EquivalentTo(
+                    new Texture[] { source }));
+
+                external.SetTexture("_MainTex", null);
+                retained =
+                    AutoAtlasTextureProcessor.FindRetainedSourceTextures(
+                        allMaterials,
+                        group,
+                        propertyTextures,
+                        new HashSet<Texture> { source });
+                Assert.That(retained, Is.Empty);
+            }
+            finally
+            {
+                Object.DestroyImmediate(target);
+                Object.DestroyImmediate(external);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
         public void UnknownMemoryBlockLayoutsFailClosed()
         {
             Assert.That(

@@ -763,7 +763,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 AutoAtlasTextureSizeCandidates, 256);
             Debug.Assert(pivotIndex >= 0);
 
-            bool Probe(int size)
+            bool Probe(int size, bool keepFailure)
             {
                 var candidateSize = new Vector2Int(size, size);
                 var (candidateIslands, candidateResult) = IslandProcessing(
@@ -777,17 +777,26 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     out var candidateTime);
 
                 totalRelocationTime += candidateTime;
-                selectedSize = candidateSize;
-                selectedIslands = candidateIslands;
-                selectedResult = candidateResult;
-                return IsLosslessRelocation(candidateResult);
+                var isLossless = IsLosslessRelocation(candidateResult);
+                if (isLossless || keepFailure)
+                {
+                    selectedSize = candidateSize;
+                    selectedIslands = candidateIslands;
+                    selectedResult = candidateResult;
+                }
+
+                return isLossless;
             }
 
-            if (Probe(AutoAtlasTextureSizeCandidates[pivotIndex]))
+            if (Probe(
+                    AutoAtlasTextureSizeCandidates[pivotIndex],
+                    keepFailure: true))
             {
                 for (var index = pivotIndex - 1; index >= 0; index -= 1)
                 {
-                    if (!Probe(AutoAtlasTextureSizeCandidates[index]))
+                    if (!Probe(
+                            AutoAtlasTextureSizeCandidates[index],
+                            keepFailure: false))
                     {
                         break;
                     }
@@ -799,7 +808,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                      index < AutoAtlasTextureSizeCandidates.Length;
                      index += 1)
                 {
-                    if (Probe(AutoAtlasTextureSizeCandidates[index]))
+                    if (Probe(
+                            AutoAtlasTextureSizeCandidates[index],
+                            keepFailure: true))
                     {
                         break;
                     }

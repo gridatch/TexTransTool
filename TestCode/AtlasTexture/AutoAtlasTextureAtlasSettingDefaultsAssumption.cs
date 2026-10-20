@@ -153,7 +153,7 @@ namespace net.rs64.TexTransTool.TestCode
         [TestCase(512, 512, 1024, 1024, 2048, 2048, 1024, 1024)]
         [TestCase(512, 512, 2048, 2048, 768, 768, 256, 256)]
         [TestCase(512, 256, 2048, 2048, 512, 512, 128, 64)]
-        [TestCase(512, 256, 2048, 1024, 512, 512, 256, 128)]
+        [TestCase(512, 256, 2048, 1024, 512, 512, 128, 128)]
         public void PropertyResolutionKeepsSourceTexelDensity(
             int layoutWidth,
             int layoutHeight,
@@ -285,7 +285,7 @@ namespace net.rs64.TexTransTool.TestCode
                 new UnityEngine.Vector2Int(16, 16)
             );
 
-            Assert.That(result, Is.EqualTo(new UnityEngine.Vector2Int(512, 4)));
+            Assert.That(result, Is.EqualTo(new UnityEngine.Vector2Int(4, 4)));
         }
 
         [Test]

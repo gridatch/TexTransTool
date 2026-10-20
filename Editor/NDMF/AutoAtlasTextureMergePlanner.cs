@@ -1831,10 +1831,9 @@ namespace net.rs64.TexTransTool.NDMF
             foreach (var fineTuning in settings.TextureFineTuning)
                 fineTuning?.AddSetting(tuningHolders);
 
-            var selectedMaterialsAlreadyResolved = selectedMaterials;
             var automaticCopies =
                 TexFineTuningUtility.AddEquivalentOutputReferenceCopies(
-                    selectedMaterialsAlreadyResolved,
+                    selectedMaterials,
                     propertyTextures,
                     propertySizes,
                     tuningHolders);
