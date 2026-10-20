@@ -158,6 +158,12 @@ msgstr "対象マテリアル: {0}\n上部の空き領域: {1}\n{2}"
 msgid "AtlasTexture:info:TargetTextureMemory"
 msgstr "対象テクスチャメモリ: {0} → {1}"
 
+msgid "AtlasTexture:info:MemoryIncreaseDiagnosticTitle"
+msgstr "AtlasTexture テクスチャメモリ増加 一時診断"
+
+msgid "AtlasTexture:button:CopyMemoryIncreaseDiagnostic"
+msgstr "診断内容をコピー"
+
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2}件"
 

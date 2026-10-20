@@ -158,6 +158,12 @@ msgstr "Target materials: {0}\nTop free space: {1}\n{2}"
 msgid "AtlasTexture:info:TargetTextureMemory"
 msgstr "Target texture memory: {0} → {1}"
 
+msgid "AtlasTexture:info:MemoryIncreaseDiagnosticTitle"
+msgstr "AtlasTexture temporary texture-memory increase diagnostic"
+
+msgid "AtlasTexture:button:CopyMemoryIncreaseDiagnostic"
+msgstr "Copy diagnostics"
+
 msgid "AtlasTexture:info:ResolutionRoute"
 msgstr "{0} → {1}: {2} cases"
 

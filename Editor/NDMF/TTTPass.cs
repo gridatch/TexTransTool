@@ -1,7 +1,14 @@
+using System;
+using System.IO;
 using System.Linq;
+using nadena.dev.ndmf.localization;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.UIElements;
 using nadena.dev.ndmf;
 using net.rs64.TexTransTool.Build;
 using net.rs64.TexTransTool.Editor.OtherMenuItem;
+using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.Utils;
 using static net.rs64.TexTransTool.Build.AvatarBuildUtils;
 
@@ -105,11 +112,92 @@ namespace net.rs64.TexTransTool.NDMF
             if (TTTContext(context).Domain is NDMFDomain domain) { domain.ReFindRenderers(); }
         }
     }
+    internal sealed class AtlasTextureMemoryIncreaseDiagnosticError
+        : SimpleError
+    {
+        private readonly string _message;
+
+        internal AtlasTextureMemoryIncreaseDiagnosticError(string message)
+        {
+            _message = message;
+        }
+
+        public override Localizer Localizer => TTTLog.NDMFLocalizer;
+        public override ErrorSeverity Severity => ErrorSeverity.Information;
+        public override string TitleKey =>
+            "AtlasTexture:info:MemoryIncreaseDiagnosticTitle";
+        public override string[] TitleSubst => Array.Empty<string>();
+
+        public override VisualElement CreateVisualElement(ErrorReport report)
+        {
+            var root = new VisualElement();
+            root.style.flexGrow = 1;
+            root.style.minWidth = 0;
+
+            var diagnosticScroll = new ScrollView(
+                ScrollViewMode.VerticalAndHorizontal);
+            diagnosticScroll.style.flexGrow = 1;
+            diagnosticScroll.style.minWidth = 0;
+            diagnosticScroll.style.minHeight = 120;
+            diagnosticScroll.style.height = 520;
+
+            var linesContainer = new VisualElement();
+            linesContainer.style.flexShrink = 0;
+            linesContainer.style.minWidth = 0;
+
+            foreach (var line in _message.Split(
+                         new[] { '\n' }, StringSplitOptions.None))
+            {
+                var diagnosticLine = new Label(line)
+                {
+                    enableRichText = false,
+                };
+                diagnosticLine.style.flexShrink = 0;
+                diagnosticLine.style.whiteSpace = WhiteSpace.NoWrap;
+                if (line.Length == 0)
+                    diagnosticLine.style.minHeight =
+                        EditorGUIUtility.singleLineHeight;
+                linesContainer.Add(diagnosticLine);
+            }
+
+            diagnosticScroll.Add(linesContainer);
+            root.Add(diagnosticScroll);
+
+            var copyButton = new Button(() =>
+                EditorGUIUtility.systemCopyBuffer = _message)
+            {
+                text = "AtlasTexture:button:CopyMemoryIncreaseDiagnostic"
+                    .GetLocalize(),
+            };
+            copyButton.style.alignSelf = Align.FlexEnd;
+            root.Add(copyButton);
+
+            return root;
+        }
+    }
+
     internal class OptimizingPass : TTTPass<OptimizingPass>
     {
         protected override void Execute(BuildContext context)
         {
+            AtlasTextureMemoryIncreaseDiagnosticCollector.Clear();
             TTTContext(context).ApplyFor(TexTransPhase.Optimizing);
+
+            var projectName = Path.GetFileName(
+                Path.GetDirectoryName(Application.dataPath));
+            if (string.IsNullOrEmpty(projectName))
+                projectName = Application.productName;
+
+            foreach (var diagnostic
+                     in AtlasTextureMemoryIncreaseDiagnosticCollector.Drain())
+            {
+                var completeMessage =
+                    "Project: " + projectName + "\n" + diagnostic.Message;
+                TTTLog.ReportingObject(diagnostic.Context, () =>
+                    ErrorReport.ReportError(
+                        new AtlasTextureMemoryIncreaseDiagnosticError(
+                            completeMessage)));
+            }
         }
     }
     internal class TTTSessionEndPass : TTTPass<TTTSessionEndPass>

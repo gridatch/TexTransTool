@@ -111,6 +111,25 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         tunedAtlasTextures,
                         out var outputTextureMemoryBytes))
                 {
+                    if (outputTextureMemoryBytes > sourceTextureMemoryBytes)
+                    {
+                        var targetMaterialNames = targetMaterials
+                            .Where(material => material != null)
+                            .Select(material => material.name)
+                            .Distinct()
+                            .OrderBy(name => name, StringComparer.Ordinal);
+
+                        AtlasTextureMemoryIncreaseDiagnosticCollector.Add(
+                            this,
+                            CreateTextureMemoryIncreaseDiagnostic(
+                                domain,
+                                atlasContext,
+                                tunedAtlasTextures,
+                                sourceTextureMemoryBytes,
+                                outputTextureMemoryBytes,
+                                targetMaterialNames));
+                    }
+
                     TTLog.Info(
                         "AtlasTexture:info:RelocateResultWithResolutionAndMemory",
                         relocationMetrics.TopFreeFraction,
