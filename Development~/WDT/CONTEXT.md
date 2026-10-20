@@ -240,7 +240,30 @@ This is necessary because FineTuning can alter the set of final outputs:
 
 This provenance is also relevant to AutoAtlas merge semantics. Do not infer final output properties only from pre-FineTuning `MaterialGroupingContext`.
 
-## 3.8 Resolution and memory reporting
+## 3.8 Equivalent final-output sharing
+
+PR #30 introduces shared AtlasTexture deduplication for texture properties that would otherwise materialize byte-equivalent physical atlas textures.
+
+This is **not** "same source Texture means always share". Automatic ReferenceCopy is added only when equivalence is proven across the selected materials:
+
+- the exact same source Texture reference is used by both properties;
+- generated atlas resolution is identical;
+- UV channel and statically known UV transform are identical;
+- descriptor-only FineTuning is equivalent, including ColorSpace, MipMap settings/algorithm, and Compression settings;
+- neither property is already an explicit ReferenceCopy target or a MergeTexture participant;
+- pixel-changing/output-removing FineTuning such as Resize, DiscardAlphaChannel, and Remove is not present;
+- unknown/future tuning-data types fail closed.
+
+The canonical output is chosen deterministically, preferring an existing ReferenceCopy source and then `_MainTex`.
+
+AutoAtlas merge cost projection must model the same sharing rule; otherwise standalone baseline memory would be overestimated and merge benefit could be overstated.
+
+Validated reproduction:
+- `Seiran_Test_Atlas`: redundant 2048² `_OutlineTex` output was removed; `4.1 MiB -> 6.8 MiB` became `4.1 MiB -> 4.1 MiB`.
+- `Seiran_SailorCupid` / `Mat_Skirt_White_Blue_custom`: `2.0 MiB -> 1.0 MiB`, matching the 50% output-area reduction.
+- User smoke/visual validation reported no behavioral or visual issue before the final conservative UV-equivalence guard was added. Final Unity compilation/smoke validation of that guard remains pending until PR #30 is re-tested.
+
+## 3.9 Resolution and memory reporting
 
 Normal AtlasTexture reports:
 
@@ -252,7 +275,7 @@ Memory calculation uses actual block dimensions/block sizes and mip counts where
 
 Unknown/unsupported memory-layout information is not silently guessed for safety decisions.
 
-## 3.9 Empty/effective submesh handling
+## 3.10 Empty/effective submesh handling
 
 `AtlasSubMeshIndexIDSetContext.BuildAtlasSubSet` and mesh resolution intentionally follow Unity's effective material/submesh behavior.
 
@@ -267,7 +290,7 @@ This was hardened during AutoAtlas merge work because domain-wide material repla
 
 Do not revert this as "AutoAtlas-only defensive code"; it is a shared Atlas correctness fix.
 
-## 3.10 Borrowed runtime texture ownership
+## 3.11 Borrowed runtime texture ownership
 
 `UnityDiskUtil.Dispose` must not destroy a runtime texture that was borrowed from upstream and returned as the same reference.
 
@@ -275,7 +298,7 @@ PR #25 isolated this into the shared resource-safety commit because destroying b
 
 Do not change ownership cleanup based only on whether an input is non-persistent; reference identity matters.
 
-## 3.11 NDMF preview `WithData` comparer compatibility
+## 3.12 NDMF preview `WithData` comparer compatibility
 
 `PreviewIslandSelector` and `TexTransDomainFilter` are part of the WDT diff because PR #15 changed their `RenderGroup.WithData` calls to pass explicit equality comparers.
 
