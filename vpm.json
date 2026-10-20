@@ -431,17 +431,17 @@
           },
           "zipSHA256": "af3e8199c9699b34eaba640c3bb3a0820bb1bc46189f9ad03d1bc7d054c54113"
         },
-        "0.1.20+wdt.ttt.1.0.2.debug.939.atlas-lossless-efficiency.47a5fa6": {
+        "0.1.20+wdt.ttt.1.0.2.debug.940.atlas-lossless-efficiency.42d386a": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.20+wdt.ttt.1.0.2.debug.939.atlas-lossless-efficiency.47a5fa6",
+          "version": "0.1.20+wdt.ttt.1.0.2.debug.940.atlas-lossless-efficiency.42d386a",
           "unity": "2022.3",
-          "description": "Debug build 939 for atlas-lossless-efficiency from feat/atlas-lossless-efficiency at 47a5fa6. Based on WDT 0.1.20+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 940 for atlas-lossless-efficiency from feat/atlas-lossless-efficiency at 42d386a. Based on WDT 0.1.20+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.20+wdt.ttt.1.0.2.debug.939.atlas-lossless-efficiency.47a5fa6.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.20+wdt.ttt.1.0.2.debug.940.atlas-lossless-efficiency.42d386a.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -454,7 +454,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "c0086ba192107a8d63ab194abee987a9e56908b6c1eb4e35af3e9f4216918503"
+          "zipSHA256": "901796bf45de1270793e9f4ddffce39bf7daec3af7449a081fb80068159187e2"
         }
       }
     }
