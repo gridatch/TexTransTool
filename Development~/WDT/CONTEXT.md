@@ -957,6 +957,8 @@ A stable VPM version is immutable.
 
 Stable publishing is retry-safe: if the GitHub Release tag already exists it may be reused only when it resolves to the same source commit. An existing package asset is reused for its checksum, a missing asset may be uploaded, and a tag pointing at a different commit is an error.
 
+Last documented successful stable publication (verify current Git/VPM state before relying on this): on 2026-10-20, `0.1.19+wdt.ttt.1.0.2` was published from `wdt`/release commit `01fc1cda6289a192702307ce27b6ab3b696ad4fe`; the release branch and `wdt` matched exactly, the GitHub Release/VPM entry were created successfully, and the rolling debug entry was removed from VPM state.
+
 ## 10.4 Current rolling debug channel
 
 Pushes to `fix/**` and `feat/**` create/update a rolling debug VPM build.
