@@ -1683,48 +1683,68 @@ namespace net.rs64.TexTransTool.NDMF
 
             using (prepared)
             {
-                AtlasTexture.AtlasExecutionMetrics? standalone = null;
-
-                foreach (var size in AtlasTexture.AutoAtlasTextureSizeCandidates)
+                bool TryAnalyze(
+                    int size,
+                    out AtlasTexture.AtlasExecutionMetrics metrics)
                 {
                     try
                     {
-                        if (!AtlasTexture.TryAnalyzePreparedAtlasAtSize(
-                                domain,
-                                prepared,
-                                new List<IIslandSizePriorityTuner?>(),
-                                settings,
-                                size,
-                                out var metrics))
-                        {
-                            continue;
-                        }
-
-                        var usedHeight = GetUsedHeightPixels(metrics);
-                        group.TwoDimensionalProfileHeights[(size, size)] =
-                            usedHeight;
-                        standalone ??= metrics;
-
-                        // A wider merged atlas must not silently increase the
-                        // atomic group's padding. The group keeps the same
-                        // texel density and the same padding in profile pixels;
-                        // execution converts that padding into final-atlas UV
-                        // units from the reserved region width.
-                        foreach (var atlasWidth in
-                                 AutoAtlasMergeHostWidthCandidates)
-                        {
-                            if (atlasWidth <= size) continue;
-                            group.TwoDimensionalProfileHeights[
-                                (atlasWidth, size)] = usedHeight;
-                        }
+                        return AtlasTexture.TryAnalyzePreparedAtlasAtSize(
+                            domain,
+                            prepared,
+                            new List<IIslandSizePriorityTuner?>(),
+                            settings,
+                            size,
+                            out metrics);
                     }
                     catch (ArgumentException exception)
                         when (AutoAtlas2DMergeIslandRelocator.IsNfdhComparerFailure(
                             exception))
                     {
-                        // A profile that cannot be relocated reliably at one
-                        // candidate width is unavailable. Wider widths can still
-                        // produce a valid lossless profile.
+                        metrics = default;
+                        return false;
+                    }
+                }
+
+                AtlasTexture.AtlasExecutionMetrics? standalone = null;
+                var has256Profile = false;
+
+                foreach (var size in AutoAtlasMergeHostWidthCandidates)
+                {
+                    if (!TryAnalyze(size, out var metrics))
+                        continue;
+
+                    var usedHeight = GetUsedHeightPixels(metrics);
+                    group.TwoDimensionalProfileHeights[(size, size)] =
+                        usedHeight;
+                    standalone ??= metrics;
+                    if (size == 256)
+                        has256Profile = true;
+
+                    // A wider merged atlas must not silently increase the
+                    // atomic group's padding. The group keeps the same
+                    // texel density and the same padding in profile pixels;
+                    // execution converts that padding into final-atlas UV
+                    // units from the reserved region width.
+                    foreach (var atlasWidth in
+                             AutoAtlasMergeHostWidthCandidates)
+                    {
+                        if (atlasWidth <= size) continue;
+                        group.TwoDimensionalProfileHeights[
+                            (atlasWidth, size)] = usedHeight;
+                    }
+                }
+
+                // Merge packing remains on the 256px grid. Only the standalone
+                // baseline probes below that width, and only when 256 already
+                // proved that a smaller lossless atlas may exist.
+                if (has256Profile)
+                {
+                    foreach (var size in new[] { 128, 64 })
+                    {
+                        if (!TryAnalyze(size, out var metrics))
+                            break;
+                        standalone = metrics;
                     }
                 }
 
