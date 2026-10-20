@@ -462,7 +462,6 @@ namespace net.rs64.TexTransTool.NDMF
         {
             None,
             AtomicGroupMapping,
-            GeneratedPropertyApplication,
             ReferenceCopySemantics,
             PixelCount,
             FullResidentMemory,
@@ -489,7 +488,6 @@ namespace net.rs64.TexTransTool.NDMF
                 Vector2Int layoutSize,
                 IReadOnlyDictionary<string, Vector2Int> propertySizes,
                 bool preservesAtomicGroupMapping = true,
-                bool preservesGeneratedPropertyApplication = true,
                 bool preservesReferenceCopySemantics = true)
             {
                 GroupIds = groupIds;
@@ -505,8 +503,6 @@ namespace net.rs64.TexTransTool.NDMF
                 RejectionReason =
                     !preservesAtomicGroupMapping
                         ? CandidateRejectionReason.AtomicGroupMapping
-                        : !preservesGeneratedPropertyApplication
-                            ? CandidateRejectionReason.GeneratedPropertyApplication
                         : !preservesReferenceCopySemantics
                             ? CandidateRejectionReason.ReferenceCopySemantics
                             : merged.PixelCount >= baseline.PixelCount
@@ -647,46 +643,40 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         internal static bool PreservesReferenceCopySemantics(
-            IReadOnlyCollection<Material> materials,
+            IReadOnlyCollection<PreparedGroup> groups,
             IReadOnlyDictionary<
                 Material,
                 IReadOnlyDictionary<string, Texture>>
                 propertyTextures,
             AtlasSetting settings)
         {
-            if (materials.Count == 0)
+            if (groups.Count <= 1)
                 return true;
 
-            var grouping = new MaterialGroupingContext(
-                materials.ToHashSet(),
-                propertyTextures,
-                primaryTexturePropertyOrMaximum: null);
-            return PreservesReferenceCopySemantics(
-                materials,
-                grouping,
-                settings);
-        }
-
-        internal static bool PreservesReferenceCopySemantics(
-            IReadOnlyCollection<Material> materials,
-            MaterialGroupingContext grouping,
-            AtlasSetting settings)
-        {
             var referenceCopies = settings.TextureFineTuning
                 .OfType<ReferenceCopy>()
                 .ToArray();
             if (referenceCopies.Length == 0)
                 return true;
 
-            var generatedProperties =
-                grouping.GetContainsAllProperties();
+            var generatedPropertiesByGroup = groups
+                .ToDictionary(
+                    group => group.Id,
+                    group => group.Materials
+                        .Where(propertyTextures.ContainsKey)
+                        .SelectMany(material => propertyTextures[material].Keys)
+                        .ToHashSet(StringComparer.Ordinal));
+
+            var mergedProperties = generatedPropertiesByGroup.Values
+                .SelectMany(properties => properties)
+                .ToHashSet(StringComparer.Ordinal);
 
             foreach (var referenceCopy in referenceCopies)
             {
                 var sourceProperty =
                     (string)referenceCopy.SourcePropertyName;
                 if (string.IsNullOrWhiteSpace(sourceProperty)
-                    || !generatedProperties.Contains(sourceProperty))
+                    || !mergedProperties.Contains(sourceProperty))
                 {
                     continue;
                 }
@@ -704,59 +694,45 @@ namespace net.rs64.TexTransTool.NDMF
                         continue;
                     }
 
-                    foreach (var material in materials)
+                    foreach (var group in groups)
                     {
-                        if (material == null
-                            || !material.HasShaderTextureProperty(targetProperty))
+                        var standaloneGeneratedProperties =
+                            generatedPropertiesByGroup[group.Id];
+
+                        // If this group already generates the copy source,
+                        // standalone AtlasTexture already applies the same
+                        // ReferenceCopy rule. This is not a merge-only change.
+                        if (standaloneGeneratedProperties.Contains(
+                                sourceProperty))
                         {
                             continue;
                         }
 
-                        var targetTexture =
-                            material.GetTexture(targetProperty);
-                        if (targetTexture == null
-                            || targetTexture is not Texture2D
-                                and not RenderTexture)
-                        {
-                            continue;
-                        }
+                        // ReferenceCopy can create a target output even when
+                        // the target itself is not part of the atlased UV
+                        // property set. GenerateAtlasMat then applies that
+                        // output to any material that already has a supported,
+                        // non-null texture in the target property. Detect only
+                        // this concrete merge-introduced rewrite; do not
+                        // revalidate the target property's UV semantics.
+                        var mergeIntroducesTargetRewrite =
+                            group.Materials.Any(material =>
+                            {
+                                if (material == null
+                                    || !material.HasShaderTextureProperty(
+                                        targetProperty))
+                                {
+                                    return false;
+                                }
 
-                        // ReferenceCopy can create a generated target property
-                        // even when that property was not otherwise atlased.
-                        // It is safe only when the target samples the rewritten
-                        // atlas UV directly, without an additional transform.
-                        var usages =
-                            TTShaderTextureUsageInformationUtil
-                                .GetContainsUVTransformUsage(material);
-                        if (!usages.TryGetValue(
-                                targetProperty,
-                                out var targetUsage)
-                            || (((int)targetUsage.UVChannel) - 1)
-                                != (int)settings.AtlasTargetUVChannel
-                            || !TTShaderTextureUsageInformationUtil
-                                .IsIdentityUVMatrix(targetUsage.UVMatrix))
-                        {
-                            return false;
-                        }
+                                var targetTexture =
+                                    material.GetTexture(targetProperty);
+                                return targetTexture is Texture2D
+                                    or RenderTexture;
+                            });
 
-                        var materialGroupId =
-                            grouping.GetMaterialGroupID(material);
-                        if (materialGroupId < 0)
+                        if (mergeIntroducesTargetRewrite)
                             return false;
-
-                        var groupedTextures =
-                            grouping.GroupMaterials[
-                                materialGroupId].GroupedTexture;
-                        if (!groupedTextures.TryGetValue(
-                                sourceProperty,
-                                out var sourceTexture)
-                            || sourceTexture != targetTexture)
-                        {
-                            // The copied atlas is drawn from sourceProperty for
-                            // this material group. The target property must have
-                            // sampled those exact source pixels beforehand.
-                            return false;
-                        }
                     }
                 }
             }
@@ -1126,7 +1102,6 @@ namespace net.rs64.TexTransTool.NDMF
                 new Dictionary<
                     string,
                     (bool AtomicGroupMapping,
-                     bool GeneratedPropertyApplication,
                      bool ReferenceCopy)>(
                     StringComparer.Ordinal);
 
@@ -1193,14 +1168,9 @@ namespace net.rs64.TexTransTool.NDMF
                         PreservesAtomicGroupBoundaries(
                             selectedGroups,
                             grouping),
-                        !AutoAtlasTextureProcessor
-                            .HasUnsafeGeneratedPropertyApplication(
-                                selectedMaterials,
-                                propertyTextures,
-                                settings.AtlasTargetUVChannel),
                         PreservesReferenceCopySemantics(
-                            selectedMaterials,
-                            grouping,
+                            selectedGroups,
+                            propertyTextures,
                             settings));
                     mergeSemanticSafetyCache[groupSetKey] =
                         semanticSafety;
@@ -1214,8 +1184,6 @@ namespace net.rs64.TexTransTool.NDMF
                     projection.PropertySizes,
                     preservesAtomicGroupMapping:
                         semanticSafety.AtomicGroupMapping,
-                    preservesGeneratedPropertyApplication:
-                        semanticSafety.GeneratedPropertyApplication,
                     preservesReferenceCopySemantics:
                         semanticSafety.ReferenceCopy);
                 candidateCache[layoutKey] = candidate;

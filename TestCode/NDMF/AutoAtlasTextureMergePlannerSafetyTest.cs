@@ -2,7 +2,9 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
+using net.rs64.TexTransTool.TextureAtlas.IslandRelocator;
 using net.rs64.TexTransTool.Utils;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
@@ -11,6 +13,140 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 {
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
+        private sealed class LiltoonTextureUvProbe
+            : IMaterialInformationCallbackAbstractionInterface
+        {
+            internal readonly Dictionary<string, int?> IntValues = new();
+            internal readonly Dictionary<string, float?> FloatValues = new();
+            internal readonly Dictionary<string, Vector4?> VectorValues = new();
+            internal readonly Dictionary<string, UsingUVChannels>
+                TextureUvChannels = new();
+
+            public int? GetInteger(string propertyName, bool considerAnimation = true)
+                => IntValues.GetValueOrDefault(propertyName, 0);
+            public int? GetInt(string propertyName, bool considerAnimation = true)
+                => IntValues.GetValueOrDefault(propertyName, 0);
+            public float? GetFloat(string propertyName, bool considerAnimation = true)
+                => FloatValues.GetValueOrDefault(propertyName, 0f);
+            public Vector4? GetVector(string propertyName, bool considerAnimation = true)
+            {
+                if (VectorValues.TryGetValue(propertyName, out var value))
+                    return value;
+                if (propertyName.EndsWith("_ST"))
+                    return new Vector4(1f, 1f, 0f, 0f);
+                if (propertyName.EndsWith("_ScrollRotate"))
+                    return Vector4.zero;
+                if (propertyName.EndsWith("DecalAnimation"))
+                    return new Vector4(1f, 1f, 1f, 30f);
+                if (propertyName.EndsWith("DecalSubParam"))
+                    return new Vector4(1f, 1f, 0f, 1f);
+                return Vector4.zero;
+            }
+            public bool? IsShaderKeywordEnabled(string keywordName) => false;
+            public void RegisterOtherUVUsage(UsingUVChannels uvChannel) { }
+            public void RegisterTextureUVUsage(
+                string textureMaterialPropertyName,
+                SamplerStateInformation samplerState,
+                UsingUVChannels uvChannels,
+                Matrix2x3? uvMatrix)
+                => TextureUvChannels[textureMaterialPropertyName] = uvChannels;
+            public void RegisterVertexIndexUsage() { }
+        }
+
+        [Test]
+        public void LiltoonMain3rdUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonTextureUvProbe();
+            probe.IntValues["_UseMain3rdTex"] = 1;
+            probe.IntValues["_Main2ndTex_UVMode"] = 0;
+            probe.IntValues["_Main3rdTex_UVMode"] = 1;
+            LiltoonShaderInformation.GetMaterialInformation(probe, isOutline: false);
+            Assert.That(
+                probe.TextureUvChannels["_Main3rdTex"],
+                Is.EqualTo(UsingUVChannels.UV1));
+        }
+
+        [Test]
+        public void LiltoonGlitterColorUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonTextureUvProbe();
+            probe.IntValues["_UseGlitter"] = 1;
+            probe.IntValues["_GlitterColorTex_UVMode"] = 2;
+            LiltoonShaderInformation.GetMaterialInformation(probe, isOutline: false);
+            Assert.That(
+                probe.TextureUvChannels["_GlitterColorTex"],
+                Is.EqualTo(UsingUVChannels.UV2));
+        }
+
+        [Test]
+        public void LiltoonOutlineVectorUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonTextureUvProbe();
+            probe.IntValues["_OutlineVectorUVMode"] = 2;
+            probe.IntValues["_AudioLinkMask_UVMode"] = 0;
+            LiltoonShaderInformation.GetMaterialInformation(probe, isOutline: true);
+            Assert.That(
+                probe.TextureUvChannels["_OutlineVectorTex"],
+                Is.EqualTo(UsingUVChannels.UV2));
+        }
+
+        [Test]
+        public void NfdhOversizedIslandsFailWithoutInvokingBrokenSort()
+        {
+            var islands = new[]
+            {
+                new net.rs64.TexTransCore.UVIsland.IslandTransform
+                {
+                    Size = new System.Numerics.Vector2(4f, 3f),
+                },
+                new net.rs64.TexTransCore.UVIsland.IslandTransform
+                {
+                    Size = new System.Numerics.Vector2(0.5f, 0.25f),
+                },
+            };
+
+            Assert.That(
+                IslandRelocationManager.IsGuaranteedNfdhFailure(
+                    islands,
+                    targetHeight: 1f,
+                    padding: 0.01f),
+                Is.True);
+
+            Assert.DoesNotThrow(() =>
+            {
+                var result = IslandRelocationManager.RelocateSafely(
+                    new net.rs64.TexTransCore.UVIsland.NFDHPlasFC(),
+                    new net.rs64.TexTransCore.UVIsland.RelocationContext(
+                        1f,
+                        0.01f),
+                    islands);
+                Assert.That(result.IsSuccess, Is.False);
+            });
+        }
+
+        [Test]
+        public void NfdhPreflightAllowsFitCapableIslands()
+        {
+            var islands = new[]
+            {
+                new net.rs64.TexTransCore.UVIsland.IslandTransform
+                {
+                    Size = new System.Numerics.Vector2(0.4f, 0.2f),
+                },
+                new net.rs64.TexTransCore.UVIsland.IslandTransform
+                {
+                    Size = new System.Numerics.Vector2(0.25f, 0.1f),
+                },
+            };
+
+            Assert.That(
+                IslandRelocationManager.IsGuaranteedNfdhFailure(
+                    islands,
+                    targetHeight: 1f,
+                    padding: 0.01f),
+                Is.False);
+        }
+
         [Test]
         public void UnknownMemoryBlockLayoutsFailClosed()
         {
@@ -134,118 +270,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void GeneratedPropertyApplicationRejectsExcludedSameNamedTexture()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var first = new Material(shader);
-            var second = new Material(shader);
-            var firstTexture = new Texture2D(4, 4);
-            var secondTexture = new Texture2D(4, 4);
-            try
-            {
-                first.SetTexture("_MainTex", firstTexture);
-                second.SetTexture("_MainTex", secondTexture);
-
-                var unsafeProperties =
-                    new Dictionary<
-                        Material,
-                        IReadOnlyDictionary<string, Texture>>
-                    {
-                        [first] = new Dictionary<string, Texture>
-                        {
-                            ["_MainTex"] = firstTexture,
-                        },
-                        [second] = new Dictionary<string, Texture>(),
-                    };
-
-                Assert.That(
-                    AutoAtlasTextureProcessor
-                        .HasUnsafeGeneratedPropertyApplication(
-                            new[] { first, second },
-                            unsafeProperties,
-                            UVChannel.UV0),
-                    Is.True);
-
-                var safeProperties =
-                    new Dictionary<
-                        Material,
-                        IReadOnlyDictionary<string, Texture>>
-                    {
-                        [first] = new Dictionary<string, Texture>
-                        {
-                            ["_MainTex"] = firstTexture,
-                        },
-                        [second] = new Dictionary<string, Texture>
-                        {
-                            ["_MainTex"] = secondTexture,
-                        },
-                    };
-
-                Assert.That(
-                    AutoAtlasTextureProcessor
-                        .HasUnsafeGeneratedPropertyApplication(
-                            new[] { first, second },
-                            safeProperties,
-                            UVChannel.UV0),
-                    Is.False);
-            }
-            finally
-            {
-                Object.DestroyImmediate(firstTexture);
-                Object.DestroyImmediate(secondTexture);
-                Object.DestroyImmediate(first);
-                Object.DestroyImmediate(second);
-            }
-        }
-
-        [Test]
-        public void GeneratedPropertySafetySkipsPropertiesAbsentFromCurrentShader()
-        {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var material = new Material(shader);
-            var texture = new Texture2D(4, 4);
-            try
-            {
-                Assert.That(
-                    material.HasShaderTextureProperty("_MainTex"),
-                    Is.True);
-                Assert.That(
-                    material.HasShaderTextureProperty("_FurNoiseMask"),
-                    Is.False);
-
-                var properties =
-                    new Dictionary<
-                        Material,
-                        IReadOnlyDictionary<string, Texture>>
-                    {
-                        [material] = new Dictionary<string, Texture>
-                        {
-                            ["_FurNoiseMask"] = texture,
-                        },
-                    };
-
-                Assert.That(
-                    AutoAtlasTextureProcessor
-                        .HasUnsafeGeneratedPropertyApplication(
-                            new[] { material },
-                            properties,
-                            UVChannel.UV0),
-                    Is.False,
-                    "A generated property that does not exist in the material's current shader is not an application conflict.");
-            }
-            finally
-            {
-                Object.DestroyImmediate(texture);
-                Object.DestroyImmediate(material);
-            }
-        }
-
-        [Test]
-        public void ReferenceCopyRejectsCrossGroupTextureRedirection()
+        public void ReferenceCopyRejectsOnlyMergeIntroducedSourceProperty()
         {
             var shader = Shader.Find("Standard");
             Assert.That(shader, Is.Not.Null);
@@ -257,8 +282,6 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             try
             {
                 mainMaterial.SetTexture("_MainTex", mainTexture);
-                mainMaterial.SetTexture("_BumpMap", null);
-                bumpMaterial.SetTexture("_MainTex", null);
                 bumpMaterial.SetTexture("_BumpMap", bumpTexture);
 
                 var settings = new AtlasSetting
@@ -277,7 +300,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     },
                 };
 
-                var unsafeProperties =
+                var propertyTextures =
                     new Dictionary<
                         Material,
                         IReadOnlyDictionary<string, Texture>>
@@ -286,57 +309,47 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                         {
                             ["_MainTex"] = mainTexture,
                         },
-                        [bumpMaterial] = new Dictionary<string, Texture>
-                        {
-                            ["_BumpMap"] = bumpTexture,
-                        },
+                        [bumpMaterial] = new Dictionary<string, Texture>(),
                     };
-
-                Assert.That(
-                    AutoAtlasTextureMergePlanner
-                        .PreservesReferenceCopySemantics(
-                            new[] { mainMaterial, bumpMaterial },
-                            unsafeProperties,
-                            settings),
-                    Is.False,
-                    "Merging makes _MainTex exist and would redirect the other atomic group's _BumpMap.");
-
-                bumpMaterial.SetTexture("_BumpMap", mainTexture);
-                var equivalentSourcePixels =
-                    new Dictionary<
-                        Material,
-                        IReadOnlyDictionary<string, Texture>>
+                var mainGroup =
+                    new AutoAtlasTextureMergePlanner.PreparedGroup
                     {
-                        [mainMaterial] = new Dictionary<string, Texture>
-                        {
-                            ["_MainTex"] = mainTexture,
-                        },
-                        [bumpMaterial] = new Dictionary<string, Texture>
-                        {
-                            ["_BumpMap"] = mainTexture,
-                        },
+                        Id = 0,
+                        Materials = new HashSet<Material> { mainMaterial },
+                    };
+                var bumpGroup =
+                    new AutoAtlasTextureMergePlanner.PreparedGroup
+                    {
+                        Id = 1,
+                        Materials = new HashSet<Material> { bumpMaterial },
                     };
 
                 Assert.That(
                     AutoAtlasTextureMergePlanner
                         .PreservesReferenceCopySemantics(
-                            new[] { mainMaterial, bumpMaterial },
-                            equivalentSourcePixels,
+                            new[] { mainGroup },
+                            propertyTextures,
                             settings),
                     Is.True,
-                    "ReferenceCopy is safe when the material group source atlas is drawn from the exact texture already sampled by the target.");
+                    "Standalone AutoAtlas follows normal AtlasTexture semantics.");
 
-                bumpMaterial.SetTextureScale(
-                    "_BumpMap",
-                    new Vector2(2f, 1f));
                 Assert.That(
                     AutoAtlasTextureMergePlanner
                         .PreservesReferenceCopySemantics(
-                            new[] { mainMaterial, bumpMaterial },
-                            equivalentSourcePixels,
+                            new[] { bumpGroup },
+                            propertyTextures,
+                            settings),
+                    Is.True,
+                    "A standalone group without the copy source must not be rejected.");
+
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            new[] { mainGroup, bumpGroup },
+                            propertyTextures,
                             settings),
                     Is.False,
-                    "Equivalent source pixels are insufficient when the target property applies a different UV transform.");
+                    "Merging must not introduce a copy source that rewrites another atomic group's existing target texture, even when that target is not itself atlased.");
             }
             finally
             {
@@ -344,6 +357,92 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Object.DestroyImmediate(bumpTexture);
                 Object.DestroyImmediate(mainMaterial);
                 Object.DestroyImmediate(bumpMaterial);
+            }
+        }
+
+        [Test]
+        public void ReferenceCopyDoesNotRevalidateNormalAtlasSemantics()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var first = new Material(shader);
+            var second = new Material(shader);
+            var firstMain = new Texture2D(4, 4);
+            var firstBump = new Texture2D(4, 4);
+            var secondMain = new Texture2D(4, 4);
+            var secondBump = new Texture2D(4, 4);
+            try
+            {
+                first.SetTexture("_MainTex", firstMain);
+                first.SetTexture("_BumpMap", firstBump);
+                first.SetTextureScale("_BumpMap", new Vector2(2f, 1f));
+                second.SetTexture("_MainTex", secondMain);
+                second.SetTexture("_BumpMap", secondBump);
+
+                var settings = new AtlasSetting
+                {
+                    TextureFineTuning = new List<ITextureFineTuning>
+                    {
+                        new ReferenceCopy
+                        {
+                            SourcePropertyName = new PropertyName("_MainTex"),
+                            TargetPropertyNameList =
+                                new List<PropertyName>
+                                {
+                                    new PropertyName("_BumpMap"),
+                                },
+                        },
+                    },
+                };
+
+                var propertyTextures =
+                    new Dictionary<
+                        Material,
+                        IReadOnlyDictionary<string, Texture>>
+                    {
+                        [first] = new Dictionary<string, Texture>
+                        {
+                            ["_MainTex"] = firstMain,
+                            ["_BumpMap"] = firstBump,
+                        },
+                        [second] = new Dictionary<string, Texture>
+                        {
+                            ["_MainTex"] = secondMain,
+                            ["_BumpMap"] = secondBump,
+                        },
+                    };
+                var groups = new[]
+                {
+                    new AutoAtlasTextureMergePlanner.PreparedGroup
+                    {
+                        Id = 0,
+                        Materials = new HashSet<Material> { first },
+                    },
+                    new AutoAtlasTextureMergePlanner.PreparedGroup
+                    {
+                        Id = 1,
+                        Materials = new HashSet<Material> { second },
+                    },
+                };
+
+                Assert.That(
+                    AutoAtlasTextureMergePlanner
+                        .PreservesReferenceCopySemantics(
+                            groups,
+                            propertyTextures,
+                            settings),
+                    Is.True,
+                    "Different target textures or UV transforms are normal AtlasTexture semantics, not an AutoAtlas merge veto.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(firstMain);
+                Object.DestroyImmediate(firstBump);
+                Object.DestroyImmediate(secondMain);
+                Object.DestroyImmediate(secondBump);
+                Object.DestroyImmediate(first);
+                Object.DestroyImmediate(second);
             }
         }
 

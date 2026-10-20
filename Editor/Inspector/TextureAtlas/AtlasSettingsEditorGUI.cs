@@ -310,9 +310,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 for (var j = 0; j < materials.arraySize; j++)
                 {
-                    targetMaterials.Remove(
-                        materials.GetArrayElementAtIndex(j).objectReferenceValue as Material
-                    );
+                    if (materials.GetArrayElementAtIndex(j).objectReferenceValue
+                        is Material selectedMaterial)
+                    {
+                        targetMaterials.Remove(selectedMaterial);
+                    }
                 }
             }
         }

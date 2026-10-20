@@ -12,9 +12,9 @@ namespace net.rs64.TexTransTool
         HashSet<UnityEngine.Object> _transferredObject = new();
         HashSet<ITTRenderTexture> _transferredRT = new();
 
-        private readonly ITexTransToolForUnity _ttce4U;
+        private readonly ITexTransToolForUnity? _ttce4U;
 
-        public NotWorkDomain(IEnumerable<Renderer> renderers, ITexTransToolForUnity iTexTransToolForUnity)
+        public NotWorkDomain(IEnumerable<Renderer> renderers, ITexTransToolForUnity? iTexTransToolForUnity)
         {
             _domainRenderers = renderers;
             _ttce4U = iTexTransToolForUnity;
@@ -33,7 +33,13 @@ namespace net.rs64.TexTransTool
             foreach (var obj in _transferredObject) { UnityEngine.Object.DestroyImmediate(obj); }
             foreach (var rt in _transferredRT) { rt.Dispose(); }
         }
-        public ITexTransToolForUnity GetTexTransCoreEngineForUnity() => _ttce4U;
+        public ITexTransToolForUnity GetTexTransCoreEngineForUnity()
+        {
+            return _ttce4U
+                ?? throw new InvalidOperationException(
+                    "This NotWorkDomain was created without a TexTransCore engine."
+                );
+        }
         public TexTransToolTextureDescriptor GetTextureDescriptor(Texture texture) { return new(); }
         public void RegisterPostProcessingAndLazyGPUReadBack(ITTRenderTexture rt, TexTransToolTextureDescriptor textureDescriptor) { _transferredRT.Add(rt); }
         T? IDomainCustomContext.GetCustomContext<T>() where T : class { return null; }
