@@ -126,6 +126,22 @@ namespace net.rs64.TexTransTool.TestCode
                 new UnityEngine.Vector2Int(expectedWidth, expectedHeight)));
         }
 
+        [TestCase(4096, 0.03125f, 128)]
+        [TestCase(4096, 0.015625f, 64)]
+        [TestCase(4096, 0.00390625f, 16)]
+        [TestCase(4096, 0.0001f, 4)]
+        [TestCase(1024, 0.5001f, 1024)]
+        public void AtlasHeightCropUsesSmallestPowerOfTwoThatFits(
+            int atlasSize,
+            float usedHeight,
+            int expectedHeight)
+        {
+            Assert.That(
+                AtlasTexture.GetNormalizedMinHeightSize(
+                    atlasSize, usedHeight),
+                Is.EqualTo(expectedHeight));
+        }
+
         [Test]
         public void PropertyResolutionUsesLargestRequirementAcrossGroups()
         {
