@@ -1215,32 +1215,91 @@ Unity `.meta` files accompany the new scripts/assets and are not separate semant
 
 ---
 
-# 15. Historical decision index
+# 15. Accepted WDT history map
 
-This is not a changelog; it points to the history that explains current boundaries.
+This is not a debugging diary. It maps every substantive commit in the current WDT lineage to the reason it exists, so a maintainer can inspect the accepted change instead of guessing from an old work branch.
 
-- PR #2 — separate WDT VPM package identity.
-- PR #4 / #10 — unavailable shader texture-property guard.
-- PR #5 — rejected general texture-ST baking experiment.
-- PR #11 — accepted narrow independently tiled `_Bump2ndMap` preservation; supersedes #5.
-- PR #12 — VRChat Toon Standard shader information.
-- PR #14 — automatic minimum lossless atlas size.
-- PR #15 — named manifest-managed Persistent Bake.
-- PR #16 — Matsukawa integration probe only.
-- PR #17 — accepted Matsukawa-backed Part Atlas architecture and later follow-ups.
-- PR #18 — unmerged Roslyn syntax-only CI proposal.
-- PR #19 — unmerged/superseded preview iteration.
-- PR #20 — accepted 3D preview.
-- PR #21 — accepted native Inspector / three-pane workflow.
-- PR #22 — current WDT + upstream version format.
-- PR #23 — hierarchy search depth/reveal behavior.
-- PR #24 — unmerged conservative Auto Material Atlas analysis; not current specification.
-- commit `29a83b28` — current AutoAtlasTexture lineage introduced.
-- commit `68166b5c` — property-aware lossless output sizing and removal of default lossy Resize.
-- PR #25 — accepted unused-space texture merging, reusable execution hooks, memory/resource/shared Atlas safety.
-- PR #26 — corrective re-audit: restore "AutoAtlas follows normal AtlasTexture" principle, remove over-broad Auto-only shader gates, narrow ReferenceCopy protection, fix lilToon selectors, add NFDH impossible-candidate preflight.
+## Publication / versioning lineage
 
-Old branches/backups may preserve useful investigative evidence, but they are not a source of accepted behavior.
+- `e8e52fdc` — initial WDT branch VPM publishing. Later policy was deliberately replaced.
+- `37f6a9ad` — separate WDT package identity `net.gridatch.tex-trans-tool`.
+- `01274304` — move WDT builds to stable-visible SemVer rather than prerelease-only visibility. Later syntax evolved.
+- `42e93972` — stop treating every work commit as a formal release; make stable releases explicit.
+- `168e3021` — temporary work-branch artifact path; later replaced.
+- `61db0744` — rolling VPM validation channel replaced temporary artifacts.
+- `76d217da` — rolling debug serial/metadata model.
+- `6777c3bb` — support versioned release branches that must match `wdt` HEAD.
+- `da2ea06e` / PR #22 — establish current `X.Y.Z+wdt.ttt.A.B.C` stable/debug metadata contract.
+- `5429fbe9` — make stable release publication retry-safe without allowing a tag to silently move to another commit.
+- `f1fec67f` — serialize debug/stable VPM mutation with one concurrency group.
+
+## Shared Atlas / shader lineage
+
+- `ebe9132a` / PR #4 — first unavailable shader texture-property guard.
+- `da12c3b9` / PR #10 — finalize guard by intersecting with actually exposed texture properties.
+- PR #5 — **unmerged** general texture-ST baking experiment.
+- `81afe13d` / PR #11 — accepted narrow independently tiled `_Bump2ndMap` preservation; supersedes PR #5.
+- `afd54418` / PR #12 — VRChat Toon Standard texture-usage metadata.
+- `80b5d7f3` / PR #14 — automatic minimum lossless 256..4096 atlas-size search.
+- `993b7293` — isolate WDT extension fields/files and introduce shared hierarchy identity; source organization for Toon Standard / auto-size / bake fields.
+- `f1fec67f` — sync later AAO lilToon AudioLink metadata fixes.
+- `68166b5c` — property-aware lossless output sizes; remove the old default lossy 512px Resize.
+- `d0b11ab9` — final resolution-route provenance/reporting through FineTuning.
+- `2085a588` — block/mip-aware texture-memory estimation interfaces and implementation.
+- `8ffa1d7d` — reusable Atlas execution/planning seams used by AutoAtlas.
+- `69e9dcdb` — shared material/mesh hardening, including effective/empty submesh handling.
+- `c6faee4b` — preserve borrowed runtime texture ownership.
+- `d530ac7b` — user-facing normal Atlas texture-memory before/after reporting.
+- `19d8632d` / PR #26 — concrete lilToon selector corrections.
+- `0df70359` / PR #26 — safe preflight for physically impossible NFDH candidates.
+
+## Persistent Bake lineage
+
+- `c559092c` / PR #15 — named manifest-managed Persistent Bake; same-role in-place asset update and normal Atlas pipeline reuse.
+  - This changeset also contains NDMF `RenderGroup.WithData` equality-comparer compatibility adjustments in preview support files; those are not bake product semantics.
+- `5d8c7abe` — remove duplicate bake-side target/mesh resolution logic and reuse normal AtlasTexture targeting/mesh resolution.
+- `8a3c5071` — harden destructive bake boundary: manifest/path validation, texture animation refs, output transaction/rollback, renderer-state restoration, more stable generated-asset identities.
+- `e91f575c` / PR #17 — make the persistent bake core component-independent for Part Atlas reuse; normal bake keeps Undo enabled while standalone Part uses Undo-disabled temporary processing.
+
+## Part Atlas lineage
+
+- PR #16 — **unmerged probe** proving the Matsukawa reflection/integration boundary; not product implementation.
+- `e91f575c` / PR #17 — accepted Matsukawa-backed standalone Part Atlas workflow and the large set of later follow-ups recorded in that PR.
+  - The final PR state replaced its early same-output backup/overwrite design with versioned standalone generations.
+  - It also established shared Atlas settings drawing, multi-target staging, optional Atlas, normal-map persistence, canonical texture names, extraction scope rules, and the narrowed Matsukawa adapter contract.
+- `c6344161` / PR #20 — isolated 3D extraction preview with owned skinned snapshots and stable orthographic 360° orbit.
+- `6ba09495` / PR #21 — native Unity/custom Inspectors in a disposable Prefab copy; explicitly not a universal sandbox against external asset side effects.
+- `8bfa1dc4` / PR #23 — preserve original hierarchy depth/context during search and reveal selection on clear.
+- `22090788` — harden Part hierarchy/MA reflection contracts and Inspector integration.
+- `417d6611` — fix protected-object override UI/behavior rather than treating the analyzed protected list as the only state.
+- `7a8a2254` — model HCE's actual stripped Renderers/dropped Components (including paired MeshFilter and PipelineSaver cases) so reference validation does not reject references to Components extraction itself removes.
+- `0f82bcee` / PR #26 — resolve nullable handling in shared Atlas editor / Part pipeline without suppressing actual optional state.
+
+## AutoAtlas lineage
+
+- PR #24 — **unmerged analysis-only experiment**. Its broad conservative conditions and 8192/shader-proof exploration are not current specification.
+- `29a83b28` — introduce the current AutoAtlasTexture lineage: automatic texture-connected material selection, lossless normal-Atlas execution, explicit exclusions, manual-Atlas exclusion, AAO negotiation, build-time NDMF reporting.
+- `68166b5c` — eliminate AutoAtlas's old special-case default-Resize removal because lossy Resize was removed from normal defaults and replaced with property-aware sizing.
+- PR #25 reconstructed a very large development branch into responsibility commits without changing the validated tree:
+  - `2085a588` — memory estimation;
+  - `8ffa1d7d` — reusable execution hooks;
+  - `69e9dcdb` — shared material/mesh safety;
+  - `c6faee4b` — resource ownership;
+  - `a3fecae1` — production unused-space texture merging;
+  - `d530ac7b` — normal Atlas memory report;
+  - `b147ecc6` — regression tests / internals accessibility;
+  - `dd25d5c4` — archived diagnostic templates.
+- `be320895` / PR #26 — model `NotWorkDomain`'s TexTrans engine as genuinely optional and throw only when an engine-required API is misused.
+- `bca0092a` / PR #26 — corrective re-audit: remove broad AutoAtlas-only safety gates and realign standalone AutoAtlas with normal Atlas semantics; retain merge-only semantic checks and fallback.
+- `19d8632d` / PR #26 — shared lilToon selector correctness, not an Auto-only permission layer.
+- `0df70359` / PR #26 — shared NFDH impossible-candidate handling, not a UV/material exclusion.
+
+## Non-adopted CI proposals
+
+- PR #18 — unmerged Roslyn syntax-only CI experiment; it could not establish Unity compilation.
+- Existing Unity NUnit/EditMode tests remain valuable regression contracts, but a licensed/authenticated Unity CI executor has not yet been adopted.
+
+Old backup branches preserve forensic evidence only. Never blind-cherry-pick them into current WDT.
 
 ---
 
