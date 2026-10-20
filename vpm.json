@@ -381,17 +381,17 @@
           },
           "zipSHA256": "d0a2d0369b99e98229bc6b8329a6328942b376af27171a2a524ea476baca9bf8"
         },
-        "0.1.18+wdt.ttt.1.0.2.debug.922.part-atlas-ui-consistency.1de4014": {
+        "0.1.18+wdt.ttt.1.0.2.debug.923.part-atlas-ui-consistency.a4e3c12": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.18+wdt.ttt.1.0.2.debug.922.part-atlas-ui-consistency.1de4014",
+          "version": "0.1.18+wdt.ttt.1.0.2.debug.923.part-atlas-ui-consistency.a4e3c12",
           "unity": "2022.3",
-          "description": "Debug build 922 for part-atlas-ui-consistency from fix/part-atlas-ui-consistency at 1de4014. Based on WDT 0.1.18+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 923 for part-atlas-ui-consistency from fix/part-atlas-ui-consistency at a4e3c12. Based on WDT 0.1.18+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.18+wdt.ttt.1.0.2.debug.922.part-atlas-ui-consistency.1de4014.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.18+wdt.ttt.1.0.2.debug.923.part-atlas-ui-consistency.a4e3c12.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -404,7 +404,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "ff759e154b3bdfbcce97e46aec95ead1a537c405b6a8cdf606d6345fb8efccf1"
+          "zipSHA256": "7c3ac6cfc369326680492afc596d6a4a7dba7e325109126930278e3fe49c463d"
         }
       }
     }

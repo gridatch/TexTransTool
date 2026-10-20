@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.18+wdt.ttt.1.0.2",
-  "lastDebugSerial": 922,
-  "currentDebugVersion": "0.1.18+wdt.ttt.1.0.2.debug.922.part-atlas-ui-consistency.1de4014",
+  "lastDebugSerial": 923,
+  "currentDebugVersion": "0.1.18+wdt.ttt.1.0.2.debug.923.part-atlas-ui-consistency.a4e3c12",
   "currentDebugChange": "part-atlas-ui-consistency",
   "currentDebugBranch": "fix/part-atlas-ui-consistency",
-  "currentDebugCommit": "1de401404f43fe0a58b8f0de3c8920adf2c22918",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.18+wdt.ttt.1.0.2.debug.922.part-atlas-ui-consistency.1de4014.zip"
+  "currentDebugCommit": "a4e3c1233ce58f441b5609d959f8cf83845e8bdc",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.18+wdt.ttt.1.0.2.debug.923.part-atlas-ui-consistency.a4e3c12.zip"
 }
