@@ -813,6 +813,7 @@ namespace net.rs64.TexTransTool.NDMF
                     new[] { group },
                     propertyTextures,
                     metrics.PropertySizes,
+                    settings,
                     alphaCache,
                     UnknownAlphaAssumption.AssumeAbsent);
 
@@ -1129,6 +1130,7 @@ namespace net.rs64.TexTransTool.NDMF
                     selectedGroups,
                     propertyTextures,
                     propertySizes,
+                    settings,
                     alphaCache,
                     UnknownAlphaAssumption.AssumePresent);
                 var projection = new ShadowCostProjection(
@@ -1763,12 +1765,31 @@ namespace net.rs64.TexTransTool.NDMF
             IReadOnlyList<PreparedGroup> groups,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
             IReadOnlyDictionary<string, Vector2Int> propertySizes,
+            AtlasSetting settings,
             Dictionary<Texture, bool> alphaCache,
             UnknownAlphaAssumption unknownAlphaAssumption)
         {
             var entries = new List<TextureCostEntry>();
             var sampling = groups.ToDictionary(group => group.Id, _ => 0d);
             var hasMain = propertySizes.ContainsKey("_MainTex");
+
+            var tuningHolders =
+                TexFineTuningUtility.InitTexFineTuningHolders(
+                    propertySizes.Keys);
+            foreach (var fineTuning in settings.TextureFineTuning)
+                fineTuning?.AddSetting(tuningHolders);
+
+            var selectedMaterials = groups
+                .SelectMany(group => group.Materials)
+                .Where(material => material != null)
+                .Distinct()
+                .ToArray();
+            var automaticCopies =
+                TexFineTuningUtility.AddEquivalentOutputReferenceCopies(
+                    selectedMaterials,
+                    propertyTextures,
+                    propertySizes,
+                    tuningHolders);
 
             foreach (var property in propertySizes.OrderBy(pair => pair.Key, StringComparer.Ordinal))
             {
@@ -1778,9 +1799,25 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
-                var usageProperties = hasMain && property.Key == "_MainTex"
-                    ? new[] { "_MainTex", "_BaseMap", "_BaseColorMap" }
-                    : new[] { property.Key };
+                if (automaticCopies.ContainsKey(property.Key))
+                    continue;
+
+                var usageProperties = new List<string>
+                {
+                    property.Key,
+                };
+                if (hasMain && property.Key == "_MainTex")
+                {
+                    usageProperties.Add("_BaseMap");
+                    usageProperties.Add("_BaseColorMap");
+                }
+                usageProperties.AddRange(
+                    automaticCopies
+                        .Where(copy => string.Equals(
+                            copy.Value,
+                            property.Key,
+                            StringComparison.Ordinal))
+                        .Select(copy => copy.Key));
 
                 var pixelSources = new HashSet<Texture>();
                 var usedPropertyCount = new Dictionary<int, int>();
@@ -1823,21 +1860,32 @@ namespace net.rs64.TexTransTool.NDMF
                             texture,
                             alphaCache,
                             unknownAlphaAssumption));
-                var quality = property.Key is "_BumpMap" or "_Bump2ndMap"
-                    ? FormatQuality.High
-                    : FormatQuality.Normal;
-                var format = TextureCompressionData.GetQuality2TextureFormat(
-                    quality, hasAlpha);
+                var compression = tuningHolders[property.Key]
+                    .Find<TextureCompressionTuningData>();
+                var format = compression?.UseOverride == true
+                    ? compression.OverrideTextureFormat
+                    : TextureCompressionData.GetQuality2TextureFormat(
+                        compression?.FormatQualityValue
+                            ?? FormatQuality.Normal,
+                        hasAlpha);
                 var bytesPerTexel = GetBytesPerTexel(format);
 
                 foreach (var pair in usedPropertyCount)
                     sampling[pair.Key] += bytesPerTexel * pair.Value;
 
+                var mipMap = tuningHolders[property.Key]
+                    .Find<MipMapData>();
+                var mipCount = mipMap?.UseMipMap ?? true
+                    ? CalculateMipCount(
+                        property.Value.x,
+                        property.Value.y)
+                    : 1;
+
                 entries.Add(new TextureCostEntry(
                     property.Value.x,
                     property.Value.y,
                     format,
-                    CalculateMipCount(property.Value.x, property.Value.y)));
+                    mipCount));
             }
 
             return new TextureCostPlan(entries, sampling);
