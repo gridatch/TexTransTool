@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.19+wdt.ttt.1.0.2",
-  "lastDebugSerial": 928,
-  "currentDebugVersion": "0.1.19+wdt.ttt.1.0.2.debug.928.atlas-memory-increase-diagnostic.0da2026",
-  "currentDebugChange": "atlas-memory-increase-diagnostic",
-  "currentDebugBranch": "fix/atlas-memory-increase-diagnostic",
+  "lastDebugSerial": 929,
+  "currentDebugVersion": "0.1.19+wdt.ttt.1.0.2.debug.929.atlas-equivalent-output-sharing.0da2026",
+  "currentDebugChange": "atlas-equivalent-output-sharing",
+  "currentDebugBranch": "fix/atlas-equivalent-output-sharing",
   "currentDebugCommit": "0da2026495bb30301279ffbaf02316f2f442153f",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.19+wdt.ttt.1.0.2.debug.928.atlas-memory-increase-diagnostic.0da2026.zip"
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.19+wdt.ttt.1.0.2.debug.929.atlas-equivalent-output-sharing.0da2026.zip"
 }
