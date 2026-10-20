@@ -97,7 +97,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                 var samp = "_MainTex";
 
                 UsingUVChannels uv3rd;
-                switch (matInfo.GetInt("_Main2ndTex_UVMode"))
+                switch (matInfo.GetInt("_Main3rdTex_UVMode"))
                 {
                     case 0:
                         uv3rd = UsingUVChannels.UV0;
@@ -279,7 +279,46 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
             {
                 var samp = "_MainTex"; // caller of lilGetGlitter
 
-                LIL_SAMPLE_2D_ST_WithMat("_GlitterColorTex", samp, uvMain, uvMainMatrix);
+                switch (matInfo.GetInt("_GlitterColorTex_UVMode"))
+                {
+                    case 0:
+                        LIL_SAMPLE_2D_ST_WithMat(
+                            "_GlitterColorTex",
+                            samp,
+                            uvMain,
+                            uvMainMatrix);
+                        break;
+                    case 1:
+                        LIL_SAMPLE_2D_ST(
+                            "_GlitterColorTex",
+                            samp,
+                            UsingUVChannels.UV1);
+                        break;
+                    case 2:
+                        LIL_SAMPLE_2D_ST(
+                            "_GlitterColorTex",
+                            samp,
+                            UsingUVChannels.UV2);
+                        break;
+                    case 3:
+                        LIL_SAMPLE_2D_ST(
+                            "_GlitterColorTex",
+                            samp,
+                            UsingUVChannels.UV3);
+                        break;
+                    default:
+                    case null:
+                        matInfo.RegisterTextureUVUsage(
+                            "_GlitterColorTex",
+                            samp,
+                            UsingUVChannels.UV0
+                            | UsingUVChannels.UV1
+                            | UsingUVChannels.UV2
+                            | UsingUVChannels.UV3,
+                            null);
+                        break;
+                }
+
                 if (matInfo.GetInt("_GlitterApplyShape") != 0)
                 {
                     // complex uv
@@ -501,7 +540,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.AAOCode
                 // _OutlineVectorTex SamplerStateInformation.LinearRepeatSampler
                 // UVs _OutlineVectorUVMode main,1,2,3
 
-                switch (matInfo.GetInt("_AudioLinkMask_UVMode"))
+                switch (matInfo.GetInt("_OutlineVectorUVMode"))
                 {
                     case 0:
                         LIL_SAMPLE_2D_WithMat("_OutlineVectorTex", SamplerStateInformation.LinearRepeatSampler, uvMain,

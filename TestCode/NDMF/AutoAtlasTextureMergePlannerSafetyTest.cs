@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.Utils;
 using UnityEngine;
@@ -11,6 +12,83 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 {
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
+        private sealed class LiltoonTextureUvProbe
+            : IMaterialInformationCallbackAbstractionInterface
+        {
+            internal readonly Dictionary<string, int?> IntValues = new();
+            internal readonly Dictionary<string, float?> FloatValues = new();
+            internal readonly Dictionary<string, Vector4?> VectorValues = new();
+            internal readonly Dictionary<string, UsingUVChannels>
+                TextureUvChannels = new();
+
+            public int? GetInteger(string propertyName, bool considerAnimation = true)
+                => IntValues.GetValueOrDefault(propertyName, 0);
+            public int? GetInt(string propertyName, bool considerAnimation = true)
+                => IntValues.GetValueOrDefault(propertyName, 0);
+            public float? GetFloat(string propertyName, bool considerAnimation = true)
+                => FloatValues.GetValueOrDefault(propertyName, 0f);
+            public Vector4? GetVector(string propertyName, bool considerAnimation = true)
+            {
+                if (VectorValues.TryGetValue(propertyName, out var value))
+                    return value;
+                if (propertyName.EndsWith("_ST"))
+                    return new Vector4(1f, 1f, 0f, 0f);
+                if (propertyName.EndsWith("_ScrollRotate"))
+                    return Vector4.zero;
+                if (propertyName.EndsWith("DecalAnimation"))
+                    return new Vector4(1f, 1f, 1f, 30f);
+                if (propertyName.EndsWith("DecalSubParam"))
+                    return new Vector4(1f, 1f, 0f, 1f);
+                return Vector4.zero;
+            }
+            public bool? IsShaderKeywordEnabled(string keywordName) => false;
+            public void RegisterOtherUVUsage(UsingUVChannels uvChannel) { }
+            public void RegisterTextureUVUsage(
+                string textureMaterialPropertyName,
+                SamplerStateInformation samplerState,
+                UsingUVChannels uvChannels,
+                Matrix2x3? uvMatrix)
+                => TextureUvChannels[textureMaterialPropertyName] = uvChannels;
+            public void RegisterVertexIndexUsage() { }
+        }
+
+        [Test]
+        public void LiltoonMain3rdUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonTextureUvProbe();
+            probe.IntValues["_UseMain3rdTex"] = 1;
+            probe.IntValues["_Main2ndTex_UVMode"] = 0;
+            probe.IntValues["_Main3rdTex_UVMode"] = 1;
+            LiltoonShaderInformation.GetMaterialInformation(probe, isOutline: false);
+            Assert.That(
+                probe.TextureUvChannels["_Main3rdTex"],
+                Is.EqualTo(UsingUVChannels.UV1));
+        }
+
+        [Test]
+        public void LiltoonGlitterColorUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonTextureUvProbe();
+            probe.IntValues["_UseGlitter"] = 1;
+            probe.IntValues["_GlitterColorTex_UVMode"] = 2;
+            LiltoonShaderInformation.GetMaterialInformation(probe, isOutline: false);
+            Assert.That(
+                probe.TextureUvChannels["_GlitterColorTex"],
+                Is.EqualTo(UsingUVChannels.UV2));
+        }
+
+        [Test]
+        public void LiltoonOutlineVectorUsesItsOwnUvMode()
+        {
+            var probe = new LiltoonTextureUvProbe();
+            probe.IntValues["_OutlineVectorUVMode"] = 2;
+            probe.IntValues["_AudioLinkMask_UVMode"] = 0;
+            LiltoonShaderInformation.GetMaterialInformation(probe, isOutline: true);
+            Assert.That(
+                probe.TextureUvChannels["_OutlineVectorTex"],
+                Is.EqualTo(UsingUVChannels.UV2));
+        }
+
         [Test]
         public void UnknownMemoryBlockLayoutsFailClosed()
         {
