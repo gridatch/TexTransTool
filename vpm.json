@@ -406,17 +406,17 @@
           },
           "zipSHA256": "e08569bcbc452e30551ed4c4261776d63ff79b824f9e96ea1febe26e18f54d56"
         },
-        "0.1.19+wdt.ttt.1.0.2.debug.936.atlas-equivalent-output-sharing.8dbcc33": {
+        "0.1.20+wdt.ttt.1.0.2": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.19+wdt.ttt.1.0.2.debug.936.atlas-equivalent-output-sharing.8dbcc33",
+          "version": "0.1.20+wdt.ttt.1.0.2",
           "unity": "2022.3",
-          "description": "Debug build 936 for atlas-equivalent-output-sharing from fix/atlas-equivalent-output-sharing at 8dbcc33. Based on WDT 0.1.19+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Non-destructive modification to Texture!",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.19+wdt.ttt.1.0.2.debug.936.atlas-equivalent-output-sharing.8dbcc33.zip",
+          "url": "https://github.com/gridatch/TexTransTool/releases/download/wdt-v0.1.20+wdt.ttt.1.0.2/net.gridatch.tex-trans-tool-0.1.20+wdt.ttt.1.0.2.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -429,7 +429,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "9674c2ce3ae13c07782391e43db2bfac794935767762c02d906a39b1abb99128"
+          "zipSHA256": "af3e8199c9699b34eaba640c3bb3a0820bb1bc46189f9ad03d1bc7d054c54113"
         }
       }
     }
