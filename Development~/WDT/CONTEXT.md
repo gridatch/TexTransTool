@@ -102,6 +102,12 @@ The current shared lilToon information includes concrete selector fixes retained
 
 These are corrections to common shader information used by normal AtlasTexture. They are not AutoAtlas-only safety checks.
 
+### lilToon AudioLink metadata sync
+
+Commit `f1fec67f` also synchronized concrete AudioLink UV-use behavior from later Avatar Optimizer fixes, including the relevant AudioLink feature gates, mask UV selectors/transform, and local-map non-mesh usage.
+
+This is shared shader metadata maintenance. It must not be confused with the later rejected attempt to make "known complete shader semantics" an AutoAtlas permission gate.
+
 ### VRChat Toon Standard
 
 PR #12 added Toon Standard / Toon Standard Outline texture-usage mappings based on Avatar Optimizer's shader information because fallback `_MainTex`-only behavior was insufficient.
@@ -109,6 +115,8 @@ PR #12 added Toon Standard / Toon Standard Outline texture-usage mappings based 
 The mapping covers the shader's relevant normal/specular/matcap/emission/occlusion/detail/hue/color/AudioLink/outline texture usages according to their selector properties.
 
 This support belongs to shared AtlasTexture behavior.
+
+Commit `993b7293` later moved the Toon Standard WDT extension into its own source file to isolate WDT-specific changes. That move was source organization, not a change in the accepted Toon Standard behavior.
 
 ## 3.3 Independently tiled lilToon second normal
 
@@ -250,6 +258,12 @@ PR #25 isolated this into the shared resource-safety commit because destroying b
 
 Do not change ownership cleanup based only on whether an input is non-persistent; reference identity matters.
 
+## 3.11 NDMF preview `WithData` comparer compatibility
+
+`PreviewIslandSelector` and `TexTransDomainFilter` are part of the WDT diff because PR #15 changed their `RenderGroup.WithData` calls to pass explicit equality comparers.
+
+This is NDMF preview/API compatibility support that happened in the Persistent Bake changeset; it is **not** part of Persistent Bake's product semantics. Do not use those file changes as evidence that Persistent Bake owns or changes ordinary NDMF preview targeting.
+
 ---
 
 # 4. Persistent Atlas Bake
@@ -313,6 +327,17 @@ Before applying persistent results, the bake validates at least:
 
 Renderer state is captured before reference application and restored if application throws.
 Asset output is guarded by an output transaction.
+
+The Persistent Bake hardening commit `8a3c5071` made the destructive boundary explicit:
+
+- reject incompatible manifest versions;
+- reject manifest-managed paths outside the bake output root;
+- include source textures in direct AnimationClip object-reference validation;
+- resolve animation binding paths against the exact renderer paths;
+- back up an existing same-name bake output before mutation;
+- restore the previous output and renderer references when the transaction fails.
+
+This rollback model remains appropriate here because Persistent Bake intentionally updates one stable named output.
 
 These checks are intentional fail-closed boundaries for a destructive/persistent workflow.
 
@@ -905,6 +930,8 @@ Manual workflow dispatch from `wdt` is also supported.
 
 A stable VPM version is immutable.
 
+Stable publishing is retry-safe: if the GitHub Release tag already exists it may be reused only when it resolves to the same source commit. An existing package asset is reused for its checksum, a missing asset may be uploaded, and a tag pointing at a different commit is an error.
+
 ## 10.4 Current rolling debug channel
 
 Pushes to `fix/**` and `feat/**` create/update a rolling debug VPM build.
@@ -918,6 +945,8 @@ to the existing metadata rather than introducing a second `+`.
 Only the current rolling debug version/ZIP is retained in the VPM repository.
 
 The debug workflow does not create a formal stable release.
+
+Debug and stable VPM publication share the same workflow concurrency group so they do not race while mutating the `vpm` branch.
 
 ## 10.5 What workflows do not validate
 
