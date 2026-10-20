@@ -53,6 +53,7 @@ These are deliberately repeated here even though later sections explain them in 
 - PR #24 and old rejected-audit branches are investigation history, not current AutoAtlas specification.
 - Archived `Development~/DiagnosticTemplates/AutoAtlas/` files are reconstruction references. Only behavior explicitly classified as permanent remains normative.
 - GitHub package/debug workflow success does not prove Unity compilation, Unity Test Runner/NUnit execution, or visual/runtime correctness.
+- WDT source must remain compatible with the Unity project's C# 9 language level unless the project/toolchain requirement is deliberately changed. Do not introduce C# 10-only syntax such as parameterless struct constructors merely because the local compiler accepts it.
 
 ## 2. WDT extension map
 
