@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.20+wdt.ttt.1.0.2",
-  "lastDebugSerial": 942,
-  "currentDebugVersion": "0.1.20+wdt.ttt.1.0.2.debug.942.atlas-lossless-efficiency.8e29bf1",
+  "lastDebugSerial": 943,
+  "currentDebugVersion": "0.1.20+wdt.ttt.1.0.2.debug.943.atlas-lossless-efficiency.afa6569",
   "currentDebugChange": "atlas-lossless-efficiency",
   "currentDebugBranch": "feat/atlas-lossless-efficiency",
-  "currentDebugCommit": "8e29bf1f9d08353f24931adb4596aece2ec74f3d",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.20+wdt.ttt.1.0.2.debug.942.atlas-lossless-efficiency.8e29bf1.zip"
+  "currentDebugCommit": "afa6569ac1ca6c2eea480ac973e0bb022e8141cc",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.20+wdt.ttt.1.0.2.debug.943.atlas-lossless-efficiency.afa6569.zip"
 }
