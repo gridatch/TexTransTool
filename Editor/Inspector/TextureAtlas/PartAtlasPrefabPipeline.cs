@@ -359,7 +359,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return Fail(result, "抽出対象GameObjectが選択されていません。");
 
             if (request.KeepRendererKeys.Count == 0)
-                return Fail(result, "抽出対象Rendererが選択されていません。");
+                return Fail(result, "抽出対象レンダラーが選択されていません。");
 
             var requestedOutputName = matsukawa.SanitizeName(request.OutputName?.Trim() ?? "");
             if (string.IsNullOrWhiteSpace(requestedOutputName))
@@ -494,7 +494,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     .Where(entry => entry.Keep)
                     .ToArray();
                 if (selectedEntries.Length == 0)
-                    return Fail(result, "抽出対象RendererがPrefab内で1件も一致しませんでした。");
+                    return Fail(result, "抽出対象レンダラーがPrefab内で1件も一致しませんでした。");
 
                 var uncoveredTarget = targetStates.FirstOrDefault(state =>
                     selectedEntries.Any(entry =>
@@ -510,7 +510,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         + (string.IsNullOrEmpty(uncoveredTarget.SourcePath)
                             ? "<Prefab Root>"
                             : uncoveredTarget.SourcePath)
-                        + "」配下で、残すRendererが1件も選択されていません。"
+                        + "」配下で、残すレンダラーが1件も選択されていません。"
                     );
                 }
 
@@ -531,7 +531,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     {
                         return Fail(
                             result,
-                            "選択したMaterialを使用する抽出対象Rendererに、アトラス化可能なRendererがありません。"
+                            "選択したMaterialを使用する抽出対象レンダラーに、アトラス化可能なレンダラーがありません。"
                         );
                     }
 
@@ -1240,7 +1240,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 if (renderer == null || currentRenderers.Contains(renderer) is false)
                 {
-                    return "ボーン切り詰め対象Rendererを抽出結果で確認できませんでした。";
+                    return "ボーン切り詰め対象レンダラーを抽出結果で確認できませんでした。";
                 }
 
                 if (expectedBoneCount <= 0)
@@ -1296,7 +1296,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (missing.Length > 0)
             {
                 throw new InvalidOperationException(
-                    "抽出処理後にアトラス化対象Rendererを確認できませんでした。"
+                    "抽出処理後にアトラス化対象レンダラーを確認できませんでした。"
                     + "抽出対象とアトラス対象の組み合わせを確認してください。"
                 );
             }

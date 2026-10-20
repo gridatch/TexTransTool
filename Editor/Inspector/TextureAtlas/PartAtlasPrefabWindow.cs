@@ -74,7 +74,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private const float RightPaneMinWidth = 560f;
         private const float InspectorPaneMinWidth = 300f;
 
-        [MenuItem("Tools/TexTransTool/WDT/Prefab抽出・アトラス化...")]
+        [MenuItem("Tools/TexTransTool/Prefab抽出・アトラス化 [WDT]")]
         private static void OpenFromMenu()
         {
             Open();
@@ -770,7 +770,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             var keptCount = _entries.Count(entry => entry.Keep);
             EditorGUILayout.LabelField(
-                $"抽出するRenderer（{keptCount}/{_entries.Count}）",
+                $"抽出するレンダラー（{keptCount}/{_entries.Count}）",
                 MediumSectionLabelStyle
             );
 
@@ -807,7 +807,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (unknownUnchecked > 0)
                 {
                     EditorGUILayout.HelpBox(
-                        "用途が「不明」でチェックの入っていないRendererが "
+                        "用途が「不明」でチェックの入っていないレンダラーが "
                         + unknownUnchecked
                         + " 件あります。用途推定は名前からの推定なので、必要なものが混じっていないか確認してください。",
                         MessageType.Warning
@@ -830,7 +830,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         EditorGUILayout.HelpBox(
                             "残すSkinnedMeshRendererのうち "
                             + unreadableEntries.Length
-                            + " 件でMeshのRead/Writeが無効です。松川ツールはそのRendererについてBone Weightを読めないため、ボーン配列の全ボーンを残します。",
+                            + " 件でMeshのRead/Writeが無効です。松川ツールはそのレンダラーについてBone Weightを読めないため、ボーン配列の全ボーンを残します。",
                             MessageType.Warning
                         );
 
@@ -1081,7 +1081,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 else
                 {
                     EditorGUILayout.HelpBox(
-                        "現在の抽出対象RendererにはMaterialがありません。",
+                        "現在の抽出対象レンダラーにはMaterialがありません。",
                         MessageType.Info
                     );
                 }
@@ -1300,7 +1300,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 );
                 EditorGUILayout.LabelField("解析結果", EditorStyles.boldLabel);
                 EditorGUILayout.LabelField(
-                    $"オブジェクト {total} → {after} / 削除Renderer {_analysis.DeleteRendererCount} / Trim {_analysis.TrimTargetCount}",
+                    $"オブジェクト {total} → {after} / 削除レンダラー {_analysis.DeleteRendererCount} / Trim {_analysis.TrimTargetCount}",
                     EditorStyles.wordWrappedLabel
                 );
 
@@ -1546,7 +1546,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (atlasRequested && automaticTargets.Length == 0)
             {
                 EditorGUILayout.HelpBox(
-                    "選択したMaterialを使用する抽出対象Rendererに、アトラス化可能なRendererがありません。",
+                    "選択したMaterialを使用する抽出対象レンダラーに、アトラス化可能なレンダラーがありません。",
                     MessageType.Warning
                 );
             }
@@ -1585,7 +1585,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (atlasRequested)
             {
                 confirm +=
-                    "\nアトラス化するRenderer: "
+                    "\nアトラス化するレンダラー: "
                     + atlasCount
                     + " 件";
             }
@@ -1594,7 +1594,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (unknownUnchecked > 0)
             {
                 confirm +=
-                    "\n\n⚠ 用途が「不明」でチェックの入っていないRendererが "
+                    "\n\n⚠ 用途が「不明」でチェックの入っていないレンダラーが "
                     + unknownUnchecked
                     + " 件あります。残すべきものが混じっていないか確認してください。";
             }
