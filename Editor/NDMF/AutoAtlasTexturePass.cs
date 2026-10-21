@@ -714,7 +714,7 @@ namespace net.rs64.TexTransTool.NDMF
                     }
                 }
 
-                var remainingLabels
+                var remainingLabels = otherConsumers
                     .Select(reference => reference.material.name
                         + "/" + reference.property)
                     .OrderBy(value => value, StringComparer.Ordinal)
