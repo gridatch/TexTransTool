@@ -102,6 +102,17 @@ namespace net.rs64.TexTransTool.NDMF
         private int _surveyUniformUsed;
         private int _surveyUnknownCoverage;
         private int _surveyCoverageCacheHits;
+        // Exact per-texel A/B experiment only. The baseline survey is never
+        // changed by AtlasContext results, even when the two disagree.
+        private const int MaxAtlasGeometryComparisons = 8;
+        private readonly List<string> _atlasGeometryComparisonLines = new();
+        private int _atlasGeometryCompared;
+        private int _atlasGeometryMatched;
+        private int _atlasGeometryMismatched;
+        private int _atlasGeometryUnavailable;
+        private long _atlasGeometryBaselineMs;
+        private long _atlasGeometryReuseMs;
+        private long _atlasGeometryPixelChecks;
 
         private sealed class SourceImage
         {
@@ -125,7 +136,8 @@ namespace net.rs64.TexTransTool.NDMF
         internal void Observe(
             IDomain domain,
             Renderer[] renderers,
-            Dictionary<Material, Material> materialMap)
+            Dictionary<Material, Material> materialMap,
+            AtlasContext? atlasContext = null)
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
@@ -178,7 +190,7 @@ namespace net.rs64.TexTransTool.NDMF
             // These are observations, never deletion approvals.
             try
             {
-                SurveySourceTextures(materialMap.Keys, slots, unresolved);
+                SurveySourceTextures(materialMap.Keys, slots, unresolved, atlasContext);
             }
             catch (Exception ex)
             {
@@ -198,7 +210,8 @@ namespace net.rs64.TexTransTool.NDMF
         private void SurveySourceTextures(
             IEnumerable<Material> materials,
             Dictionary<Material, HashSet<(Mesh, int)>> slots,
-            HashSet<Material> unresolved)
+            HashSet<Material> unresolved,
+            AtlasContext? atlasContext)
         {
             // Cache only within this survey invocation. Identical source
             // textures and UV transforms on the same material must not
@@ -280,10 +293,14 @@ namespace net.rs64.TexTransTool.NDMF
                             }
                             else
                             {
-                                if (TrySourceCoverage(used, scale, offset, image.Width,
-                                        image.Height, texture.wrapModeU,
-                                        texture.wrapModeV, texture.filterMode,
-                                        out var covered, out var count, out var reason))
+                                var baselineWatch = System.Diagnostics.Stopwatch.StartNew();
+                                bool baselineOk = TrySourceCoverage(used, scale, offset,
+                                    image.Width, image.Height, texture.wrapModeU,
+                                    texture.wrapModeV, texture.filterMode,
+                                    out var covered, out var count, out var reason);
+                                baselineWatch.Stop();
+
+                                if (baselineOk)
                                 {
                                     var region = ScanSourcePixels(image.Pixels, covered);
                                     constant = region.isConstant;
@@ -295,6 +312,13 @@ namespace net.rs64.TexTransTool.NDMF
                                     constant = false;
                                     uvStatus = "unknown:" + reason;
                                 }
+                                if (baselineOk && atlasContext != null
+                                    && _atlasGeometryCompared < MaxAtlasGeometryComparisons
+                                    && IsAtlasGeometryBenchmarkProperty(property))
+                                    CompareAtlasContextGeometry(atlasContext, material,
+                                        used, property, texture, scale, offset,
+                                        image.Width, image.Height, covered, count,
+                                        baselineWatch.ElapsedMilliseconds);
                                 coverageCache.Add(key, (uvStatus, constant));
                             }
                             if (constant) ++_surveyUniformUsed;
@@ -320,6 +344,183 @@ namespace net.rs64.TexTransTool.NDMF
                     }
                 }
             }
+        }
+
+        private static bool IsAtlasGeometryBenchmarkProperty(string property) =>
+            property == "_MainTex" || property == "_Bump2ndMap"
+            || property == "_Main2ndBlendMask"
+            || property == "_Emission2ndBlendMask"
+            || property == "_OutlineWidthMask";
+
+        private void CompareAtlasContextGeometry(
+            AtlasContext atlasContext,
+            Material material,
+            HashSet<(Mesh, int)> sourceSlots,
+            string property, Texture texture,
+            Vector2 scale, Vector2 offset, int width, int height,
+            bool[] baseline, int baselineCount, long baselineMs)
+        {
+            ++_atlasGeometryCompared;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            bool success = TryAtlasContextCoverage(
+                atlasContext, material, sourceSlots, scale, offset,
+                width, height, texture.wrapModeU, texture.wrapModeV,
+                texture.filterMode,
+                out var alternate, out var alternateCount, out var reason);
+            clock.Stop();
+            _atlasGeometryBaselineMs += baselineMs;
+            _atlasGeometryReuseMs += clock.ElapsedMilliseconds;
+
+            string result;
+            if (!success)
+            {
+                ++_atlasGeometryUnavailable;
+                result = "unavailable:" + reason;
+            }
+            else
+            {
+                int differences = 0;
+                for (int i = 0; i < baseline.Length; ++i)
+                    if (baseline[i] != alternate[i]) ++differences;
+                if (differences == 0 && baselineCount == alternateCount)
+                {
+                    ++_atlasGeometryMatched;
+                    result = "exact-match";
+                }
+                else
+                {
+                    ++_atlasGeometryMismatched;
+                    result = "MISMATCH:different-texels=" + differences
+                        + ",original=" + baselineCount
+                        + ",atlasContext=" + alternateCount;
+                }
+            }
+            _atlasGeometryComparisonLines.Add("material=" + material.name
+                + ", property=" + property + ", result=" + result
+                + ", sourceMeshMs=" + baselineMs
+                + ", atlasContextMs=" + clock.ElapsedMilliseconds);
+        }
+
+        // Alternate GEOMETRY INPUT, same exact per-texel intersection model.
+        // Never treats an island's bounding rectangle as uniform.
+        // Do not use normalized/island data for the production decision
+        // until full comparison and Unity test verification.
+        private bool TryAtlasContextCoverage(
+            AtlasContext atlasContext,
+            Material material,
+            HashSet<(Mesh, int)> sourceSlots,
+            Vector2 scale, Vector2 offset, int width, int height,
+            TextureWrapMode wrapU, TextureWrapMode wrapV,
+            FilterMode filterMode,
+            out bool[] coverage, out int coveredCount, out string reason)
+        {
+            coverage = Array.Empty<bool>();
+            coveredCount = 0;
+            reason = "";
+            var groupId = atlasContext.MaterialGroupingCtx.GetMaterialGroupID(material);
+            if (groupId < 0)
+            {
+                reason = "material-not-in-atlas-context";
+                return false;
+            }
+            if (width <= 0 || height <= 0
+                || (long)width * height > _residentPixelBudget)
+            {
+                reason = "invalid-source-size";
+                return false;
+            }
+            if (filterMode != FilterMode.Point
+                && filterMode != FilterMode.Bilinear
+                && filterMode != FilterMode.Trilinear)
+            {
+                reason = "source-filter-unsupported";
+                return false;
+            }
+            float radius = filterMode == FilterMode.Point ? 0.5f : 1f;
+            coverage = new bool[width * height];
+            long localChecks = 0;
+            bool encountered = false;
+
+            foreach (var slot in sourceSlots)
+            {
+                if (!atlasContext.NormalizedMeshCtx.Origin2NormalizedMesh
+                        .TryGetValue(slot.Item1, out var normalized)
+                    || !atlasContext.NormalizedMeshCtx.Normalized2MeshID
+                        .TryGetValue(normalized, out var meshId))
+                {
+                    reason = "source-mesh-not-in-atlas-context";
+                    return false;
+                }
+                var submeshKey = new AtlasSubMeshIndexID(meshId, slot.Item2, groupId);
+                if (!atlasContext.AtlasIslandCtx.OriginIslandDict
+                        .TryGetValue(submeshKey, out var islands))
+                {
+                    reason = "source-submesh-not-in-atlas-context";
+                    return false;
+                }
+                var uv = atlasContext.NormalizedMeshCtx
+                    .GetMeshDataFromMeshID(meshId).VertexUV;
+
+                foreach (var island in islands)
+                    foreach (var triangle in island.Triangles)
+                    {
+                        encountered = true;
+                        var a = Vector2.Scale(uv[triangle[0]], scale) + offset;
+                        var b = Vector2.Scale(uv[triangle[1]], scale) + offset;
+                        var c = Vector2.Scale(uv[triangle[2]], scale) + offset;
+                        if (!InsideAtlasUV(a) || !InsideAtlasUV(b)
+                            || !InsideAtlasUV(c))
+                        {
+                            reason = "source-UV-outside-0-to-1";
+                            return false;
+                        }
+
+                        a = new Vector2(a.x * width - 0.5f, a.y * height - 0.5f);
+                        b = new Vector2(b.x * width - 0.5f, b.y * height - 0.5f);
+                        c = new Vector2(c.x * width - 0.5f, c.y * height - 0.5f);
+                        int x0 = Mathf.FloorToInt(
+                            Mathf.Min(a.x, Mathf.Min(b.x, c.x)) - radius);
+                        int x1 = Mathf.CeilToInt(
+                            Mathf.Max(a.x, Mathf.Max(b.x, c.x)) + radius);
+                        int y0 = Mathf.FloorToInt(
+                            Mathf.Min(a.y, Mathf.Min(b.y, c.y)) - radius);
+                        int y1 = Mathf.CeilToInt(
+                            Mathf.Max(a.y, Mathf.Max(b.y, c.y)) + radius);
+                        long checks = (long)(x1 - x0 + 1) * (y1 - y0 + 1);
+                        if (checks > MaxTrianglePixelChecks - localChecks)
+                        {
+                            reason = "source-per-coverage-raster-budget";
+                            return false;
+                        }
+                        localChecks += checks;
+                        _atlasGeometryPixelChecks += checks;
+
+                        for (int y = y0; y <= y1; ++y)
+                            for (int x = x0; x <= x1; ++x)
+                            {
+                                if (!TriangleOverlapsTexelFilter(
+                                        new Vector2(x, y), a, b, c, radius)) continue;
+                                if (!TryWrapTexel(x, width, wrapU,
+                                        out var wrappedX)
+                                    || !TryWrapTexel(y, height, wrapV,
+                                        out var wrappedY))
+                                {
+                                    reason = "source-wrap-mode-unknown";
+                                    return false;
+                                }
+                                int index = wrappedY * width + wrappedX;
+                                if (coverage[index]) continue;
+                                coverage[index] = true;
+                                ++coveredCount;
+                            }
+                    }
+            }
+            if (!encountered || coveredCount == 0)
+            {
+                reason = "no-source-UV-coverage";
+                return false;
+            }
+            return true;
         }
 
         private static string FormatSurveyStats(
@@ -958,6 +1159,23 @@ namespace net.rs64.TexTransTool.NDMF
                 + (_lines.Count == 0
                     ? "No non-Lite lilToon emission source textures found."
                     : string.Join("\n", _lines))
+                + "\n\n[Exact AtlasContext UV geometry A/B: diagnostic only]"
+                + "\nCandidates checked: " + _atlasGeometryCompared
+                + ", exact mask matches: " + _atlasGeometryMatched
+                + ", mismatches: " + _atlasGeometryMismatched
+                + ", geometry unavailable: " + _atlasGeometryUnavailable
+                + "\nCurrent source mesh coverage: " + _atlasGeometryBaselineMs
+                + "ms, existing AtlasContext geometry: "
+                + _atlasGeometryReuseMs + "ms"
+                + ", alternate pixel checks: " + _atlasGeometryPixelChecks
+                + "\nBoth paths test the same triangle/filter coverage per texel."
+                + " Comparison runs only for selected properties (at most "
+                + MaxAtlasGeometryComparisons + " per build)."
+                + " A mismatch is never accepted as an optimization."
+                + "\n"
+                + (_atlasGeometryComparisonLines.Count == 0
+                    ? "No eligible comparison."
+                    : string.Join("\n", _atlasGeometryComparisonLines))
                 + "\n\n[Source texture property survey: mip0; informational]"
                 + "\nWhole-source and UV-covered constants are observations,"
                 + " NOT removability claims. Unsupported UV usage is unknown."
@@ -1882,7 +2100,7 @@ namespace net.rs64.TexTransTool.NDMF
                 // Diagnostic readback is intentionally after all execution
                 // safety gates, and before generated textures are disposed.
                 emissionProbe.Observe(domain, atlasRenderers,
-                    atlasMaterialMaps.materialMap);
+                    atlasMaterialMaps.materialMap, atlasContext);
 
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
