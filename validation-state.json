@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.21+wdt.ttt.1.0.2",
-  "lastDebugSerial": 971,
-  "currentDebugVersion": "0.1.21+wdt.ttt.1.0.2.debug.971.autoatlas-emission-candidate-probe.2d8de26",
+  "lastDebugSerial": 972,
+  "currentDebugVersion": "0.1.21+wdt.ttt.1.0.2.debug.972.autoatlas-emission-candidate-probe.61f1a9f",
   "currentDebugChange": "autoatlas-emission-candidate-probe",
   "currentDebugBranch": "feat/autoatlas-emission-candidate-probe",
-  "currentDebugCommit": "2d8de26d6d3266163ad4f6d53bdaeeccc95c04ea",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.21+wdt.ttt.1.0.2.debug.971.autoatlas-emission-candidate-probe.2d8de26.zip"
+  "currentDebugCommit": "61f1a9f31631b6b2e414eebc2900fc4820fa888c",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.21+wdt.ttt.1.0.2.debug.972.autoatlas-emission-candidate-probe.61f1a9f.zip"
 }
