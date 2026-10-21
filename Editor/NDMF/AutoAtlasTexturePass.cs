@@ -110,8 +110,8 @@ namespace net.rs64.TexTransTool.NDMF
         private int _atlasGeometryMatched;
         private int _atlasGeometryMismatched;
         private int _atlasGeometryUnavailable;
-        private long _atlasGeometryBaselineMs;
-        private long _atlasGeometryReuseMs;
+        private double _atlasGeometryBaselineMs;
+        private double _atlasGeometryReuseMs;
         private long _atlasGeometryPixelChecks;
 
         private sealed class SourceImage
@@ -318,7 +318,7 @@ namespace net.rs64.TexTransTool.NDMF
                                     CompareAtlasContextGeometry(atlasContext, material,
                                         used, property, texture, scale, offset,
                                         image.Width, image.Height, covered, count,
-                                        baselineWatch.ElapsedMilliseconds);
+                                        baselineWatch.Elapsed.TotalMilliseconds);
                                 coverageCache.Add(key, (uvStatus, constant));
                             }
                             if (constant) ++_surveyUniformUsed;
@@ -358,18 +358,32 @@ namespace net.rs64.TexTransTool.NDMF
             HashSet<(Mesh, int)> sourceSlots,
             string property, Texture texture,
             Vector2 scale, Vector2 offset, int width, int height,
-            bool[] baseline, int baselineCount, long baselineMs)
+            bool[] baseline, int baselineCount, double baselineMs)
         {
             ++_atlasGeometryCompared;
             var clock = System.Diagnostics.Stopwatch.StartNew();
-            bool success = TryAtlasContextCoverage(
-                atlasContext, material, sourceSlots, scale, offset,
-                width, height, texture.wrapModeU, texture.wrapModeV,
-                texture.filterMode,
-                out var alternate, out var alternateCount, out var reason);
+            bool success;
+            bool[] alternate;
+            int alternateCount;
+            string reason;
+            try
+            {
+                success = TryAtlasContextCoverage(
+                    atlasContext, material, sourceSlots, scale, offset,
+                    width, height, texture.wrapModeU, texture.wrapModeV,
+                    texture.filterMode,
+                    out alternate, out alternateCount, out reason);
+            }
+            catch (Exception ex)
+            {
+                success = false;
+                alternate = Array.Empty<bool>();
+                alternateCount = 0;
+                reason = "atlas-context-exception:" + ex.GetType().Name;
+            }
             clock.Stop();
             _atlasGeometryBaselineMs += baselineMs;
-            _atlasGeometryReuseMs += clock.ElapsedMilliseconds;
+            _atlasGeometryReuseMs += clock.Elapsed.TotalMilliseconds;
 
             string result;
             if (!success)
@@ -379,9 +393,7 @@ namespace net.rs64.TexTransTool.NDMF
             }
             else
             {
-                int differences = 0;
-                for (int i = 0; i < baseline.Length; ++i)
-                    if (baseline[i] != alternate[i]) ++differences;
+                int differences = CountCoverageDifferences(baseline, alternate);
                 if (differences == 0 && baselineCount == alternateCount)
                 {
                     ++_atlasGeometryMatched;
@@ -397,8 +409,20 @@ namespace net.rs64.TexTransTool.NDMF
             }
             _atlasGeometryComparisonLines.Add("material=" + material.name
                 + ", property=" + property + ", result=" + result
-                + ", sourceMeshMs=" + baselineMs
-                + ", atlasContextMs=" + clock.ElapsedMilliseconds);
+                + ", sourceMeshMs=" + baselineMs.ToString("F3",
+                    System.Globalization.CultureInfo.InvariantCulture)
+                + ", atlasContextMs=" + clock.Elapsed.TotalMilliseconds
+                    .ToString("F3", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        internal static int CountCoverageDifferences(bool[] source, bool[] alternative)
+        {
+            if (source.Length != alternative.Length)
+                throw new ArgumentException("Coverage length mismatch.");
+            int different = 0;
+            for (int i = 0; i < source.Length; ++i)
+                if (source[i] != alternative[i]) ++different;
+            return different;
         }
 
         // Alternate GEOMETRY INPUT, same exact per-texel intersection model.
@@ -1164,9 +1188,12 @@ namespace net.rs64.TexTransTool.NDMF
                 + ", exact mask matches: " + _atlasGeometryMatched
                 + ", mismatches: " + _atlasGeometryMismatched
                 + ", geometry unavailable: " + _atlasGeometryUnavailable
-                + "\nCurrent source mesh coverage: " + _atlasGeometryBaselineMs
+                + "\nCurrent source mesh coverage: "
+                + _atlasGeometryBaselineMs.ToString("F3",
+                    System.Globalization.CultureInfo.InvariantCulture)
                 + "ms, existing AtlasContext geometry: "
-                + _atlasGeometryReuseMs + "ms"
+                + _atlasGeometryReuseMs.ToString("F3",
+                    System.Globalization.CultureInfo.InvariantCulture) + "ms"
                 + ", alternate pixel checks: " + _atlasGeometryPixelChecks
                 + "\nBoth paths test the same triangle/filter coverage per texel."
                 + " Comparison runs only for selected properties (at most "
