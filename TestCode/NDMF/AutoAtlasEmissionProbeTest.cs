@@ -306,6 +306,46 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void AtlasContextComparisonRejectsAnySingleTexelDifference()
+        {
+            var mesh = Triangle();
+            try
+            {
+                foreach (var filter in new[]
+                         { FilterMode.Point, FilterMode.Bilinear })
+                {
+                    var baseline = Coverage(mesh, filter);
+                    var identical = (bool[])baseline.Clone();
+                    Assert.That(
+                        AutoAtlasEmissionProbe.CountCoverageDifferences(
+                            baseline, identical), Is.Zero);
+
+                    // A mismatch in a texel that the triangle does not touch
+                    // still invalidates mask equivalence. A mere enclosing
+                    // rectangle comparison could not establish that.
+                    int untouched = 7 * 8 + 7;
+                    Assert.That(baseline[untouched], Is.False);
+                    identical[untouched] = true;
+                    Assert.That(
+                        AutoAtlasEmissionProbe.CountCoverageDifferences(
+                            baseline, identical), Is.EqualTo(1));
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void AtlasContextComparisonRejectsDifferentMaskDimensions()
+        {
+            Assert.Throws<ArgumentException>(() =>
+                AutoAtlasEmissionProbe.CountCoverageDifferences(
+                    new bool[64], new bool[63]));
+        }
+
+        [Test]
         public void ProbeReportUsesNoNestedScrollView()
         {
             var error = new AutoAtlasEmissionProbeError("sample\nsample 2");
