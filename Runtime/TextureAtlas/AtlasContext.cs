@@ -74,10 +74,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , Renderer[] targetRenderers
             , HashSet<Material> targetMaterials
             , AtlasContextOption atlasContextOption
+            , IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>? precomputedTextureUses = null
             )
         {
             using var pf = new PFScope("MaterialGroupingCtx ctr");
-            MaterialGroupingCtx = new(targetMaterials, atlasContextOption.AtlasTargetUVChannel, atlasContextOption.PrimaryTexturePropertyOrMaximum);
+            MaterialGroupingCtx = precomputedTextureUses is null
+                ? new MaterialGroupingContext(targetMaterials, atlasContextOption.AtlasTargetUVChannel, atlasContextOption.PrimaryTexturePropertyOrMaximum)
+                : new MaterialGroupingContext(targetMaterials, precomputedTextureUses, atlasContextOption.PrimaryTexturePropertyOrMaximum);
             pf.Split("NormalizedMeshCtx ctr");
             NormalizedMeshCtx = new(targeting, targetRenderers, atlasContextOption.AtlasTargetUVChannel);
             pf.Split("AtlasSubMeshIndexSetCtx ctr");

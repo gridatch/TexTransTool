@@ -755,6 +755,58 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void PartialSharedUseExclusionSplitsConnectivityWithoutMutatingSources()
+        {
+            var shader = Shader.Find("Standard") ?? Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+            var a = new Material(shader);
+            var b = new Material(shader);
+            var shared = new Texture2D(128, 128);
+            var small = new Texture2D(32, 32);
+            var other = new Texture2D(32, 32);
+            try
+            {
+                var originals = new Dictionary<Material, IReadOnlyDictionary<string, Texture>>
+                {
+                    [a] = new Dictionary<string, Texture>
+                        { ["_MainTex"] = small, ["_Emission2ndBlendMask"] = shared },
+                    [b] = new Dictionary<string, Texture>
+                        { ["_MainTex"] = other, ["_Emission2ndBlendMask"] = shared },
+                };
+                var targets = new HashSet<Material> { a, b };
+                var before = AutoAtlasTextureProcessor.MakeTextureConnectedGroups(
+                    targets, originals);
+                Assert.That(before.Count, Is.EqualTo(1));
+                var shadow = AutoAtlasShadowReplan.WithoutUse(
+                    originals, a, "_Emission2ndBlendMask");
+                var after = AutoAtlasTextureProcessor.MakeTextureConnectedGroups(
+                    targets, shadow);
+                Assert.That(after.Count, Is.EqualTo(2));
+                Assert.That(originals[a]["_Emission2ndBlendMask"], Is.SameAs(shared));
+                Assert.That(shadow[a].ContainsKey("_Emission2ndBlendMask"), Is.False);
+                Assert.That(shadow[b]["_Emission2ndBlendMask"], Is.SameAs(shared));
+                var previousPrimary = new MaterialGroupingContext(
+                    targets, originals, null);
+                var projectedPrimary = new MaterialGroupingContext(
+                    targets, shadow, null);
+                Assert.That(previousPrimary.GetPrimaryTexture(
+                    previousPrimary.GetMaterialGroupID(a)), Is.SameAs(shared));
+                Assert.That(projectedPrimary.GetPrimaryTexture(
+                    projectedPrimary.GetMaterialGroupID(a)), Is.SameAs(small));
+                Assert.That(projectedPrimary.GetPrimaryTexture(
+                    projectedPrimary.GetMaterialGroupID(b)), Is.SameAs(shared));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(a);
+                UnityEngine.Object.DestroyImmediate(b);
+                UnityEngine.Object.DestroyImmediate(shared);
+                UnityEngine.Object.DestroyImmediate(small);
+                UnityEngine.Object.DestroyImmediate(other);
+            }
+        }
+
+        [Test]
         public void ProbeReportUsesNoNestedScrollView()
         {
             var error = new AutoAtlasEmissionProbeError("sample\nsample 2");

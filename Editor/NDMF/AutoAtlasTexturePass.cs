@@ -87,6 +87,12 @@ namespace net.rs64.TexTransTool.NDMF
         // ownership inspection. This does not mutate generated materials.
         private readonly List<(Material material, string property, Texture source)> _zeroMaskCandidates = new();
         private readonly List<string> _zeroMaskOwnershipLines = new();
+        private readonly List<string> _shadowReplanLines = new();
+
+        internal (Material material, string property, Texture source)[] GetZeroMaskCandidates() =>
+            _zeroMaskCandidates.Distinct().ToArray();
+
+        internal void AddShadowReplanLine(string line) => _shadowReplanLines.Add(line);
         private readonly Dictionary<Texture, SourceImage> _images = new();
         private long _readbackPixels;
         private long _residentPixels;
@@ -1462,6 +1468,11 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\n" + (_zeroMaskOwnershipLines.Count == 0
                     ? "No zero-mask ownership candidates observed."
                     : string.Join("\n", _zeroMaskOwnershipLines))
+                + "\n\n[Zero-mask shadow atlas replan: TEMPORARY]" 
+                + "\nGenerated meshes, textures and materials are not applied. An assumed removal is not shader-equivalence proof."
+                + "\n" + (_shadowReplanLines.Count == 0
+                    ? "No shadow-replan candidate evaluated."
+                    : string.Join("\n", _shadowReplanLines))
                 + "\n\n[GPU-first UV source survey: diagnostic only]"
                 + "\nGPU screens: " + _gpuScreens
                 + ", GPU variable / CPU skipped: " + _gpuRejectedVariable
@@ -1804,6 +1815,8 @@ namespace net.rs64.TexTransTool.NDMF
 
             // Temporary emission-content survey; never alters atlas selection.
             var emissionProbe = new AutoAtlasEmissionProbe();
+            // Expensive full-pipeline diagnostic: at most one hypothetical use per build.
+            var shadowReplansRemaining = 1;
 
             var twoDimensionalFallbackReasons = new List<string>();
 
@@ -2419,6 +2432,34 @@ namespace net.rs64.TexTransTool.NDMF
                     emissionProbe.RecordOwnershipDiagnosticError(ex);
                 }
 
+                if (shadowReplansRemaining > 0 && execution.MergeSelection == null)
+                {
+                    var candidate = emissionProbe.GetZeroMaskCandidates()
+                        .Where(item => group.Contains(item.material))
+                        .OrderBy(item => item.material.name, StringComparer.Ordinal)
+                        .ThenBy(item => item.property, StringComparer.Ordinal)
+                        .FirstOrDefault();
+                    if (candidate.material != null)
+                    {
+                        shadowReplansRemaining--;
+                        try
+                        {
+                            emissionProbe.AddShadowReplanLine(
+                                AutoAtlasShadowReplan.Compare(
+                                    domain, configuration, settings, group,
+                                    propertyTextures, execution.SourceTextures,
+                                    finalTotalPixels, finalTotalTextureMemoryBytes,
+                                    executionMetrics,
+                                    candidate.material, candidate.property));
+                        }
+                        catch (Exception ex)
+                        {
+                            emissionProbe.AddShadowReplanLine(
+                                "shadow-replan=unknown:" + ex.GetType().Name);
+                        }
+                    }
+                }
+
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
                 AtlasTexture.ApplyAtlasedMaterialMaps(
@@ -2619,7 +2660,7 @@ namespace net.rs64.TexTransTool.NDMF
             return retained;
         }
 
-        private static List<HashSet<Material>> MakeTextureConnectedGroups(
+        internal static List<HashSet<Material>> MakeTextureConnectedGroups(
             HashSet<Material> materials,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> properties)
         {

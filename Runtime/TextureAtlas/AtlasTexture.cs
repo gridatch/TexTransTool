@@ -187,7 +187,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             IRendererTargeting targeting,
             HashSet<Material> targetMaterials,
             Renderer[] targetRenderers,
-            AtlasSetting atlasSetting)
+            AtlasSetting atlasSetting,
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>? precomputedTextureUses = null)
         {
             var preserveBump2ndMaterials =
                 GetBump2ndOriginalUVPreserveMaterials(
@@ -222,7 +223,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             ? null
                             : atlasSetting.PrimaryTextureProperty,
                     AtlasIslandContextOption = new(),
-                });
+                },
+                precomputedTextureUses);
 
             if (atlasSetting.PixelNormalize)
                 atlasContext.SourceVirtualIslandNormalize();
@@ -300,6 +302,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             , AtlasSetting atlasSetting
             , AtlasExecutionOptions? executionOptions = null
+            , IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>? precomputedTextureUses = null
         )
         {
             using var pf = new PFScope("init");
@@ -309,7 +312,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 targeting,
                 targetMaterials,
                 targetRenderers,
-                atlasSetting);
+                atlasSetting,
+                precomputedTextureUses);
 
             if (prepared is null)
             {
