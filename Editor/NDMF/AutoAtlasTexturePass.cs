@@ -75,7 +75,6 @@ namespace net.rs64.TexTransTool.NDMF
 
         private readonly List<string> _lines = new();
         private readonly Dictionary<Texture, SourceImage> _images = new();
-        private readonly HashSet<Texture> _readbackAttempted = new();
         private long _readbackPixels;
         private long _readbackMilliseconds;
         private long _probeMilliseconds;
@@ -102,11 +101,7 @@ namespace net.rs64.TexTransTool.NDMF
         internal void Observe(
             IDomain domain,
             Renderer[] renderers,
-            Mesh[] atlasedMeshes,
-            Dictionary<Material, Material> materialMap,
-            Dictionary<string, RenderTexture> resultingTextures,
-            TexFineTuningResult tuningResult,
-            AtlasContext atlasContext)
+            Dictionary<Material, Material> materialMap)
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
@@ -221,8 +216,11 @@ namespace net.rs64.TexTransTool.NDMF
             if (source.Pixels == null)
                 return new Inspection { Status = source.Status };
 
+            var sampler = isMask && material.HasProperty("_MainTex")
+                ? material.GetTexture("_MainTex") ?? texture : texture;
             if (!TrySourceCoverage(slots, scale, offset, source.Width,
-                    source.Height, out var covered, out var count, out reason))
+                    source.Height, sampler.wrapModeU, sampler.wrapModeV,
+                    out var covered, out var count, out reason))
                 return new Inspection { Status = reason };
 
             bool rgbZero = true, alphaZero = true;
@@ -367,6 +365,7 @@ namespace net.rs64.TexTransTool.NDMF
 
         private bool TrySourceCoverage(HashSet<(Mesh, int)> slots,
             Vector2 scale, Vector2 offset, int width, int height,
+            TextureWrapMode wrapU, TextureWrapMode wrapV,
             out bool[] coverage, out int coveredCount, out string reason)
         {
             coverage = Array.Empty<bool>();
@@ -389,7 +388,8 @@ namespace net.rs64.TexTransTool.NDMF
                     uvs.Clear();
                     slot.Item1.GetUVs(0, uvs);
                     var indices = slot.Item1.GetTriangles(slot.Item2);
-                    if (uvs.Count == 0 || indices.Length % 3 != 0)
+                    if (slot.Item1.GetTopology(slot.Item2) != MeshTopology.Triangles
+                        || uvs.Count == 0 || indices.Length % 3 != 0)
                     {
                         reason = "missing-source-UV0-or-triangles";
                         return false;
@@ -421,14 +421,14 @@ namespace net.rs64.TexTransTool.NDMF
                         b = new Vector2(b.x * width - 0.5f, b.y * height - 0.5f);
                         c = new Vector2(c.x * width - 0.5f, c.y * height - 0.5f);
 
-                        int x0 = Math.Max(0, Mathf.FloorToInt(
-                            Mathf.Min(a.x, Mathf.Min(b.x, c.x)) - BilinearRadius));
-                        int x1 = Math.Min(width - 1, Mathf.CeilToInt(
-                            Mathf.Max(a.x, Mathf.Max(b.x, c.x)) + BilinearRadius));
-                        int y0 = Math.Max(0, Mathf.FloorToInt(
-                            Mathf.Min(a.y, Mathf.Min(b.y, c.y)) - BilinearRadius));
-                        int y1 = Math.Min(height - 1, Mathf.CeilToInt(
-                            Mathf.Max(a.y, Mathf.Max(b.y, c.y)) + BilinearRadius));
+                        int x0 = Mathf.FloorToInt(
+                            Mathf.Min(a.x, Mathf.Min(b.x, c.x)) - BilinearRadius);
+                        int x1 = Mathf.CeilToInt(
+                            Mathf.Max(a.x, Mathf.Max(b.x, c.x)) + BilinearRadius);
+                        int y0 = Mathf.FloorToInt(
+                            Mathf.Min(a.y, Mathf.Min(b.y, c.y)) - BilinearRadius);
+                        int y1 = Mathf.CeilToInt(
+                            Mathf.Max(a.y, Mathf.Max(b.y, c.y)) + BilinearRadius);
                         long checks = (long)(x1 - x0 + 1) * (y1 - y0 + 1);
                         if (checks > MaxTrianglePixelChecks - _triangleChecks)
                         {
@@ -440,10 +440,18 @@ namespace net.rs64.TexTransTool.NDMF
                         for (int y = y0; y <= y1; ++y)
                             for (int x = x0; x <= x1; ++x)
                             {
-                                int index = y * width + x;
-                                if (coverage[index]) continue;
                                 if (!TriangleOverlapsTexelFilter(
                                         new Vector2(x, y), a, b, c)) continue;
+                                if (!TryWrapTexel(x, width, wrapU,
+                                        out var wrappedX)
+                                    || !TryWrapTexel(y, height, wrapV,
+                                        out var wrappedY))
+                                {
+                                    reason = "source-wrap-mode-unknown";
+                                    return false;
+                                }
+                                int index = wrappedY * width + wrappedX;
+                                if (coverage[index]) continue;
                                 coverage[index] = true;
                                 ++coveredCount;
                             }
@@ -460,6 +468,20 @@ namespace net.rs64.TexTransTool.NDMF
                 reason = "no-source-UV-coverage";
                 return false;
             }
+            return true;
+        }
+
+        private static bool TryWrapTexel(
+            int texel, int size, TextureWrapMode mode, out int wrapped)
+        {
+            wrapped = Mathf.Clamp(texel, 0, size - 1);
+            if (texel >= 0 && texel < size) return true;
+            if (mode == TextureWrapMode.Clamp
+                || mode == TextureWrapMode.Mirror
+                || mode == TextureWrapMode.MirrorOnce)
+                return true;
+            if (mode != TextureWrapMode.Repeat) return false;
+            wrapped = ((texel % size) + size) % size;
             return true;
         }
 
@@ -514,8 +536,9 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\nSource images read: " + _images.Count
                 + "\nLimits: original mesh UV0 and source image mip0 only;"
                 + " geometric bilinear-texel support (no thresholds)."
-                + " Unknown UV transforms/animations, mipmaps, compression,"
-                + " wrap semantics and shader effects are NOT verified."
+                + " Unknown UV transforms/animations, mipmaps,"
+                + " compression and shader effects are NOT verified."
+                + " Clamp/repeat texture-edge texels are included at mip0."
                 + " Atlas pixels/background are NEVER sampled."
                 + " Candidates are NOT approved-to-remove textures."
                 + "\n"
@@ -1457,9 +1480,8 @@ namespace net.rs64.TexTransTool.NDMF
 
                 // Diagnostic readback is intentionally after all execution
                 // safety gates, and before generated textures are disposed.
-                emissionProbe.Observe(domain, atlasRenderers, atlasResult.AtlasedMeshes!,
-                    atlasMaterialMaps.materialMap, resultingTextures,
-                    tuningResult, atlasContext);
+                emissionProbe.Observe(domain, atlasRenderers,
+                    atlasMaterialMaps.materialMap);
 
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
