@@ -394,7 +394,10 @@ namespace net.rs64.TexTransTool.NDMF
                 if (covered != null && !covered[i]) continue;
                 var pixel = pixels[i];
                 if (sampledTexels == 0) first = pixel;
-                else if (isConstant && pixel != first) isConstant = false;
+                else if (isConstant
+                         && (pixel.r != first.r || pixel.g != first.g
+                             || pixel.b != first.b || pixel.a != first.a))
+                    isConstant = false;
                 ++sampledTexels;
                 float absolute = Mathf.Max(Mathf.Abs(pixel.r),
                     Mathf.Max(Mathf.Abs(pixel.g), Mathf.Abs(pixel.b)));
@@ -420,6 +423,11 @@ namespace net.rs64.TexTransTool.NDMF
             };
             _images.Add(texture, image);
 
+            if (texture.dimension != TextureDimension.Tex2D)
+            {
+                image.Status = "source-non-2D-texture";
+                return image;
+            }
             long pixelCount = (long)texture.width * texture.height;
             if (pixelCount <= 0 || pixelCount > MaxReadbackPixels - _readbackPixels)
             {
@@ -790,7 +798,7 @@ namespace net.rs64.TexTransTool.NDMF
         {
             var project = new System.IO.DirectoryInfo(Application.dataPath)
                 .Parent?.Name ?? "(unknown)";
-            return "[Original-source emission probe: TEMPORARY; observation only]"
+            return "[Original-source texture probe: TEMPORARY; observation only]"
                 + "\nUnity project: " + project
                 + "\nLayers observed: " + _observed
                 + "\nSource mip0 zero-emission candidates: " + _candidates
@@ -815,6 +823,7 @@ namespace net.rs64.TexTransTool.NDMF
                 + " Clamp/repeat texture-edge texels are included at mip0."
                 + " Atlas pixels/background are NEVER sampled."
                 + " Candidates are NOT approved-to-remove textures."
+                + "\n[Emission use: mip0 diagnostic]"
                 + "\n"
                 + (_lines.Count == 0
                     ? "No non-Lite lilToon emission source textures found."
