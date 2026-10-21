@@ -207,67 +207,66 @@ namespace net.rs64.TexTransTool.NDMF
                 {
                     try
                     {
-                    var texture = material.GetTexture(property);
-                    if (texture == null) continue;
-                    ++_surveyProperties;
+                        var texture = material.GetTexture(property);
+                        if (texture == null) continue;
+                        ++_surveyProperties;
 
-                    var image = ReadOriginal(texture);
-                    if (image.Pixels == null)
-                    {
-                        ++_surveyUnknownCoverage;
+                        var image = ReadOriginal(texture);
+                        if (image.Pixels == null)
+                        {
+                            ++_surveyUnknownCoverage;
+                            _sourceSurvey.Add("material=" + material.name
+                                + ", property=" + property
+                                + ", source=" + texture.name
+                                + ", whole=unknown:" + image.Status);
+                            continue;
+                        }
+
+                        if (image.WholeStats == null)
+                        {
+                            var full = ScanSourcePixels(image.Pixels, null);
+                            image.WholeStats = FormatSurveyStats(full);
+                            image.WholeIsConstant = full.isConstant;
+                        }
+                        if (image.WholeIsConstant) ++_surveyUniformWhole;
+                        string uvStatus;
+                        if (used == null || used.Count == 0)
+                            uvStatus = "unknown:source-mesh";
+                        else if (usage == null)
+                            uvStatus = "unknown:" + usageError;
+                        else if (!usage.TryGetValue(property, out var uvUsage))
+                            uvStatus = "unknown:UV-not-registered";
+                        else if (uvUsage.UVChannel != UsageUVChannel.UV0
+                                 || uvUsage.UVMatrix is not { } matrix)
+                            uvStatus = "unknown:nonstatic-or-non-UV0";
+                        else if (matrix.M01 != 0f || matrix.M10 != 0f)
+                            uvStatus = "unknown:rotated-or-sheared-UV";
+                        else
+                        {
+                            var scale = new Vector2(matrix.M00, matrix.M11);
+                            var offset = new Vector2(matrix.M02, matrix.M12);
+                            if (TrySourceCoverage(used, scale, offset, image.Width,
+                                    image.Height, texture.wrapModeU,
+                                    texture.wrapModeV, texture.filterMode,
+                                    out var covered, out var count, out var reason))
+                            {
+                                var region = ScanSourcePixels(image.Pixels, covered);
+                                if (region.isConstant) ++_surveyUniformUsed;
+                                uvStatus = "UV0-texels=" + count + ":"
+                                    + FormatSurveyStats(region);
+                            }
+                            else uvStatus = "unknown:" + reason;
+                        }
+                        if (uvStatus.StartsWith("unknown:", StringComparison.Ordinal))
+                            ++_surveyUnknownCoverage;
+
                         _sourceSurvey.Add("material=" + material.name
                             + ", property=" + property
                             + ", source=" + texture.name
-                            + ", whole=unknown:" + image.Status);
-                        continue;
-                    }
-
-                    if (image.WholeStats == null)
-                    {
-                        var full = ScanSourcePixels(image.Pixels, null);
-                        image.WholeStats = FormatSurveyStats(full);
-                        image.WholeIsConstant = full.isConstant;
-                    }
-                    if (image.WholeIsConstant) ++_surveyUniformWhole;
-                    string uvStatus;
-                    if (used == null || used.Count == 0)
-                        uvStatus = "unknown:source-mesh";
-                    else if (usage == null)
-                        uvStatus = "unknown:" + usageError;
-                    else if (!usage.TryGetValue(property, out var uvUsage))
-                        uvStatus = "unknown:UV-not-registered";
-                    else if (uvUsage.UVChannel != UsageUVChannel.UV0
-                             || uvUsage.UVMatrix is not { } matrix)
-                        uvStatus = "unknown:nonstatic-or-non-UV0";
-                    else if (!Mathf.Approximately(matrix.M01, 0f)
-                             || !Mathf.Approximately(matrix.M10, 0f))
-                        uvStatus = "unknown:rotated-or-sheared-UV";
-                    else
-                    {
-                        var scale = new Vector2(matrix.M00, matrix.M11);
-                        var offset = new Vector2(matrix.M02, matrix.M12);
-                        if (TrySourceCoverage(used, scale, offset, image.Width,
-                                image.Height, texture.wrapModeU,
-                                texture.wrapModeV, texture.filterMode,
-                                out var covered, out var count, out var reason))
-                        {
-                            var region = ScanSourcePixels(image.Pixels, covered);
-                            if (region.isConstant) ++_surveyUniformUsed;
-                            uvStatus = "UV0-texels=" + count + ":"
-                                + FormatSurveyStats(region);
-                        }
-                        else uvStatus = "unknown:" + reason;
-                    }
-                    if (uvStatus.StartsWith("unknown:", StringComparison.Ordinal))
-                        ++_surveyUnknownCoverage;
-
-                    _sourceSurvey.Add("material=" + material.name
-                        + ", property=" + property
-                        + ", source=" + texture.name
-                        + ", size=" + image.Width + "x" + image.Height
-                        + ", read=" + image.Status
-                        + ", whole=" + image.WholeStats
-                        + ", used=" + uvStatus);
+                            + ", size=" + image.Width + "x" + image.Height
+                            + ", read=" + image.Status
+                            + ", whole=" + image.WholeStats
+                            + ", used=" + uvStatus);
                     }
                     catch (Exception ex)
                     {
