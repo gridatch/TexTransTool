@@ -565,6 +565,12 @@ namespace net.rs64.TexTransTool.NDMF
             };
         }
 
+        internal void RecordOwnershipDiagnosticError(Exception exception)
+        {
+            _zeroMaskOwnershipLines.Add("ownership-inspection-unknown:"
+                + exception.GetType().Name);
+        }
+
         /// <summary>
         /// Diagnostic only: attributes a zero source-emission mask to its
         /// actual final generated render texture and other material/property
@@ -2156,10 +2162,19 @@ namespace net.rs64.TexTransTool.NDMF
                 // safety gates, and before generated textures are disposed.
                 emissionProbe.Observe(domain, atlasRenderers,
                     atlasMaterialMaps.materialMap);
-                emissionProbe.InspectZeroMaskOutputOwnership(
-                    domain, atlasContext, tuningResult,
-                    atlasMaterialMaps.materialMap, resultingTextures,
-                    execution.RetainedSourceTextures);
+                try
+                {
+                    emissionProbe.InspectZeroMaskOutputOwnership(
+                        domain, atlasContext, tuningResult,
+                        atlasMaterialMaps.materialMap, resultingTextures,
+                        execution.RetainedSourceTextures);
+                }
+                catch (Exception ex)
+                {
+                    // Diagnostics are observational and must never block
+                    // an otherwise valid avatar atlas build.
+                    emissionProbe.RecordOwnershipDiagnosticError(ex);
+                }
 
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
