@@ -6,13 +6,16 @@ Shader "Hidden/TexTransTool/DiagnosticSourceUvCoverage"
         Cull Off
         ZWrite Off
         ZTest Always
-        Blend Off
+        // Red: source UV coverage. Green: known bottom-row orientation marker.
+        // Additive blending preserves both when they overlap.
+        Blend One One
         Pass
         {
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
 
+            fixed4 _MaskColor;
             struct appdata { float4 vertex : POSITION; };
             struct v2f { float4 position : SV_POSITION; };
 
@@ -26,7 +29,7 @@ Shader "Hidden/TexTransTool/DiagnosticSourceUvCoverage"
 
             fixed4 frag(v2f i) : SV_Target
             {
-                return fixed4(1, 1, 1, 1);
+                return _MaskColor;
             }
             ENDCG
         }
