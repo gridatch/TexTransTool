@@ -68,8 +68,16 @@ namespace net.rs64.TexTransTool.NDMF
     // UV/filter model; it is NOT approval to remove a texture or shader feature.
     internal sealed class AutoAtlasEmissionProbe
     {
-        private const long MaxReadbackPixels = 8L * 1024 * 1024;
+        private const long DefaultResidentPixelBudget = 8L * 1024 * 1024;
         private const long MaxTrianglePixelChecks = 12L * 1024 * 1024;
+        private readonly long _residentPixelBudget;
+
+        internal AutoAtlasEmissionProbe(long residentPixelBudget = DefaultResidentPixelBudget)
+        {
+            if (residentPixelBudget <= 0)
+                throw new ArgumentOutOfRangeException(nameof(residentPixelBudget));
+            _residentPixelBudget = residentPixelBudget;
+        }
         // The half-width of a texel's contributing UV region measured
         // relative to its pixel center. Linear filtering spans +/-1px;
         // point filtering spans +/-0.5px.
@@ -77,6 +85,11 @@ namespace net.rs64.TexTransTool.NDMF
         private readonly List<string> _lines = new();
         private readonly Dictionary<Texture, SourceImage> _images = new();
         private long _readbackPixels;
+        private long _residentPixels;
+        private long _peakResidentPixels;
+        private long _imageCacheClock;
+        private int _imageCacheEvictions;
+        private int _imageCacheReloads;
         private long _readbackMilliseconds;
         private long _probeMilliseconds;
         private long _triangleChecks;
@@ -96,6 +109,8 @@ namespace net.rs64.TexTransTool.NDMF
             internal Color[]? Pixels;
             internal string? WholeStats;
             internal bool WholeIsConstant;
+            internal bool WasReadSuccessfully;
+            internal long LastAccess;
             internal int Width;
             internal int Height;
         }
@@ -468,13 +483,28 @@ namespace net.rs64.TexTransTool.NDMF
 
         private SourceImage ReadOriginal(Texture texture)
         {
-            if (_images.TryGetValue(texture, out var cached)) return cached;
-            var image = new SourceImage
+            SourceImage image;
+            bool isReload = false;
+            if (_images.TryGetValue(texture, out var cached))
             {
-                Width = texture.width,
-                Height = texture.height
-            };
-            _images.Add(texture, image);
+                image = cached;
+                if (image.Pixels != null)
+                {
+                    image.LastAccess = ++_imageCacheClock;
+                    return image;
+                }
+                if (image.Status != "source-cache-evicted") return image;
+                isReload = true;
+            }
+            else
+            {
+                image = new SourceImage
+                {
+                    Width = texture.width,
+                    Height = texture.height
+                };
+                _images.Add(texture, image);
+            }
 
             if (texture.dimension != TextureDimension.Tex2D)
             {
@@ -482,11 +512,35 @@ namespace net.rs64.TexTransTool.NDMF
                 return image;
             }
             long pixelCount = (long)texture.width * texture.height;
-            if (pixelCount <= 0 || pixelCount > MaxReadbackPixels - _readbackPixels)
+            if (pixelCount <= 0 || pixelCount > _residentPixelBudget)
             {
-                image.Status = "source-readback-budget-skip";
+                // A single image larger than the bounded in-memory working
+                // set is not analysed. This is distinct from the earlier
+                // cumulative cap which starved later, smaller images.
+                image.Status = "source-exceeds-per-image-memory-budget";
                 return image;
             }
+
+            // Keep at most the configured number of Color samples strongly
+            // referenced. Later materials can still be analyzed after earlier
+            // images are evicted. All image-wide statistics remain cached.
+            while (_residentPixels + pixelCount > _residentPixelBudget)
+            {
+                var victim = _images.Values
+                    .Where(candidate => candidate.Pixels != null)
+                    .OrderBy(candidate => candidate.LastAccess)
+                    .FirstOrDefault();
+                if (victim == null)
+                {
+                    image.Status = "source-cache-eviction-failed";
+                    return image;
+                }
+                _residentPixels -= (long)victim.Width * victim.Height;
+                victim.Pixels = null;
+                victim.Status = "source-cache-evicted";
+                ++_imageCacheEvictions;
+            }
+            if (isReload) ++_imageCacheReloads;
 
             var clock = System.Diagnostics.Stopwatch.StartNew();
             RenderTexture? staging = null;
@@ -601,7 +655,15 @@ namespace net.rs64.TexTransTool.NDMF
                 if (staging != null)
                     RenderTexture.ReleaseTemporary(staging);
                 clock.Stop();
-                _readbackPixels += pixelCount;
+                if (image.Pixels != null)
+                {
+                    image.WasReadSuccessfully = true;
+                    image.LastAccess = ++_imageCacheClock;
+                    _residentPixels += pixelCount;
+                    _peakResidentPixels = Math.Max(_peakResidentPixels,
+                        _residentPixels);
+                    _readbackPixels += pixelCount;
+                }
                 _readbackMilliseconds += clock.ElapsedMilliseconds;
             }
             return image;
@@ -688,7 +750,7 @@ namespace net.rs64.TexTransTool.NDMF
             coveredCount = 0;
             reason = "";
             if (width <= 0 || height <= 0
-                || (long)width * height > MaxReadbackPixels)
+                || (long)width * height > _residentPixelBudget)
             {
                 reason = "invalid-source-size";
                 return false;
@@ -856,11 +918,18 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\nLayers observed: " + _observed
                 + "\nSource mip0 zero-emission candidates: " + _candidates
                 + "\nUnknown layers: " + _unknown
-                + "\nOriginal-source image pixels read: " + _readbackPixels
+                + "\nOriginal-source image pixels read (including reloads): " + _readbackPixels
+                + "\nUnique 2D source images loaded: "
+                + _images.Values.Count(image => image.WasReadSuccessfully)
+                + "\nSource image memory cache: peak "
+                + _peakResidentPixels + " pixels / budget " + _residentPixelBudget
+                + ", evictions " + _imageCacheEvictions
+                + ", reloads " + _imageCacheReloads
                 + "\nSource image load elapsed: " + _readbackMilliseconds + "ms"
                 + "\nProbe observation elapsed: " + _probeMilliseconds + "ms"
                 + "\nTriangle pixel checks: " + _triangleChecks
-                + "\nSource images read: " + _images.Count
+                + "\nUnique source textures observed (including unsupported): "
+                + _images.Count
                 + "\nTexture-property survey: " + _surveyProperties
                 + ", whole-source constants: " + _surveyUniformWhole
                 + ", UV0-covered constants: " + _surveyUniformUsed
