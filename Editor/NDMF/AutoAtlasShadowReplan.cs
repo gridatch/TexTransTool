@@ -30,7 +30,7 @@ namespace net.rs64.TexTransTool.NDMF
                     projected.Add(entry.Key, entry.Value);
                     continue;
                 }
-                var copy = new Dictionary<string, Texture>(entry.Value);
+                var copy = entry.Value.ToDictionary(pair => pair.Key, pair => pair.Value);
                 copy.Remove(excludedProperty);
                 projected.Add(entry.Key, copy);
             }
