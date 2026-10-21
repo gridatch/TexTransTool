@@ -613,10 +613,10 @@ namespace net.rs64.TexTransTool.NDMF
         private static bool TriangleIntersectsBilinearSupport(
             Vector2 center, Vector2 a, Vector2 b, Vector2 c)
         {
-            float minX = Mathf.Min(a.x, b.x, c.x);
-            float maxX = Mathf.Max(a.x, b.x, c.x);
-            float minY = Mathf.Min(a.y, b.y, c.y);
-            float maxY = Mathf.Max(a.y, b.y, c.y);
+            float minX = Mathf.Min(a.x, Mathf.Min(b.x, c.x));
+            float maxX = Mathf.Max(a.x, Mathf.Max(b.x, c.x));
+            float minY = Mathf.Min(a.y, Mathf.Min(b.y, c.y));
+            float maxY = Mathf.Max(a.y, Mathf.Max(b.y, c.y));
             if (maxX < center.x - BilinearSupportHalfWidth
                 || minX > center.x + BilinearSupportHalfWidth
                 || maxY < center.y - BilinearSupportHalfWidth
@@ -640,8 +640,8 @@ namespace net.rs64.TexTransTool.NDMF
             var projectedRadius =
                 (Mathf.Abs(axis.x) + Mathf.Abs(axis.y))
                 * BilinearSupportHalfWidth;
-            return Mathf.Max(pa, pb, pc) >= projectedCenter - projectedRadius
-                && Mathf.Min(pa, pb, pc) <= projectedCenter + projectedRadius;
+            return Mathf.Max(pa, Mathf.Max(pb, pc)) >= projectedCenter - projectedRadius
+                && Mathf.Min(pa, Mathf.Min(pb, pc)) <= projectedCenter + projectedRadius;
         }
 
         private static float Cross(Vector2 a, Vector2 b) =>
