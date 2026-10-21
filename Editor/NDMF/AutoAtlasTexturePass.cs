@@ -77,6 +77,8 @@ namespace net.rs64.TexTransTool.NDMF
         private long _rasterChecks;
         private int _observedLayers;
         private int _candidateLayers;
+        private int _safeFootprintCandidates;
+        private int _fringeOnlyCandidates;
         private int _unknownLayers;
         private readonly List<string> _lines = new();
         private readonly Dictionary<RenderTexture, TextureSample> _textureSamples = new();
@@ -96,6 +98,12 @@ namespace net.rs64.TexTransTool.NDMF
             internal string Status = "";
             internal bool? RgbZero;
             internal bool? AlphaZero;
+            internal bool? InsideRgbZero;
+            internal bool? InsideAlphaZero;
+            internal bool? FootprintRgbZero;
+            internal bool? FootprintAlphaZero;
+            internal int FringeOpaqueWhite;
+            internal int FringeOtherNonzeroRgb;
             internal long? OutputBytes;
             internal RenderTexture? Texture;
             internal int CoveredPixels;
@@ -217,26 +225,53 @@ namespace net.rs64.TexTransTool.NDMF
                 generated, slots, textures, fineTuning, atlasContext,
                 maskProperty, true);
 
-            bool noGeometry = slots == null;
-            bool zeroAlpha = map?.AlphaZero == true || mask?.AlphaZero == true;
-            bool zeroRgb = map?.RgbZero == true || mask?.RgbZero == true;
-            // Only a provisional candidate. Animated material properties,
-            // shader-side special cases and mip/compression are not proven.
-            bool possible = !noGeometry
-                && (zeroAlpha || ((mode == 1 || mode == 2) && zeroRgb));
-
-            var known = !noGeometry
-                && (map == null || map.AlphaZero.HasValue)
-                && (mask == null || mask.AlphaZero.HasValue);
-            if (possible)
+            // Diagnostic categories are deliberately separate:
+            // (1) Is the emission provably neutral at UV-interior texels?
+            // (2) Do the wider bilinear-support texels ALSO remain neutral?
+            // A white atlas background may affect (2), but MUST NOT silently
+            // turn an observed UV-interior zero into "no candidate".
+            var known = slots != null
+                && (map == null || map.InsideRgbZero.HasValue)
+                && (mask == null || mask.InsideRgbZero.HasValue);
+            bool insideZeroAlpha = map?.InsideAlphaZero == true
+                || mask?.InsideAlphaZero == true;
+            bool insideZeroRgb = map?.InsideRgbZero == true
+                || mask?.InsideRgbZero == true;
+            bool insideCandidate = known
+                && (insideZeroAlpha
+                    || ((mode == 1 || mode == 2) && insideZeroRgb));
+            bool footprintZeroAlpha = map?.FootprintAlphaZero == true
+                || mask?.FootprintAlphaZero == true;
+            bool footprintZeroRgb = map?.FootprintRgbZero == true
+                || mask?.FootprintRgbZero == true;
+            bool footprintCandidate = insideCandidate
+                && (footprintZeroAlpha
+                    || ((mode == 1 || mode == 2) && footprintZeroRgb));
+            string classification;
+            if (!known)
+            {
+                ++_unknownLayers;
+                classification = "unknown";
+            }
+            else if (!insideCandidate)
+            {
+                classification = "nonzero-inside";
+            }
+            else
             {
                 ++_candidateLayers;
                 if (map?.Texture != null) _possibleUnusedOutputs.Add(map.Texture);
                 if (mask?.Texture != null) _possibleUnusedOutputs.Add(mask.Texture);
-            }
-            else if (!known)
-            {
-                ++_unknownLayers;
+                if (footprintCandidate)
+                {
+                    ++_safeFootprintCandidates;
+                    classification = "inside-zero-and-footprint-zero";
+                }
+                else
+                {
+                    ++_fringeOnlyCandidates;
+                    classification = "inside-zero-fringe-nonzero";
+                }
             }
 
             _lines.Add(
@@ -245,8 +280,7 @@ namespace net.rs64.TexTransTool.NDMF
                 + ", triangles=" + (slots?.Count.ToString() ?? "unknown")
                 + ", map=" + (map?.Status ?? "not-atlased")
                 + ", mask=" + (mask?.Status ?? "not-atlased")
-                + ", candidate="
-                + (possible ? "possible" : known ? "no-at-mip0" : "unknown")
+                + ", candidate=" + classification
                 + ", atlas-output-bytes="
                 + (map?.OutputBytes.GetValueOrDefault() ?? 0)
                 + "+"
@@ -315,15 +349,25 @@ namespace net.rs64.TexTransTool.NDMF
             var fringe = CountNonZero(tex.Pixels, outer,
                 texture.width, texture.height, flippedY: false);
 
-            result.RgbZero = supported.NonzeroRgb == 0;
-            result.AlphaZero = supported.NonzeroAlpha == 0;
+            result.InsideRgbZero = core.NonzeroRgb == 0;
+            result.InsideAlphaZero = core.NonzeroAlpha == 0;
+            result.FootprintRgbZero = supported.NonzeroRgb == 0;
+            result.FootprintAlphaZero = supported.NonzeroAlpha == 0;
+            result.RgbZero = result.FootprintRgbZero;
+            result.AlphaZero = result.FootprintAlphaZero;
+            result.FringeOpaqueWhite = fringe.OpaqueWhite;
+            result.FringeOtherNonzeroRgb = fringe.NonzeroNonWhiteRgb;
             result.CoveredPixels = coveredCount;
             result.Status = texture.width + "x" + texture.height
                 + ":UV-triangles-covered=" + coveredCount + "/" + covered.Length
                 + ",inside=" + insideCount
                 + ",insideNonzero(R/G/B/A)=" + core.ChannelCounts()
                 + ",fringeNonzero(R/G/B/A)=" + fringe.ChannelCounts()
+                + ",fringeOpaqueWhite=" + fringe.OpaqueWhite
+                + ",fringeOtherNonzeroRGB=" + fringe.NonzeroNonWhiteRgb
                 + ",insideFlippedYNonzero(R/G/B/A)=" + flippedCore.ChannelCounts()
+                + ",insideRGB" + (result.InsideRgbZero == true ? "=0" : "!=0")
+                + ",insideA" + (result.InsideAlphaZero == true ? "=0" : "!=0")
                 + ",supportRGB" + (result.RgbZero == true ? "=0" : "!=0")
                 + ",supportA" + (result.AlphaZero == true ? "=0" : "!=0");
             return result;
@@ -333,6 +377,7 @@ namespace net.rs64.TexTransTool.NDMF
         private struct NonZeroCounts
         {
             public int NonzeroRed, NonzeroGreen, NonzeroBlue, NonzeroAlpha, NonzeroRgb;
+            public int OpaqueWhite, NonzeroNonWhiteRgb;
             public string ChannelCounts() =>
                 NonzeroRed + "/" + NonzeroGreen + "/"
                 + NonzeroBlue + "/" + NonzeroAlpha;
@@ -353,8 +398,12 @@ namespace net.rs64.TexTransTool.NDMF
                 if (pixel.g != 0) ++counts.NonzeroGreen;
                 if (pixel.b != 0) ++counts.NonzeroBlue;
                 if (pixel.a != 0) ++counts.NonzeroAlpha;
-                if (pixel.r != 0 || pixel.g != 0 || pixel.b != 0)
-                    ++counts.NonzeroRgb;
+                bool rgbNonzero = pixel.r != 0 || pixel.g != 0 || pixel.b != 0;
+                bool opaqueWhite = pixel.r == 255 && pixel.g == 255
+                    && pixel.b == 255 && pixel.a == 255;
+                if (rgbNonzero) ++counts.NonzeroRgb;
+                if (opaqueWhite) ++counts.OpaqueWhite;
+                else if (rgbNonzero) ++counts.NonzeroNonWhiteRgb;
             }
             return counts;
         }
@@ -673,17 +722,22 @@ namespace net.rs64.TexTransTool.NDMF
             return "[Emission UV triangle probe: TEMPORARY; no assets modified]"
                 + "\nUnity project: " + project
                 + "\nLayers observed: " + _observedLayers
-                + "\nUV-triangle provisional candidates: " + _candidateLayers
+                + "\nUV-interior zero-emission candidates: " + _candidateLayers
+                + "\nOf which footprint also zero at mip0: " + _safeFootprintCandidates
+                + "\nOf which nonzero exists only in fringe: " + _fringeOnlyCandidates
                 + "\nUnknown layers: " + _unknownLayers
                 + "\nGPU readback pixels: " + _readbackPixels
                 + "\nGPU readback elapsed: " + _readbackMilliseconds + "ms"
                 + "\nProbe observation elapsed: " + _observationMilliseconds + "ms"
                 + "\nTriangle pixel checks: " + _rasterChecks
-                + "\nCandidate-related output memory UPPER BOUND: "
+                + "\nUV-interior-candidate output memory UPPER BOUND: "
                 + AtlasTexture.FormatTextureMemory(possibleBytes)
                 + (unknownOutputs == 0 ? "" : " (unknown outputs: " + unknownOutputs + ")")
                 + "\nLimits: UV0 triangles + 1.5px filter neighborhood at mip0;"
-                + " inside/fringe counts distinguish actual UV coverage from padding."
+                + " inside/fringe counts distinguish UV interior from padding."
+                + " fringeOpaqueWhite counts exact RGBA(255,255,255,255) texels;"
+                + " such texels MAY originate from white atlas background,"
+                + " but their provenance is not established by color alone."
                 + " FlippedY counts are diagnostic only, NOT used to classify."
                 + " Only static affine mask/emission UV; output readback RGBA32."
                 + " Mipmap, compression, wrap beyond [0,1], material animation"
