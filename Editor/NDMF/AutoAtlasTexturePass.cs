@@ -69,7 +69,9 @@ namespace net.rs64.TexTransTool.NDMF
     {
         private const long MaxReadbackPixels = 8L * 1024 * 1024;
         private const long MaxRasterChecksPerObservation = 12L * 1024 * 1024;
-        private const float SupportRadiusPixels = 1.5f;
+        // Bilinear filtering at LOD 0 may sample texel centers within
+        // +/-1 texel on each axis of an arbitrary point inside the UV triangle.
+        private const float BilinearSupportHalfWidth = 1f;
 
         private long _readbackPixels;
         private long _readbackMilliseconds;
@@ -529,17 +531,17 @@ namespace net.rs64.TexTransTool.NDMF
                             return false;
                         }
 
-                        // Work in output-texel coordinates. The expanded
-                        // triangle covers the neighborhood needed for a
-                        // bilinear level-0 footprint, NOT only its rectangle.
+                        // Work in output-texel coordinates. Keep the exact
+                        // triangle, then test mip-0 bilinear texel support
+                        // against a 2x2 axis-aligned sampling neighborhood.
                         a = new Vector2(a.x*width-0.5f, a.y*height-0.5f);
                         b = new Vector2(b.x*width-0.5f, b.y*height-0.5f);
                         c = new Vector2(c.x*width-0.5f, c.y*height-0.5f);
 
-                        int x0 = Math.Max(0, Mathf.FloorToInt(Mathf.Min(a.x,b.x,c.x) - SupportRadiusPixels));
-                        int x1 = Math.Min(width - 1, Mathf.CeilToInt(Mathf.Max(a.x,b.x,c.x) + SupportRadiusPixels));
-                        int y0 = Math.Max(0, Mathf.FloorToInt(Mathf.Min(a.y,b.y,c.y) - SupportRadiusPixels));
-                        int y1 = Math.Min(height - 1, Mathf.CeilToInt(Mathf.Max(a.y,b.y,c.y) + SupportRadiusPixels));
+                        int x0 = Math.Max(0, Mathf.FloorToInt(Mathf.Min(a.x,b.x,c.x) - BilinearSupportHalfWidth));
+                        int x1 = Math.Min(width - 1, Mathf.CeilToInt(Mathf.Max(a.x,b.x,c.x) + BilinearSupportHalfWidth));
+                        int y0 = Math.Max(0, Mathf.FloorToInt(Mathf.Min(a.y,b.y,c.y) - BilinearSupportHalfWidth));
+                        int y1 = Math.Min(height - 1, Mathf.CeilToInt(Mathf.Max(a.y,b.y,c.y) + BilinearSupportHalfWidth));
                         var checks = (long)(x1 - x0 + 1) * (y1 - y0 + 1);
                         if (checks > MaxRasterChecksPerObservation - _rasterChecks)
                         {
@@ -560,7 +562,8 @@ namespace net.rs64.TexTransTool.NDMF
                                 }
                                 if (!coverage[index]
                                     && (inside[index]
-                                        || NearTriangle(texelCenter, a,b,c, SupportRadiusPixels)))
+                                        || TriangleIntersectsBilinearSupport(
+                                            texelCenter, a, b, c)))
                                 {
                                     coverage[index] = true;
                                     ++coveredCount;
@@ -600,6 +603,45 @@ namespace net.rs64.TexTransTool.NDMF
             return SegmentDistance2(p,a,b) <= r2
                    || SegmentDistance2(p,b,c) <= r2
                    || SegmentDistance2(p,c,a) <= r2;
+        }
+
+        // Exact triangle / axis-aligned square overlap by the Separating
+        // Axis Theorem. This represents the mip-0 bilinear sampling support:
+        // a texel may contribute only if some UV sample inside the triangle
+        // is within 1 pixel in BOTH X and Y from that texel center. A
+        // Euclidean circle around the triangle overcounts this footprint.
+        private static bool TriangleIntersectsBilinearSupport(
+            Vector2 center, Vector2 a, Vector2 b, Vector2 c)
+        {
+            float minX = Mathf.Min(a.x, b.x, c.x);
+            float maxX = Mathf.Max(a.x, b.x, c.x);
+            float minY = Mathf.Min(a.y, b.y, c.y);
+            float maxY = Mathf.Max(a.y, b.y, c.y);
+            if (maxX < center.x - BilinearSupportHalfWidth
+                || minX > center.x + BilinearSupportHalfWidth
+                || maxY < center.y - BilinearSupportHalfWidth
+                || minY > center.y + BilinearSupportHalfWidth)
+                return false;
+
+            return OverlapsEdgeAxis(center, a, b, c)
+                && OverlapsEdgeAxis(center, b, c, a)
+                && OverlapsEdgeAxis(center, c, a, b);
+        }
+
+        private static bool OverlapsEdgeAxis(
+            Vector2 center, Vector2 a, Vector2 b, Vector2 c)
+        {
+            var edge = b - a;
+            var axis = new Vector2(-edge.y, edge.x);
+            var pa = Vector2.Dot(a, axis);
+            var pb = Vector2.Dot(b, axis);
+            var pc = Vector2.Dot(c, axis);
+            var projectedCenter = Vector2.Dot(center, axis);
+            var projectedRadius =
+                (Mathf.Abs(axis.x) + Mathf.Abs(axis.y))
+                * BilinearSupportHalfWidth;
+            return Mathf.Max(pa, pb, pc) >= projectedCenter - projectedRadius
+                && Mathf.Min(pa, pb, pc) <= projectedCenter + projectedRadius;
         }
 
         private static float Cross(Vector2 a, Vector2 b) =>
@@ -733,7 +775,8 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\nUV-interior-candidate output memory UPPER BOUND: "
                 + AtlasTexture.FormatTextureMemory(possibleBytes)
                 + (unknownOutputs == 0 ? "" : " (unknown outputs: " + unknownOutputs + ")")
-                + "\nLimits: UV0 triangles + 1.5px filter neighborhood at mip0;"
+                + "\nLimits: UV0 triangles plus geometric mip0 bilinear support;"
+                + " no arbitrary pixel-count/percentage tolerance."
                 + " inside/fringe counts distinguish UV interior from padding."
                 + " fringeOpaqueWhite counts exact RGBA(255,255,255,255) texels;"
                 + " such texels MAY originate from white atlas background,"
