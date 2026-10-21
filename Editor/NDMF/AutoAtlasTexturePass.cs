@@ -89,6 +89,7 @@ namespace net.rs64.TexTransTool.NDMF
         private readonly List<string> _zeroMaskOwnershipLines = new();
         private readonly List<string> _shadowReplanLines = new();
         private readonly List<string> _featureDisableLines = new();
+        private readonly List<string> _featureRejections = new();
         private readonly List<(Material material, string property, Texture source,
             AutoAtlasFeatureDisableRules.Rule rule)> _featureCandidates = new();
         internal (Material material, string property, Texture source,
@@ -328,10 +329,23 @@ namespace net.rs64.TexTransTool.NDMF
                             // Only strict CPU coverage may produce a feature
                             // hypothesis; GPU interior samples do not qualify.
                             if (constant
-                                && uvStatus.StartsWith("UV0-texels=", StringComparison.Ordinal)
-                                && AutoAtlasFeatureDisableRules.TryClassify(
-                                    material, property, constantColor, out var rule))
-                                _featureCandidates.Add((material, property, texture, rule!));
+                                && uvStatus.StartsWith("UV0-texels=", StringComparison.Ordinal))
+                            {
+                                if (AutoAtlasFeatureDisableRules.TryClassify(
+                                        material, property, constantColor, out var rule))
+                                    _featureCandidates.Add((material, property, texture, rule!));
+                                else
+                                {
+                                    var reason = AutoAtlasFeatureDisableRules
+                                        .ExplainRejectedZeroMask(
+                                            material, property, constantColor);
+                                    if (reason != null)
+                                        _featureRejections.Add(
+                                            "material=" + material.name
+                                            + ", property=" + property
+                                            + ", rejected=" + reason);
+                                }
+                            }
                         }
                         if (uvStatus.StartsWith("unknown:", StringComparison.Ordinal))
                             ++_surveyUnknownCoverage;
@@ -1503,6 +1517,10 @@ namespace net.rs64.TexTransTool.NDMF
                         + ", feature=" + item.rule.Name
                         + ", switch=" + item.rule.SwitchProperty
                         + ", condition=" + item.rule.Condition)))
+                + "\n[Rejected zero-mask candidates]"
+                + "\n" + (_featureRejections.Count == 0
+                    ? "None."
+                    : string.Join("\n", _featureRejections.Distinct()))
                 + "\n\n[Feature-disable merge-planner comparison: TEMPORARY]"
                 + "\n" + (_featureDisableLines.Count == 0
                     ? "No feature-disable comparison run."
@@ -2488,7 +2506,8 @@ namespace net.rs64.TexTransTool.NDMF
                         emissionProbe.AddFeatureDisableLine(
                             "material=" + candidate.material.name
                             + ", feature=" + candidate.rule.Name
-                            + ", planner=unknown:" + ex.GetType().Name);
+                            + ", planner=unknown:" + ex.GetType().Name
+                            + ":" + ex.Message.Replace('\n', ' '));
                     }
                 }
 
