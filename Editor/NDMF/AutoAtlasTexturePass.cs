@@ -88,6 +88,7 @@ namespace net.rs64.TexTransTool.NDMF
         private int _surveyUniformWhole;
         private int _surveyUniformUsed;
         private int _surveyUnknownCoverage;
+        private int _surveyCoverageCacheHits;
 
         private sealed class SourceImage
         {
@@ -184,6 +185,15 @@ namespace net.rs64.TexTransTool.NDMF
             Dictionary<Material, HashSet<(Mesh, int)>> slots,
             HashSet<Material> unresolved)
         {
+            // Cache only within this survey invocation. Identical source
+            // textures and UV transforms on the same material must not
+            // rerasterize the same mesh triangles for _MainTex / _BaseMap /
+            // _BaseColorMap or other shared material texture references.
+            // Different materials never share coverage implicitly.
+            var coverageCache = new Dictionary<
+                (Material material, Texture texture, Vector2 scale, Vector2 offset),
+                (string status, bool constant)>();
+
             foreach (var material in materials
                          .Where(m => m != null && m.shader != null)
                          .OrderBy(m => m.name, StringComparer.Ordinal))
@@ -245,17 +255,34 @@ namespace net.rs64.TexTransTool.NDMF
                         {
                             var scale = new Vector2(matrix.M00, matrix.M11);
                             var offset = new Vector2(matrix.M02, matrix.M12);
-                            if (TrySourceCoverage(used, scale, offset, image.Width,
-                                    image.Height, texture.wrapModeU,
-                                    texture.wrapModeV, texture.filterMode,
-                                    out var covered, out var count, out var reason))
+                            var key = (material, texture, scale, offset);
+                            bool constant;
+                            if (coverageCache.TryGetValue(key, out var cached))
                             {
-                                var region = ScanSourcePixels(image.Pixels, covered);
-                                if (region.isConstant) ++_surveyUniformUsed;
-                                uvStatus = "UV0-texels=" + count + ":"
-                                    + FormatSurveyStats(region);
+                                uvStatus = cached.status;
+                                constant = cached.constant;
+                                ++_surveyCoverageCacheHits;
                             }
-                            else uvStatus = "unknown:" + reason;
+                            else
+                            {
+                                if (TrySourceCoverage(used, scale, offset, image.Width,
+                                        image.Height, texture.wrapModeU,
+                                        texture.wrapModeV, texture.filterMode,
+                                        out var covered, out var count, out var reason))
+                                {
+                                    var region = ScanSourcePixels(image.Pixels, covered);
+                                    constant = region.isConstant;
+                                    uvStatus = "UV0-texels=" + count + ":"
+                                        + FormatSurveyStats(region);
+                                }
+                                else
+                                {
+                                    constant = false;
+                                    uvStatus = "unknown:" + reason;
+                                }
+                                coverageCache.Add(key, (uvStatus, constant));
+                            }
+                            if (constant) ++_surveyUniformUsed;
                         }
                         if (uvStatus.StartsWith("unknown:", StringComparison.Ordinal))
                             ++_surveyUnknownCoverage;
@@ -838,6 +865,7 @@ namespace net.rs64.TexTransTool.NDMF
                 + ", whole-source constants: " + _surveyUniformWhole
                 + ", UV0-covered constants: " + _surveyUniformUsed
                 + ", unknown coverage: " + _surveyUnknownCoverage
+                + ", repeated UV calculations avoided: " + _surveyCoverageCacheHits
                 + "\nLimits: original mesh UV0 and source image mip0 only;"
                 + " geometric point/bilinear texel support (strict float zero test)." 
                 + " RGBAFloat source staging is required when CPU pixels are unavailable;"
