@@ -778,9 +778,10 @@ namespace net.rs64.TexTransTool.NDMF
             // removing its group source when another material still uses it.
             if (!AllGroupSourceConsumersHaveProof(group, materialProperties,
                     knownZeroMasks, property, groupSource))
-                return ("whatIf=blocked:other-group-material-needs-source"
-                    + ", fixedGroupTopFree=unchanged",
-                    false, true, null);
+                return ("whatIf=source-remains:other-group-material-needs-it"
+                    + ", layoutImpact=unknown:partial-island-or-regrouping"
+                    + ", regroupAndMerge=not-simulated",
+                    false, false, null);
 
             // Source removal may alter connectivity among materials. Do not
             // claim this fixed-group projection captures regrouping/merging.
