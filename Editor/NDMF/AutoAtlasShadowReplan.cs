@@ -271,6 +271,31 @@ namespace net.rs64.TexTransTool.NDMF
                     useProjectedSources: true);
                 long before = originalPlan.Selections.Sum(x => x.PredictedSavingBytes);
                 long after = projectedPlan.Selections.Sum(x => x.PredictedSavingBytes);
+                var originalEligible = originalGroups
+                    .Where(g => !g.ExcludedFromTextureMerging).ToArray();
+                var projectedEligible = alternatives
+                    .Where(g => !g.ExcludedFromTextureMerging).ToArray();
+                var originalScope = originalEligible
+                    .SelectMany(g => g.Materials).ToHashSet();
+                var projectedScope = projectedEligible
+                    .SelectMany(g => g.Materials).ToHashSet();
+                bool sameEligibleScope = originalScope.SetEquals(projectedScope);
+                bool costKnown = sameEligibleScope
+                    && originalEligible.All(g => g.BaselineCostKnown)
+                    && projectedEligible.All(g => g.BaselineCostKnown);
+                var originalEstimate = costKnown
+                    ? originalEligible.Sum(g => g.BaselineCost.FullResidentBytes)
+                        - before
+                    : 0L;
+                var projectedEstimate = costKnown
+                    ? projectedEligible.Sum(g => g.BaselineCost.FullResidentBytes)
+                        - after
+                    : 0L;
+                var comparableCost = costKnown
+                    ? originalEstimate + "->" + projectedEstimate
+                        + ", conditionalPlanSavingBytes="
+                        + (originalEstimate - projectedEstimate)
+                    : "unknown:eligibility-changed-or-cost-model-incomplete";
                 return "material=" + material.name
                     + ", feature=" + rule.Name
                     + ", switch=" + rule.SwitchProperty
@@ -282,6 +307,10 @@ namespace net.rs64.TexTransTool.NDMF
                     + ", selectedMerges=" + originalPlan.Selections.Count
                     + "->" + projectedPlan.Selections.Count
                     + ", selectedMergeSavingBytes=" + before + "->" + after
+                    + ", eligibleMaterialCount=" + originalScope.Count
+                    + "->" + projectedScope.Count
+                    + ", sameEligibleScope=" + sameEligibleScope
+                    + ", estimatedEligibleFinalBytes=" + comparableCost
                     + ", layoutsBefore=[" + string.Join(";",
                         originalPlan.Selections.Select(x =>
                             x.PlannedLayoutSize.x + "x" + x.PlannedLayoutSize.y))
