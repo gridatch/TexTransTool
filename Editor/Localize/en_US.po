@@ -875,7 +875,7 @@ msgid "AutoAtlasTexture:fallback:RegionPaddingFailed"
 msgstr "g{0} placement does not preserve required region padding: region={1}, box=({2},{3},{4},{5}), profilePadding={6}, regionPadding={7}"
 
 msgid "AutoAtlasTexture:info:EmissionProbeTitle"
-msgstr "Emission candidate probe (temporary)"
+msgstr "Original-source texture survey (temporary)"
 
 msgid "AutoAtlasTexture:button:EmissionProbeCopy"
 msgstr "Copy probe report"
