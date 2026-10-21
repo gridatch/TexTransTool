@@ -771,9 +771,8 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 var firstOrigin = context
                     .ReverseSourceVirtualIsland2OriginIslands[virtualIsland]
-                    .FirstOrDefault();
-                if (firstOrigin == null
-                    || context.AtlasIslandCtx.ReverseOriginDict[firstOrigin]
+                    .First();
+                if (context.AtlasIslandCtx.ReverseOriginDict[firstOrigin]
                         .MaterialGroupID != groupId)
                     continue;
                 if (primaryDimensionChanged)
