@@ -127,6 +127,7 @@ namespace net.rs64.TexTransTool.NDMF
         private int _gpuMaskBoundaryDifferent;
         private int _gpuMaskUnavailable;
         private int _gpuMaskOutsideStrict;
+        private int _gpuMaskFlippedRows;
         private double _gpuMaskElapsedMs;
         private double _gpuMaskBaselineMs;
         private double _gpuMaskProjectedMs;
@@ -381,10 +382,12 @@ namespace net.rs64.TexTransTool.NDMF
             var timer = System.Diagnostics.Stopwatch.StartNew();
             bool ok = DiagnosticSourceUvGpuMask.TryRender(
                 slots, scale, offset, width, height, _residentPixelBudget,
-                out var gpuMask, out var gpuCount, out var reason);
+                out var gpuMask, out var gpuCount, out var reason,
+                out var verticalFlipCorrected);
             timer.Stop();
             _gpuMaskElapsedMs += timer.Elapsed.TotalMilliseconds;
             _gpuMaskBaselineMs += baselineCoverageMs;
+            if (ok && verticalFlipCorrected) ++_gpuMaskFlippedRows;
 
             if (!ok)
             {
@@ -430,7 +433,8 @@ namespace net.rs64.TexTransTool.NDMF
             // Projected path: GPU screen for every texture; only potential
             // uniform candidates pay for CPU boundary validation.
             _gpuMaskProjectedMs += timer.Elapsed.TotalMilliseconds
-                + (screenUniform ? baselineCoverageMs : 0.0);
+                + ((screenUniform || outsideStrict != 0)
+                    ? baselineCoverageMs : 0.0);
 
             _gpuMaskLines.Add("material=" + material.name
                 + ", property=" + property
@@ -440,6 +444,7 @@ namespace net.rs64.TexTransTool.NDMF
                 + (strictUniform ? ":uniform" : ":variable")
                 + ", result=" + validation
                 + ", outsideStrict=" + outsideStrict
+                + ", YflipCorrected=" + verticalFlipCorrected
                 + ", GPUms=" + FormatMs(timer.Elapsed.TotalMilliseconds)
                 + ", CPUcoverageMs=" + FormatMs(baselineCoverageMs));
         }
@@ -1292,14 +1297,17 @@ namespace net.rs64.TexTransTool.NDMF
                 + ", strict-boundary rejected: " + _gpuMaskBoundaryDifferent
                 + ", GPU unavailable: " + _gpuMaskUnavailable
                 + ", GPU outside strict pixels: " + _gpuMaskOutsideStrict
+                + ", GPU Y-flip corrections: " + _gpuMaskFlippedRows
                 + "\nGPU mask: " + FormatMs(_gpuMaskElapsedMs)
                 + "ms; matched CPU coverage: "
                 + FormatMs(_gpuMaskBaselineMs)
                 + "ms; projected GPU+candidate-only CPU/fallback: "
                 + FormatMs(_gpuMaskProjectedMs) + "ms"
                 + "\nGPU pixel-center raster is only a preliminary screen."
+                + " GPU Y orientation is measured with an independent marker."
                 + " Boundary-only differences are expected; GPU mask is never"
-                + " treated as a removal guarantee."
+                + " treated as a removal guarantee. A mismatch uses the CPU"
+                + " fallback in projected cost."
                 + "\n"
                 + (_gpuMaskLines.Count == 0
                     ? "No eligible comparison."
