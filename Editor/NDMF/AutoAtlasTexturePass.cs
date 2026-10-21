@@ -88,6 +88,14 @@ namespace net.rs64.TexTransTool.NDMF
         private readonly List<(Material material, string property, Texture source)> _zeroMaskCandidates = new();
         private readonly List<string> _zeroMaskOwnershipLines = new();
         private readonly List<string> _shadowReplanLines = new();
+        private readonly List<string> _featureDisableLines = new();
+        private readonly List<(Material material, string property, Texture source,
+            AutoAtlasFeatureDisableRules.Rule rule)> _featureCandidates = new();
+        internal (Material material, string property, Texture source,
+            AutoAtlasFeatureDisableRules.Rule rule)[] GetFeatureCandidates() =>
+            _featureCandidates.Distinct().ToArray();
+        internal void AddFeatureDisableLine(string line) =>
+            _featureDisableLines.Add(line);
 
         internal (Material material, string property, Texture source)[] GetZeroMaskCandidates() =>
             _zeroMaskCandidates.Distinct().ToArray();
@@ -151,6 +159,7 @@ namespace net.rs64.TexTransTool.NDMF
             Dictionary<Material, Material> materialMap)
         {
             _zeroMaskCandidates.Clear();
+            _featureCandidates.Clear();
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
             // The actual pre-atlas material slots and UVs, not output meshes.
@@ -231,7 +240,7 @@ namespace net.rs64.TexTransTool.NDMF
             // Different materials never share coverage implicitly.
             var coverageCache = new Dictionary<
                 (Material material, Texture texture, Vector2 scale, Vector2 offset),
-                (string status, bool constant)>();
+                (string status, bool constant, Color constantColor)>();
 
             foreach (var material in materials
                          .Where(m => m != null && m.shader != null)
@@ -296,23 +305,32 @@ namespace net.rs64.TexTransTool.NDMF
                             var offset = new Vector2(matrix.M02, matrix.M12);
                             var key = (material, texture, scale, offset);
                             bool constant;
+                            Color constantColor;
                             if (coverageCache.TryGetValue(key, out var cached))
                             {
                                 uvStatus = cached.status;
                                 constant = cached.constant;
+                                constantColor = cached.constantColor;
                                 ++_surveyCoverageCacheHits;
                             }
                             else
                             {
-                                (uvStatus, constant) = EvaluateSourceUvGpuFirst(
+                                (uvStatus, constant, constantColor) = EvaluateSourceUvGpuFirst(
                                     used, scale, offset, image.Width, image.Height,
                                     texture.wrapModeU, texture.wrapModeV,
                                     texture.filterMode, image.Pixels,
                                     image.WholeIsConstant,
                                     material.name + " / " + property);
-                                coverageCache.Add(key, (uvStatus, constant));
+                                coverageCache.Add(key, (uvStatus, constant, constantColor));
                             }
                             if (constant) ++_surveyUniformUsed;
+                            // Only strict CPU coverage may produce a feature
+                            // hypothesis; GPU interior samples do not qualify.
+                            if (constant
+                                && uvStatus.StartsWith("UV0-texels=", StringComparison.Ordinal)
+                                && AutoAtlasFeatureDisableRules.TryClassify(
+                                    material, property, constantColor, out var rule))
+                                _featureCandidates.Add((material, property, texture, rule!));
                         }
                         if (uvStatus.StartsWith("unknown:", StringComparison.Ordinal))
                             ++_surveyUnknownCoverage;
@@ -342,7 +360,7 @@ namespace net.rs64.TexTransTool.NDMF
         /// runs only for uniform candidates or GPU fallback. This is an
         /// observational mip0 survey, not shader removability approval.
         /// </summary>
-        internal (string status, bool constant) EvaluateSourceUvGpuFirst(
+        internal (string status, bool constant, Color constantColor) EvaluateSourceUvGpuFirst(
             HashSet<(Mesh, int)> slots, Vector2 scale, Vector2 offset,
             int width, int height, TextureWrapMode wrapU, TextureWrapMode wrapV,
             FilterMode filterMode, Color[] pixels, bool wholeSourceConstant,
@@ -398,7 +416,7 @@ namespace net.rs64.TexTransTool.NDMF
                             + ":variable; CPU=skipped; GPUms="
                             + FormatMs(watch.Elapsed.TotalMilliseconds));
                         return ("GPU-UV0-interior-texels=" + interiorCount
-                            + ":" + FormatSurveyStats(screen), false);
+                            + ":" + FormatSurveyStats(screen), false, default);
                     }
                     ++_gpuUniformCandidates;
                     route = "candidate-check";
@@ -423,7 +441,7 @@ namespace net.rs64.TexTransTool.NDMF
             if (!success)
             {
                 AddGpuStatus(label + ": " + route + "; CPU=unknown:" + reason);
-                return ("unknown:" + reason, false);
+                return ("unknown:" + reason, false, default);
             }
             var strict = ScanSourcePixels(pixels, strictMask);
             if (route == "candidate-check")
@@ -435,7 +453,8 @@ namespace net.rs64.TexTransTool.NDMF
                     + "; CPUms=" + FormatMs(cpuWatch.Elapsed.TotalMilliseconds));
             }
             return ("UV0-texels=" + strictCount
-                + ":" + FormatSurveyStats(strict), strict.isConstant);
+                + ":" + FormatSurveyStats(strict), strict.isConstant,
+                strict.constantColor);
         }
 
         private void AddGpuStatus(string line)
@@ -1473,6 +1492,20 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\n" + (_shadowReplanLines.Count == 0
                     ? "No shadow-replan candidate evaluated."
                     : string.Join("\n", _shadowReplanLines))
+                + "\n\n[Shader-neutral feature-disable candidates: TEMPORARY]"
+                + "\nOnly strict mip0 sampling is tested. No animation, mip, shader-variant or render-equivalence proof."
+                + "\n" + (_featureCandidates.Count == 0
+                    ? "No feature candidates detected."
+                    : string.Join("\n", _featureCandidates.Distinct().Select(item =>
+                        "material=" + item.material.name
+                        + ", property=" + item.property
+                        + ", feature=" + item.rule.Name
+                        + ", switch=" + item.rule.SwitchProperty
+                        + ", condition=" + item.rule.Condition)))
+                + "\n\n[Feature-disable merge-planner comparison: TEMPORARY]"
+                + "\n" + (_featureDisableLines.Count == 0
+                    ? "No feature-disable comparison run."
+                    : string.Join("\n", _featureDisableLines))
                 + "\n\n[GPU-first UV source survey: diagnostic only]"
                 + "\nGPU screens: " + _gpuScreens
                 + ", GPU variable / CPU skipped: " + _gpuRejectedVariable
@@ -1817,6 +1850,7 @@ namespace net.rs64.TexTransTool.NDMF
             var emissionProbe = new AutoAtlasEmissionProbe();
             // Expensive full-pipeline diagnostic: at most one hypothetical use per build.
             var shadowReplansRemaining = 1;
+            var comparedFeatureKinds = new HashSet<string>();
 
             var twoDimensionalFallbackReasons = new List<string>();
 
@@ -2430,6 +2464,31 @@ namespace net.rs64.TexTransTool.NDMF
                     // Diagnostics are observational and must never block
                     // an otherwise valid avatar atlas build.
                     emissionProbe.RecordOwnershipDiagnosticError(ex);
+                }
+
+                foreach (var candidate in emissionProbe.GetFeatureCandidates()
+                             .Where(item => group.Contains(item.material))
+                             .OrderBy(item => item.rule.Name, StringComparer.Ordinal)
+                             .ThenBy(item => item.material.name, StringComparer.Ordinal))
+                {
+                    var kind = candidate.rule.Name.StartsWith(
+                        "Emission", StringComparison.Ordinal) ? "emission" : "non-emission";
+                    if (!comparedFeatureKinds.Add(kind)) continue;
+                    try
+                    {
+                        emissionProbe.AddFeatureDisableLine(
+                            AutoAtlasShadowReplan.CompareMergePlans(
+                                domain, configuration, settings,
+                                preparedGroups, propertyTextures, mergePlan,
+                                candidate.material, candidate.rule));
+                    }
+                    catch (Exception ex)
+                    {
+                        emissionProbe.AddFeatureDisableLine(
+                            "material=" + candidate.material.name
+                            + ", feature=" + candidate.rule.Name
+                            + ", planner=unknown:" + ex.GetType().Name);
+                    }
                 }
 
                 if (shadowReplansRemaining > 0 && execution.MergeSelection == null)
