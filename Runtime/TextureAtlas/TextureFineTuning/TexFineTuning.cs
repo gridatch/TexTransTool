@@ -219,7 +219,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
                 }
 
                 mergeParticipants.Add(tuning.Key);
-                mergeParticipants.Add(merge.MargeParent);
+                // The nonempty guard above excludes null, but the nullable
+                // annotation is not narrowed by string.IsNullOrWhiteSpace.
+                mergeParticipants.Add(merge.MargeParent!);
             }
 
             var existingReferenceSources = tuningHolders
