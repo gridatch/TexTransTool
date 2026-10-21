@@ -456,6 +456,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
         {
             var atlasTexFineTuningTargets = TexFineTuningUtility.InitTexFineTuningHolders(compiledAtlasTextures.Keys);
 
+            var sourceMaterials = atlasContext.MaterialGroupingCtx
+                .ContainsTextureDictionaries.Keys.ToArray();
+            TexFineTuningUtility.ApplySourceMipMapDefaults(
+                sourceMaterials,
+                atlasContext.MaterialGroupingCtx.ContainsTextureDictionaries,
+                atlasTexFineTuningTargets);
+
             // AutoTunings
             if (experimentalOptions?.AutoTextureSizeSetting ?? false) SetSizeDataMaxSize(atlasTexFineTuningTargets, atlasContext.MaterialGroupingCtx);
             if (experimentalOptions?.AutoMergeTextureSetting ?? false) DefaultMargeTextureDictTuning(atlasTexFineTuningTargets, atlasContext.MaterialGroupingCtx);
@@ -471,9 +478,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     pair.Value.Hight),
                 StringComparer.Ordinal);
             TexFineTuningUtility.AddEquivalentOutputReferenceCopies(
-                atlasContext.MaterialGroupingCtx.ContainsTextureDictionaries
-                    .Keys
-                    .ToArray(),
+                sourceMaterials,
                 atlasContext.MaterialGroupingCtx.ContainsTextureDictionaries,
                 propertySizes,
                 atlasTexFineTuningTargets);
@@ -681,19 +686,19 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
         }
 
-        private static int GetNormalizedMinHeightSize(int atlasTextureSize, float height)
+        internal static int GetNormalizedMinHeightSize(
+            int atlasTextureSize,
+            float height)
         {
-            switch (height)
-            {
-                default: return atlasTextureSize;
-                case < (1 / 32f): return atlasTextureSize / 32;
-                case < (1 / 16f): return atlasTextureSize / 16;
-                case < (1 / 8f): return atlasTextureSize / 8;
-                case < (1 / 4f): return atlasTextureSize / 4;
-                case < (1 / 2f): return atlasTextureSize / 2;
-            }
+            var clampedHeight = Mathf.Clamp01(height);
+            var requiredPixels = Mathf.Max(
+                1,
+                Mathf.CeilToInt(clampedHeight * atlasTextureSize));
+            var normalizedHeight = Mathf.NextPowerOfTwo(requiredPixels);
+            return Mathf.Clamp(normalizedHeight, 4, atlasTextureSize);
         }
-        internal static readonly int[] AutoAtlasTextureSizeCandidates = { 256, 512, 1024, 2048, 4096 };
+        internal static readonly int[] AutoAtlasTextureSizeCandidates =
+            { 64, 128, 256, 512, 1024, 2048, 4096 };
 
         static Vector2Int GetAtlasTextureSize(AtlasSetting atlasSetting)
         {
@@ -747,11 +752,18 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             IslandTransform[]? selectedIslands = null;
             IslandRelocationManager.RelocateResult? selectedResult = null;
-            var maxCandidateSize = AutoAtlasTextureSizeCandidates[AutoAtlasTextureSizeCandidates.Length - 1];
-            var selectedSize = new Vector2Int(maxCandidateSize, maxCandidateSize);
+            var maxCandidateSize =
+                AutoAtlasTextureSizeCandidates[
+                    AutoAtlasTextureSizeCandidates.Length - 1];
+            var selectedSize =
+                new Vector2Int(maxCandidateSize, maxCandidateSize);
             long totalRelocationTime = 0;
 
-            foreach (var size in AutoAtlasTextureSizeCandidates)
+            var pivotIndex = Array.IndexOf(
+                AutoAtlasTextureSizeCandidates, 256);
+            Debug.Assert(pivotIndex >= 0);
+
+            bool Probe(int size, bool keepFailure)
             {
                 var candidateSize = new Vector2Int(size, size);
                 var (candidateIslands, candidateResult) = IslandProcessing(
@@ -765,13 +777,43 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     out var candidateTime);
 
                 totalRelocationTime += candidateTime;
-                selectedSize = candidateSize;
-                selectedIslands = candidateIslands;
-                selectedResult = candidateResult;
-
-                if (IsLosslessRelocation(candidateResult))
+                var isLossless = IsLosslessRelocation(candidateResult);
+                if (isLossless || keepFailure)
                 {
-                    break;
+                    selectedSize = candidateSize;
+                    selectedIslands = candidateIslands;
+                    selectedResult = candidateResult;
+                }
+
+                return isLossless;
+            }
+
+            if (Probe(
+                    AutoAtlasTextureSizeCandidates[pivotIndex],
+                    keepFailure: true))
+            {
+                for (var index = pivotIndex - 1; index >= 0; index -= 1)
+                {
+                    if (!Probe(
+                            AutoAtlasTextureSizeCandidates[index],
+                            keepFailure: false))
+                    {
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                for (var index = pivotIndex + 1;
+                     index < AutoAtlasTextureSizeCandidates.Length;
+                     index += 1)
+                {
+                    if (Probe(
+                            AutoAtlasTextureSizeCandidates[index],
+                            keepFailure: true))
+                    {
+                        break;
+                    }
                 }
             }
 

@@ -91,19 +91,38 @@ namespace net.rs64.TexTransTool.TextureAtlas
             if (!autoSize || sourceSizes.Count == 0)
                 return layoutSize;
 
-            var candidate = layoutSize;
-            if (HasSufficientTexelDensity(
-                    candidate, layoutSize, primarySizes, sourceSizes))
+            return new Vector2Int(
+                CalculateAxisSize(
+                    layoutSize.x,
+                    isWidth: true,
+                    layoutSize,
+                    primarySizes,
+                    sourceSizes),
+                CalculateAxisSize(
+                    layoutSize.y,
+                    isWidth: false,
+                    layoutSize,
+                    primarySizes,
+                    sourceSizes));
+        }
+
+        private static int CalculateAxisSize(
+            int layoutDimension,
+            bool isWidth,
+            Vector2Int layoutSize,
+            IReadOnlyList<Vector2Int?> primarySizes,
+            IReadOnlyList<Vector2Int> sourceSizes)
+        {
+            var candidate = layoutDimension;
+            if (HasSufficientTexelDensityForAxis(
+                    candidate, isWidth, layoutSize, primarySizes, sourceSizes))
             {
-                while (candidate.x / 2 >= MinimumTextureDimension
-                    && candidate.y / 2 >= MinimumTextureDimension)
+                while (candidate / 2 >= MinimumTextureDimension)
                 {
-                    var smaller = new Vector2Int(
-                        candidate.x / 2,
-                        candidate.y / 2
-                    );
-                    if (!HasSufficientTexelDensity(
-                            smaller, layoutSize, primarySizes, sourceSizes))
+                    var smaller = candidate / 2;
+                    if (!HasSufficientTexelDensityForAxis(
+                            smaller, isWidth, layoutSize,
+                            primarySizes, sourceSizes))
                     {
                         break;
                     }
@@ -114,27 +133,25 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 return candidate;
             }
 
-            while (!HasSufficientTexelDensity(
-                       candidate, layoutSize, primarySizes, sourceSizes))
+            while (!HasSufficientTexelDensityForAxis(
+                       candidate, isWidth, layoutSize,
+                       primarySizes, sourceSizes))
             {
-                if (candidate.x > int.MaxValue / 2
-                    || candidate.y > int.MaxValue / 2)
+                if (candidate > int.MaxValue / 2)
                 {
                     throw new InvalidOperationException(
                         "Required lossless atlas texture size is too large.");
                 }
 
-                candidate = new Vector2Int(
-                    candidate.x * 2,
-                    candidate.y * 2
-                );
+                candidate *= 2;
             }
 
             return candidate;
         }
 
-        private static bool HasSufficientTexelDensity(
-            Vector2Int candidateSize,
+        private static bool HasSufficientTexelDensityForAxis(
+            int candidateDimension,
+            bool isWidth,
             Vector2Int layoutSize,
             IReadOnlyList<Vector2Int?> primarySizes,
             IReadOnlyList<Vector2Int> sourceSizes)
@@ -144,8 +161,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 var primarySize = primarySizes[index];
                 if (!primarySize.HasValue)
                 {
-                    if (candidateSize.x < layoutSize.x
-                        || candidateSize.y < layoutSize.y)
+                    if (candidateDimension < (isWidth
+                            ? layoutSize.x
+                            : layoutSize.y))
                     {
                         return false;
                     }
@@ -153,12 +171,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     continue;
                 }
 
-                var primary = primarySize.Value;
-                var source = sourceSizes[index];
-                if ((long)candidateSize.x * primary.x
-                        < (long)layoutSize.x * source.x
-                    || (long)candidateSize.y * primary.y
-                        < (long)layoutSize.y * source.y)
+                var primaryDimension = isWidth
+                    ? primarySize.Value.x
+                    : primarySize.Value.y;
+                var sourceDimension = isWidth
+                    ? sourceSizes[index].x
+                    : sourceSizes[index].y;
+                var layoutDimension = isWidth
+                    ? layoutSize.x
+                    : layoutSize.y;
+                if ((long)candidateDimension * primaryDimension
+                    < (long)layoutDimension * sourceDimension)
                 {
                     return false;
                 }
@@ -166,5 +189,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             return true;
         }
+
     }
 }

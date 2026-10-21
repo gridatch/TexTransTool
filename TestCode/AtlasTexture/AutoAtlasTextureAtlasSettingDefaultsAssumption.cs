@@ -75,13 +75,85 @@ namespace net.rs64.TexTransTool.TestCode
                 actualFineTuning);
         }
 
+        [Test]
+        public void SourceMipMapDefaultsPreserveOnlyExistingMipUsage()
+        {
+            var shader = UnityEngine.Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var noMip = new UnityEngine.Texture2D(
+                16, 16, UnityEngine.TextureFormat.RGBA32, false);
+            var withMip = new UnityEngine.Texture2D(
+                16, 16, UnityEngine.TextureFormat.RGBA32, true);
+            var first = new UnityEngine.Material(shader);
+            var second = new UnityEngine.Material(shader);
+            try
+            {
+                first.SetTexture("_MainTex", noMip);
+                second.SetTexture("_MainTex", noMip);
+
+                var materials = new[] { first, second };
+                var propertyTextures =
+                    new System.Collections.Generic.Dictionary<
+                        UnityEngine.Material,
+                        System.Collections.Generic.IReadOnlyDictionary<
+                            string, UnityEngine.Texture>>
+                    {
+                        [first] = new System.Collections.Generic.Dictionary<
+                            string, UnityEngine.Texture>
+                        {
+                            ["_MainTex"] = noMip,
+                        },
+                        [second] = new System.Collections.Generic.Dictionary<
+                            string, UnityEngine.Texture>
+                        {
+                            ["_MainTex"] = noMip,
+                        },
+                    };
+
+                var holders = TexFineTuningUtility
+                    .InitTexFineTuningHolders(new[] { "_MainTex" });
+                TexFineTuningUtility.ApplySourceMipMapDefaults(
+                    materials, propertyTextures, holders);
+                Assert.That(
+                    holders["_MainTex"].Get<MipMapData>().UseMipMap,
+                    Is.False);
+
+                ((System.Collections.Generic.Dictionary<
+                    string, UnityEngine.Texture>)propertyTextures[second])
+                    ["_MainTex"] = withMip;
+                holders = TexFineTuningUtility
+                    .InitTexFineTuningHolders(new[] { "_MainTex" });
+                TexFineTuningUtility.ApplySourceMipMapDefaults(
+                    materials, propertyTextures, holders);
+                Assert.That(
+                    holders["_MainTex"].Get<MipMapData>().UseMipMap,
+                    Is.True);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(first);
+                UnityEngine.Object.DestroyImmediate(second);
+                UnityEngine.Object.DestroyImmediate(noMip);
+                UnityEngine.Object.DestroyImmediate(withMip);
+            }
+        }
+
+        [Test]
+        public void StandaloneAtlasSearchIncludesSmallWidths()
+        {
+            Assert.That(
+                AtlasTexture.AutoAtlasTextureSizeCandidates,
+                Is.EqualTo(new[] { 64, 128, 256, 512, 1024, 2048, 4096 }));
+        }
+
         [TestCase(512, 512, 2048, 2048, 2048, 2048, 512, 512)]
         [TestCase(512, 512, 2048, 2048, 512, 512, 128, 128)]
         [TestCase(512, 512, 2048, 2048, 256, 256, 64, 64)]
         [TestCase(512, 512, 1024, 1024, 2048, 2048, 1024, 1024)]
         [TestCase(512, 512, 2048, 2048, 768, 768, 256, 256)]
         [TestCase(512, 256, 2048, 2048, 512, 512, 128, 64)]
-        [TestCase(512, 256, 2048, 1024, 512, 512, 256, 128)]
+        [TestCase(512, 256, 2048, 1024, 512, 512, 128, 128)]
         public void PropertyResolutionKeepsSourceTexelDensity(
             int layoutWidth,
             int layoutHeight,
@@ -101,6 +173,45 @@ namespace net.rs64.TexTransTool.TestCode
 
             Assert.That(result, Is.EqualTo(
                 new UnityEngine.Vector2Int(expectedWidth, expectedHeight)));
+        }
+
+        [TestCase(1024, 512, 2048, 2048, 2048, 1024, 1024, 256)]
+        [TestCase(1024, 512, 2048, 2048, 1024, 2048, 512, 512)]
+        public void PropertyResolutionMinimizesAxesIndependently(
+            int layoutWidth,
+            int layoutHeight,
+            int primaryWidth,
+            int primaryHeight,
+            int sourceWidth,
+            int sourceHeight,
+            int expectedWidth,
+            int expectedHeight)
+        {
+            var result = CalculatePropertySize(
+                new UnityEngine.Vector2Int(layoutWidth, layoutHeight),
+                autoSize: true,
+                new UnityEngine.Vector2Int?(new UnityEngine.Vector2Int(
+                    primaryWidth, primaryHeight)),
+                new UnityEngine.Vector2Int(sourceWidth, sourceHeight));
+
+            Assert.That(result, Is.EqualTo(
+                new UnityEngine.Vector2Int(expectedWidth, expectedHeight)));
+        }
+
+        [TestCase(4096, 0.03125f, 128)]
+        [TestCase(4096, 0.015625f, 64)]
+        [TestCase(4096, 0.00390625f, 16)]
+        [TestCase(4096, 0.0001f, 4)]
+        [TestCase(1024, 0.5001f, 1024)]
+        public void AtlasHeightCropUsesSmallestPowerOfTwoThatFits(
+            int atlasSize,
+            float usedHeight,
+            int expectedHeight)
+        {
+            Assert.That(
+                AtlasTexture.GetNormalizedMinHeightSize(
+                    atlasSize, usedHeight),
+                Is.EqualTo(expectedHeight));
         }
 
         [Test]
@@ -174,7 +285,7 @@ namespace net.rs64.TexTransTool.TestCode
                 new UnityEngine.Vector2Int(16, 16)
             );
 
-            Assert.That(result, Is.EqualTo(new UnityEngine.Vector2Int(512, 4)));
+            Assert.That(result, Is.EqualTo(new UnityEngine.Vector2Int(4, 4)));
         }
 
         [Test]

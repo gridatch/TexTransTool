@@ -28,6 +28,8 @@ namespace net.rs64.TexTransTool.NDMF
         // only bound cheap integer-DP state retention, not expensive atlas probes.
         private const int ShadowPackingStatesPerHost = 1024;
         private const int PackingGridUnit = 256;
+        internal static readonly int[] AutoAtlasMergeHostWidthCandidates =
+            { 256, 512, 1024, 2048, 4096 };
         private const double Epsilon = 1e-8;
 
         internal sealed class PreparedGroup
@@ -37,6 +39,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal HashSet<Material> Materials = new();
             internal Renderer[] Renderers = Array.Empty<Renderer>();
             internal HashSet<Texture> SourceTextures = new();
+            internal HashSet<Texture> RetainedSourceTextures = new();
             internal long OriginalPixels;
 
             internal AtlasTexture.AtlasExecutionMetrics? StandaloneMetrics;
@@ -47,6 +50,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Dictionary<string, int> PropertyUseCount =
                 new(StringComparer.Ordinal);
             internal TextureCostPlan BaselineCost = TextureCostPlan.Empty;
+            internal TextureCostPlan RetainedSourceCost = TextureCostPlan.Empty;
             internal bool BaselineCostKnown;
         }
 
@@ -809,6 +813,15 @@ namespace net.rs64.TexTransTool.NDMF
                     group.PropertyUseCount[property] = 1;
                 }
 
+                var originalCost = TryBuildOriginalCost(
+                    domain, group, propertyTextures);
+                var retainedSourceCost = TryBuildTextureCost(
+                    domain, group.RetainedSourceTextures);
+                if (originalCost == null || retainedSourceCost == null)
+                    continue;
+
+                group.RetainedSourceCost = retainedSourceCost;
+
                 var standaloneGeneratedCost = BuildGeneratedCost(
                     new[] { group },
                     propertyTextures,
@@ -816,23 +829,22 @@ namespace net.rs64.TexTransTool.NDMF
                     settings,
                     alphaCache,
                     UnknownAlphaAssumption.AssumeAbsent);
+                var standaloneTotalCost = TextureCostPlan.Combine(
+                    new[] { standaloneGeneratedCost, retainedSourceCost });
 
                 if (standaloneGeneratedCost.PixelCount > 0
-                    && standaloneGeneratedCost.PixelCount < group.OriginalPixels)
+                    && standaloneTotalCost.PixelCount < originalCost.PixelCount
+                    && standaloneTotalCost.FullResidentBytes
+                        < originalCost.FullResidentBytes)
                 {
-                    group.BaselineCost = standaloneGeneratedCost;
-                    group.BaselineCostKnown = true;
+                    group.BaselineCost = standaloneTotalCost;
                 }
                 else
                 {
-                    var originalCost = TryBuildOriginalCost(
-                        domain, group, propertyTextures);
-                    if (originalCost != null)
-                    {
-                        group.BaselineCost = originalCost;
-                        group.BaselineCostKnown = true;
-                    }
+                    group.BaselineCost = originalCost;
                 }
+
+                group.BaselineCostKnown = true;
             }
 
             var byId = groups.ToDictionary(group => group.Id);
@@ -1126,13 +1138,17 @@ namespace net.rs64.TexTransTool.NDMF
                 var baseline = TextureCostPlan.Combine(
                     selectedGroups.Select(
                         group => group.BaselineCost));
-                var merged = BuildGeneratedCost(
+                var mergedGenerated = BuildGeneratedCost(
                     selectedGroups,
                     propertyTextures,
                     propertySizes,
                     settings,
                     alphaCache,
                     UnknownAlphaAssumption.AssumePresent);
+                var merged = TextureCostPlan.Combine(
+                    new[] { mergedGenerated }
+                        .Concat(selectedGroups.Select(
+                            group => group.RetainedSourceCost)));
                 var projection = new ShadowCostProjection(
                     baseline,
                     merged,
@@ -1357,7 +1373,7 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             foreach (var targetWidth in
-                     AtlasTexture.AutoAtlasTextureSizeCandidates)
+                     AutoAtlasMergeHostWidthCandidates)
             {
                 if (targetWidth < PackingGridUnit
                     || targetWidth % PackingGridUnit != 0)
@@ -1667,53 +1683,99 @@ namespace net.rs64.TexTransTool.NDMF
 
             using (prepared)
             {
-                AtlasTexture.AtlasExecutionMetrics? standalone = null;
-
-                foreach (var size in AtlasTexture.AutoAtlasTextureSizeCandidates)
+                bool TryAnalyze(
+                    int size,
+                    out AtlasTexture.AtlasExecutionMetrics metrics)
                 {
                     try
                     {
-                        if (!AtlasTexture.TryAnalyzePreparedAtlasAtSize(
-                                domain,
-                                prepared,
-                                new List<IIslandSizePriorityTuner?>(),
-                                settings,
-                                size,
-                                out var metrics))
-                        {
-                            continue;
-                        }
-
-                        var usedHeight = GetUsedHeightPixels(metrics);
-                        group.TwoDimensionalProfileHeights[(size, size)] =
-                            usedHeight;
-                        standalone ??= metrics;
-
-                        // A wider merged atlas must not silently increase the
-                        // atomic group's padding. The group keeps the same
-                        // texel density and the same padding in profile pixels;
-                        // execution converts that padding into final-atlas UV
-                        // units from the reserved region width.
-                        foreach (var atlasWidth in
-                                 AtlasTexture.AutoAtlasTextureSizeCandidates)
-                        {
-                            if (atlasWidth <= size) continue;
-                            group.TwoDimensionalProfileHeights[
-                                (atlasWidth, size)] = usedHeight;
-                        }
+                        return AtlasTexture.TryAnalyzePreparedAtlasAtSize(
+                            domain,
+                            prepared,
+                            new List<IIslandSizePriorityTuner?>(),
+                            settings,
+                            size,
+                            out metrics);
                     }
                     catch (ArgumentException exception)
                         when (AutoAtlas2DMergeIslandRelocator.IsNfdhComparerFailure(
                             exception))
                     {
-                        // A profile that cannot be relocated reliably at one
-                        // candidate width is unavailable. Wider widths can still
-                        // produce a valid lossless profile.
+                        metrics = default;
+                        return false;
+                    }
+                }
+
+                AtlasTexture.AtlasExecutionMetrics? standalone = null;
+                var has256Profile = false;
+
+                foreach (var size in AutoAtlasMergeHostWidthCandidates)
+                {
+                    if (!TryAnalyze(size, out var metrics))
+                        continue;
+
+                    var usedHeight = GetUsedHeightPixels(metrics);
+                    group.TwoDimensionalProfileHeights[(size, size)] =
+                        usedHeight;
+                    standalone ??= metrics;
+                    if (size == 256)
+                        has256Profile = true;
+
+                    // A wider merged atlas must not silently increase the
+                    // atomic group's padding. The group keeps the same
+                    // texel density and the same padding in profile pixels;
+                    // execution converts that padding into final-atlas UV
+                    // units from the reserved region width.
+                    foreach (var atlasWidth in
+                             AutoAtlasMergeHostWidthCandidates)
+                    {
+                        if (atlasWidth <= size) continue;
+                        group.TwoDimensionalProfileHeights[
+                            (atlasWidth, size)] = usedHeight;
+                    }
+                }
+
+                // Merge packing remains on the 256px grid. Only the standalone
+                // baseline probes below that width, and only when 256 already
+                // proved that a smaller lossless atlas may exist.
+                if (has256Profile)
+                {
+                    foreach (var size in new[] { 128, 64 })
+                    {
+                        if (!TryAnalyze(size, out var metrics))
+                            break;
+                        standalone = metrics;
                     }
                 }
 
                 return standalone;
             }
+        }
+
+        private static TextureCostPlan? TryBuildTextureCost(
+            IDomain domain,
+            IEnumerable<Texture> textures)
+        {
+            var entries = new List<TextureCostEntry>();
+            foreach (var texture in textures.Distinct())
+            {
+                if (!AtlasTexture.TryGetOriginalTextureCostInfo(
+                        domain,
+                        texture,
+                        out var block,
+                        out var mipCount))
+                {
+                    return null;
+                }
+
+                entries.Add(new TextureCostEntry(
+                    texture.width,
+                    texture.height,
+                    block,
+                    mipCount));
+            }
+
+            return new TextureCostPlan(entries);
         }
 
         private static TextureCostPlan? TryBuildOriginalCost(
@@ -1776,14 +1838,19 @@ namespace net.rs64.TexTransTool.NDMF
             var tuningHolders =
                 TexFineTuningUtility.InitTexFineTuningHolders(
                     propertySizes.Keys);
-            foreach (var fineTuning in settings.TextureFineTuning)
-                fineTuning?.AddSetting(tuningHolders);
-
             var selectedMaterials = groups
                 .SelectMany(group => group.Materials)
                 .Where(material => material != null)
                 .Distinct()
                 .ToArray();
+            TexFineTuningUtility.ApplySourceMipMapDefaults(
+                selectedMaterials,
+                propertyTextures,
+                tuningHolders);
+
+            foreach (var fineTuning in settings.TextureFineTuning)
+                fineTuning?.AddSetting(tuningHolders);
+
             var automaticCopies =
                 TexFineTuningUtility.AddEquivalentOutputReferenceCopies(
                     selectedMaterials,
