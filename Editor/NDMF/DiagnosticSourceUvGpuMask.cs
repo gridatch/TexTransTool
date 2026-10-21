@@ -74,9 +74,16 @@ namespace net.rs64.TexTransTool.NDMF
                         return false;
                     }
                     var vertices = new Vector3[uv.Count];
-                    for (int i = 0; i < uv.Count; ++i)
+                    // Match the strict baseline: unrelated, unreferenced
+                    // UV vertices must not invalidate a drawable submesh.
+                    foreach (int index in indices)
                     {
-                        var coord = Vector2.Scale(uv[i], scale) + offset;
+                        if (index < 0 || index >= vertices.Length)
+                        {
+                            reason = "gpu-mask-invalid-index";
+                            return false;
+                        }
+                        var coord = Vector2.Scale(uv[index], scale) + offset;
                         if (float.IsNaN(coord.x) || float.IsNaN(coord.y)
                             || float.IsInfinity(coord.x) || float.IsInfinity(coord.y)
                             || coord.x < 0f || coord.x > 1f
@@ -85,16 +92,8 @@ namespace net.rs64.TexTransTool.NDMF
                             reason = "gpu-mask-UV-outside-0-to-1";
                             return false;
                         }
-                        vertices[i] = new Vector3(coord.x * 2f - 1f,
+                        vertices[index] = new Vector3(coord.x * 2f - 1f,
                             coord.y * 2f - 1f, 0f);
-                    }
-                    foreach (int index in indices)
-                    {
-                        if (index < 0 || index >= vertices.Length)
-                        {
-                            reason = "gpu-mask-invalid-index";
-                            return false;
-                        }
                     }
 
                     var draw = new Mesh
