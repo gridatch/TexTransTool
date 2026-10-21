@@ -170,8 +170,9 @@ namespace net.rs64.TexTransTool.NDMF
                     || shaderName.IndexOf("Lite", StringComparison.OrdinalIgnoreCase) >= 0)
                     continue;
 
+                geometry.TryGetValue(original, out var slots);
                 var geometryKnown = !unresolved.Contains(original)
-                    && geometry.TryGetValue(original, out var slots)
+                    && slots != null
                     && slots.Count > 0;
                 ObserveLayer(original, generated,
                     geometryKnown ? slots : null,
