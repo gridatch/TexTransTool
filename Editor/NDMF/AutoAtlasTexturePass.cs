@@ -93,6 +93,8 @@ namespace net.rs64.TexTransTool.NDMF
         {
             internal string Status = "";
             internal Color[]? Pixels;
+            internal string? WholeStats;
+            internal bool WholeIsConstant;
             internal int Width;
             internal int Height;
         }
@@ -158,7 +160,16 @@ namespace net.rs64.TexTransTool.NDMF
             // Emission-specific interpretation remains separate. In parallel,
             // collect candidate examples from every source texture property.
             // These are observations, never deletion approvals.
-            SurveySourceTextures(materialMap.Keys, slots, unresolved);
+            try
+            {
+                SurveySourceTextures(materialMap.Keys, slots, unresolved);
+            }
+            catch (Exception ex)
+            {
+                // A temporary diagnosis must never prevent normal atlasing.
+                _sourceSurvey.Add("Source survey aborted: "
+                    + ex.GetType().Name);
+            }
 
             watch.Stop();
             _probeMilliseconds += watch.ElapsedMilliseconds;
@@ -194,6 +205,8 @@ namespace net.rs64.TexTransTool.NDMF
                 foreach (var property in material.GetTexturePropertyNames()
                              .OrderBy(name => name, StringComparer.Ordinal))
                 {
+                    try
+                    {
                     var texture = material.GetTexture(property);
                     if (texture == null) continue;
                     ++_surveyProperties;
@@ -209,8 +222,13 @@ namespace net.rs64.TexTransTool.NDMF
                         continue;
                     }
 
-                    var full = ScanSourcePixels(image.Pixels, null);
-                    if (full.isConstant) ++_surveyUniformWhole;
+                    if (image.WholeStats == null)
+                    {
+                        var full = ScanSourcePixels(image.Pixels, null);
+                        image.WholeStats = FormatSurveyStats(full);
+                        image.WholeIsConstant = full.isConstant;
+                    }
+                    if (image.WholeIsConstant) ++_surveyUniformWhole;
                     string uvStatus;
                     if (used == null || used.Count == 0)
                         uvStatus = "unknown:source-mesh";
@@ -248,8 +266,17 @@ namespace net.rs64.TexTransTool.NDMF
                         + ", source=" + texture.name
                         + ", size=" + image.Width + "x" + image.Height
                         + ", read=" + image.Status
-                        + ", whole=" + FormatSurveyStats(full)
+                        + ", whole=" + image.WholeStats
                         + ", used=" + uvStatus);
+                    }
+                    catch (Exception ex)
+                    {
+                        ++_surveyUnknownCoverage;
+                        _sourceSurvey.Add("material=" + material.name
+                            + ", property=" + property
+                            + ", whole=unknown:survey-error:"
+                            + ex.GetType().Name);
+                    }
                 }
             }
         }
