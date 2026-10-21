@@ -749,7 +749,8 @@ namespace net.rs64.TexTransTool.NDMF
             AutoAtlasTexture configuration,
             AtlasSetting settings,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
-            IReadOnlyList<PreparedGroup> groups)
+            IReadOnlyList<PreparedGroup> groups,
+            bool useProjectedSources = false)
         {
             if (!configuration.EnableAdditionalAtlasMerging
                 || groups.Count(group => !group.ExcludedFromTextureMerging) < 2)
@@ -797,7 +798,8 @@ namespace net.rs64.TexTransTool.NDMF
             foreach (var group in mergeGroups)
             {
                 group.StandaloneMetrics = AnalyzeAtlas(
-                    domain, settings, group);
+                    domain, settings, group,
+                    useProjectedSources ? propertyTextures : null);
             }
 
             foreach (var group in mergeGroups)
@@ -1669,7 +1671,8 @@ namespace net.rs64.TexTransTool.NDMF
         private static AtlasTexture.AtlasExecutionMetrics? AnalyzeAtlas(
             IDomain domain,
             AtlasSetting settings,
-            PreparedGroup group)
+            PreparedGroup group,
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>? projectedSources)
         {
             group.TwoDimensionalProfileHeights.Clear();
 
@@ -1677,7 +1680,8 @@ namespace net.rs64.TexTransTool.NDMF
                 domain,
                 group.Materials,
                 group.Renderers,
-                settings);
+                settings,
+                projectedSources);
             if (prepared is null)
                 return null;
 
