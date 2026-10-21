@@ -101,6 +101,27 @@ namespace net.rs64.TexTransTool.NDMF
             return true;
         }
 
+        internal static string? ExplainRejectedZeroMask(
+            Material material, string property, Color color)
+        {
+            if (color.r != 0f || color.g != 0f || color.b != 0f)
+                return null;
+            if (property == "_OutlineWidthMask")
+                return "outline-width-mask-affects-vertex-and-delete-mesh-path";
+            if (property == "_Main2ndBlendMask")
+                return !material.HasProperty("_Main2ndTexAlphaMode")
+                    ? "main2nd-alpha-mode-unavailable"
+                    : material.GetFloat("_Main2ndTexAlphaMode") != 0f
+                        ? "main2nd-alpha-mode-not-zero"
+                        : "main2nd-disabled-or-unsupported-shader";
+            if (property == "_MatCapBlendMask"
+                || property == "_MatCap2ndBlendMask"
+                || property == "_EmissionBlendMask"
+                || property == "_Emission2ndBlendMask")
+                return "feature-switch-or-blend-mode-not-proven";
+            return null;
+        }
+
         private static bool ZeroEmissionBlend(Material material, string name)
         {
             if (!material.HasProperty(name)) return false;
