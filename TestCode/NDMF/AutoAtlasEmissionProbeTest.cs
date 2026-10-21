@@ -306,6 +306,38 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void GpuUvOrientationMarkerDistinguishesBothRowOrders()
+        {
+            const int width = 8;
+            const int height = 8;
+            var pixels = new Color32[width * height];
+            for (int x = 0; x < width; ++x)
+                pixels[x] = new Color32(0, 255, 0, 255);
+
+            Assert.That(DiagnosticSourceUvGpuMask.TryResolveUvYOrientation(
+                pixels, width, height, out var flip), Is.True);
+            Assert.That(flip, Is.False);
+
+            Array.Clear(pixels, 0, pixels.Length);
+            for (int x = 0; x < width; ++x)
+                pixels[(height - 1) * width + x]
+                    = new Color32(0, 255, 0, 255);
+            Assert.That(DiagnosticSourceUvGpuMask.TryResolveUvYOrientation(
+                pixels, width, height, out flip), Is.True);
+            Assert.That(flip, Is.True);
+
+            pixels[0] = new Color32(0, 255, 0, 255);
+            Assert.That(DiagnosticSourceUvGpuMask.TryResolveUvYOrientation(
+                pixels, width, height, out flip), Is.False,
+                "Ambiguous markers must fail closed.");
+
+            Array.Clear(pixels, 0, pixels.Length);
+            Assert.That(DiagnosticSourceUvGpuMask.TryResolveUvYOrientation(
+                pixels, width, height, out flip), Is.False,
+                "Missing marker must not imply an orientation.");
+        }
+
+        [Test]
         public void GpuUvTriangleScreenDoesNotUseBoundingRectangleAsCoverage()
         {
             if (!SystemInfo.SupportsRenderTextureFormat(
