@@ -102,35 +102,19 @@ namespace net.rs64.TexTransTool.NDMF
         private int _surveyUniformUsed;
         private int _surveyUnknownCoverage;
         private int _surveyCoverageCacheHits;
-        // Exact per-texel A/B experiment only. The baseline survey is never
-        // changed by AtlasContext results, even when the two disagree.
-        private const int MaxAtlasGeometryComparisons = 8;
-        private readonly List<string> _atlasGeometryComparisonLines = new();
-        private int _atlasGeometryCompared;
-        private int _atlasGeometryMatched;
-        private int _atlasGeometryMismatched;
-        private int _atlasGeometryUnavailable;
-        private double _atlasGeometryBaselineMs;
-        private double _atlasGeometryReuseMs;
-        private long _atlasGeometryPixelChecks;
-
-        // GPU UV triangle coverage is a candidate SCREEN only: unlike the
-        // strict baseline it does not include bilinear boundary contributors.
-        // In this A/B experiment the original result always remains authoritative.
-        private const int MaxGpuMaskComparisons = 8;
-        private const int MaxGpuVariableSamples = 3;
-        private readonly List<string> _gpuMaskLines = new();
-        private int _gpuMaskCompared;
-        private int _gpuVariableSamples;
-        private int _gpuMaskUniform;
-        private int _gpuMaskConfirmed;
-        private int _gpuMaskBoundaryDifferent;
-        private int _gpuMaskUnavailable;
-        private int _gpuMaskOutsideStrict;
-        private int _gpuMaskFlippedRows;
-        private double _gpuMaskElapsedMs;
-        private double _gpuMaskBaselineMs;
-        private double _gpuMaskProjectedMs;
+        // TEMPORARY candidate-first GPU survey. The original Emission
+        // inspection remains separate; only this generic source survey changes.
+        private const int MaxGpuStatusSamples = 8;
+        private readonly List<string> _gpuStatusLines = new();
+        private int _gpuScreens;
+        private int _gpuRejectedVariable;
+        private int _gpuUniformCandidates;
+        private int _gpuStrictConfirmed;
+        private int _gpuStrictRejected;
+        private int _gpuFallbacks;
+        private int _gpuFlippedRows;
+        private double _gpuScreenMs;
+        private double _gpuStrictMs;
 
         private sealed class SourceImage
         {
@@ -154,8 +138,7 @@ namespace net.rs64.TexTransTool.NDMF
         internal void Observe(
             IDomain domain,
             Renderer[] renderers,
-            Dictionary<Material, Material> materialMap,
-            AtlasContext? atlasContext = null)
+            Dictionary<Material, Material> materialMap)
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
@@ -208,7 +191,7 @@ namespace net.rs64.TexTransTool.NDMF
             // These are observations, never deletion approvals.
             try
             {
-                SurveySourceTextures(materialMap.Keys, slots, unresolved, atlasContext);
+                SurveySourceTextures(materialMap.Keys, slots, unresolved);
             }
             catch (Exception ex)
             {
@@ -228,8 +211,7 @@ namespace net.rs64.TexTransTool.NDMF
         private void SurveySourceTextures(
             IEnumerable<Material> materials,
             Dictionary<Material, HashSet<(Mesh, int)>> slots,
-            HashSet<Material> unresolved,
-            AtlasContext? atlasContext)
+            HashSet<Material> unresolved)
         {
             // Cache only within this survey invocation. Identical source
             // textures and UV transforms on the same material must not
@@ -311,43 +293,12 @@ namespace net.rs64.TexTransTool.NDMF
                             }
                             else
                             {
-                                var baselineWatch = System.Diagnostics.Stopwatch.StartNew();
-                                bool baselineOk = TrySourceCoverage(used, scale, offset,
-                                    image.Width, image.Height, texture.wrapModeU,
-                                    texture.wrapModeV, texture.filterMode,
-                                    out var covered, out var count, out var reason);
-                                baselineWatch.Stop();
-
-                                if (baselineOk)
-                                {
-                                    var region = ScanSourcePixels(image.Pixels, covered);
-                                    constant = region.isConstant;
-                                    uvStatus = "UV0-texels=" + count + ":"
-                                        + FormatSurveyStats(region);
-                                }
-                                else
-                                {
-                                    constant = false;
-                                    uvStatus = "unknown:" + reason;
-                                }
-                                if (baselineOk && atlasContext != null
-                                    && _atlasGeometryCompared < MaxAtlasGeometryComparisons
-                                    && IsAtlasGeometryBenchmarkProperty(property))
-                                    CompareAtlasContextGeometry(atlasContext, material,
-                                        used, property, texture, scale, offset,
-                                        image.Width, image.Height, covered, count,
-                                        baselineWatch.Elapsed.TotalMilliseconds);
-                                // A whole-source constant (often a 4x4
-                                // placeholder) needs no UV candidate screen.
-                                // Reserve diagnostics for variable sources.
-                                if (baselineOk && !image.WholeIsConstant
-                                    && _gpuMaskCompared < MaxGpuMaskComparisons
-                                    && (constant
-                                        || _gpuVariableSamples < MaxGpuVariableSamples))
-                                    CompareGpuUvScreen(material, property, used,
-                                        scale, offset, image.Pixels, image.Width,
-                                        image.Height, covered, count, constant,
-                                        baselineWatch.Elapsed.TotalMilliseconds);
+                                (uvStatus, constant) = EvaluateSourceUvGpuFirst(
+                                    used, scale, offset, image.Width, image.Height,
+                                    texture.wrapModeU, texture.wrapModeV,
+                                    texture.filterMode, image.Pixels,
+                                    image.WholeIsConstant,
+                                    material.name + " / " + property);
                                 coverageCache.Add(key, (uvStatus, constant));
                             }
                             if (constant) ++_surveyUniformUsed;
@@ -375,157 +326,94 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        private void CompareGpuUvScreen(
-            Material material, string property, HashSet<(Mesh, int)> slots,
-            Vector2 scale, Vector2 offset, Color[] sourcePixels,
-            int width, int height, bool[] strictMask, int strictCount,
-            bool strictUniform, double baselineCoverageMs)
+        /// <summary>
+        /// GPU-screen nonuniform interiors first; strict CPU filtering
+        /// runs only for uniform candidates or GPU fallback. This is an
+        /// observational mip0 survey, not shader removability approval.
+        /// </summary>
+        internal (string status, bool constant) EvaluateSourceUvGpuFirst(
+            HashSet<(Mesh, int)> slots, Vector2 scale, Vector2 offset,
+            int width, int height, TextureWrapMode wrapU, TextureWrapMode wrapV,
+            FilterMode filterMode, Color[] pixels, bool wholeSourceConstant,
+            string label)
         {
-            ++_gpuMaskCompared;
-            if (!strictUniform) ++_gpuVariableSamples;
-            var timer = System.Diagnostics.Stopwatch.StartNew();
-            bool ok = DiagnosticSourceUvGpuMask.TryRender(
-                slots, scale, offset, width, height, _residentPixelBudget,
-                out var gpuMask, out var gpuCount, out var reason,
-                out var verticalFlipCorrected);
-            timer.Stop();
-            _gpuMaskElapsedMs += timer.Elapsed.TotalMilliseconds;
-            _gpuMaskBaselineMs += baselineCoverageMs;
-            if (ok && verticalFlipCorrected) ++_gpuMaskFlippedRows;
-
-            if (!ok)
+            string route = "whole-constant";
+            if (!wholeSourceConstant)
             {
-                ++_gpuMaskUnavailable;
-                // A production candidate screen must fall back to the
-                // original CPU footprint when GPU screening is unavailable.
-                _gpuMaskProjectedMs += timer.Elapsed.TotalMilliseconds
-                    + baselineCoverageMs;
-                _gpuMaskLines.Add("material=" + material.name
-                    + ", property=" + property + ", GPU=unavailable:"
-                    + reason + ", GPUms=" + FormatMs(timer.Elapsed.TotalMilliseconds)
-                    + ", CPUcoverageMs=" + FormatMs(baselineCoverageMs));
-                return;
+                ++_gpuScreens;
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                bool ok = DiagnosticSourceUvGpuMask.TryRender(
+                    slots, scale, offset, width, height, _residentPixelBudget,
+                    out var interiorMask, out var interiorCount, out var gpuReason,
+                    out var verticalFlipCorrected);
+                watch.Stop();
+                _gpuScreenMs += watch.Elapsed.TotalMilliseconds;
+                if (ok && verticalFlipCorrected) ++_gpuFlippedRows;
+
+                if (ok)
+                {
+                    var screen = ScanSourcePixels(pixels, interiorMask);
+                    if (!screen.isConstant)
+                    {
+                        // Every interior texel lies in the sampled UV support.
+                        // Different interior colors are sufficient to reject
+                        // a uniform candidate without computing the boundary.
+                        ++_gpuRejectedVariable;
+                        AddGpuStatus(label + ": GPU-interior=" + interiorCount
+                            + ":variable; CPU=skipped; GPUms="
+                            + FormatMs(watch.Elapsed.TotalMilliseconds));
+                        return ("GPU-UV0-interior-texels=" + interiorCount
+                            + ":" + FormatSurveyStats(screen), false);
+                    }
+                    ++_gpuUniformCandidates;
+                    route = "candidate-check";
+                    AddGpuStatus(label + ": GPU-interior=" + interiorCount
+                        + ":uniform; CPU=strict-boundary");
+                }
+                else
+                {
+                    ++_gpuFallbacks;
+                    route = "GPU-fallback:" + gpuReason;
+                    AddGpuStatus(label + ": GPU=unavailable:" + gpuReason
+                        + "; CPU=strict-fallback");
+                }
             }
 
-            var screenStats = ScanSourcePixels(sourcePixels, gpuMask);
-            bool screenUniform = screenStats.isConstant;
-            if (screenUniform) ++_gpuMaskUniform;
-
-            // No unsupported "outside UV" pixels may be deemed safe.
-            // CPU strict footprint includes bilinear and point boundaries.
-            int outsideStrict = 0;
-            for (int i = 0; i < gpuMask.Length; ++i)
-                if (gpuMask[i] && !strictMask[i]) ++outsideStrict;
-            if (outsideStrict != 0) ++_gpuMaskOutsideStrict;
-
-            string validation;
-            if (outsideStrict != 0)
-                validation = "GPU-outside-CPU-support";
-            else if (!screenUniform)
-                validation = "not-a-candidate";
-            else if (strictUniform)
+            var cpuWatch = System.Diagnostics.Stopwatch.StartNew();
+            var success = TrySourceCoverage(slots, scale, offset, width,
+                height, wrapU, wrapV, filterMode,
+                out var strictMask, out var strictCount, out var reason);
+            cpuWatch.Stop();
+            _gpuStrictMs += cpuWatch.Elapsed.TotalMilliseconds;
+            if (!success)
             {
-                ++_gpuMaskConfirmed;
-                validation = "confirmed-by-strict-boundary";
+                AddGpuStatus(label + ": " + route + "; CPU=unknown:" + reason);
+                return ("unknown:" + reason, false);
             }
-            else
+            var strict = ScanSourcePixels(pixels, strictMask);
+            if (route == "candidate-check")
             {
-                ++_gpuMaskBoundaryDifferent;
-                validation = "rejected-by-strict-boundary";
+                if (strict.isConstant) ++_gpuStrictConfirmed;
+                else ++_gpuStrictRejected;
+                AddGpuStatus(label + ": " + route
+                    + (strict.isConstant ? "; confirmed" : "; rejected")
+                    + "; CPUms=" + FormatMs(cpuWatch.Elapsed.TotalMilliseconds));
             }
+            return ("UV0-texels=" + strictCount
+                + ":" + FormatSurveyStats(strict), strict.isConstant);
+        }
 
-            // Projected path: GPU screen for every texture; only potential
-            // uniform candidates pay for CPU boundary validation.
-            _gpuMaskProjectedMs += timer.Elapsed.TotalMilliseconds
-                + ((screenUniform || outsideStrict != 0)
-                    ? baselineCoverageMs : 0.0);
-
-            _gpuMaskLines.Add("material=" + material.name
-                + ", property=" + property
-                + ", GPU-interior=" + gpuCount
-                + (screenUniform ? ":uniform" : ":variable")
-                + ", CPU-strict=" + strictCount
-                + (strictUniform ? ":uniform" : ":variable")
-                + ", result=" + validation
-                + ", outsideStrict=" + outsideStrict
-                + ", YflipCorrected=" + verticalFlipCorrected
-                + ", GPUms=" + FormatMs(timer.Elapsed.TotalMilliseconds)
-                + ", CPUcoverageMs=" + FormatMs(baselineCoverageMs));
+        private void AddGpuStatus(string line)
+        {
+            if (_gpuStatusLines.Count < MaxGpuStatusSamples)
+                _gpuStatusLines.Add(line);
         }
 
         private static string FormatMs(double milliseconds) =>
             milliseconds.ToString("F3",
                 System.Globalization.CultureInfo.InvariantCulture);
 
-        private static bool IsAtlasGeometryBenchmarkProperty(string property) =>
-            property == "_MainTex" || property == "_Bump2ndMap"
-            || property == "_Main2ndBlendMask"
-            || property == "_Emission2ndBlendMask"
-            || property == "_OutlineWidthMask";
-
-        private void CompareAtlasContextGeometry(
-            AtlasContext atlasContext,
-            Material material,
-            HashSet<(Mesh, int)> sourceSlots,
-            string property, Texture texture,
-            Vector2 scale, Vector2 offset, int width, int height,
-            bool[] baseline, int baselineCount, double baselineMs)
-        {
-            ++_atlasGeometryCompared;
-            var clock = System.Diagnostics.Stopwatch.StartNew();
-            bool success;
-            bool[] alternate;
-            int alternateCount;
-            string reason;
-            try
-            {
-                success = TryAtlasContextCoverage(
-                    atlasContext, material, sourceSlots, scale, offset,
-                    width, height, texture.wrapModeU, texture.wrapModeV,
-                    texture.filterMode,
-                    out alternate, out alternateCount, out reason);
-            }
-            catch (Exception ex)
-            {
-                success = false;
-                alternate = Array.Empty<bool>();
-                alternateCount = 0;
-                reason = "atlas-context-exception:" + ex.GetType().Name;
-            }
-            clock.Stop();
-            _atlasGeometryBaselineMs += baselineMs;
-            _atlasGeometryReuseMs += clock.Elapsed.TotalMilliseconds;
-
-            string result;
-            if (!success)
-            {
-                ++_atlasGeometryUnavailable;
-                result = "unavailable:" + reason;
-            }
-            else
-            {
-                int differences = CountCoverageDifferences(baseline, alternate);
-                if (differences == 0 && baselineCount == alternateCount)
-                {
-                    ++_atlasGeometryMatched;
-                    result = "exact-match";
-                }
-                else
-                {
-                    ++_atlasGeometryMismatched;
-                    result = "MISMATCH:different-texels=" + differences
-                        + ",original=" + baselineCount
-                        + ",atlasContext=" + alternateCount;
-                }
-            }
-            _atlasGeometryComparisonLines.Add("material=" + material.name
-                + ", property=" + property + ", result=" + result
-                + ", sourceMeshMs=" + baselineMs.ToString("F3",
-                    System.Globalization.CultureInfo.InvariantCulture)
-                + ", atlasContextMs=" + clock.Elapsed.TotalMilliseconds
-                    .ToString("F3", System.Globalization.CultureInfo.InvariantCulture));
-        }
-
+        // Retained for the mask comparison regression tests.
         internal static int CountCoverageDifferences(bool[] source, bool[] alternative)
         {
             if (source.Length != alternative.Length)
@@ -534,128 +422,6 @@ namespace net.rs64.TexTransTool.NDMF
             for (int i = 0; i < source.Length; ++i)
                 if (source[i] != alternative[i]) ++different;
             return different;
-        }
-
-        // Alternate GEOMETRY INPUT, same exact per-texel intersection model.
-        // Never treats an island's bounding rectangle as uniform.
-        // Do not use normalized/island data for the production decision
-        // until full comparison and Unity test verification.
-        private bool TryAtlasContextCoverage(
-            AtlasContext atlasContext,
-            Material material,
-            HashSet<(Mesh, int)> sourceSlots,
-            Vector2 scale, Vector2 offset, int width, int height,
-            TextureWrapMode wrapU, TextureWrapMode wrapV,
-            FilterMode filterMode,
-            out bool[] coverage, out int coveredCount, out string reason)
-        {
-            coverage = Array.Empty<bool>();
-            coveredCount = 0;
-            reason = "";
-            var groupId = atlasContext.MaterialGroupingCtx.GetMaterialGroupID(material);
-            if (groupId < 0)
-            {
-                reason = "material-not-in-atlas-context";
-                return false;
-            }
-            if (width <= 0 || height <= 0
-                || (long)width * height > _residentPixelBudget)
-            {
-                reason = "invalid-source-size";
-                return false;
-            }
-            if (filterMode != FilterMode.Point
-                && filterMode != FilterMode.Bilinear
-                && filterMode != FilterMode.Trilinear)
-            {
-                reason = "source-filter-unsupported";
-                return false;
-            }
-            float radius = filterMode == FilterMode.Point ? 0.5f : 1f;
-            coverage = new bool[width * height];
-            long localChecks = 0;
-            bool encountered = false;
-
-            foreach (var slot in sourceSlots)
-            {
-                if (!atlasContext.NormalizedMeshCtx.Origin2NormalizedMesh
-                        .TryGetValue(slot.Item1, out var normalized)
-                    || !atlasContext.NormalizedMeshCtx.Normalized2MeshID
-                        .TryGetValue(normalized, out var meshId))
-                {
-                    reason = "source-mesh-not-in-atlas-context";
-                    return false;
-                }
-                var submeshKey = new AtlasSubMeshIndexID(meshId, slot.Item2, groupId);
-                if (!atlasContext.AtlasIslandCtx.OriginIslandDict
-                        .TryGetValue(submeshKey, out var islands))
-                {
-                    reason = "source-submesh-not-in-atlas-context";
-                    return false;
-                }
-                var uv = atlasContext.NormalizedMeshCtx
-                    .GetMeshDataFromMeshID(meshId).VertexUV;
-
-                foreach (var island in islands)
-                    foreach (var triangle in island.Triangles)
-                    {
-                        encountered = true;
-                        var a = Vector2.Scale(uv[triangle[0]], scale) + offset;
-                        var b = Vector2.Scale(uv[triangle[1]], scale) + offset;
-                        var c = Vector2.Scale(uv[triangle[2]], scale) + offset;
-                        if (!InsideAtlasUV(a) || !InsideAtlasUV(b)
-                            || !InsideAtlasUV(c))
-                        {
-                            reason = "source-UV-outside-0-to-1";
-                            return false;
-                        }
-
-                        a = new Vector2(a.x * width - 0.5f, a.y * height - 0.5f);
-                        b = new Vector2(b.x * width - 0.5f, b.y * height - 0.5f);
-                        c = new Vector2(c.x * width - 0.5f, c.y * height - 0.5f);
-                        int x0 = Mathf.FloorToInt(
-                            Mathf.Min(a.x, Mathf.Min(b.x, c.x)) - radius);
-                        int x1 = Mathf.CeilToInt(
-                            Mathf.Max(a.x, Mathf.Max(b.x, c.x)) + radius);
-                        int y0 = Mathf.FloorToInt(
-                            Mathf.Min(a.y, Mathf.Min(b.y, c.y)) - radius);
-                        int y1 = Mathf.CeilToInt(
-                            Mathf.Max(a.y, Mathf.Max(b.y, c.y)) + radius);
-                        long checks = (long)(x1 - x0 + 1) * (y1 - y0 + 1);
-                        if (checks > MaxTrianglePixelChecks - localChecks)
-                        {
-                            reason = "source-per-coverage-raster-budget";
-                            return false;
-                        }
-                        localChecks += checks;
-                        _atlasGeometryPixelChecks += checks;
-
-                        for (int y = y0; y <= y1; ++y)
-                            for (int x = x0; x <= x1; ++x)
-                            {
-                                if (!TriangleOverlapsTexelFilter(
-                                        new Vector2(x, y), a, b, c, radius)) continue;
-                                if (!TryWrapTexel(x, width, wrapU,
-                                        out var wrappedX)
-                                    || !TryWrapTexel(y, height, wrapV,
-                                        out var wrappedY))
-                                {
-                                    reason = "source-wrap-mode-unknown";
-                                    return false;
-                                }
-                                int index = wrappedY * width + wrappedX;
-                                if (coverage[index]) continue;
-                                coverage[index] = true;
-                                ++coveredCount;
-                            }
-                    }
-            }
-            if (!encountered || coveredCount == 0)
-            {
-                reason = "no-source-UV-coverage";
-                return false;
-            }
-            return true;
         }
 
         private static string FormatSurveyStats(
@@ -1294,50 +1060,24 @@ namespace net.rs64.TexTransTool.NDMF
                 + (_lines.Count == 0
                     ? "No non-Lite lilToon emission source textures found."
                     : string.Join("\n", _lines))
-                + "\n\n[GPU UV interior candidate screen A/B: diagnostic only]"
-                + "\nComparisons: " + _gpuMaskCompared
-                + ", interior uniform: " + _gpuMaskUniform
-                + ", strict-boundary confirmed: " + _gpuMaskConfirmed
-                + ", strict-boundary rejected: " + _gpuMaskBoundaryDifferent
-                + ", GPU unavailable: " + _gpuMaskUnavailable
-                + ", GPU outside strict pixels: " + _gpuMaskOutsideStrict
-                + ", GPU Y-flip corrections: " + _gpuMaskFlippedRows
-                + "\nGPU mask: " + FormatMs(_gpuMaskElapsedMs)
-                + "ms; matched CPU coverage: "
-                + FormatMs(_gpuMaskBaselineMs)
-                + "ms; projected mask+conditional CPU coverage only: "
-                + FormatMs(_gpuMaskProjectedMs) + "ms"
-                + "\nGPU pixel-center raster is only a preliminary screen."
-                + " GPU Y orientation is measured with an independent marker."
-                + " Boundary-only differences are expected; GPU mask is never"
-                + " treated as a removal guarantee. A mismatch uses the CPU"
-                + " fallback in projected cost. Times exclude source"
-                + " image readback and color scanning; the CPU baseline"
-                + " is still executed in this diagnostic."
-                + "\n"
-                + (_gpuMaskLines.Count == 0
-                    ? "No eligible comparison."
-                    : string.Join("\n", _gpuMaskLines))
-                + "\n\n[Exact AtlasContext UV geometry A/B: diagnostic only]"
-                + "\nCandidates checked: " + _atlasGeometryCompared
-                + ", exact mask matches: " + _atlasGeometryMatched
-                + ", mismatches: " + _atlasGeometryMismatched
-                + ", geometry unavailable: " + _atlasGeometryUnavailable
-                + "\nCurrent source mesh coverage: "
-                + _atlasGeometryBaselineMs.ToString("F3",
-                    System.Globalization.CultureInfo.InvariantCulture)
-                + "ms, existing AtlasContext geometry: "
-                + _atlasGeometryReuseMs.ToString("F3",
-                    System.Globalization.CultureInfo.InvariantCulture) + "ms"
-                + ", alternate pixel checks: " + _atlasGeometryPixelChecks
-                + "\nBoth paths test the same triangle/filter coverage per texel."
-                + " Comparison runs only for selected properties (at most "
-                + MaxAtlasGeometryComparisons + " per build)."
-                + " A mismatch is never accepted as an optimization."
-                + "\n"
-                + (_atlasGeometryComparisonLines.Count == 0
-                    ? "No eligible comparison."
-                    : string.Join("\n", _atlasGeometryComparisonLines))
+                + "\n\n[GPU-first UV source survey: diagnostic only]"
+                + "\nGPU screens: " + _gpuScreens
+                + ", GPU variable / CPU skipped: " + _gpuRejectedVariable
+                + ", GPU uniform / CPU checked: " + _gpuUniformCandidates
+                + ", boundary confirmed: " + _gpuStrictConfirmed
+                + ", boundary rejected: " + _gpuStrictRejected
+                + ", GPU fallback: " + _gpuFallbacks
+                + ", Y-flip corrected: " + _gpuFlippedRows
+                + "\nGPU-screen elapsed: " + FormatMs(_gpuScreenMs)
+                + "ms, CPU strict coverage elapsed (candidates, fallback,"
+                + " whole-source constants): " + FormatMs(_gpuStrictMs) + "ms"
+                + "\nGPU variable source observations are interior-only;"
+                + " they do not report a full CPU-filter texel count."
+                + " The CPU validator still determines all uniform candidates."
+                + " Original Emission-layer diagnostics remain unchanged."
+                + "\n" + (_gpuStatusLines.Count == 0
+                    ? "No GPU source survey entries."
+                    : string.Join("\n", _gpuStatusLines))
                 + "\n\n[Source texture property survey: mip0; informational]"
                 + "\nWhole-source and UV-covered constants are observations,"
                 + " NOT removability claims. Unsupported UV usage is unknown."
@@ -2262,7 +2002,7 @@ namespace net.rs64.TexTransTool.NDMF
                 // Diagnostic readback is intentionally after all execution
                 // safety gates, and before generated textures are disposed.
                 emissionProbe.Observe(domain, atlasRenderers,
-                    atlasMaterialMaps.materialMap, atlasContext);
+                    atlasMaterialMaps.materialMap);
 
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
