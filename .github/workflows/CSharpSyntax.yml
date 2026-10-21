@@ -1,0 +1,50 @@
+name: Roslyn C# Syntax Check
+
+on:
+  pull_request:
+    branches: [wdt]
+  push:
+    branches: [wdt, 'ci/**']
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    name: C# 9 syntax (no Unity)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore syntax scanner
+        run: dotnet restore .ci/syntax-check/CSharpSyntaxCheck.csproj
+
+      - name: Parse all package C# sources (C# 9)
+        run: dotnet run --project .ci/syntax-check/CSharpSyntaxCheck.csproj --configuration Release --no-restore -- .
+
+      - name: Verify broken C# is rejected (CS1002)
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_root="$RUNNER_TEMP/syntax-negative-probe"
+          mkdir -p "$probe_root/Runtime"
+          printf '%s\n' 'class Broken { void Test() { int value = 1 } }' > "$probe_root/Runtime/Broken.cs"
+          set +e
+          output="$(dotnet run --project .ci/syntax-check/CSharpSyntaxCheck.csproj --configuration Release --no-restore -- "$probe_root" 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [[ "$status" -eq 0 ]] || ! grep -q 'error CS1002:' <<< "$output"; then
+            echo "::error::Negative test failed: scanner did not reject a missing semicolon with CS1002."
+            exit 1
+          fi
