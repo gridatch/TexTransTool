@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using nadena.dev.ndmf;
 using nadena.dev.ndmf.animator;
+using nadena.dev.ndmf.localization;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
@@ -11,8 +12,11 @@ using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.Editor;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using net.rs64.TexTransTool.Utils;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
+using UnityEngine.Rendering;
+using UnityEngine.UIElements;
 
 namespace net.rs64.TexTransTool.NDMF
 {
@@ -53,6 +57,303 @@ namespace net.rs64.TexTransTool.NDMF
                 animationServices?.AnimationIndex,
                 animationServices?.ObjectPathRemapper,
                 context.AvatarRootTransform);
+        }
+    }
+
+
+    // TEMPORARY diagnostic: this code belongs only in the dedicated probe branch.
+    // No texture or shader property is changed. RGBA32 GPU readback is a coarse
+    // candidate survey, NOT a lossless-equivalence proof.
+    internal sealed class AutoAtlasEmissionProbe
+    {
+        private const long MaxReadbackPixels = 8L * 1024 * 1024;
+        private long _readbackPixels;
+        private long _readbackMilliseconds;
+        private long _observeMilliseconds;
+        private readonly HashSet<RenderTexture> _candidateOutputs = new();
+        private readonly Dictionary<RenderTexture, long?> _memoryCosts = new();
+        private int _candidateCount;
+        private int _materialCount;
+        private readonly List<string> _lines = new();
+
+        private readonly Dictionary<RenderTexture, Sample> _samples = new();
+
+        private sealed class Sample
+        {
+            internal string Status = "";
+            internal bool? RgbZero;
+            internal bool? AlphaZero;
+            internal long ElapsedMilliseconds;
+            internal long? OutputBytes;
+            internal RenderTexture? Texture;
+        }
+
+        internal void Observe(
+            Dictionary<Material, Material> materialMap,
+            Dictionary<string, RenderTexture> resultingTextures,
+            TexFineTuningResult tuningResult,
+            AtlasContext atlasContext)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            _samples.Clear();
+            foreach (var entry in materialMap.OrderBy(
+                         x => x.Key.name, StringComparer.Ordinal))
+            {
+                var original = entry.Key;
+                var generated = entry.Value;
+                if (original == null || generated == null || original.shader == null)
+                    continue;
+                // This probe is specific to the non-Lite lilToon emission equations.
+                var shaderName = original.shader.name;
+                if (shaderName.IndexOf("lilToon", StringComparison.OrdinalIgnoreCase) < 0
+                    || shaderName.IndexOf("Lite", StringComparison.OrdinalIgnoreCase) >= 0)
+                    continue;
+
+                ObserveLayer(original, generated, resultingTextures,
+                    tuningResult, atlasContext,
+                    "_UseEmission", "_EmissionBlendMode",
+                    "_EmissionMap", "_EmissionBlendMask", "1st");
+                ObserveLayer(original, generated, resultingTextures,
+                    tuningResult, atlasContext,
+                    "_UseEmission2nd", "_Emission2ndBlendMode",
+                    "_Emission2ndMap", "_Emission2ndBlendMask", "2nd");
+            }
+            watch.Stop();
+            _observeMilliseconds += watch.ElapsedMilliseconds;
+        }
+
+        private void ObserveLayer(
+            Material original, Material generated,
+            IReadOnlyDictionary<string, RenderTexture> resultingTextures,
+            TexFineTuningResult tuningResult,
+            AtlasContext atlasContext,
+            string enabledProperty, string modeProperty,
+            string mapProperty, string maskProperty, string layer)
+        {
+            if (!original.HasProperty(enabledProperty)
+                || original.GetFloat(enabledProperty) == 0)
+                return;
+
+            // If neither texture was transformed by this atlas, there is no
+            // relevant atlas-content observation for this material.
+            var map = SampleMappedTexture(generated, resultingTextures,
+                tuningResult, atlasContext, mapProperty);
+            var mask = SampleMappedTexture(generated, resultingTextures,
+                tuningResult, atlasContext, maskProperty);
+            if (map == null && mask == null) return;
+
+            ++_materialCount;
+            var mode = generated.HasProperty(modeProperty)
+                ? Mathf.RoundToInt(generated.GetFloat(modeProperty))
+                : -1;
+            var hasZeroAlpha = map?.AlphaZero == true || mask?.AlphaZero == true;
+            var hasZeroRgb = map?.RgbZero == true || mask?.RgbZero == true;
+            var isNeutralCandidate = hasZeroAlpha
+                || ((mode == 1 || mode == 2) && hasZeroRgb);
+
+            if (isNeutralCandidate)
+            {
+                ++_candidateCount;
+                if (map?.Texture != null) _candidateOutputs.Add(map.Texture);
+                if (mask?.Texture != null) _candidateOutputs.Add(mask.Texture);
+            }
+            _lines.Add(
+                "material=" + original.name + ", emission=" + layer
+                + ", mode=" + mode
+                + ", map=" + (map?.Status ?? "not-atlased")
+                + ", mask=" + (mask?.Status ?? "not-atlased")
+                + ", candidate=" + (isNeutralCandidate ? "yes" : "no")
+                + ", emission-atlas-output-bytes="
+                + (map?.OutputBytes.GetValueOrDefault() ?? 0)
+                + "+"
+                + (mask?.OutputBytes.GetValueOrDefault() ?? 0));
+
+        }
+
+        private Sample? SampleMappedTexture(
+            Material generated,
+            IReadOnlyDictionary<string, RenderTexture> resultingTextures,
+            TexFineTuningResult tuningResult,
+            AtlasContext atlasContext,
+            string propertyName)
+        {
+            if (!resultingTextures.TryGetValue(propertyName, out var rt)
+                || !generated.HasProperty(propertyName)
+                || !ReferenceEquals(generated.GetTexture(propertyName), rt))
+                return null;
+
+            if (_samples.TryGetValue(rt, out var cached))
+                return cached;
+
+            var sample = new Sample { Texture = rt };
+            _samples.Add(rt, sample);
+            sample.OutputBytes = EstimateOutputBytes(
+                tuningResult, atlasContext, propertyName);
+            _memoryCosts[rt] = sample.OutputBytes;
+            var pixels = (long)rt.width * rt.height;
+            if (pixels <= 0 || pixels > MaxReadbackPixels - _readbackPixels)
+            {
+                sample.Status = rt.width + "x" + rt.height + ":budget-skip";
+                return sample;
+            }
+
+            if (!SystemInfo.supportsAsyncGPUReadback)
+            {
+                sample.Status = "readback-unsupported";
+                return sample;
+            }
+
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                var request = AsyncGPUReadback.Request(
+                    rt, 0, TextureFormat.RGBA32);
+                request.WaitForCompletion();
+                if (request.hasError)
+                {
+                    sample.Status = "readback-error";
+                    return sample;
+                }
+
+                var bytes = request.GetData<Color32>();
+                bool allRgbZero = true;
+                bool allAlphaZero = true;
+                foreach (var pixel in bytes)
+                {
+                    if (pixel.r != 0 || pixel.g != 0 || pixel.b != 0)
+                        allRgbZero = false;
+                    if (pixel.a != 0)
+                        allAlphaZero = false;
+                    if (!allRgbZero && !allAlphaZero) break;
+                }
+                sample.RgbZero = allRgbZero;
+                sample.AlphaZero = allAlphaZero;
+                sample.Status = rt.width + "x" + rt.height
+                    + ":RGB" + (allRgbZero ? "=0" : "!=0")
+                    + ",A" + (allAlphaZero ? "=0" : "!=0");
+                return sample;
+            }
+            catch (Exception ex)
+            {
+                sample.Status = "readback-exception:" + ex.GetType().Name;
+                return sample;
+            }
+            finally
+            {
+                watch.Stop();
+                _readbackPixels += pixels;
+                sample.ElapsedMilliseconds = watch.ElapsedMilliseconds;
+                _readbackMilliseconds += sample.ElapsedMilliseconds;
+            }
+        }
+
+        private static long? EstimateOutputBytes(
+            TexFineTuningResult tuningResult,
+            AtlasContext atlasContext,
+            string propertyName)
+        {
+            if (!tuningResult.RenderTextures.TryGetValue(
+                    propertyName, out var source)
+                || !tuningResult.TextureDescriptors.TryGetValue(
+                    source, out var descriptor))
+                return null;
+
+            var references = tuningResult.RenderTextures
+                .Where(entry => ReferenceEquals(entry.Value, source))
+                .ToArray();
+            var filtered = new TexFineTuningResult(
+                references.ToDictionary(entry => entry.Key, entry => entry.Value),
+                new Dictionary<ITTRenderTexture, TexTransToolTextureDescriptor>
+                {
+                    { source, descriptor },
+                },
+                references.ToDictionary(
+                    entry => entry.Key,
+                    entry => tuningResult.SourceProperties.TryGetValue(
+                            entry.Key, out var names)
+                        ? names
+                        : (IReadOnlyCollection<string>)Array.Empty<string>()));
+
+            return AtlasTexture.TryCalculateFinalTextureMemory(
+                    atlasContext, filtered, out var bytes)
+                ? bytes
+                : (long?)null;
+        }
+
+        internal string Report()
+        {
+            var project = new System.IO.DirectoryInfo(Application.dataPath)
+                .Parent?.Name ?? "(unknown)";
+            long upperBoundBytes = 0;
+            int unknownOutputs = 0;
+            foreach (var rt in _candidateOutputs)
+            {
+                if (_memoryCosts.TryGetValue(rt, out var bytes)
+                    && bytes.HasValue)
+                    upperBoundBytes += bytes.Value;
+                else
+                    ++unknownOutputs;
+            }
+            return "[Emission candidate probe: TEMPORARY, observation only]"
+                + "\nUnity project: " + project
+                + "\nLayers observed: " + _materialCount
+                + "\nCoarse candidates: " + _candidateCount
+                + "\nGPU readback pixels: " + _readbackPixels
+                + "\nGPU readback elapsed: " + _readbackMilliseconds + "ms"
+                + "\nProbe observation elapsed: " + _observeMilliseconds + "ms"
+                + "\nCandidate-related output memory upper bound: "
+                + AtlasTexture.FormatTextureMemory(upperBoundBytes)
+                + (unknownOutputs == 0 ? "" : " (unknown outputs: " + unknownOutputs + ")")
+                + "\nLimits: whole output RGBA32, 8M pixels/run; alpha/RGB quantization,"
+                + " UV animation, mipmap/compression, references and other shader"
+                + " effects are NOT verified. Not actual removable-memory savings."
+                + "\n"
+                + (_lines.Count == 0
+                    ? "No transformed lilToon emission textures found."
+                    : string.Join("\n", _lines));
+        }
+    }
+
+    internal sealed class AutoAtlasEmissionProbeError : SimpleError
+    {
+        private readonly string _message;
+        internal AutoAtlasEmissionProbeError(string message)
+        {
+            _message = message;
+        }
+
+        public override Localizer Localizer => TTTLog.NDMFLocalizer;
+        public override ErrorSeverity Severity => ErrorSeverity.Information;
+        public override string TitleKey =>
+            "AutoAtlasTexture:info:EmissionProbeTitle";
+        public override string[] TitleSubst => Array.Empty<string>();
+
+        public override VisualElement CreateVisualElement(ErrorReport report)
+        {
+            var root = new VisualElement();
+            root.style.flexGrow = 1;
+            var scroll = new ScrollView(ScrollViewMode.VerticalAndHorizontal);
+            scroll.style.height = 380;
+            scroll.style.minWidth = 0;
+            var lines = new VisualElement();
+            foreach (var line in _message.Split(
+                         new[] { '\n' }, StringSplitOptions.None))
+            {
+                var label = new Label(line) { enableRichText = false };
+                label.style.whiteSpace = WhiteSpace.NoWrap;
+                if (line.Length == 0)
+                    label.style.minHeight = EditorGUIUtility.singleLineHeight;
+                lines.Add(label);
+            }
+            scroll.Add(lines);
+            root.Add(scroll);
+            var copy = new Button(() =>
+                EditorGUIUtility.systemCopyBuffer = _message)
+            {
+                text = "AutoAtlasTexture:button:EmissionProbeCopy".GetLocalize(),
+            };
+            root.Add(copy);
+            return root;
         }
     }
 
@@ -328,6 +629,9 @@ namespace net.rs64.TexTransTool.NDMF
 
             // Store only the NDMF console summary for this build.
             var completed = new List<string>();
+
+            // Temporary emission-content survey; never alters atlas selection.
+            var emissionProbe = new AutoAtlasEmissionProbe();
 
             var twoDimensionalFallbackReasons = new List<string>();
 
@@ -925,6 +1229,11 @@ namespace net.rs64.TexTransTool.NDMF
                             finalTotalTextureMemoryBytes));
                 }
 
+                // Diagnostic readback is intentionally after all execution
+                // safety gates, and before generated textures are disposed.
+                emissionProbe.Observe(atlasMaterialMaps.materialMap, resultingTextures,
+                    tuningResult, atlasContext);
+
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
                 AtlasTexture.ApplyAtlasedMaterialMaps(
@@ -943,6 +1252,10 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             processingTimer.Stop();
+
+            TTTLog.ReportingObject(configuration, () =>
+                ErrorReport.ReportError(new AutoAtlasEmissionProbeError(
+                    emissionProbe.Report())));
 
             if (twoDimensionalFallbackReasons.Count != 0)
             {

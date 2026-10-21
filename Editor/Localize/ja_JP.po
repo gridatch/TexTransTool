@@ -867,3 +867,9 @@ msgstr "g{0}の矩形内NFDH配置に失敗: region={1}, islands={2}, profilePad
 
 msgid "AutoAtlasTexture:fallback:RegionPaddingFailed"
 msgstr "g{0}の実配置が矩形境界の必要余白を満たさない: region={1}, box=({2},{3},{4},{5}), profilePadding={6}, regionPadding={7}"
+
+msgid "AutoAtlasTexture:info:EmissionProbeTitle"
+msgstr "Emission候補検証（試験用）"
+
+msgid "AutoAtlasTexture:button:EmissionProbeCopy"
+msgstr "検証結果をコピー"
