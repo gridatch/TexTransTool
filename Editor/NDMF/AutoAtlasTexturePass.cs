@@ -61,54 +61,42 @@ namespace net.rs64.TexTransTool.NDMF
     }
 
 
-    // TEMPORARY diagnostic only. Samples the pixel neighborhood of the
-    // actual output-mesh UV triangles, not their bounding rectangles or the
-    // whole atlas. It never modifies materials, textures or atlasing decisions.
-    // Level-0 quantized samples are screening evidence, NOT lossless proof.
+    // TEMPORARY, read-only investigation of ORIGINAL emission textures.
+    // The atlas output (including its generated white background) is never
+    // sampled here. "candidate" means only neutral at mip 0 under the static
+    // UV/filter model; it is NOT approval to remove a texture or shader feature.
     internal sealed class AutoAtlasEmissionProbe
     {
         private const long MaxReadbackPixels = 8L * 1024 * 1024;
-        private const long MaxRasterChecksPerObservation = 12L * 1024 * 1024;
-        // Bilinear filtering at LOD 0 may sample texel centers within
-        // +/-1 texel on each axis of an arbitrary point inside the UV triangle.
-        private const float BilinearSupportHalfWidth = 1f;
+        private const long MaxTrianglePixelChecks = 12L * 1024 * 1024;
+        // Pixel-center coordinates: a bilinear texel can contribute when a
+        // triangle intersects the +/-1px square around that texel center.
+        private const float BilinearRadius = 1f;
 
+        private readonly List<string> _lines = new();
+        private readonly Dictionary<Texture, SourceImage> _images = new();
+        private readonly HashSet<Texture> _readbackAttempted = new();
         private long _readbackPixels;
         private long _readbackMilliseconds;
-        private long _observationMilliseconds;
-        private long _rasterChecks;
-        private int _observedLayers;
-        private int _candidateLayers;
-        private int _safeFootprintCandidates;
-        private int _fringeOnlyCandidates;
-        private int _unknownLayers;
-        private readonly List<string> _lines = new();
-        private readonly Dictionary<RenderTexture, TextureSample> _textureSamples = new();
-        private readonly Dictionary<RenderTexture, long?> _costs = new();
-        private readonly HashSet<RenderTexture> _possibleUnusedOutputs = new();
+        private long _probeMilliseconds;
+        private long _triangleChecks;
+        private int _observed;
+        private int _candidates;
+        private int _unknown;
 
-        private sealed class TextureSample
+        private sealed class SourceImage
         {
             internal string Status = "";
             internal Color32[]? Pixels;
-            internal RenderTexture Texture = null!;
-            internal long? OutputBytes;
+            internal int Width;
+            internal int Height;
         }
 
-        private sealed class RegionResult
+        private sealed class Inspection
         {
             internal string Status = "";
             internal bool? RgbZero;
             internal bool? AlphaZero;
-            internal bool? InsideRgbZero;
-            internal bool? InsideAlphaZero;
-            internal bool? FootprintRgbZero;
-            internal bool? FootprintAlphaZero;
-            internal int FringeOpaqueWhite;
-            internal int FringeOtherNonzeroRgb;
-            internal long? OutputBytes;
-            internal RenderTexture? Texture;
-            internal int CoveredPixels;
         }
 
         internal void Observe(
@@ -121,384 +109,279 @@ namespace net.rs64.TexTransTool.NDMF
             AtlasContext atlasContext)
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            _textureSamples.Clear();
 
-            // Use the same mesh resolution used by the actual replacement pass.
-            // Store ALL effective submeshes of each source material, including
-            // repeated last-submesh slots and consumers on distinct renderers.
-            var geometry = new Dictionary<Material, HashSet<(Mesh, int)>>();
+            // The actual pre-atlas material slots and UVs, not output meshes.
+            // Keep multiple users of a material; any one may emit.
+            var slots = new Dictionary<Material, HashSet<(Mesh, int)>>();
             var unresolved = new HashSet<Material>();
             foreach (var renderer in renderers)
             {
                 if (renderer == null) continue;
                 var materials = domain.GetMaterials(renderer);
-                if (!materials.Any(material => material != null
-                        && materialMap.ContainsKey(material)))
-                    continue;
-
-                var resolved = AtlasTexture.ResolveAtlasedMeshForRenderer(
-                    domain, renderer, atlasContext, atlasedMeshes);
-                if (resolved is not { } meshPair)
+                var originalMesh = domain.GetMesh(renderer);
+                for (int materialIndex = 0; materialIndex < materials.Length; ++materialIndex)
                 {
-                    foreach (var material in materials)
-                        if (material != null && materialMap.ContainsKey(material))
-                            unresolved.Add(material);
-                    continue;
-                }
-
-                var atlasMesh = meshPair.atlasMesh;
-                for (var slot = 0; slot < materials.Length; slot++)
-                {
-                    var material = materials[slot];
-                    if (material == null || !materialMap.ContainsKey(material))
-                        continue;
-
-                    if (atlasMesh.subMeshCount == 0)
+                    var material = materials[materialIndex];
+                    if (material == null || !materialMap.ContainsKey(material)) continue;
+                    if (originalMesh == null || originalMesh.subMeshCount == 0)
                     {
                         unresolved.Add(material);
                         continue;
                     }
-                    var effectiveSlot = Math.Min(slot, atlasMesh.subMeshCount - 1);
-                    if (atlasMesh.GetSubMesh(effectiveSlot).indexCount == 0)
-                        continue;
-
-                    if (!geometry.TryGetValue(material, out var slots))
-                        geometry.Add(material, slots = new HashSet<(Mesh, int)>());
-                    slots.Add((atlasMesh, effectiveSlot));
+                    int submesh = Math.Min(materialIndex, originalMesh.subMeshCount - 1);
+                    if (originalMesh.GetSubMesh(submesh).indexCount == 0) continue;
+                    if (!slots.TryGetValue(material, out var usedSlots))
+                        slots.Add(material, usedSlots = new HashSet<(Mesh, int)>());
+                    usedSlots.Add((originalMesh, submesh));
                 }
             }
 
-            foreach (var entry in materialMap.OrderBy(
-                         x => x.Key.name, StringComparer.Ordinal))
+            foreach (var entry in materialMap.OrderBy(x => x.Key.name,
+                         StringComparer.Ordinal))
             {
                 var original = entry.Key;
-                var generated = entry.Value;
-                if (original == null || generated == null || original.shader == null)
-                    continue;
-                var shaderName = original.shader.name;
-                if (shaderName.IndexOf("lilToon", StringComparison.OrdinalIgnoreCase) < 0
-                    || shaderName.IndexOf("Lite", StringComparison.OrdinalIgnoreCase) >= 0)
+                if (original == null || original.shader == null) continue;
+                var shader = original.shader.name;
+                if (shader.IndexOf("lilToon", StringComparison.OrdinalIgnoreCase) < 0
+                    || shader.IndexOf("Lite", StringComparison.OrdinalIgnoreCase) >= 0)
                     continue;
 
-                geometry.TryGetValue(original, out var slots);
-                var geometryKnown = !unresolved.Contains(original)
-                    && slots != null
-                    && slots.Count > 0;
-                ObserveLayer(original, generated,
-                    geometryKnown ? slots : null,
-                    resultingTextures, tuningResult, atlasContext,
-                    "_UseEmission", "_EmissionBlendMode",
+                slots.TryGetValue(original, out var used);
+                if (unresolved.Contains(original)) used = null;
+                InspectLayer(original, used, "_UseEmission", "_EmissionBlendMode",
                     "_EmissionMap", "_EmissionBlendMask", "1st");
-                ObserveLayer(original, generated,
-                    geometryKnown ? slots : null,
-                    resultingTextures, tuningResult, atlasContext,
-                    "_UseEmission2nd", "_Emission2ndBlendMode",
+                InspectLayer(original, used, "_UseEmission2nd", "_Emission2ndBlendMode",
                     "_Emission2ndMap", "_Emission2ndBlendMask", "2nd");
             }
+
             watch.Stop();
-            _observationMilliseconds += watch.ElapsedMilliseconds;
+            _probeMilliseconds += watch.ElapsedMilliseconds;
         }
 
-        private void ObserveLayer(
-            Material original, Material generated,
-            HashSet<(Mesh, int)>? slots,
-            IReadOnlyDictionary<string, RenderTexture> textures,
-            TexFineTuningResult fineTuning,
-            AtlasContext atlasContext,
-            string enableProperty, string modeProperty,
+        private void InspectLayer(Material material, HashSet<(Mesh, int)>? slots,
+            string enabledProperty, string modeProperty,
             string mapProperty, string maskProperty, string layer)
         {
-            if (!original.HasProperty(enableProperty)
-                || original.GetFloat(enableProperty) == 0f)
-                return;
+            if (!material.HasProperty(enabledProperty)
+                || material.GetFloat(enabledProperty) == 0f) return;
 
-            if (!textures.ContainsKey(maskProperty)
-                && !textures.ContainsKey(mapProperty))
-                return;
+            var mapTexture = material.HasProperty(mapProperty)
+                ? material.GetTexture(mapProperty) : null;
+            var maskTexture = material.HasProperty(maskProperty)
+                ? material.GetTexture(maskProperty) : null;
+            if (mapTexture == null && maskTexture == null) return;
 
-            ++_observedLayers;
-            var mode = generated.HasProperty(modeProperty)
-                ? Mathf.RoundToInt(generated.GetFloat(modeProperty)) : -1;
+            ++_observed;
+            int mode = material.HasProperty(modeProperty)
+                ? Mathf.RoundToInt(material.GetFloat(modeProperty)) : -1;
 
-            RegionResult? map = InspectProperty(
-                generated, slots, textures, fineTuning, atlasContext,
-                mapProperty, false);
-            RegionResult? mask = InspectProperty(
-                generated, slots, textures, fineTuning, atlasContext,
-                maskProperty, true);
+            // Check mask first: a zero mask can prove no emission even when
+            // the emission map uses a different or animated UV channel.
+            var mask = InspectTexture(material, slots, maskProperty, maskTexture,
+                isMask: true);
+            bool maskProvesZero = mask.AlphaZero == true
+                || ((mode == 1 || mode == 2) && mask.RgbZero == true);
+            var map = maskProvesZero
+                ? new Inspection { Status = "unnecessary:mask-is-zero" }
+                : InspectTexture(material, slots, mapProperty, mapTexture,
+                    isMask: false);
 
-            // Diagnostic categories are deliberately separate:
-            // (1) Is the emission provably neutral at UV-interior texels?
-            // (2) Do the wider bilinear-support texels ALSO remain neutral?
-            // A white atlas background may affect (2), but MUST NOT silently
-            // turn an observed UV-interior zero into "no candidate".
-            var known = slots != null
-                && (map == null || map.InsideRgbZero.HasValue)
-                && (mask == null || mask.InsideRgbZero.HasValue);
-            bool insideZeroAlpha = map?.InsideAlphaZero == true
-                || mask?.InsideAlphaZero == true;
-            bool insideZeroRgb = map?.InsideRgbZero == true
-                || mask?.InsideRgbZero == true;
-            bool insideCandidate = known
-                && (insideZeroAlpha
-                    || ((mode == 1 || mode == 2) && insideZeroRgb));
-            bool footprintZeroAlpha = map?.FootprintAlphaZero == true
-                || mask?.FootprintAlphaZero == true;
-            bool footprintZeroRgb = map?.FootprintRgbZero == true
-                || mask?.FootprintRgbZero == true;
-            bool footprintCandidate = insideCandidate
-                && (footprintZeroAlpha
-                    || ((mode == 1 || mode == 2) && footprintZeroRgb));
-            string classification;
-            if (!known)
-            {
-                ++_unknownLayers;
-                classification = "unknown";
-            }
-            else if (!insideCandidate)
-            {
-                classification = "nonzero-inside";
-            }
-            else
-            {
-                ++_candidateLayers;
-                if (map?.Texture != null) _possibleUnusedOutputs.Add(map.Texture);
-                if (mask?.Texture != null) _possibleUnusedOutputs.Add(mask.Texture);
-                if (footprintCandidate)
-                {
-                    ++_safeFootprintCandidates;
-                    classification = "inside-zero-and-footprint-zero";
-                }
-                else
-                {
-                    ++_fringeOnlyCandidates;
-                    classification = "inside-zero-fringe-nonzero";
-                }
-            }
+            bool possible = maskProvesZero
+                || map.AlphaZero == true
+                || ((mode == 1 || mode == 2) && map.RgbZero == true);
+            bool unknown = !possible && (mask.RgbZero == null
+                && maskTexture != null
+                || map.RgbZero == null && mapTexture != null);
+            if (possible) ++_candidates;
+            else if (unknown) ++_unknown;
 
             _lines.Add(
-                "material=" + original.name + ", emission=" + layer
+                "material=" + material.name + ", emission=" + layer
                 + ", blendMode=" + mode
-                + ", triangles=" + (slots?.Count.ToString() ?? "unknown")
-                + ", map=" + (map?.Status ?? "not-atlased")
-                + ", mask=" + (mask?.Status ?? "not-atlased")
-                + ", candidate=" + classification
-                + ", atlas-output-bytes="
-                + (map?.OutputBytes.GetValueOrDefault() ?? 0)
-                + "+"
-                + (mask?.OutputBytes.GetValueOrDefault() ?? 0));
+                + ", source-map=" + map.Status
+                + ", source-mask=" + mask.Status
+                + ", candidate=" + (possible
+                    ? "source-mip0-zero" : unknown ? "unknown" : "nonzero")
+            );
         }
 
-        private RegionResult? InspectProperty(
-            Material material,
-            HashSet<(Mesh, int)>? slots,
-            IReadOnlyDictionary<string, RenderTexture> outputs,
-            TexFineTuningResult fineTuning,
-            AtlasContext atlasContext,
-            string propertyName,
-            bool mask)
+        private Inspection InspectTexture(
+            Material material, HashSet<(Mesh, int)>? slots,
+            string property, Texture? texture, bool isMask)
         {
-            if (!outputs.TryGetValue(propertyName, out var texture)
-                || !material.HasProperty(propertyName)
-                || !ReferenceEquals(material.GetTexture(propertyName), texture))
-                return null;
+            if (texture == null) return new Inspection { Status = "unset" };
+            if (slots == null || slots.Count == 0)
+                return new Inspection { Status = "source-mesh-unknown" };
 
-            var tex = GetTextureSample(texture, fineTuning, atlasContext, propertyName);
-            var result = new RegionResult
-            {
-                Texture = texture,
-                OutputBytes = tex.OutputBytes,
-            };
-            if (tex.Pixels == null)
-            {
-                result.Status = tex.Status;
-                return result;
-            }
-            if (slots == null)
-            {
-                result.Status = "no-output-UV-geometry";
-                return result;
-            }
-
-            // Only UV0 affine mappings are supported in this probe. The
-            // static ST transforms here match the respective lilToon paths:
-            // emission texture = own ST; mask = main ST followed by mask ST.
-            if (!TryGetStaticTransform(material, propertyName, mask,
+            if (!TryStaticUvTransform(material, property, isMask,
                     out var scale, out var offset, out var reason))
-            {
-                result.Status = reason;
-                return result;
-            }
+                return new Inspection { Status = reason };
 
-            if (!TryBuildCoverage(slots, scale, offset,
-                    texture.width, texture.height, out var covered,
-                    out var coveredCount, out var inside,
-                    out var insideCount, out reason))
-            {
-                result.Status = reason;
-                return result;
-            }
+            var source = ReadOriginal(texture);
+            if (source.Pixels == null)
+                return new Inspection { Status = source.Status };
 
-            var supported = CountNonZero(tex.Pixels, covered,
-                texture.width, texture.height, flippedY: false);
-            var core = CountNonZero(tex.Pixels, inside,
-                texture.width, texture.height, flippedY: false);
-            var flippedCore = CountNonZero(tex.Pixels, inside,
-                texture.width, texture.height, flippedY: true);
-            var outer = new bool[covered.Length];
-            for (int i = 0; i < outer.Length; i++)
-                outer[i] = covered[i] && !inside[i];
-            var fringe = CountNonZero(tex.Pixels, outer,
-                texture.width, texture.height, flippedY: false);
+            if (!TrySourceCoverage(slots, scale, offset, source.Width,
+                    source.Height, out var covered, out var count, out reason))
+                return new Inspection { Status = reason };
 
-            result.InsideRgbZero = core.NonzeroRgb == 0;
-            result.InsideAlphaZero = core.NonzeroAlpha == 0;
-            result.FootprintRgbZero = supported.NonzeroRgb == 0;
-            result.FootprintAlphaZero = supported.NonzeroAlpha == 0;
-            result.RgbZero = result.FootprintRgbZero;
-            result.AlphaZero = result.FootprintAlphaZero;
-            result.FringeOpaqueWhite = fringe.OpaqueWhite;
-            result.FringeOtherNonzeroRgb = fringe.NonzeroNonWhiteRgb;
-            result.CoveredPixels = coveredCount;
-            result.Status = texture.width + "x" + texture.height
-                + ":UV-triangles-covered=" + coveredCount + "/" + covered.Length
-                + ",inside=" + insideCount
-                + ",insideNonzero(R/G/B/A)=" + core.ChannelCounts()
-                + ",fringeNonzero(R/G/B/A)=" + fringe.ChannelCounts()
-                + ",fringeOpaqueWhite=" + fringe.OpaqueWhite
-                + ",fringeOtherNonzeroRGB=" + fringe.NonzeroNonWhiteRgb
-                + ",insideFlippedYNonzero(R/G/B/A)=" + flippedCore.ChannelCounts()
-                + ",insideRGB" + (result.InsideRgbZero == true ? "=0" : "!=0")
-                + ",insideA" + (result.InsideAlphaZero == true ? "=0" : "!=0")
-                + ",supportRGB" + (result.RgbZero == true ? "=0" : "!=0")
-                + ",supportA" + (result.AlphaZero == true ? "=0" : "!=0");
-            return result;
-        }
-
-
-        private struct NonZeroCounts
-        {
-            public int NonzeroRed, NonzeroGreen, NonzeroBlue, NonzeroAlpha, NonzeroRgb;
-            public int OpaqueWhite, NonzeroNonWhiteRgb;
-            public string ChannelCounts() =>
-                NonzeroRed + "/" + NonzeroGreen + "/"
-                + NonzeroBlue + "/" + NonzeroAlpha;
-        }
-
-        private static NonZeroCounts CountNonZero(
-            Color32[] pixels, bool[] covered, int width, int height, bool flippedY)
-        {
-            var counts = new NonZeroCounts();
+            bool rgbZero = true, alphaZero = true;
+            var pixels = source.Pixels;
             for (int i = 0; i < covered.Length; ++i)
             {
                 if (!covered[i]) continue;
-                var index = flippedY
-                    ? (height - 1 - i / width) * width + i % width
-                    : i;
-                var pixel = pixels[index];
-                if (pixel.r != 0) ++counts.NonzeroRed;
-                if (pixel.g != 0) ++counts.NonzeroGreen;
-                if (pixel.b != 0) ++counts.NonzeroBlue;
-                if (pixel.a != 0) ++counts.NonzeroAlpha;
-                bool rgbNonzero = pixel.r != 0 || pixel.g != 0 || pixel.b != 0;
-                bool opaqueWhite = pixel.r == 255 && pixel.g == 255
-                    && pixel.b == 255 && pixel.a == 255;
-                if (rgbNonzero) ++counts.NonzeroRgb;
-                if (opaqueWhite) ++counts.OpaqueWhite;
-                else if (rgbNonzero) ++counts.NonzeroNonWhiteRgb;
+                var pixel = pixels[i];
+                if (pixel.r != 0 || pixel.g != 0 || pixel.b != 0)
+                    rgbZero = false;
+                if (pixel.a != 0) alphaZero = false;
+                if (!rgbZero && !alphaZero) break;
             }
-            return counts;
+
+            return new Inspection
+            {
+                RgbZero = rgbZero,
+                AlphaZero = alphaZero,
+                Status = source.Width + "x" + source.Height
+                    + ":UV-bilinear-texels=" + count
+                    + ",RGB" + (rgbZero ? "=0" : "!=0")
+                    + ",A" + (alphaZero ? "=0" : "!=0")
+            };
         }
 
-        private static bool IsZeroScroll(Material material, string propertyName)
+        private SourceImage ReadOriginal(Texture texture)
         {
-            if (!material.HasProperty(propertyName)) return true;
-            return material.GetVector(propertyName) == Vector4.zero;
+            if (_images.TryGetValue(texture, out var prior)) return prior;
+            var image = new SourceImage
+            {
+                Width = texture.width,
+                Height = texture.height
+            };
+            _images.Add(texture, image);
+
+            long pixelCount = (long)texture.width * texture.height;
+            if (pixelCount <= 0 || pixelCount > MaxReadbackPixels - _readbackPixels)
+            {
+                image.Status = "source-readback-budget-skip";
+                return image;
+            }
+            if (!SystemInfo.supportsAsyncGPUReadback)
+            {
+                image.Status = "source-readback-unsupported";
+                return image;
+            }
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                var request = AsyncGPUReadback.Request(
+                    texture, 0, TextureFormat.RGBA32);
+                request.WaitForCompletion();
+                if (request.hasError)
+                {
+                    image.Status = "source-readback-error";
+                    return image;
+                }
+                var pixels = request.GetData<Color32>();
+                if (pixels.Length != pixelCount)
+                {
+                    image.Status = "source-readback-size-mismatch";
+                    return image;
+                }
+                image.Pixels = pixels.ToArray();
+                image.Status = "source-readback-ok";
+                return image;
+            }
+            catch (Exception ex)
+            {
+                image.Status = "source-readback-exception:" + ex.GetType().Name;
+                return image;
+            }
+            finally
+            {
+                clock.Stop();
+                _readbackPixels += pixelCount;
+                _readbackMilliseconds += clock.ElapsedMilliseconds;
+            }
         }
 
-        private static bool TryGetStaticTransform(
-            Material material, string propertyName, bool mask,
+        private static bool TryStaticUvTransform(Material material,
+            string property, bool isMask,
             out Vector2 scale, out Vector2 offset, out string reason)
         {
             scale = Vector2.one;
             offset = Vector2.zero;
             reason = "";
-
-            if (mask)
+            if (isMask)
             {
-                // Both mask animation properties affect the shader's choice
-                // of uvMain vs uv0 for BOTH emission layers.
-                if (!IsZeroScroll(material, "_EmissionBlendMask_ScrollRotate")
-                    || !IsZeroScroll(material, "_Emission2ndBlendMask_ScrollRotate")
-                    || !IsZeroScroll(material, "_MainTex_ScrollRotate"))
+                if (!ZeroVector(material, "_EmissionBlendMask_ScrollRotate")
+                    || !ZeroVector(material, "_Emission2ndBlendMask_ScrollRotate")
+                    || !ZeroVector(material, "_MainTex_ScrollRotate")
+                    || (material.HasProperty("_ShiftBackfaceUV")
+                        && material.GetFloat("_ShiftBackfaceUV") != 0f))
                 {
-                    reason = "dynamic-or-rotated-mask-UV";
+                    reason = "nonstatic-or-backface-mask-UV";
                     return false;
                 }
+
                 if (material.HasProperty("_MainTex"))
                 {
                     var mainScale = material.GetTextureScale("_MainTex");
                     var mainOffset = material.GetTextureOffset("_MainTex");
-                    scale = Vector2.Scale(scale, mainScale);
                     offset = Vector2.Scale(offset, mainScale) + mainOffset;
+                    scale = Vector2.Scale(scale, mainScale);
                 }
             }
             else
             {
-                var uvModeProp = propertyName == "_EmissionMap"
+                var mode = property == "_EmissionMap"
                     ? "_EmissionMap_UVMode" : "_Emission2ndMap_UVMode";
-                var parallaxProp = propertyName == "_EmissionMap"
+                var parallax = property == "_EmissionMap"
                     ? "_EmissionParallaxDepth" : "_Emission2ndParallaxDepth";
-                if ((material.HasProperty(uvModeProp)
-                        && (material.HasInt(uvModeProp)
-                            ? material.GetInt(uvModeProp) != 0
-                            : material.GetFloat(uvModeProp) != 0f))
-                    || (material.HasProperty(parallaxProp)
-                        && material.GetFloat(parallaxProp) != 0f)
-                    || !IsZeroScroll(material, propertyName + "_ScrollRotate"))
+                if ((material.HasProperty(mode) && material.GetFloat(mode) != 0f)
+                    || (material.HasProperty(parallax)
+                        && material.GetFloat(parallax) != 0f)
+                    || !ZeroVector(material, property + "_ScrollRotate"))
                 {
-                    reason = "non-UV0-or-dynamic-emission-UV";
+                    reason = "non-UV0-or-dynamic-emission-map";
                     return false;
                 }
             }
-
-            var propertyScale = material.GetTextureScale(propertyName);
-            var propertyOffset = material.GetTextureOffset(propertyName);
-            offset = Vector2.Scale(offset, propertyScale) + propertyOffset;
-            scale = Vector2.Scale(scale, propertyScale);
-            if (float.IsNaN(scale.x) || float.IsInfinity(scale.x)
-                || float.IsNaN(scale.y) || float.IsInfinity(scale.y)
-                || float.IsNaN(offset.x) || float.IsInfinity(offset.x)
-                || float.IsNaN(offset.y) || float.IsInfinity(offset.y))
+            var texScale = material.GetTextureScale(property);
+            var texOffset = material.GetTextureOffset(property);
+            offset = Vector2.Scale(offset, texScale) + texOffset;
+            scale = Vector2.Scale(scale, texScale);
+            if (!ValidFloat(scale.x) || !ValidFloat(scale.y)
+                || !ValidFloat(offset.x) || !ValidFloat(offset.y))
             {
-                reason = "invalid-UV-transform";
+                reason = "invalid-source-UV-transform";
                 return false;
             }
             return true;
         }
 
-        private bool TryBuildCoverage(
-            HashSet<(Mesh, int)> slots,
-            Vector2 scale, Vector2 offset,
-            int width, int height,
-            out bool[] coverage, out int coveredCount,
-            out bool[] inside, out int insideCount, out string reason)
+        private static bool ZeroVector(Material material, string property) =>
+            !material.HasProperty(property)
+            || material.GetVector(property) == Vector4.zero;
+
+        private static bool ValidFloat(float value) =>
+            !float.IsNaN(value) && !float.IsInfinity(value);
+
+        private bool TrySourceCoverage(HashSet<(Mesh, int)> slots,
+            Vector2 scale, Vector2 offset, int width, int height,
+            out bool[] coverage, out int coveredCount, out string reason)
         {
             coverage = Array.Empty<bool>();
-            inside = Array.Empty<bool>();
             coveredCount = 0;
-            insideCount = 0;
             reason = "";
-            if (width <= 0 || height <= 0 || (long)width * height > MaxReadbackPixels)
+            if (width <= 0 || height <= 0
+                || (long)width * height > MaxReadbackPixels)
             {
-                reason = "texture-size-limit";
+                reason = "invalid-source-size";
                 return false;
             }
-
             coverage = new bool[width * height];
-            inside = new bool[width * height];
             var uvs = new List<Vector2>();
-            bool encounteredTriangle = false;
+            bool encountered = false;
+
             foreach (var slot in slots)
             {
                 try
@@ -508,287 +391,136 @@ namespace net.rs64.TexTransTool.NDMF
                     var indices = slot.Item1.GetTriangles(slot.Item2);
                     if (uvs.Count == 0 || indices.Length % 3 != 0)
                     {
-                        reason = "missing-UV0-or-invalid-triangles";
+                        reason = "missing-source-UV0-or-triangles";
                         return false;
                     }
-
-                    for (var t = 0; t < indices.Length; t += 3)
+                    for (int t = 0; t < indices.Length; t += 3)
                     {
-                        if (indices[t] >= uvs.Count || indices[t+1] >= uvs.Count
-                            || indices[t+2] >= uvs.Count
-                            || indices[t] < 0 || indices[t+1] < 0 || indices[t+2] < 0)
+                        var i0 = indices[t];
+                        var i1 = indices[t + 1];
+                        var i2 = indices[t + 2];
+                        if (i0 < 0 || i1 < 0 || i2 < 0
+                            || i0 >= uvs.Count || i1 >= uvs.Count
+                            || i2 >= uvs.Count)
                         {
-                            reason = "triangle-index-out-of-range";
+                            reason = "invalid-source-index";
                             return false;
                         }
-                        encounteredTriangle = true;
-                        var a = Vector2.Scale(uvs[indices[t]], scale) + offset;
-                        var b = Vector2.Scale(uvs[indices[t+1]], scale) + offset;
-                        var c = Vector2.Scale(uvs[indices[t+2]], scale) + offset;
-                        if (!ValidUV(a) || !ValidUV(b) || !ValidUV(c))
+                        encountered = true;
+                        var a = Vector2.Scale(uvs[i0], scale) + offset;
+                        var b = Vector2.Scale(uvs[i1], scale) + offset;
+                        var c = Vector2.Scale(uvs[i2], scale) + offset;
+                        if (!InsideAtlasUV(a) || !InsideAtlasUV(b)
+                            || !InsideAtlasUV(c))
                         {
-                            reason = "UV-outside-0-to-1-or-invalid";
+                            reason = "source-UV-outside-0-to-1";
                             return false;
                         }
 
-                        // Work in output-texel coordinates. Keep the exact
-                        // triangle, then test mip-0 bilinear texel support
-                        // against a 2x2 axis-aligned sampling neighborhood.
-                        a = new Vector2(a.x*width-0.5f, a.y*height-0.5f);
-                        b = new Vector2(b.x*width-0.5f, b.y*height-0.5f);
-                        c = new Vector2(c.x*width-0.5f, c.y*height-0.5f);
+                        a = new Vector2(a.x * width - 0.5f, a.y * height - 0.5f);
+                        b = new Vector2(b.x * width - 0.5f, b.y * height - 0.5f);
+                        c = new Vector2(c.x * width - 0.5f, c.y * height - 0.5f);
 
-                        int x0 = Math.Max(0, Mathf.FloorToInt(Mathf.Min(a.x,b.x,c.x) - BilinearSupportHalfWidth));
-                        int x1 = Math.Min(width - 1, Mathf.CeilToInt(Mathf.Max(a.x,b.x,c.x) + BilinearSupportHalfWidth));
-                        int y0 = Math.Max(0, Mathf.FloorToInt(Mathf.Min(a.y,b.y,c.y) - BilinearSupportHalfWidth));
-                        int y1 = Math.Min(height - 1, Mathf.CeilToInt(Mathf.Max(a.y,b.y,c.y) + BilinearSupportHalfWidth));
-                        var checks = (long)(x1 - x0 + 1) * (y1 - y0 + 1);
-                        if (checks > MaxRasterChecksPerObservation - _rasterChecks)
+                        int x0 = Math.Max(0, Mathf.FloorToInt(
+                            Mathf.Min(a.x, Mathf.Min(b.x, c.x)) - BilinearRadius));
+                        int x1 = Math.Min(width - 1, Mathf.CeilToInt(
+                            Mathf.Max(a.x, Mathf.Max(b.x, c.x)) + BilinearRadius));
+                        int y0 = Math.Max(0, Mathf.FloorToInt(
+                            Mathf.Min(a.y, Mathf.Min(b.y, c.y)) - BilinearRadius));
+                        int y1 = Math.Min(height - 1, Mathf.CeilToInt(
+                            Mathf.Max(a.y, Mathf.Max(b.y, c.y)) + BilinearRadius));
+                        long checks = (long)(x1 - x0 + 1) * (y1 - y0 + 1);
+                        if (checks > MaxTrianglePixelChecks - _triangleChecks)
                         {
-                            reason = "triangle-raster-budget";
+                            reason = "source-raster-budget";
                             return false;
                         }
-                        _rasterChecks += checks;
-                        for (var y = y0; y <= y1; ++y)
-                            for (var x = x0; x <= x1; ++x)
+                        _triangleChecks += checks;
+
+                        for (int y = y0; y <= y1; ++y)
+                            for (int x = x0; x <= x1; ++x)
                             {
-                                int index = y*width+x;
-                                var texelCenter = new Vector2(x,y);
-                                if (!inside[index]
-                                    && NearTriangle(texelCenter, a,b,c, 0f))
-                                {
-                                    inside[index] = true;
-                                    ++insideCount;
-                                }
-                                if (!coverage[index]
-                                    && (inside[index]
-                                        || TriangleIntersectsBilinearSupport(
-                                            texelCenter, a, b, c)))
-                                {
-                                    coverage[index] = true;
-                                    ++coveredCount;
-                                }
+                                int index = y * width + x;
+                                if (coverage[index]) continue;
+                                if (!TriangleOverlapsTexelFilter(
+                                        new Vector2(x, y), a, b, c)) continue;
+                                coverage[index] = true;
+                                ++coveredCount;
                             }
                     }
                 }
                 catch (Exception ex)
                 {
-                    reason = "mesh-read-error:" + ex.GetType().Name;
+                    reason = "source-mesh-read-error:" + ex.GetType().Name;
                     return false;
                 }
             }
-            if (!encounteredTriangle || coveredCount == 0)
+            if (!encountered || coveredCount == 0)
             {
-                reason = "no-covered-UV-triangles";
+                reason = "no-source-UV-coverage";
                 return false;
             }
             return true;
         }
 
-        private static bool ValidUV(Vector2 uv) =>
-            !float.IsNaN(uv.x) && !float.IsInfinity(uv.x)
-            && !float.IsNaN(uv.y) && !float.IsInfinity(uv.y)
-            && uv.x >= 0f && uv.x <= 1f && uv.y >= 0f && uv.y <= 1f;
+        private static bool InsideAtlasUV(Vector2 pos) =>
+            ValidFloat(pos.x) && ValidFloat(pos.y)
+            && pos.x >= 0f && pos.x <= 1f && pos.y >= 0f && pos.y <= 1f;
 
-        private static bool NearTriangle(
-            Vector2 p, Vector2 a, Vector2 b, Vector2 c, float radius)
+        private static bool TriangleOverlapsTexelFilter(
+            Vector2 pixel, Vector2 a, Vector2 b, Vector2 c)
         {
-            var ab = Cross(b-a,p-a);
-            var bc = Cross(c-b,p-b);
-            var ca = Cross(a-c,p-c);
-            var inside = (ab >= 0f && bc >= 0f && ca >= 0f)
-                         || (ab <= 0f && bc <= 0f && ca <= 0f);
-            if (inside) return true;
-            var r2 = radius*radius;
-            return SegmentDistance2(p,a,b) <= r2
-                   || SegmentDistance2(p,b,c) <= r2
-                   || SegmentDistance2(p,c,a) <= r2;
+            var minX = Mathf.Min(a.x, Mathf.Min(b.x, c.x));
+            var maxX = Mathf.Max(a.x, Mathf.Max(b.x, c.x));
+            var minY = Mathf.Min(a.y, Mathf.Min(b.y, c.y));
+            var maxY = Mathf.Max(a.y, Mathf.Max(b.y, c.y));
+            if (maxX < pixel.x - BilinearRadius
+                || minX > pixel.x + BilinearRadius
+                || maxY < pixel.y - BilinearRadius
+                || minY > pixel.y + BilinearRadius) return false;
+            return OverlapAxis(pixel, a, b, c)
+                && OverlapAxis(pixel, b, c, a)
+                && OverlapAxis(pixel, c, a, b);
         }
 
-        // Exact triangle / axis-aligned square overlap by the Separating
-        // Axis Theorem. This represents the mip-0 bilinear sampling support:
-        // a texel may contribute only if some UV sample inside the triangle
-        // is within 1 pixel in BOTH X and Y from that texel center. A
-        // Euclidean circle around the triangle overcounts this footprint.
-        private static bool TriangleIntersectsBilinearSupport(
-            Vector2 center, Vector2 a, Vector2 b, Vector2 c)
-        {
-            float minX = Mathf.Min(a.x, Mathf.Min(b.x, c.x));
-            float maxX = Mathf.Max(a.x, Mathf.Max(b.x, c.x));
-            float minY = Mathf.Min(a.y, Mathf.Min(b.y, c.y));
-            float maxY = Mathf.Max(a.y, Mathf.Max(b.y, c.y));
-            if (maxX < center.x - BilinearSupportHalfWidth
-                || minX > center.x + BilinearSupportHalfWidth
-                || maxY < center.y - BilinearSupportHalfWidth
-                || minY > center.y + BilinearSupportHalfWidth)
-                return false;
-
-            return OverlapsEdgeAxis(center, a, b, c)
-                && OverlapsEdgeAxis(center, b, c, a)
-                && OverlapsEdgeAxis(center, c, a, b);
-        }
-
-        private static bool OverlapsEdgeAxis(
-            Vector2 center, Vector2 a, Vector2 b, Vector2 c)
+        private static bool OverlapAxis(
+            Vector2 pixel, Vector2 a, Vector2 b, Vector2 c)
         {
             var edge = b - a;
-            var axis = new Vector2(-edge.y, edge.x);
-            var pa = Vector2.Dot(a, axis);
-            var pb = Vector2.Dot(b, axis);
-            var pc = Vector2.Dot(c, axis);
-            var projectedCenter = Vector2.Dot(center, axis);
-            var projectedRadius =
-                (Mathf.Abs(axis.x) + Mathf.Abs(axis.y))
-                * BilinearSupportHalfWidth;
-            return Mathf.Max(pa, Mathf.Max(pb, pc)) >= projectedCenter - projectedRadius
-                && Mathf.Min(pa, Mathf.Min(pb, pc)) <= projectedCenter + projectedRadius;
-        }
-
-        private static float Cross(Vector2 a, Vector2 b) =>
-            a.x*b.y - a.y*b.x;
-
-        private static float SegmentDistance2(Vector2 p, Vector2 a, Vector2 b)
-        {
-            var ab = b-a;
-            var len2 = ab.sqrMagnitude;
-            var u = len2 <= 1e-12f ? 0f
-                : Mathf.Clamp01(Vector2.Dot(p-a,ab)/len2);
-            return (p-(a+ab*u)).sqrMagnitude;
-        }
-
-        private TextureSample GetTextureSample(
-            RenderTexture texture, TexFineTuningResult tuningResult,
-            AtlasContext atlasContext, string propertyName)
-        {
-            if (_textureSamples.TryGetValue(texture, out var cached))
-                return cached;
-
-            var sample = new TextureSample { Texture = texture };
-            _textureSamples.Add(texture, sample);
-            sample.OutputBytes = EstimateOutputBytes(
-                tuningResult, atlasContext, propertyName);
-            _costs[texture] = sample.OutputBytes;
-
-            var pixels = (long)texture.width * texture.height;
-            if (pixels <= 0 || pixels > MaxReadbackPixels - _readbackPixels)
-            {
-                sample.Status = "readback-budget-skip";
-                return sample;
-            }
-            if (!SystemInfo.supportsAsyncGPUReadback)
-            {
-                sample.Status = "readback-unsupported";
-                return sample;
-            }
-
-            var watch = System.Diagnostics.Stopwatch.StartNew();
-            try
-            {
-                var request = AsyncGPUReadback.Request(
-                    texture, 0, TextureFormat.RGBA32);
-                request.WaitForCompletion();
-                if (request.hasError)
-                {
-                    sample.Status = "readback-error";
-                    return sample;
-                }
-                sample.Pixels = request.GetData<Color32>().ToArray();
-                if (sample.Pixels.Length != pixels)
-                {
-                    sample.Pixels = null;
-                    sample.Status = "readback-size-mismatch";
-                    return sample;
-                }
-                sample.Status = "readback-ok";
-                return sample;
-            }
-            catch (Exception ex)
-            {
-                sample.Status = "readback-exception:" + ex.GetType().Name;
-                return sample;
-            }
-            finally
-            {
-                watch.Stop();
-                _readbackPixels += pixels;
-                _readbackMilliseconds += watch.ElapsedMilliseconds;
-            }
-        }
-
-        private static long? EstimateOutputBytes(
-            TexFineTuningResult tuningResult,
-            AtlasContext atlasContext,
-            string propertyName)
-        {
-            if (!tuningResult.RenderTextures.TryGetValue(
-                    propertyName, out var source)
-                || !tuningResult.TextureDescriptors.TryGetValue(
-                    source, out var descriptor))
-                return null;
-
-            var references = tuningResult.RenderTextures
-                .Where(entry => ReferenceEquals(entry.Value, source))
-                .ToArray();
-            var filtered = new TexFineTuningResult(
-                references.ToDictionary(entry => entry.Key, entry => entry.Value),
-                new Dictionary<ITTRenderTexture, TexTransToolTextureDescriptor>
-                {
-                    { source, descriptor },
-                },
-                references.ToDictionary(
-                    entry => entry.Key,
-                    entry => tuningResult.SourceProperties.TryGetValue(
-                            entry.Key, out var names)
-                        ? names
-                        : (IReadOnlyCollection<string>)Array.Empty<string>()));
-
-            return AtlasTexture.TryCalculateFinalTextureMemory(
-                    atlasContext, filtered, out var bytes)
-                ? bytes
-                : (long?)null;
+            var normal = new Vector2(-edge.y, edge.x);
+            float aa = Vector2.Dot(a, normal);
+            float bb = Vector2.Dot(b, normal);
+            float cc = Vector2.Dot(c, normal);
+            float center = Vector2.Dot(pixel, normal);
+            float radius = (Mathf.Abs(normal.x) + Mathf.Abs(normal.y))
+                * BilinearRadius;
+            return Mathf.Max(aa, Mathf.Max(bb, cc)) >= center - radius
+                && Mathf.Min(aa, Mathf.Min(bb, cc)) <= center + radius;
         }
 
         internal string Report()
         {
             var project = new System.IO.DirectoryInfo(Application.dataPath)
                 .Parent?.Name ?? "(unknown)";
-            long possibleBytes = 0;
-            int unknownOutputs = 0;
-            foreach (var rt in _possibleUnusedOutputs)
-            {
-                if (_costs.TryGetValue(rt, out var bytes) && bytes.HasValue)
-                    possibleBytes += bytes.Value;
-                else
-                    ++unknownOutputs;
-            }
-            return "[Emission UV triangle probe: TEMPORARY; no assets modified]"
+            return "[Original-source emission probe: TEMPORARY; observation only]"
                 + "\nUnity project: " + project
-                + "\nLayers observed: " + _observedLayers
-                + "\nUV-interior zero-emission candidates: " + _candidateLayers
-                + "\nOf which footprint also zero at mip0: " + _safeFootprintCandidates
-                + "\nOf which nonzero exists only in fringe: " + _fringeOnlyCandidates
-                + "\nUnknown layers: " + _unknownLayers
-                + "\nGPU readback pixels: " + _readbackPixels
+                + "\nLayers observed: " + _observed
+                + "\nSource mip0 zero-emission candidates: " + _candidates
+                + "\nUnknown layers: " + _unknown
+                + "\nOriginal-source GPU readback pixels: " + _readbackPixels
                 + "\nGPU readback elapsed: " + _readbackMilliseconds + "ms"
-                + "\nProbe observation elapsed: " + _observationMilliseconds + "ms"
-                + "\nTriangle pixel checks: " + _rasterChecks
-                + "\nUV-interior-candidate output memory UPPER BOUND: "
-                + AtlasTexture.FormatTextureMemory(possibleBytes)
-                + (unknownOutputs == 0 ? "" : " (unknown outputs: " + unknownOutputs + ")")
-                + "\nLimits: UV0 triangles plus geometric mip0 bilinear support;"
-                + " no arbitrary pixel-count/percentage tolerance."
-                + " inside/fringe counts distinguish UV interior from padding."
-                + " fringeOpaqueWhite counts exact RGBA(255,255,255,255) texels;"
-                + " such texels MAY originate from white atlas background,"
-                + " but their provenance is not established by color alone."
-                + " FlippedY counts are diagnostic only, NOT used to classify."
-                + " Only static affine mask/emission UV; output readback RGBA32."
-                + " Mipmap, compression, wrap beyond [0,1], material animation"
-                + " and other shader side effects NOT proven; candidates"
-                + " are NOT safe-to-delete decisions or realized savings."
+                + "\nProbe observation elapsed: " + _probeMilliseconds + "ms"
+                + "\nTriangle pixel checks: " + _triangleChecks
+                + "\nSource images read: " + _images.Count
+                + "\nLimits: original mesh UV0 and source image mip0 only;"
+                + " geometric bilinear-texel support (no thresholds)."
+                + " Unknown UV transforms/animations, mipmaps, compression,"
+                + " wrap semantics and shader effects are NOT verified."
+                + " Atlas pixels/background are NEVER sampled."
+                + " Candidates are NOT approved-to-remove textures."
                 + "\n"
                 + (_lines.Count == 0
-                    ? "No transformed lilToon emission textures found."
+                    ? "No non-Lite lilToon emission source textures found."
                     : string.Join("\n", _lines));
         }
     }
