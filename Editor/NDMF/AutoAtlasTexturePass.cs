@@ -159,7 +159,8 @@ namespace net.rs64.TexTransTool.NDMF
             Dictionary<Material, Material> materialMap)
         {
             _zeroMaskCandidates.Clear();
-            _featureCandidates.Clear();
+            // Feature candidates are reported across all executed groups.
+            // The old emission ownership probe remains per-group.
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
             // The actual pre-atlas material slots and UVs, not output meshes.
