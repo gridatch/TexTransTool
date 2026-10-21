@@ -419,6 +419,105 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             }
         }
 
+        private static Mesh TriangleWithUvs(Vector2 a, Vector2 b, Vector2 c)
+        {
+            var mesh = new Mesh();
+            mesh.vertices = new[] { Vector3.zero, Vector3.right, Vector3.up };
+            mesh.uv = new[] { a, b, c };
+            mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+            return mesh;
+        }
+
+        [Test]
+        public void GpuSubpixelTriangleFallsBackInsteadOfReportingUnused()
+        {
+            if (!SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGB32)
+                || Shader.Find("Hidden/TexTransTool/DiagnosticSourceUvCoverage") == null)
+                Assert.Ignore("GPU UV mask shader/format unavailable.");
+
+            // Entire triangle lies between neighboring pixel centers.
+            var mesh = TriangleWithUvs(
+                new Vector2(0.502f, 0.502f),
+                new Vector2(0.508f, 0.502f),
+                new Vector2(0.502f, 0.508f));
+            try
+            {
+                var slots = new HashSet<(Mesh, int)> { (mesh, 0) };
+                var ok = DiagnosticSourceUvGpuMask.TryRender(
+                    slots, Vector2.one, Vector2.zero, 8, 8, 64,
+                    out var coverage, out var count, out var reason);
+                Assert.That(ok, Is.False);
+                Assert.That(count, Is.Zero);
+                Assert.That(reason, Is.EqualTo("gpu-mask-empty-or-subpixel"));
+                Assert.That(coverage, Is.Empty);
+                var cpu = Coverage(mesh, FilterMode.Bilinear);
+                Assert.That(Array.Exists(cpu, pixel => pixel), Is.True,
+                    "The GPU failure must fall back to the actual CPU footprint.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void GpuOverlappingAndReversedUvFacesAreUnioned()
+        {
+            if (!SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGB32)
+                || Shader.Find("Hidden/TexTransTool/DiagnosticSourceUvCoverage") == null)
+                Assert.Ignore("GPU UV mask shader/format unavailable.");
+
+            var mesh = Triangle();
+            try
+            {
+                var slot = new HashSet<(Mesh, int)> { (mesh, 0) };
+                var firstOk = DiagnosticSourceUvGpuMask.TryRender(
+                    slot, Vector2.one, Vector2.zero, 8, 8, 64,
+                    out var initial, out var initialCount, out var reason);
+                Assert.That(firstOk, Is.True, reason);
+                mesh.SetTriangles(new[] { 0, 1, 2, 2, 1, 0, 0, 1, 2 }, 0);
+                var againOk = DiagnosticSourceUvGpuMask.TryRender(
+                    slot, Vector2.one, Vector2.zero, 8, 8, 64,
+                    out var combined, out var combinedCount, out reason);
+                Assert.That(againOk, Is.True, reason);
+                Assert.That(combinedCount, Is.EqualTo(initialCount));
+                CollectionAssert.AreEqual(initial, combined);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void GpuUvBorderTrianglesStayInsideCpuFilterSupport()
+        {
+            if (!SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGB32)
+                || Shader.Find("Hidden/TexTransTool/DiagnosticSourceUvCoverage") == null)
+                Assert.Ignore("GPU UV mask shader/format unavailable.");
+
+            var mesh = TriangleWithUvs(
+                Vector2.zero, new Vector2(0.375f, 0f),
+                new Vector2(0f, 0.375f));
+            try
+            {
+                var slots = new HashSet<(Mesh, int)> { (mesh, 0) };
+                var ok = DiagnosticSourceUvGpuMask.TryRender(
+                    slots, Vector2.one, Vector2.zero, 8, 8, 64,
+                    out var gpu, out var count, out var reason);
+                Assert.That(ok, Is.True, reason);
+                Assert.That(count, Is.GreaterThan(0));
+                var strict = Coverage(mesh, FilterMode.Bilinear);
+                for (int i = 0; i < gpu.Length; ++i)
+                    if (gpu[i]) Assert.That(strict[i], Is.True,
+                        "GPU raster must stay inside CPU filter support at " + i);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
         [Test]
         public void AtlasContextComparisonRejectsAnySingleTexelDifference()
         {
