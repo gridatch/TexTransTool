@@ -224,28 +224,49 @@ namespace net.rs64.TexTransTool.NDMF
                     out reason))
                 return new Inspection { Status = reason };
 
+            var scan = ScanCoveredSourcePixels(source.Pixels, covered);
+            return new Inspection
+            {
+                RgbZero = scan.rgbZero,
+                AlphaZero = scan.alphaZero,
+                Status = source.Width + "x" + source.Height
+                    + ":read=" + source.Status
+                    + ",UV-filter-texels=" + count
+                    + ",RGB" + (scan.rgbZero ? "=0" : "!=0")
+                    + ",A" + (scan.alphaZero ? "=0" : "!=0")
+                    + ",nonzeroRGBTexels=" + scan.nonzeroRgbTexels
+                    + ",maxAbsRGB=" + scan.maxAbsRgb.ToString("R",
+                        System.Globalization.CultureInfo.InvariantCulture)
+            };
+        }
+
+        // Production and regression tests use the same float-precision
+        // scan. Counts/amplitudes are diagnostic only: they are NOT used
+        // as an arbitrary pixel-count or RGB-value threshold.
+        internal static (bool rgbZero, bool alphaZero,
+            int nonzeroRgbTexels, float maxAbsRgb)
+            ScanCoveredSourcePixels(Color[] pixels, bool[] covered)
+        {
+            if (pixels.Length != covered.Length)
+                throw new ArgumentException("Source pixel/coverage size mismatch.");
             bool rgbZero = true, alphaZero = true;
-            var pixels = source.Pixels;
+            int nonzeroRgbTexels = 0;
+            float maxAbsRgb = 0f;
             for (int i = 0; i < covered.Length; ++i)
             {
                 if (!covered[i]) continue;
                 var pixel = pixels[i];
+                float absolute = Mathf.Max(Mathf.Abs(pixel.r),
+                    Mathf.Max(Mathf.Abs(pixel.g), Mathf.Abs(pixel.b)));
                 if (pixel.r != 0f || pixel.g != 0f || pixel.b != 0f)
+                {
                     rgbZero = false;
+                    ++nonzeroRgbTexels;
+                    maxAbsRgb = Mathf.Max(maxAbsRgb, absolute);
+                }
                 if (pixel.a != 0f) alphaZero = false;
-                if (!rgbZero && !alphaZero) break;
             }
-
-            return new Inspection
-            {
-                RgbZero = rgbZero,
-                AlphaZero = alphaZero,
-                Status = source.Width + "x" + source.Height
-                    + ":read=" + source.Status
-                    + ",UV-bilinear-texels=" + count
-                    + ",RGB" + (rgbZero ? "=0" : "!=0")
-                    + ",A" + (alphaZero ? "=0" : "!=0")
-            };
+            return (rgbZero, alphaZero, nonzeroRgbTexels, maxAbsRgb);
         }
 
         private SourceImage ReadOriginal(Texture texture)
@@ -638,6 +659,7 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\nLimits: original mesh UV0 and source image mip0 only;"
                 + " geometric point/bilinear texel support (strict float zero test)." 
                 + " RGBAFloat source staging is required when CPU pixels are unavailable;"
+                + " Nonzero RGB count/max are observational, not thresholds."
                 + " GPU-staged source images may have sampling/color conversion;"
                 + " the source-read method is logged for each property."
                 + " Unknown UV transforms/animations, mipmaps,"
