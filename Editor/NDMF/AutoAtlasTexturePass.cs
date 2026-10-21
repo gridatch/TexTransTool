@@ -240,7 +240,8 @@ namespace net.rs64.TexTransTool.NDMF
                 RgbZero = rgbZero,
                 AlphaZero = alphaZero,
                 Status = source.Width + "x" + source.Height
-                    + ":UV-bilinear-texels=" + count
+                    + ":read=" + source.Status
+                    + ",UV-bilinear-texels=" + count
                     + ",RGB" + (rgbZero ? "=0" : "!=0")
                     + ",A" + (alphaZero ? "=0" : "!=0")
             };
@@ -248,7 +249,7 @@ namespace net.rs64.TexTransTool.NDMF
 
         private SourceImage ReadOriginal(Texture texture)
         {
-            if (_images.TryGetValue(texture, out var prior)) return prior;
+            if (_images.TryGetValue(texture, out var cached)) return cached;
             var image = new SourceImage
             {
                 Width = texture.width,
@@ -262,43 +263,116 @@ namespace net.rs64.TexTransTool.NDMF
                 image.Status = "source-readback-budget-skip";
                 return image;
             }
-            if (!SystemInfo.supportsAsyncGPUReadback)
-            {
-                image.Status = "source-readback-unsupported";
-                return image;
-            }
+
             var clock = System.Diagnostics.Stopwatch.StartNew();
+            RenderTexture? staging = null;
+            Texture2D? copy = null;
+            var previousActive = RenderTexture.active;
+            string directFailure = "not-readable";
+            string stagingFailure = "not-attempted";
             try
             {
-                var request = AsyncGPUReadback.Request(
-                    texture, 0, TextureFormat.RGBA32);
-                request.WaitForCompletion();
-                if (request.hasError)
+                // Reading imported Texture2Ds directly with AsyncGPUReadback
+                // may fail for compressed or limited GPU formats. Prefer the
+                // real source texels on CPU when Unity makes them readable.
+                if (texture is Texture2D source2D && source2D.isReadable)
                 {
-                    image.Status = "source-readback-error";
+                    try
+                    {
+                        var sourcePixels = source2D.GetPixels32(0);
+                        if (sourcePixels.Length == pixelCount)
+                        {
+                            image.Pixels = sourcePixels;
+                            image.Status = "source-CPU-GetPixels32";
+                            return image;
+                        }
+                        directFailure = "CPU-size-mismatch";
+                    }
+                    catch (Exception ex)
+                    {
+                        directFailure = "CPU-" + ex.GetType().Name;
+                    }
+                }
+
+                // Stage the GPU texture into a readable, uncompressed RGBA
+                // render target. This is a COPY ONLY: the imported texture,
+                // atlas and all material/UV settings remain untouched.
+                // A 1:1 Graphics.Blit may involve color space conversion and
+                // GPU texture filtering; the probe is only provisional.
+                staging = RenderTexture.GetTemporary(texture.width,
+                    texture.height, 0, RenderTextureFormat.ARGB32,
+                    RenderTextureReadWrite.Linear);
+                Graphics.Blit(texture, staging);
+
+                if (SystemInfo.supportsAsyncGPUReadback)
+                {
+                    try
+                    {
+                        var request = AsyncGPUReadback.Request(
+                            staging, 0, TextureFormat.RGBA32);
+                        request.WaitForCompletion();
+                        if (!request.hasError)
+                        {
+                            var data = request.GetData<Color32>();
+                            if (data.Length == pixelCount)
+                            {
+                                image.Pixels = data.ToArray();
+                                image.Status = "source-GPU-staged-RGBA32";
+                                return image;
+                            }
+                            stagingFailure = "GPU-staging-size-mismatch";
+                        }
+                        else
+                        {
+                            stagingFailure = "GPU-staging-readback-error";
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        stagingFailure = "GPU-staging-" + ex.GetType().Name;
+                    }
+                }
+                else
+                {
+                    stagingFailure = "GPU-readback-unsupported";
+                }
+
+                // Final fallback when AsyncGPUReadback is unsupported or
+                // fails even for the staging RT. ReadPixels transfers only
+                // the temporary staging target, never changes a source asset.
+                copy = new Texture2D(texture.width, texture.height,
+                    TextureFormat.RGBA32, false, true);
+                RenderTexture.active = staging;
+                copy.ReadPixels(new Rect(0, 0, texture.width,
+                    texture.height), 0, 0, false);
+                var fallbackPixels = copy.GetPixels32(0);
+                if (fallbackPixels.Length == pixelCount)
+                {
+                    image.Pixels = fallbackPixels;
+                    image.Status = "source-GPU-staged-ReadPixels"
+                        + "(after=" + stagingFailure + ")";
                     return image;
                 }
-                var pixels = request.GetData<Color32>();
-                if (pixels.Length != pixelCount)
-                {
-                    image.Status = "source-readback-size-mismatch";
-                    return image;
-                }
-                image.Pixels = pixels.ToArray();
-                image.Status = "source-readback-ok";
-                return image;
+                image.Status = "source-ReadPixels-size-mismatch";
             }
             catch (Exception ex)
             {
-                image.Status = "source-readback-exception:" + ex.GetType().Name;
-                return image;
+                image.Status = "source-unreadable:" + ex.GetType().Name
+                    + "(CPU=" + directFailure
+                    + ",staging=" + stagingFailure + ")";
             }
             finally
             {
+                RenderTexture.active = previousActive;
+                if (copy != null)
+                    UnityEngine.Object.DestroyImmediate(copy);
+                if (staging != null)
+                    RenderTexture.ReleaseTemporary(staging);
                 clock.Stop();
                 _readbackPixels += pixelCount;
                 _readbackMilliseconds += clock.ElapsedMilliseconds;
             }
+            return image;
         }
 
         private static bool TryStaticUvTransform(Material material,
@@ -532,13 +606,15 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\nLayers observed: " + _observed
                 + "\nSource mip0 zero-emission candidates: " + _candidates
                 + "\nUnknown layers: " + _unknown
-                + "\nOriginal-source GPU readback pixels: " + _readbackPixels
-                + "\nGPU readback elapsed: " + _readbackMilliseconds + "ms"
+                + "\nOriginal-source image pixels read: " + _readbackPixels
+                + "\nSource image load elapsed: " + _readbackMilliseconds + "ms"
                 + "\nProbe observation elapsed: " + _probeMilliseconds + "ms"
                 + "\nTriangle pixel checks: " + _triangleChecks
                 + "\nSource images read: " + _images.Count
                 + "\nLimits: original mesh UV0 and source image mip0 only;"
-                + " geometric bilinear-texel support (no thresholds)."
+                + " geometric bilinear-texel support (strict zero test)." 
+                + " GPU-staged source images may have sampling/color conversion;"
+                + " the source-read method is logged for each property."
                 + " Unknown UV transforms/animations, mipmaps,"
                 + " compression and shader effects are NOT verified."
                 + " Clamp/repeat texture-edge texels are included at mip0."
