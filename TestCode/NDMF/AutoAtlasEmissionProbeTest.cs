@@ -429,6 +429,121 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void GpuFirstSurveySkipsCpuRasterForClearlyVariableInterior()
+        {
+            if (!SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGB32)
+                || Shader.Find("Hidden/TexTransTool/DiagnosticSourceUvCoverage") == null)
+                Assert.Ignore("GPU UV mask shader/format unavailable.");
+
+            var mesh = Triangle();
+            try
+            {
+                var pixels = new Color[64];
+                for (int i = 0; i < pixels.Length; ++i)
+                    pixels[i] = new Color(i / 64f, 0f, 0f, 1f);
+                var slots = new HashSet<(Mesh, int)> { (mesh, 0) };
+                var probe = new AutoAtlasEmissionProbe();
+                var result = probe.EvaluateSourceUvGpuFirst(
+                    slots, Vector2.one, Vector2.zero, 8, 8,
+                    TextureWrapMode.Clamp, TextureWrapMode.Clamp,
+                    FilterMode.Bilinear, pixels,
+                    wholeSourceConstant: false, label: "variable-test");
+                Assert.That(result.constant, Is.False);
+                Assert.That(result.status,
+                    Does.StartWith("GPU-UV0-interior-texels="));
+                Assert.That(probe.Report(),
+                    Does.Contain("Triangle pixel checks: 0 "),
+                    "Variable interiors must skip CPU triangle-pixel work.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void GpuFirstUniformCandidateUsesStrictCpuBoundary()
+        {
+            if (!SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGB32)
+                || Shader.Find("Hidden/TexTransTool/DiagnosticSourceUvCoverage") == null)
+                Assert.Ignore("GPU UV mask shader/format unavailable.");
+
+            var mesh = Triangle();
+            try
+            {
+                var slots = new HashSet<(Mesh, int)> { (mesh, 0) };
+                Assert.That(DiagnosticSourceUvGpuMask.TryRender(
+                    slots, Vector2.one, Vector2.zero, 8, 8, 64,
+                    out var gpu, out _, out var reason), Is.True, reason);
+                var cpu = Coverage(mesh, FilterMode.Bilinear);
+                int boundary = Array.FindIndex(cpu, i => i); 
+                // Find one texel contributed through filtering but not
+                // covered by the triangle's GPU interior.
+                for (int i = 0; i < cpu.Length; ++i)
+                    if (cpu[i] && !gpu[i])
+                    {
+                        boundary = i;
+                        break;
+                    }
+                Assert.That(boundary, Is.GreaterThanOrEqualTo(0));
+                Assert.That(gpu[boundary], Is.False);
+
+                var pixels = new Color[64];
+                for (int i = 0; i < pixels.Length; ++i)
+                    pixels[i] = new Color(0f, 0f, 0f, 1f);
+                pixels[boundary] = Color.white;
+
+                var probe = new AutoAtlasEmissionProbe();
+                var result = probe.EvaluateSourceUvGpuFirst(
+                    slots, Vector2.one, Vector2.zero, 8, 8,
+                    TextureWrapMode.Clamp, TextureWrapMode.Clamp,
+                    FilterMode.Bilinear, pixels,
+                    wholeSourceConstant: false, label: "candidate-test");
+                Assert.That(result.constant, Is.False);
+                Assert.That(result.status, Does.StartWith("UV0-texels="));
+                Assert.That(probe.Report(),
+                    Does.Contain("boundary rejected: 1"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void GpuFirstSubpixelMaskFallsBackToCpuCoverage()
+        {
+            if (!SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGB32)
+                || Shader.Find("Hidden/TexTransTool/DiagnosticSourceUvCoverage") == null)
+                Assert.Ignore("GPU UV mask shader/format unavailable.");
+
+            var mesh = TriangleWithUvs(
+                new Vector2(0.502f, 0.502f),
+                new Vector2(0.508f, 0.502f),
+                new Vector2(0.502f, 0.508f));
+            try
+            {
+                var pixels = new Color[64];
+                for (int i = 0; i < pixels.Length; ++i)
+                    pixels[i] = Color.white;
+                pixels[0] = Color.black;
+                var probe = new AutoAtlasEmissionProbe();
+                var result = probe.EvaluateSourceUvGpuFirst(
+                    new HashSet<(Mesh, int)> { (mesh, 0) },
+                    Vector2.one, Vector2.zero, 8, 8,
+                    TextureWrapMode.Clamp, TextureWrapMode.Clamp,
+                    FilterMode.Bilinear, pixels,
+                    wholeSourceConstant: false, label: "subpixel-test");
+                Assert.That(result.status, Does.StartWith("UV0-texels="));
+                Assert.That(probe.Report(), Does.Contain("GPU fallback: 1"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
         public void GpuSubpixelTriangleFallsBackInsteadOfReportingUnused()
         {
             if (!SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGB32)
