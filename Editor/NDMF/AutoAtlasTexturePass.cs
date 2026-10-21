@@ -766,6 +766,7 @@ namespace net.rs64.TexTransTool.NDMF
             coverage = new bool[width * height];
             var uvs = new List<Vector2>();
             bool encountered = false;
+            long checksThisCoverage = 0;
 
             foreach (var slot in slots)
             {
@@ -816,11 +817,16 @@ namespace net.rs64.TexTransTool.NDMF
                         int y1 = Mathf.CeilToInt(
                             Mathf.Max(a.y, Mathf.Max(b.y, c.y)) + radius);
                         long checks = (long)(x1 - x0 + 1) * (y1 - y0 + 1);
-                        if (checks > MaxTrianglePixelChecks - _triangleChecks)
+                        // Apply the work cap per distinct UV-coverage query,
+                        // not cumulatively across the entire diagnostic.
+                        // Otherwise early textures exhaust the cap and all
+                        // later materials become unknown regardless of cost.
+                        if (checks > MaxTrianglePixelChecks - checksThisCoverage)
                         {
-                            reason = "source-raster-budget";
+                            reason = "source-per-coverage-raster-budget";
                             return false;
                         }
+                        checksThisCoverage += checks;
                         _triangleChecks += checks;
 
                         for (int y = y0; y <= y1; ++y)
@@ -928,6 +934,7 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\nSource image load elapsed: " + _readbackMilliseconds + "ms"
                 + "\nProbe observation elapsed: " + _probeMilliseconds + "ms"
                 + "\nTriangle pixel checks: " + _triangleChecks
+                + " (per-coverage cap: " + MaxTrianglePixelChecks + ")"
                 + "\nUnique source textures observed (including unsupported): "
                 + _images.Count
                 + "\nTexture-property survey: " + _surveyProperties
