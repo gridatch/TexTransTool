@@ -296,34 +296,67 @@ namespace net.rs64.TexTransTool.NDMF
 
             if (!TryBuildCoverage(slots, scale, offset,
                     texture.width, texture.height, out var covered,
-                    out var coveredCount, out reason))
+                    out var coveredCount, out var inside,
+                    out var insideCount, out reason))
             {
                 result.Status = reason;
                 return result;
             }
 
-            bool allRgbZero = true;
-            bool allAlphaZero = true;
-            for (var i = 0; i < covered.Length; ++i)
-            {
-                if (!covered[i]) continue;
-                var pixel = tex.Pixels[i];
-                if (pixel.r != 0 || pixel.g != 0 || pixel.b != 0)
-                    allRgbZero = false;
-                if (pixel.a != 0)
-                    allAlphaZero = false;
-                if (!allRgbZero && !allAlphaZero) break;
-            }
+            var supported = CountNonZero(tex.Pixels, covered,
+                texture.width, texture.height, flippedY: false);
+            var core = CountNonZero(tex.Pixels, inside,
+                texture.width, texture.height, flippedY: false);
+            var flippedCore = CountNonZero(tex.Pixels, inside,
+                texture.width, texture.height, flippedY: true);
+            var outer = new bool[covered.Length];
+            for (int i = 0; i < outer.Length; i++)
+                outer[i] = covered[i] && !inside[i];
+            var fringe = CountNonZero(tex.Pixels, outer,
+                texture.width, texture.height, flippedY: false);
 
-            result.RgbZero = allRgbZero;
-            result.AlphaZero = allAlphaZero;
+            result.RgbZero = supported.NonzeroRgb == 0;
+            result.AlphaZero = supported.NonzeroAlpha == 0;
             result.CoveredPixels = coveredCount;
             result.Status = texture.width + "x" + texture.height
-                + ":UV-triangles-covered=" + coveredCount
-                + "/" + covered.Length
-                + ",RGB" + (allRgbZero ? "=0" : "!=0")
-                + ",A" + (allAlphaZero ? "=0" : "!=0");
+                + ":UV-triangles-covered=" + coveredCount + "/" + covered.Length
+                + ",inside=" + insideCount
+                + ",insideNonzero(R/G/B/A)=" + core.ChannelCounts()
+                + ",fringeNonzero(R/G/B/A)=" + fringe.ChannelCounts()
+                + ",insideFlippedYNonzero(R/G/B/A)=" + flippedCore.ChannelCounts()
+                + ",supportRGB" + (result.RgbZero == true ? "=0" : "!=0")
+                + ",supportA" + (result.AlphaZero == true ? "=0" : "!=0");
             return result;
+        }
+
+
+        private struct NonZeroCounts
+        {
+            public int NonzeroRed, NonzeroGreen, NonzeroBlue, NonzeroAlpha, NonzeroRgb;
+            public string ChannelCounts() =>
+                NonzeroRed + "/" + NonzeroGreen + "/"
+                + NonzeroBlue + "/" + NonzeroAlpha;
+        }
+
+        private static NonZeroCounts CountNonZero(
+            Color32[] pixels, bool[] covered, int width, int height, bool flippedY)
+        {
+            var counts = new NonZeroCounts();
+            for (int i = 0; i < covered.Length; ++i)
+            {
+                if (!covered[i]) continue;
+                var index = flippedY
+                    ? (height - 1 - i / width) * width + i % width
+                    : i;
+                var pixel = pixels[index];
+                if (pixel.r != 0) ++counts.NonzeroRed;
+                if (pixel.g != 0) ++counts.NonzeroGreen;
+                if (pixel.b != 0) ++counts.NonzeroBlue;
+                if (pixel.a != 0) ++counts.NonzeroAlpha;
+                if (pixel.r != 0 || pixel.g != 0 || pixel.b != 0)
+                    ++counts.NonzeroRgb;
+            }
+            return counts;
         }
 
         private static bool IsZeroScroll(Material material, string propertyName)
@@ -397,10 +430,13 @@ namespace net.rs64.TexTransTool.NDMF
             HashSet<(Mesh, int)> slots,
             Vector2 scale, Vector2 offset,
             int width, int height,
-            out bool[] coverage, out int coveredCount, out string reason)
+            out bool[] coverage, out int coveredCount,
+            out bool[] inside, out int insideCount, out string reason)
         {
             coverage = Array.Empty<bool>();
+            inside = Array.Empty<bool>();
             coveredCount = 0;
+            insideCount = 0;
             reason = "";
             if (width <= 0 || height <= 0 || (long)width * height > MaxReadbackPixels)
             {
@@ -409,6 +445,7 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             coverage = new bool[width * height];
+            inside = new bool[width * height];
             var uvs = new List<Vector2>();
             bool encounteredTriangle = false;
             foreach (var slot in slots)
@@ -465,8 +502,16 @@ namespace net.rs64.TexTransTool.NDMF
                             for (var x = x0; x <= x1; ++x)
                             {
                                 int index = y*width+x;
+                                var texelCenter = new Vector2(x,y);
+                                if (!inside[index]
+                                    && NearTriangle(texelCenter, a,b,c, 0f))
+                                {
+                                    inside[index] = true;
+                                    ++insideCount;
+                                }
                                 if (!coverage[index]
-                                    && NearTriangle(new Vector2(x,y), a,b,c, SupportRadiusPixels))
+                                    && (inside[index]
+                                        || NearTriangle(texelCenter, a,b,c, SupportRadiusPixels)))
                                 {
                                     coverage[index] = true;
                                     ++coveredCount;
@@ -638,7 +683,9 @@ namespace net.rs64.TexTransTool.NDMF
                 + AtlasTexture.FormatTextureMemory(possibleBytes)
                 + (unknownOutputs == 0 ? "" : " (unknown outputs: " + unknownOutputs + ")")
                 + "\nLimits: UV0 triangles + 1.5px filter neighborhood at mip0;"
-                + " only static affine mask/emission UV; output readback RGBA32."
+                + " inside/fringe counts distinguish actual UV coverage from padding."
+                + " FlippedY counts are diagnostic only, NOT used to classify."
+                + " Only static affine mask/emission UV; output readback RGBA32."
                 + " Mipmap, compression, wrap beyond [0,1], material animation"
                 + " and other shader side effects NOT proven; candidates"
                 + " are NOT safe-to-delete decisions or realized savings."
@@ -670,20 +717,21 @@ namespace net.rs64.TexTransTool.NDMF
             var scroll = new ScrollView(ScrollViewMode.VerticalAndHorizontal);
             scroll.style.height = 380;
             scroll.style.minWidth = 0;
-            // Do not reinterpret a vertical mouse wheel as horizontal scrolling
-            // when the report has no vertical overflow. Explicit horizontal
-            // input (including Shift+wheel) and scrollbar dragging still work.
-            scroll.contentViewport.RegisterCallback<WheelEvent>(evt =>
+            // Receive the event BEFORE ScrollView's own trickle-down handler.
+            // A contentViewport callback runs too late on some Unity versions:
+            // ScrollView has already rerouted the vertical wheel horizontally.
+            var scrollHost = new VisualElement();
+            scrollHost.style.minWidth = 0;
+            scrollHost.RegisterCallback<WheelEvent>(evt =>
             {
-                if (scroll.verticalScroller.highValue >
-                        scroll.verticalScroller.lowValue + 0.5f
-                    || evt.shiftKey
-                    || !Mathf.Approximately(evt.delta.x, 0f)
-                    || Mathf.Approximately(evt.delta.y, 0f))
+                if (evt.shiftKey || Mathf.Abs(evt.delta.y) < 0.001f
+                    || scroll.verticalScroller.highValue >
+                       scroll.verticalScroller.lowValue + 0.5f)
                     return;
                 evt.PreventDefault();
                 evt.StopImmediatePropagation();
             }, TrickleDown.TrickleDown);
+            scrollHost.Add(scroll);
             var lines = new VisualElement();
             foreach (var line in _message.Split(
                          new[] { '\n' }, StringSplitOptions.None))
@@ -695,7 +743,7 @@ namespace net.rs64.TexTransTool.NDMF
                 lines.Add(label);
             }
             scroll.Add(lines);
-            root.Add(scroll);
+            root.Add(scrollHost);
             var copy = new Button(() =>
                 EditorGUIUtility.systemCopyBuffer = _message)
             {
