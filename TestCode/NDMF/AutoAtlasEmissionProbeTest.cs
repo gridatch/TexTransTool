@@ -674,6 +674,87 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void ZeroMaskInputCannotBeRemovedIfAnotherGroupMaterialNeedsIt()
+        {
+            var shader = Shader.Find("Standard") ??
+                Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+            var materialA = new Material(shader);
+            var materialB = new Material(shader);
+            var texture = new Texture2D(8, 8);
+            try
+            {
+                var input = new Dictionary<Material,
+                    IReadOnlyDictionary<string, Texture>>
+                {
+                    [materialA] = new Dictionary<string, Texture>
+                        { ["_Emission2ndBlendMask"] = texture },
+                    [materialB] = new Dictionary<string, Texture>
+                        { ["_Emission2ndBlendMask"] = texture },
+                };
+                var proof = new HashSet<(Material material, string property)>
+                {
+                    (materialA, "_Emission2ndBlendMask")
+                };
+                Assert.That(AutoAtlasEmissionProbe
+                    .AllGroupSourceConsumersHaveProof(
+                        new[] { materialA, materialB }, input,
+                        proof, "_Emission2ndBlendMask", texture), Is.False,
+                    "One neutral material cannot eliminate a shared source.");
+
+                proof.Add((materialB, "_Emission2ndBlendMask"));
+                Assert.That(AutoAtlasEmissionProbe
+                    .AllGroupSourceConsumersHaveProof(
+                        new[] { materialA, materialB }, input,
+                        proof, "_Emission2ndBlendMask", texture), Is.True);
+                Assert.That(AutoAtlasEmissionProbe
+                    .AllGroupSourceConsumersHaveProof(
+                        new[] { materialA, materialB }, input,
+                        proof, "_MainTex", texture), Is.False,
+                    "No matching contributors must not prove removal.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(materialA);
+                UnityEngine.Object.DestroyImmediate(materialB);
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
+        public void ExcludingSmallZeroMaskKeepsPrimaryButNotItsOwnInput()
+        {
+            var main = new Texture2D(32, 32);
+            var mask = new Texture2D(8, 8);
+            try
+            {
+                var inputs = new Dictionary<string, Texture>
+                {
+                    ["_MainTex"] = main,
+                    ["_Emission2ndBlendMask"] = mask
+                };
+                var withoutMask =
+                    AutoAtlasEmissionProbe.PrimaryTextureWithoutProperty(
+                        inputs, "_Emission2ndBlendMask");
+                Assert.That(withoutMask, Is.SameAs(main),
+                    "Removing a small secondary mask does not resize"
+                    + " UV islands scaled by the main texture.");
+
+                var withoutMain =
+                    AutoAtlasEmissionProbe.PrimaryTextureWithoutProperty(
+                        inputs, "_MainTex");
+                Assert.That(withoutMain, Is.SameAs(mask),
+                    "Removing a dominant input changes the primary texture"
+                    + " and requires shadow relocation.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(main);
+                UnityEngine.Object.DestroyImmediate(mask);
+            }
+        }
+
+        [Test]
         public void ProbeReportUsesNoNestedScrollView()
         {
             var error = new AutoAtlasEmissionProbeError("sample\nsample 2");
