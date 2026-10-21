@@ -342,10 +342,34 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 ++_gpuScreens;
                 var watch = System.Diagnostics.Stopwatch.StartNew();
-                bool ok = DiagnosticSourceUvGpuMask.TryRender(
-                    slots, scale, offset, width, height, _residentPixelBudget,
-                    out var interiorMask, out var interiorCount, out var gpuReason,
-                    out var verticalFlipCorrected);
+                bool supportedSampling =
+                    (filterMode == FilterMode.Point
+                     || filterMode == FilterMode.Bilinear
+                     || filterMode == FilterMode.Trilinear)
+                    && (wrapU == TextureWrapMode.Clamp
+                        || wrapU == TextureWrapMode.Repeat)
+                    && (wrapV == TextureWrapMode.Clamp
+                        || wrapV == TextureWrapMode.Repeat);
+                bool ok;
+                bool[] interiorMask;
+                int interiorCount;
+                string gpuReason;
+                bool verticalFlipCorrected;
+                if (!supportedSampling)
+                {
+                    ok = false;
+                    interiorMask = Array.Empty<bool>();
+                    interiorCount = 0;
+                    gpuReason = "source-sampling-unhandled";
+                    verticalFlipCorrected = false;
+                }
+                else
+                {
+                    ok = DiagnosticSourceUvGpuMask.TryRender(
+                        slots, scale, offset, width, height, _residentPixelBudget,
+                        out interiorMask, out interiorCount, out gpuReason,
+                        out verticalFlipCorrected);
+                }
                 watch.Stop();
                 _gpuScreenMs += watch.Elapsed.TotalMilliseconds;
                 if (ok && verticalFlipCorrected) ++_gpuFlippedRows;
