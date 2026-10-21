@@ -114,6 +114,23 @@ namespace net.rs64.TexTransTool.NDMF
         private double _atlasGeometryReuseMs;
         private long _atlasGeometryPixelChecks;
 
+        // GPU UV triangle coverage is a candidate SCREEN only: unlike the
+        // strict baseline it does not include bilinear boundary contributors.
+        // In this A/B experiment the original result always remains authoritative.
+        private const int MaxGpuMaskComparisons = 8;
+        private const int MaxGpuVariableSamples = 3;
+        private readonly List<string> _gpuMaskLines = new();
+        private int _gpuMaskCompared;
+        private int _gpuVariableSamples;
+        private int _gpuMaskUniform;
+        private int _gpuMaskConfirmed;
+        private int _gpuMaskBoundaryDifferent;
+        private int _gpuMaskUnavailable;
+        private int _gpuMaskOutsideStrict;
+        private double _gpuMaskElapsedMs;
+        private double _gpuMaskBaselineMs;
+        private double _gpuMaskProjectedMs;
+
         private sealed class SourceImage
         {
             internal string Status = "";
@@ -319,6 +336,13 @@ namespace net.rs64.TexTransTool.NDMF
                                         used, property, texture, scale, offset,
                                         image.Width, image.Height, covered, count,
                                         baselineWatch.Elapsed.TotalMilliseconds);
+                                if (baselineOk && _gpuMaskCompared < MaxGpuMaskComparisons
+                                    && (constant
+                                        || _gpuVariableSamples < MaxGpuVariableSamples))
+                                    CompareGpuUvScreen(material, property, used,
+                                        scale, offset, image.Pixels, image.Width,
+                                        image.Height, covered, count, constant,
+                                        baselineWatch.Elapsed.TotalMilliseconds);
                                 coverageCache.Add(key, (uvStatus, constant));
                             }
                             if (constant) ++_surveyUniformUsed;
@@ -345,6 +369,80 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
         }
+
+        private void CompareGpuUvScreen(
+            Material material, string property, HashSet<(Mesh, int)> slots,
+            Vector2 scale, Vector2 offset, Color[] sourcePixels,
+            int width, int height, bool[] strictMask, int strictCount,
+            bool strictUniform, double baselineCoverageMs)
+        {
+            ++_gpuMaskCompared;
+            if (!strictUniform) ++_gpuVariableSamples;
+            var timer = System.Diagnostics.Stopwatch.StartNew();
+            bool ok = DiagnosticSourceUvGpuMask.TryRender(
+                slots, scale, offset, width, height, _residentPixelBudget,
+                out var gpuMask, out var gpuCount, out var reason);
+            timer.Stop();
+            _gpuMaskElapsedMs += timer.Elapsed.TotalMilliseconds;
+            _gpuMaskBaselineMs += baselineCoverageMs;
+
+            if (!ok)
+            {
+                ++_gpuMaskUnavailable;
+                _gpuMaskLines.Add("material=" + material.name
+                    + ", property=" + property + ", GPU=unavailable:"
+                    + reason + ", GPUms=" + FormatMs(timer.Elapsed.TotalMilliseconds)
+                    + ", CPUcoverageMs=" + FormatMs(baselineCoverageMs));
+                return;
+            }
+
+            var screenStats = ScanSourcePixels(sourcePixels, gpuMask);
+            bool screenUniform = screenStats.isConstant;
+            if (screenUniform) ++_gpuMaskUniform;
+
+            // No unsupported "outside UV" pixels may be deemed safe.
+            // CPU strict footprint includes bilinear and point boundaries.
+            int outsideStrict = 0;
+            for (int i = 0; i < gpuMask.Length; ++i)
+                if (gpuMask[i] && !strictMask[i]) ++outsideStrict;
+            if (outsideStrict != 0) ++_gpuMaskOutsideStrict;
+
+            string validation;
+            if (outsideStrict != 0)
+                validation = "GPU-outside-CPU-support";
+            else if (!screenUniform)
+                validation = "not-a-candidate";
+            else if (strictUniform)
+            {
+                ++_gpuMaskConfirmed;
+                validation = "confirmed-by-strict-boundary";
+            }
+            else
+            {
+                ++_gpuMaskBoundaryDifferent;
+                validation = "rejected-by-strict-boundary";
+            }
+
+            // Projected path: GPU screen for every texture; only potential
+            // uniform candidates pay for CPU boundary validation.
+            _gpuMaskProjectedMs += timer.Elapsed.TotalMilliseconds
+                + (screenUniform ? baselineCoverageMs : 0.0);
+
+            _gpuMaskLines.Add("material=" + material.name
+                + ", property=" + property
+                + ", GPU-interior=" + gpuCount
+                + (screenUniform ? ":uniform" : ":variable")
+                + ", CPU-strict=" + strictCount
+                + (strictUniform ? ":uniform" : ":variable")
+                + ", result=" + validation
+                + ", outsideStrict=" + outsideStrict
+                + ", GPUms=" + FormatMs(timer.Elapsed.TotalMilliseconds)
+                + ", CPUcoverageMs=" + FormatMs(baselineCoverageMs));
+        }
+
+        private static string FormatMs(double milliseconds) =>
+            milliseconds.ToString("F3",
+                System.Globalization.CultureInfo.InvariantCulture);
 
         private static bool IsAtlasGeometryBenchmarkProperty(string property) =>
             property == "_MainTex" || property == "_Bump2ndMap"
@@ -1183,6 +1281,25 @@ namespace net.rs64.TexTransTool.NDMF
                 + (_lines.Count == 0
                     ? "No non-Lite lilToon emission source textures found."
                     : string.Join("\n", _lines))
+                + "\n\n[GPU UV interior candidate screen A/B: diagnostic only]"
+                + "\nComparisons: " + _gpuMaskCompared
+                + ", interior uniform: " + _gpuMaskUniform
+                + ", strict-boundary confirmed: " + _gpuMaskConfirmed
+                + ", strict-boundary rejected: " + _gpuMaskBoundaryDifferent
+                + ", GPU unavailable: " + _gpuMaskUnavailable
+                + ", GPU outside strict pixels: " + _gpuMaskOutsideStrict
+                + "\nGPU mask: " + FormatMs(_gpuMaskElapsedMs)
+                + "ms; matched CPU coverage: "
+                + FormatMs(_gpuMaskBaselineMs)
+                + "ms; projected GPU+candidate-only CPU: "
+                + FormatMs(_gpuMaskProjectedMs) + "ms"
+                + "\nGPU pixel-center raster is only a preliminary screen."
+                + " Boundary-only differences are expected; GPU mask is never"
+                + " treated as a removal guarantee."
+                + "\n"
+                + (_gpuMaskLines.Count == 0
+                    ? "No eligible comparison."
+                    : string.Join("\n", _gpuMaskLines))
                 + "\n\n[Exact AtlasContext UV geometry A/B: diagnostic only]"
                 + "\nCandidates checked: " + _atlasGeometryCompared
                 + ", exact mask matches: " + _atlasGeometryMatched
