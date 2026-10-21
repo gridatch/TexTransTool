@@ -707,8 +707,10 @@ namespace net.rs64.TexTransTool.NDMF
                                 atlasContext, tuningResult, out var projectedBytes,
                                 alternative))
                         {
-                            conditionalOutputMemoryDelta = Math.Max(
-                                0L, currentBytes - projectedBytes)
+                            // Signed bytes: a hypothetical increase must
+                            // remain visible rather than being clamped to zero.
+                            conditionalOutputMemoryDelta =
+                                (currentBytes - projectedBytes)
                                 + ":same-format-and-sharing-conditional";
                         }
                     }
