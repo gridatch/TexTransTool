@@ -59,7 +59,18 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal static bool TryCalculateFinalTextureMemory(
             AtlasContext atlasContext,
             TexFineTuningResult tuningResult,
-            out long bytes)
+            out long bytes) =>
+            TryCalculateFinalTextureMemory(
+                atlasContext, tuningResult, out bytes, null);
+
+        // Diagnostic-only optional size substitution: reuse the exact
+        // compressed-format and mip-chain estimator without creating a
+        // replacement GPU output or mutating a live texture.
+        internal static bool TryCalculateFinalTextureMemory(
+            AtlasContext atlasContext,
+            TexFineTuningResult tuningResult,
+            out long bytes,
+            IReadOnlyDictionary<ITTRenderTexture, Vector2Int>? sizeOverrides)
         {
             bytes = 0;
             var alphaCache = new Dictionary<Texture, bool>();
@@ -122,13 +133,19 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     ? compression.OverrideTextureFormat
                     : TextureCompressionData.GetQuality2TextureFormat(
                         compression.FormatQualityValue, hasAlpha);
+                var outputSize = sizeOverrides != null
+                    && sizeOverrides.TryGetValue(output.Key, out var hypothetical)
+                        ? hypothetical
+                        : new Vector2Int(output.Key.Width, output.Key.Hight);
+                if (outputSize.x <= 0 || outputSize.y <= 0)
+                    return false;
                 var mipCount = output.Value.UseMipMap
-                    ? CalculateMemoryMipCount(output.Key.Width, output.Key.Hight)
+                    ? CalculateMemoryMipCount(outputSize.x, outputSize.y)
                     : 1;
 
                 if (!TryCalculateTextureMemory(
-                        output.Key.Width,
-                        output.Key.Hight,
+                        outputSize.x,
+                        outputSize.y,
                         format,
                         mipCount,
                         out var outputBytes))
