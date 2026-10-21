@@ -21,11 +21,23 @@ namespace net.rs64.TexTransTool.NDMF
             HashSet<(Mesh, int)> slots,
             Vector2 scale, Vector2 offset,
             int width, int height, long maxPixels,
-            out bool[] coverage, out int count, out string reason)
+            out bool[] coverage, out int count, out string reason) =>
+            TryRender(slots, scale, offset, width, height, maxPixels,
+                out coverage, out count, out reason, out _);
+
+        // The marker determines the render target's actual Y orientation
+        // without relying on GraphicsDeviceType or an assumed Unity backend.
+        internal static bool TryRender(
+            HashSet<(Mesh, int)> slots,
+            Vector2 scale, Vector2 offset,
+            int width, int height, long maxPixels,
+            out bool[] coverage, out int count, out string reason,
+            out bool verticalFlipCorrected)
         {
             coverage = Array.Empty<bool>();
             count = 0;
             reason = "";
+            verticalFlipCorrected = false;
             if (width <= 0 || height <= 0
                 || (long)width * height > maxPixels)
             {
@@ -46,6 +58,7 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             var drawMeshes = new List<Mesh>();
+            Mesh? orientationMarker = null;
             Material? material = null;
             RenderTexture? rt = null;
             Texture2D? readback = null;
@@ -123,8 +136,32 @@ namespace net.rs64.TexTransTool.NDMF
                 };
                 command.SetRenderTarget(rt);
                 command.ClearRenderTarget(true, true, Color.black);
+                var sourceChannel = new MaterialPropertyBlock();
+                sourceChannel.SetColor("_MaskColor", Color.red);
                 foreach (var draw in drawMeshes)
-                    command.DrawMesh(draw, Matrix4x4.identity, material, 0, 0);
+                    command.DrawMesh(draw, Matrix4x4.identity, material, 0, 0,
+                        sourceChannel);
+
+                // A green quad in the LOWER quarter of UV space measures
+                // vertical orientation. Its green channel never modifies
+                // the red coverage mask, including on overlap.
+                orientationMarker = new Mesh
+                {
+                    hideFlags = HideFlags.HideAndDontSave
+                };
+                orientationMarker.vertices = new[]
+                {
+                    new Vector3(-1f, -1f, 0f),
+                    new Vector3( 1f, -1f, 0f),
+                    new Vector3( 1f, -0.5f, 0f),
+                    new Vector3(-1f, -0.5f, 0f),
+                };
+                orientationMarker.SetTriangles(
+                    new[] { 0, 1, 2, 0, 2, 3 }, 0);
+                var orientationChannel = new MaterialPropertyBlock();
+                orientationChannel.SetColor("_MaskColor", Color.green);
+                command.DrawMesh(orientationMarker, Matrix4x4.identity,
+                    material, 0, 0, orientationChannel);
                 Graphics.ExecuteCommandBuffer(command);
 
                 RenderTexture.active = rt;
@@ -141,12 +178,25 @@ namespace net.rs64.TexTransTool.NDMF
                     reason = "gpu-mask-readback-size-mismatch";
                     return false;
                 }
-                var mask = new bool[pixels.Length];
-                for (int i = 0; i < pixels.Length; ++i)
+                // Unity's readback orientation differs between rendering
+                // backends. Orient rows by a rendered marker, NOT by the
+                // triangle coverage itself or by the CPU baseline.
+                if (!TryResolveUvYOrientation(pixels, width, height,
+                        out verticalFlipCorrected))
                 {
-                    if (pixels[i].r < 128) continue;
-                    mask[i] = true;
-                    ++count;
+                    reason = "gpu-mask-y-orientation-unresolved";
+                    return false;
+                }
+                var mask = new bool[pixels.Length];
+                for (int y = 0; y < height; ++y)
+                {
+                    var readY = verticalFlipCorrected ? height - 1 - y : y;
+                    for (int x = 0; x < width; ++x)
+                    {
+                        if (pixels[readY * width + x].r < 128) continue;
+                        mask[y * width + x] = true;
+                        ++count;
+                    }
                 }
                 if (count == 0)
                 {
@@ -168,9 +218,37 @@ namespace net.rs64.TexTransTool.NDMF
                 if (readback != null) UnityEngine.Object.DestroyImmediate(readback);
                 if (rt != null) RenderTexture.ReleaseTemporary(rt);
                 if (material != null) UnityEngine.Object.DestroyImmediate(material);
+                if (orientationMarker != null)
+                    UnityEngine.Object.DestroyImmediate(orientationMarker);
                 foreach (var mesh in drawMeshes)
                     UnityEngine.Object.DestroyImmediate(mesh);
             }
+        }
+
+        internal static bool TryResolveUvYOrientation(
+            Color32[] pixels, int width, int height, out bool flipRows)
+        {
+            flipRows = false;
+            if (width <= 0 || height < 4 || pixels.Length != width * height)
+                return false;
+            int bottom = 0;
+            int top = (height - 1) * width;
+            int bottomMarker = 0;
+            int topMarker = 0;
+            for (int x = 0; x < width; ++x)
+            {
+                if (pixels[bottom + x].g >= 128) ++bottomMarker;
+                if (pixels[top + x].g >= 128) ++topMarker;
+            }
+            // A marker appears on exactly one of the opposing rows.
+            // Ambiguity returns unknown instead of silently misaligning UVs.
+            if (bottomMarker != 0 && topMarker == 0) return true;
+            if (topMarker != 0 && bottomMarker == 0)
+            {
+                flipRows = true;
+                return true;
+            }
+            return false;
         }
     }
 }
