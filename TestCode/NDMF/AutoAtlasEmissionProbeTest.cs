@@ -8,7 +8,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
     internal sealed class AutoAtlasEmissionProbeTest
     {
         // The triangle spans texel-center coordinates
-        // (1.5,1.5), (3.5,1.5), (1.5,3.5) in an 8x8 image.
+        // (1.5,1.5), (3.6,1.5), (1.5,3.6) in an 8x8 image.
         private static Mesh Triangle()
         {
             var mesh = new Mesh();
@@ -19,8 +19,8 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             mesh.uv = new[]
             {
                 new Vector2(0.25f, 0.25f),
-                new Vector2(0.50f, 0.25f),
-                new Vector2(0.25f, 0.50f),
+                new Vector2(0.5125f, 0.25f),
+                new Vector2(0.25f, 0.5125f),
             };
             mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
             return mesh;
@@ -45,13 +45,18 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         public void PixelNearUvBoundaryContributesToBilinearButNotPoint()
         {
             var a = new Vector2(1.5f, 1.5f);
-            var b = new Vector2(3.5f, 1.5f);
-            var c = new Vector2(1.5f, 3.5f);
+            var b = new Vector2(3.6f, 1.5f);
+            var c = new Vector2(1.5f, 3.6f);
             var adjacent = new Vector2(4f, 3f);
             Assert.That(AutoAtlasEmissionProbe.TriangleOverlapsTexelFilter(
                 adjacent, a, b, c, 1f), Is.True);
             Assert.That(AutoAtlasEmissionProbe.TriangleOverlapsTexelFilter(
                 adjacent, a, b, c, 0.5f), Is.False);
+            // Shrinking the diagonal to x+y=5 makes (4,3) touch the
+            // bilinear square at one corner with zero weight.
+            Assert.That(AutoAtlasEmissionProbe.TriangleOverlapsTexelFilter(
+                adjacent, a, new Vector2(3.5f, 1.5f),
+                new Vector2(1.5f, 3.5f), 1f), Is.False);
             Assert.That(AutoAtlasEmissionProbe.TriangleOverlapsTexelFilter(
                 new Vector2(7f, 7f), a, b, c, 1f), Is.False);
         }
