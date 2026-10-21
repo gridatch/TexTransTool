@@ -83,6 +83,10 @@ namespace net.rs64.TexTransTool.NDMF
         // point filtering spans +/-0.5px.
 
         private readonly List<string> _lines = new();
+        // Temporary, source-observed zero mask candidates and final-output
+        // ownership inspection. This does not mutate generated materials.
+        private readonly List<(Material material, string property, Texture source)> _zeroMaskCandidates = new();
+        private readonly List<string> _zeroMaskOwnershipLines = new();
         private readonly Dictionary<Texture, SourceImage> _images = new();
         private long _readbackPixels;
         private long _residentPixels;
@@ -140,6 +144,7 @@ namespace net.rs64.TexTransTool.NDMF
             Renderer[] renderers,
             Dictionary<Material, Material> materialMap)
         {
+            _zeroMaskCandidates.Clear();
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
             // The actual pre-atlas material slots and UVs, not output meshes.
@@ -507,6 +512,8 @@ namespace net.rs64.TexTransTool.NDMF
                 || map.RgbZero == null && mapTexture != null);
             if (possible) ++_candidates;
             else if (unknown) ++_unknown;
+            if (maskProvesZero && maskTexture != null)
+                _zeroMaskCandidates.Add((material, maskProperty, maskTexture));
 
             _lines.Add(
                 "material=" + material.name + ", emission=" + layer
@@ -556,6 +563,122 @@ namespace net.rs64.TexTransTool.NDMF
                     + ",maxAbsRGB=" + scan.maxAbsRgb.ToString("R",
                         System.Globalization.CultureInfo.InvariantCulture)
             };
+        }
+
+        /// <summary>
+        /// Diagnostic only: attributes a zero source-emission mask to its
+        /// actual final generated render texture and other material/property
+        /// users. Per-output memory uses the existing final memory estimator.
+        /// It does NOT assume that a mip0-zero mask can safely be disabled.
+        /// </summary>
+        internal void InspectZeroMaskOutputOwnership<TTexture>(
+            IDomain domain,
+            AtlasContext atlasContext,
+            TexFineTuningResult tuningResult,
+            Dictionary<Material, Material> materialMap,
+            IReadOnlyDictionary<string, TTexture> resultingTextures,
+            IReadOnlyCollection<Texture> retainedOriginalSources)
+            where TTexture : Texture
+        {
+            if (_zeroMaskCandidates.Count == 0) return;
+            var knownZeroMasks = _zeroMaskCandidates
+                .Select(candidate => (candidate.material, candidate.property))
+                .ToHashSet();
+
+            foreach (var (material, property, source) in _zeroMaskCandidates
+                         .Distinct())
+            {
+                string id = "material=" + material.name
+                    + ", property=" + property
+                    + ", source=" + source.name;
+
+                if (!materialMap.TryGetValue(material, out var outputMaterial)
+                    || !tuningResult.RenderTextures.TryGetValue(
+                        property, out var outputRt)
+                    || !resultingTextures.TryGetValue(
+                        property, out var outputUnityTexture)
+                    || outputMaterial.GetTexture(property) != outputUnityTexture)
+                {
+                    _zeroMaskOwnershipLines.Add(id
+                        + ", result=not-bound-to-new-atlas-output"
+                        + ", note=no-output-memory-savings-inferred");
+                    continue;
+                }
+
+                // Several shader properties may alias one render texture
+                // through ReferenceCopy or MergeTexture.
+                var outputProperties = tuningResult.RenderTextures
+                    .Where(item => ReferenceEquals(item.Value, outputRt))
+                    .Select(item => item.Key)
+                    .OrderBy(name => name, StringComparer.Ordinal)
+                    .ToArray();
+
+                var outputMaterialReferences = materialMap
+                    .SelectMany(pair => pair.Value
+                        .GetTexturePropertyNames()
+                        .Where(name =>
+                            pair.Value.GetTexture(name) == outputUnityTexture)
+                        .Select(name => (material: pair.Key, property: name)))
+                    .Distinct()
+                    .ToArray();
+
+                var otherConsumers = outputMaterialReferences
+                    .Where(reference => !knownZeroMasks.Contains(reference))
+                    .ToArray();
+
+                string bytes = "unknown";
+                if (tuningResult.TextureDescriptors.TryGetValue(
+                        outputRt, out var descriptor))
+                {
+                    var propertySet = outputProperties.ToHashSet(
+                        StringComparer.Ordinal);
+                    var isolated = new TexFineTuningResult(
+                        tuningResult.RenderTextures
+                            .Where(item => propertySet.Contains(item.Key))
+                            .ToDictionary(item => item.Key, item => item.Value),
+                        new Dictionary<ITTRenderTexture,
+                            TexTransToolTextureDescriptor>
+                            { [outputRt] = descriptor },
+                        tuningResult.SourceProperties
+                            .Where(item => propertySet.Contains(item.Key))
+                            .ToDictionary(item => item.Key, item => item.Value));
+                    if (AtlasTexture.TryCalculateFinalTextureMemory(
+                            atlasContext, isolated, out var outputBytes))
+                        bytes = outputBytes.ToString(
+                            System.Globalization.CultureInfo.InvariantCulture);
+                }
+
+                // The original may have ALREADY been eliminated by normal
+                // atlasing; counting it as an incremental saving is wrong.
+                string originalBytes = "unknown";
+                if (AtlasTexture.TryCalculateSourceTextureMemory(
+                        domain, new[] { source }, out var originalMemory))
+                    originalBytes = originalMemory.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture);
+
+                var remainingLabels = otherConsumers
+                    .Select(reference => reference.material.name
+                        + "/" + reference.property)
+                    .OrderBy(value => value, StringComparer.Ordinal)
+                    .Take(8)
+                    .ToArray();
+                _zeroMaskOwnershipLines.Add(id
+                    + ", output=" + outputRt.Width + "x" + outputRt.Hight
+                    + ", outputBytes=" + bytes
+                    + ", outputProperties=[" + string.Join(", ", outputProperties) + "]"
+                    + ", actualOutputReferences=" + outputMaterialReferences.Length
+                    + ", otherThanKnownZeroMasks=" + otherConsumers.Length
+                    + ", otherConsumers=[" + string.Join(", ", remainingLabels)
+                    + (otherConsumers.Length > remainingLabels.Length
+                        ? ", ..." : "") + "]"
+                    + ", originalSourceBytes=" + originalBytes
+                    + ", originalSourceRetainedByOtherRefs="
+                    + retainedOriginalSources.Contains(source)
+                    + ", outputExclusivelyZeroMasks="
+                    + (outputMaterialReferences.Length != 0
+                        && otherConsumers.Length == 0)
+                    + ", note=outputBytes-is-conditional-upper-bound-not-savings");
+            }
         }
 
         // Production and regression tests use the same float-precision
@@ -1084,6 +1207,12 @@ namespace net.rs64.TexTransTool.NDMF
                 + (_lines.Count == 0
                     ? "No non-Lite lilToon emission source textures found."
                     : string.Join("\n", _lines))
+                + "\n\n[Zero emission source-mask output ownership: TEMPORARY]"
+                + "\nThis section describes resource ownership only."
+                + " It does not authorize shader changes or texture removal."
+                + "\n" + (_zeroMaskOwnershipLines.Count == 0
+                    ? "No zero-mask ownership candidates observed."
+                    : string.Join("\n", _zeroMaskOwnershipLines))
                 + "\n\n[GPU-first UV source survey: diagnostic only]"
                 + "\nGPU screens: " + _gpuScreens
                 + ", GPU variable / CPU skipped: " + _gpuRejectedVariable
@@ -2027,6 +2156,10 @@ namespace net.rs64.TexTransTool.NDMF
                 // safety gates, and before generated textures are disposed.
                 emissionProbe.Observe(domain, atlasRenderers,
                     atlasMaterialMaps.materialMap);
+                emissionProbe.InspectZeroMaskOutputOwnership(
+                    domain, atlasContext, tuningResult,
+                    atlasMaterialMaps.materialMap, resultingTextures,
+                    execution.RetainedSourceTextures);
 
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
