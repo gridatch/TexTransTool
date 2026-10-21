@@ -185,5 +185,65 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 UnityEngine.Object.DestroyImmediate(source);
             }
         }
+        [Test]
+        public void GenericSourceSurveyFindsUniformTexturesBeyondEmission()
+        {
+            var pixels = new Color[16];
+            for (int i = 0; i < pixels.Length; ++i)
+                pixels[i] = new Color(0.3f, 0.6f, 0.9f, 1f);
+
+            var result = AutoAtlasEmissionProbe.ScanSourcePixels(pixels, null);
+            Assert.That(result.isConstant, Is.True);
+            Assert.That(result.rgbZero, Is.False);
+            Assert.That(result.constantColor.r, Is.EqualTo(0.3f));
+            Assert.That(result.sampledTexels, Is.EqualTo(16));
+
+            pixels[15] = new Color(0.3f, 0.6f, 0.900001f, 1f);
+            result = AutoAtlasEmissionProbe.ScanSourcePixels(pixels, null);
+            Assert.That(result.isConstant, Is.False,
+                "Even a small real RGB difference must remain visible.");
+        }
+
+        [Test]
+        public void UsedUvCanBeConstantEvenWhenWholeTextureIsNot()
+        {
+            var mesh = Triangle();
+            try
+            {
+                var covered = Coverage(mesh, FilterMode.Bilinear);
+                var pixels = new Color[64];
+                for (int i = 0; i < pixels.Length; ++i)
+                    pixels[i] = new Color(0f, 0f, 0f, 1f);
+                pixels[7 * 8 + 7] = Color.white;
+
+                var whole = AutoAtlasEmissionProbe.ScanSourcePixels(
+                    pixels, null);
+                var used = AutoAtlasEmissionProbe.ScanCoveredSourcePixels(
+                    pixels, covered);
+                Assert.That(whole.isConstant, Is.False);
+                Assert.That(used.isConstant, Is.True);
+                Assert.That(used.constantColor.r, Is.Zero);
+                Assert.That(used.sampledTexels,
+                    Is.LessThan(whole.sampledTexels));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void ProbeReportUsesNoNestedScrollView()
+        {
+            var error = new AutoAtlasEmissionProbeError("sample\nsample 2");
+            var view = error.CreateVisualElement(null);
+            Assert.That(
+                view.Query<UnityEngine.UIElements.ScrollView>().ToList(),
+                Is.Empty);
+            Assert.That(
+                view.Query<UnityEngine.UIElements.Button>().ToList().Count,
+                Is.EqualTo(1), "Copy button must remain available.");
+        }
+
     }
 }
