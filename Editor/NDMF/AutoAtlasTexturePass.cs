@@ -83,6 +83,11 @@ namespace net.rs64.TexTransTool.NDMF
         private int _observed;
         private int _candidates;
         private int _unknown;
+        private readonly List<string> _sourceSurvey = new();
+        private int _surveyProperties;
+        private int _surveyUniformWhole;
+        private int _surveyUniformUsed;
+        private int _surveyUnknownCoverage;
 
         private sealed class SourceImage
         {
@@ -150,8 +155,126 @@ namespace net.rs64.TexTransTool.NDMF
                     "_Emission2ndMap", "_Emission2ndBlendMask", "2nd");
             }
 
+            // Emission-specific interpretation remains separate. In parallel,
+            // collect candidate examples from every source texture property.
+            // These are observations, never deletion approvals.
+            SurveySourceTextures(materialMap.Keys, slots, unresolved);
+
             watch.Stop();
             _probeMilliseconds += watch.ElapsedMilliseconds;
+        }
+
+        // Broad collection for all texture properties, not just emission.
+        // 'whole' is exact over the obtained source mip0, while 'uv0' is a
+        // provisional observation of the subset that the static UV0 transform
+        // can reach. Neither result authorizes texture removal.
+        private void SurveySourceTextures(
+            IEnumerable<Material> materials,
+            Dictionary<Material, HashSet<(Mesh, int)>> slots,
+            HashSet<Material> unresolved)
+        {
+            foreach (var material in materials
+                         .Where(m => m != null && m.shader != null)
+                         .OrderBy(m => m.name, StringComparer.Ordinal))
+            {
+                IReadOnlyDictionary<string, TextureUVUsage>? usage = null;
+                string usageError = "";
+                try
+                {
+                    usage = TTShaderTextureUsageInformationUtil
+                        .GetContainsUVTransformUsage(material);
+                }
+                catch (Exception ex)
+                {
+                    usageError = "usage-provider:" + ex.GetType().Name;
+                }
+
+                slots.TryGetValue(material, out var used);
+                if (unresolved.Contains(material)) used = null;
+                foreach (var property in material.GetTexturePropertyNames()
+                             .OrderBy(name => name, StringComparer.Ordinal))
+                {
+                    var texture = material.GetTexture(property);
+                    if (texture == null) continue;
+                    ++_surveyProperties;
+
+                    var image = ReadOriginal(texture);
+                    if (image.Pixels == null)
+                    {
+                        ++_surveyUnknownCoverage;
+                        _sourceSurvey.Add("material=" + material.name
+                            + ", property=" + property
+                            + ", source=" + texture.name
+                            + ", whole=unknown:" + image.Status);
+                        continue;
+                    }
+
+                    var full = ScanSourcePixels(image.Pixels, null);
+                    if (full.isConstant) ++_surveyUniformWhole;
+                    string uvStatus;
+                    if (used == null || used.Count == 0)
+                        uvStatus = "unknown:source-mesh";
+                    else if (usage == null)
+                        uvStatus = "unknown:" + usageError;
+                    else if (!usage.TryGetValue(property, out var uvUsage))
+                        uvStatus = "unknown:UV-not-registered";
+                    else if (uvUsage.UVChannel != UsageUVChannel.UV0
+                             || uvUsage.UVMatrix is not { } matrix)
+                        uvStatus = "unknown:nonstatic-or-non-UV0";
+                    else if (!Mathf.Approximately(matrix.M01, 0f)
+                             || !Mathf.Approximately(matrix.M10, 0f))
+                        uvStatus = "unknown:rotated-or-sheared-UV";
+                    else
+                    {
+                        var scale = new Vector2(matrix.M00, matrix.M11);
+                        var offset = new Vector2(matrix.M02, matrix.M12);
+                        if (TrySourceCoverage(used, scale, offset, image.Width,
+                                image.Height, texture.wrapModeU,
+                                texture.wrapModeV, texture.filterMode,
+                                out var covered, out var count, out var reason))
+                        {
+                            var region = ScanSourcePixels(image.Pixels, covered);
+                            if (region.isConstant) ++_surveyUniformUsed;
+                            uvStatus = "UV0-texels=" + count + ":"
+                                + FormatSurveyStats(region);
+                        }
+                        else uvStatus = "unknown:" + reason;
+                    }
+                    if (uvStatus.StartsWith("unknown:", StringComparison.Ordinal))
+                        ++_surveyUnknownCoverage;
+
+                    _sourceSurvey.Add("material=" + material.name
+                        + ", property=" + property
+                        + ", source=" + texture.name
+                        + ", size=" + image.Width + "x" + image.Height
+                        + ", read=" + image.Status
+                        + ", whole=" + FormatSurveyStats(full)
+                        + ", used=" + uvStatus);
+                }
+            }
+        }
+
+        private static string FormatSurveyStats(
+            (bool rgbZero, bool alphaZero, int nonzeroRgbTexels,
+             float maxAbsRgb, bool isConstant, Color constantColor,
+             int sampledTexels) stats)
+        {
+            return (stats.isConstant
+                       ? "constant:" + FormatSurveyColor(stats.constantColor)
+                       : "variable")
+                   + ",RGB" + (stats.rgbZero ? "=0" : "!=0")
+                   + ",nonzeroRGBTexels=" + stats.nonzeroRgbTexels
+                   + ",maxAbsRGB=" + stats.maxAbsRgb.ToString("R",
+                       System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private static string FormatSurveyColor(Color c)
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            return "(" + c.r.ToString("R", ci) + ","
+                + c.g.ToString("R", ci) + ","
+                + c.b.ToString("R", ci) + ","
+                + c.a.ToString("R", ci) + ")";
         }
 
         private void InspectLayer(Material material, HashSet<(Mesh, int)>? slots,
@@ -245,18 +368,34 @@ namespace net.rs64.TexTransTool.NDMF
         // scan. Counts/amplitudes are diagnostic only: they are NOT used
         // as an arbitrary pixel-count or RGB-value threshold.
         internal static (bool rgbZero, bool alphaZero,
-            int nonzeroRgbTexels, float maxAbsRgb)
+            int nonzeroRgbTexels, float maxAbsRgb, bool isConstant,
+            Color constantColor, int sampledTexels)
             ScanCoveredSourcePixels(Color[] pixels, bool[] covered)
         {
             if (pixels.Length != covered.Length)
                 throw new ArgumentException("Source pixel/coverage size mismatch.");
-            bool rgbZero = true, alphaZero = true;
-            int nonzeroRgbTexels = 0;
+            return ScanSourcePixels(pixels, covered);
+        }
+
+        // A null coverage means ALL original source mip0 pixels.
+        internal static (bool rgbZero, bool alphaZero,
+            int nonzeroRgbTexels, float maxAbsRgb, bool isConstant,
+            Color constantColor, int sampledTexels)
+            ScanSourcePixels(Color[] pixels, bool[]? covered)
+        {
+            if (covered != null && pixels.Length != covered.Length)
+                throw new ArgumentException("Source pixel/coverage size mismatch.");
+            bool rgbZero = true, alphaZero = true, isConstant = true;
+            int nonzeroRgbTexels = 0, sampledTexels = 0;
             float maxAbsRgb = 0f;
-            for (int i = 0; i < covered.Length; ++i)
+            Color first = default;
+            for (int i = 0; i < pixels.Length; ++i)
             {
-                if (!covered[i]) continue;
+                if (covered != null && !covered[i]) continue;
                 var pixel = pixels[i];
+                if (sampledTexels == 0) first = pixel;
+                else if (isConstant && pixel != first) isConstant = false;
+                ++sampledTexels;
                 float absolute = Mathf.Max(Mathf.Abs(pixel.r),
                     Mathf.Max(Mathf.Abs(pixel.g), Mathf.Abs(pixel.b)));
                 if (pixel.r != 0f || pixel.g != 0f || pixel.b != 0f)
@@ -267,7 +406,8 @@ namespace net.rs64.TexTransTool.NDMF
                 }
                 if (pixel.a != 0f) alphaZero = false;
             }
-            return (rgbZero, alphaZero, nonzeroRgbTexels, maxAbsRgb);
+            return (rgbZero, alphaZero, nonzeroRgbTexels, maxAbsRgb,
+                isConstant && sampledTexels > 0, first, sampledTexels);
         }
 
         private SourceImage ReadOriginal(Texture texture)
@@ -660,6 +800,10 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\nProbe observation elapsed: " + _probeMilliseconds + "ms"
                 + "\nTriangle pixel checks: " + _triangleChecks
                 + "\nSource images read: " + _images.Count
+                + "\nTexture-property survey: " + _surveyProperties
+                + ", whole-source constants: " + _surveyUniformWhole
+                + ", UV0-covered constants: " + _surveyUniformUsed
+                + ", unknown coverage: " + _surveyUnknownCoverage
                 + "\nLimits: original mesh UV0 and source image mip0 only;"
                 + " geometric point/bilinear texel support (strict float zero test)." 
                 + " RGBAFloat source staging is required when CPU pixels are unavailable;"
@@ -674,7 +818,14 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\n"
                 + (_lines.Count == 0
                     ? "No non-Lite lilToon emission source textures found."
-                    : string.Join("\n", _lines));
+                    : string.Join("\n", _lines))
+                + "\n\n[Source texture property survey: mip0; informational]"
+                + "\nWhole-source and UV-covered constants are observations,"
+                + " NOT removability claims. Unsupported UV usage is unknown."
+                + "\n"
+                + (_sourceSurvey.Count == 0
+                    ? "No source texture properties observed."
+                    : string.Join("\n", _sourceSurvey));
         }
     }
 
