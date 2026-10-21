@@ -163,11 +163,9 @@ This behavior predates AutoAtlas and must not be reclassified as an AutoAtlas-sp
 
 PR #14 introduced `AtlasSetting.AutoAtlasTextureSize`.
 
-When enabled, normal AtlasTexture tries real island relocation at:
+When enabled, normal AtlasTexture first tries a 256px square. If 256 succeeds losslessly, it probes downward to 128 and then 64, retaining the smallest successful result; if 256 fails, it probes upward through 512, 1024, 2048, and 4096. A failed downward probe never replaces a previously successful result.
 
-`256 -> 512 -> 1024 -> 2048 -> 4096`
-
-and accepts the first candidate where island placement requires no priority or overall downscale.
+This sub-256 probing is **standalone Atlas sizing only**. The optional AutoAtlas 2D texture-merging host widths and packing grid remain 256px and above.
 
 This is based on the **actual packing result**, not source texture dimensions.
 
@@ -195,6 +193,10 @@ Automatic lossless sizing means not only "islands fit without UV downscale", but
 - will not shrink below 4 pixels in a dimension;
 - will not shrink below the layout when primary-texture density is unknown;
 - can grow a property size if required to preserve density.
+
+The lossless minimum is now computed **independently for X and Y** using the existing per-axis integer texel-density inequality. Do not revert to simultaneous X/Y halving: a property's optimal width may be unchanged while its height can shrink, or vice versa.
+
+Normalized atlas height cropping uses the smallest power-of-two pixel height that fits the occupied region (minimum 4px), rather than the former hard-coded 1/32 fraction floor.
 
 When automatic sizing is disabled, legacy uniform layout-sized outputs are retained.
 
@@ -239,6 +241,17 @@ This is necessary because FineTuning can alter the set of final outputs:
 `AtlasResolutionRouteReport` uses this provenance to report actual input-resolution composition to final output resolution.
 
 This provenance is also relevant to AutoAtlas merge semantics. Do not infer final output properties only from pre-FineTuning `MaterialGroupingContext`.
+
+### Source-derived Mipmap defaults
+
+Default output mipmap usage now follows the contributing source textures for each property:
+
+- if all known relevant sources lack mipmaps, the generated output defaults to mipmaps OFF;
+- if any relevant source uses mipmaps, defaults to ON;
+- unknown texture types conservatively default to ON;
+- explicitly configured FineTuning is applied **after** the source-derived default and takes precedence.
+
+Both normal Atlas execution and AutoAtlas's merge-planner cost projection apply this same derived default before other tuning. Do not force mipmap creation for a property whose sources do not use it, and do not override explicit user FineTuning.
 
 ## 3.8 Equivalent final-output sharing
 
@@ -707,23 +720,27 @@ Disabled/inactive consumers are intentionally ignored here to preserve normal At
 
 This is not the rejected "include all disabled renderers" strategy.
 
-## 6.7 Source texture exclusivity
+## 6.7 Retained/shared source texture accounting
 
-`ReferencesAreExclusive()` is also intentional.
+The former `ReferencesAreExclusive()` blanket rejection was intentionally replaced with `FindRetainedSourceTextures()` and explicit retained-source cost accounting.
 
-A source texture scheduled to disappear from the standalone AutoAtlas group must not remain referenced by another material/property consumer outside the equivalent transformed use.
+Use `GetAllMaterials()` and shader-aware property references, including materials only reachable through animation/domain state, to identify any original source textures that remain referenced **outside the exact property rewrite**. Such references are permitted when the overall result still improves.
 
-The check uses `GetAllMaterials()` plus shader-aware texture references, including references not discoverable merely from current renderer materials.
+The source texture's physical cost is not treated as released when any outside consumer retains it. Count retained sources once alongside newly generated atlases in both planner projections and execution-time acceptance. Do not restore `ReferencesAreExclusive()` as an all-or-nothing gate.
 
-This protects both correctness assumptions and the memory-saving model.
+This is a memory-cost generalization, **not** permission to replace a material for an active renderer without its matching atlas mesh/UV rewrite; the separate `HasActiveUntransformedMaterialConsumer()` correctness guard remains mandatory. After generating replacement materials, reject unexpected original-texture references that were not included in the retained-cost prediction.
 
 ## 6.8 Standalone AutoAtlas acceptance
 
 Standalone AutoAtlas executes normal AtlasTexture with lossless placement required.
 
-After FineTuning, standalone output is accepted only when final generated output pixels are positive and smaller than the group's original source-texture pixel total.
+After FineTuning, standalone output is accepted only when:
+- at least one generated physical texture output is present;
+- generated output pixels **plus retained source pixels** are strictly below the group's original source-texture pixel total;
+- generated output full-resident memory **plus retained source full-resident memory** are strictly below the original physical source texture memory;
+- any required original/generated memory-layout estimate is known (unknown cost fails conservatively).
 
-The post-FineTuning check is authoritative because FineTuning can remove/merge/create property outputs.
+The post-FineTuning check is authoritative because FineTuning can remove/merge/create property outputs and affect actual physical memory.
 
 No standalone AutoAtlas shader-semantic proof is performed beyond normal AtlasTexture behavior.
 
@@ -804,7 +821,7 @@ Those were part of the over-conservative audit that PR #26 removed.
 
 ## 7.4 2D packing
 
-Production planning uses 2D rectangle packing with `ShadowPackingStatesPerHost = 1024`.
+Production planning uses 2D rectangle packing with `ShadowPackingStatesPerHost = 1024`. The host candidates are `256, 512, 1024, 2048, 4096` and the packing grid remains 256px. Standalone 64/128px optimizations must not silently change these merge constraints.
 
 Each atomic group retains an independently valid rectangle/profile.
 
@@ -863,9 +880,9 @@ Before mutation, execution revalidates:
 - no active untransformed consumer appeared;
 - actual lossless atlas layout fits planned rectangle/property-resolution envelopes;
 - every required generated mesh resolves;
-- post-FineTuning pixels still strictly beat standalone baseline;
-- post-FineTuning full resident memory is known and still strictly beats baseline;
-- generated atlas materials do not retain source textures that the cost model assumed removable.
+- post-FineTuning generated-output pixels plus predicted retained-source pixels still strictly beat standalone baseline;
+- post-FineTuning generated-output full resident memory plus retained-source resident memory is known and still strictly beats baseline;
+- generated atlas materials do not retain any additional source textures that the cost model assumed removable (retention already included in the model is allowed).
 
 If a merged execution fails any of these checks, its original atomic groups are queued for standalone AutoAtlas.
 
@@ -1036,7 +1053,7 @@ Permanent conclusions currently preserved in production include:
 - total AutoAtlas processing-time log;
 - shared empty-submesh and ownership fixes.
 
-Temporary long-form candidate/search diagnostics are not production requirements.
+Temporary long-form candidate/search diagnostics are not production requirements. The temporary `AutoAtlas軽量化検証` / `atlas-efficiency-validation` output used in debug.947 to confirm mipmap and sub-256 behavior was removed before feature HEAD `7b6b27d` / debug.949; do not reinstate it without a specific new investigation.
 
 ## 11.2 NDMF result logs
 
@@ -1098,7 +1115,7 @@ This CI work is a follow-up, not evidence that current tests have run automatica
 - NFDH impossible-island preflight;
 - unknown memory-layout fail-closed behavior;
 - source mip-count memory accounting;
-- retained-source detection;
+- retained-source classification and both reducing/non-reducing retained-memory cost cases;
 - temporary mesh/material cleanup;
 - ReferenceCopy merge-only semantics and non-revalidation of normal Atlas semantics;
 - effective/empty submesh behavior;
@@ -1119,8 +1136,9 @@ This CI work is a follow-up, not evidence that current tests have run automatica
 
 - texture-merging default and preservation of serialized disabled state;
 - accepted normal Atlas defaults inherited by AutoAtlas;
-- property-resolution density behavior;
-- 4px minimum;
+- property-resolution density behavior and independent X/Y minimum sizes;
+- 4px minimum, generalized height power-of-two cropping, and sub-256 standalone width candidates;
+- source-derived mipmap usage;
 - unknown-primary fallback;
 - legacy uniform sizing when automatic sizing is disabled.
 
@@ -1346,6 +1364,18 @@ This is not a debugging diary. It maps every substantive commit in the current W
 - `bca0092a` / PR #26 — corrective re-audit: remove broad AutoAtlas-only safety gates and realign standalone AutoAtlas with normal Atlas semantics; retain merge-only semantic checks and fallback.
 - `19d8632d` / PR #26 — shared lilToon selector correctness, not an Auto-only permission layer.
 - `0df70359` / PR #26 — shared NFDH impossible-candidate handling, not a UV/material exclusion.
+- `415780f`, `47a5fa6`, `42d386a`, `0f7b3ed` — independent per-axis sizing, generalized height crop, sub-256 standalone search and its bounded-probe performance optimization.
+- `4215f0b` — source-derived output Mipmap defaults, mirrored in Atlas execution and merge cost projection.
+- `8e29bf1`, `afa6569`, `7b6b27d` — retained-source cost model, execution revalidation, and focused regression coverage; `ca2c3c2` adds broader efficiency-boundary tests.
+
+### Real-project validation of lossless efficiency work
+
+- `Seiran_Koiboshi / Metal_Gold`: standalone atlas width improved from 256 to 64; old `256x8` about 3.0 KiB became `64x4` 528 B.
+- `Seiran_FrillNyantic / Hair_CustomBlue`: standalone 256 to 128 probing succeeded; generated output included `128x64`, with target-texture memory `1.5 MiB -> 12.1 KiB`.
+- `Seiran_FrillNyantic / nikukyu_IchigoCandy`: `_BumpMap` generated output used `mipmap_off`, with target-texture memory `2.9 MiB -> 1.5 MiB`.
+- `Seiran_SailorCupid` and `Seiran_Test_Atlas`: expected existing output behavior was preserved in debug.947 validation.
+- The X/Y-independent result, old 1/32 crop removal, and retained-source adoption are covered by test code, but no independent real-project trigger was captured for those specific cases.
+- On 2026-10-21, the user confirmed a representative Unity smoke test of debug.949 without problems. GitHub package publication is not Unity Test Runner execution.
 
 ## Non-adopted CI proposals
 
