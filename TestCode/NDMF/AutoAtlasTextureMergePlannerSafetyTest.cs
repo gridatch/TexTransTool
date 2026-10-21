@@ -213,6 +213,56 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void RetainedSourceCostCanStillAllowStrictBenefit()
+        {
+            var original = Plan(new[]
+            {
+                Entry(1024, 1024, 1),
+                Entry(1024, 1024, 1),
+            });
+            var generated = Plan(new[]
+            {
+                Entry(512, 512, 1),
+            });
+            var retained = Plan(new[]
+            {
+                Entry(1024, 1024, 1),
+            });
+            var finalCost =
+                AutoAtlasTextureMergePlanner.TextureCostPlan.Combine(
+                    new[] { generated, retained });
+
+            Assert.That(
+                Candidate(original, finalCost).IsAdoptable,
+                Is.True);
+        }
+
+        [Test]
+        public void RetainedSourceCostRejectsNonReducingAtlas()
+        {
+            var original = Plan(new[]
+            {
+                Entry(1024, 1024, 1),
+                Entry(1024, 1024, 1),
+            });
+            var generated = Plan(new[]
+            {
+                Entry(1024, 1024, 1),
+            });
+            var retained = Plan(new[]
+            {
+                Entry(1024, 1024, 1),
+            });
+            var finalCost =
+                AutoAtlasTextureMergePlanner.TextureCostPlan.Combine(
+                    new[] { generated, retained });
+
+            Assert.That(
+                Candidate(original, finalCost).IsAdoptable,
+                Is.False);
+        }
+
+        [Test]
         public void UnknownMemoryBlockLayoutsFailClosed()
         {
             Assert.That(
