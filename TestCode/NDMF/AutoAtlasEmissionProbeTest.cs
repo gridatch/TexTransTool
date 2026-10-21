@@ -807,6 +807,99 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             }
         }
 
+
+        [Test]
+        public void ZeroMaskFeatureRulesRespectAlphaModeBlendModeAndOutline()
+        {
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("lilToon shader is not installed.");
+            var mat = new Material(shader);
+            try
+            {
+                if (!mat.HasProperty("_UseMain2ndTex")
+                    || !mat.HasProperty("_Main2ndTexAlphaMode")
+                    || !mat.HasProperty("_UseEmission2nd"))
+                    Assert.Ignore("The installed lilToon variant lacks required properties.");
+
+                mat.SetFloat("_UseMain2ndTex", 1f);
+                mat.SetFloat("_Main2ndTexAlphaMode", 1f);
+                Assert.That(AutoAtlasFeatureDisableRules.TryClassify(
+                    mat, "_Main2ndBlendMask", new Color(0,0,0,1), out _),
+                    Is.False);
+                mat.SetFloat("_Main2ndTexAlphaMode", 0f);
+                Assert.That(AutoAtlasFeatureDisableRules.TryClassify(
+                    mat, "_Main2ndBlendMask", new Color(0,0,0,1), out var rule),
+                    Is.True);
+                Assert.That(rule!.SwitchProperty, Is.EqualTo("_UseMain2ndTex"));
+                Assert.That(AutoAtlasFeatureDisableRules.TryClassify(
+                    mat, "_OutlineWidthMask", new Color(0,0,0,1), out _),
+                    Is.False);
+                Assert.That(AutoAtlasFeatureDisableRules.TryClassify(
+                    mat, "_Main2ndBlendMask", new Color(0.0001f,0,0,1), out _),
+                    Is.False);
+
+                mat.SetFloat("_UseEmission2nd", 1f);
+                mat.SetFloat("_Emission2ndBlendMode", 0f);
+                Assert.That(AutoAtlasFeatureDisableRules.TryClassify(
+                    mat, "_Emission2ndBlendMask", new Color(0,0,0,1), out _),
+                    Is.False);
+                mat.SetFloat("_Emission2ndBlendMode", 1f);
+                Assert.That(AutoAtlasFeatureDisableRules.TryClassify(
+                    mat, "_Emission2ndBlendMask", new Color(0,0,0,1), out _),
+                    Is.True);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(mat); }
+        }
+
+        [Test]
+        public void FeatureDisableProjectionDoesNotMutateSourceOrSharedConsumer()
+        {
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("lilToon shader is not installed.");
+            var a = new Material(shader);
+            var b = new Material(shader);
+            var shared = new Texture2D(4,4);
+            try
+            {
+                if (!a.HasProperty("_UseMatCap") || !a.HasProperty("_MatCapBlendMask"))
+                    Assert.Ignore("The installed lilToon variant lacks MatCap.");
+                a.SetFloat("_UseMatCap", 1f);
+                a.SetTexture("_MatCapBlendMask", shared);
+                b.SetTexture("_MatCapBlendMask", shared);
+                Assert.That(AutoAtlasFeatureDisableRules.TryClassify(
+                    a, "_MatCapBlendMask", new Color(0,0,0,1), out var rule),
+                    Is.True);
+                var source = new Dictionary<Material,IReadOnlyDictionary<string,Texture>>
+                {
+                    [a] = new Dictionary<string,Texture>
+                        { ["_MatCapBlendMask"] = shared },
+                    [b] = new Dictionary<string,Texture>
+                        { ["_MatCapBlendMask"] = shared },
+                };
+                var projected = AutoAtlasShadowReplan.ProjectFeatureUses(
+                    source, a, rule!);
+                Assert.That(projected[a].ContainsKey("_MatCapBlendMask"), Is.False);
+                Assert.That(projected[b]["_MatCapBlendMask"], Is.SameAs(shared));
+                Assert.That(source[a]["_MatCapBlendMask"], Is.SameAs(shared));
+
+                var clone = AutoAtlasFeatureDisableRules.CreateDisabledClone(a, rule!);
+                try
+                {
+                    Assert.That(clone.GetFloat("_UseMatCap"), Is.Zero);
+                    Assert.That(clone.GetTexture("_MatCapBlendMask"), Is.Null);
+                    Assert.That(a.GetFloat("_UseMatCap"), Is.EqualTo(1f));
+                    Assert.That(a.GetTexture("_MatCapBlendMask"), Is.SameAs(shared));
+                }
+                finally { UnityEngine.Object.DestroyImmediate(clone); }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(a);
+                UnityEngine.Object.DestroyImmediate(b);
+                UnityEngine.Object.DestroyImmediate(shared);
+            }
+        }
+
         [Test]
         public void ProbeReportUsesNoNestedScrollView()
         {
