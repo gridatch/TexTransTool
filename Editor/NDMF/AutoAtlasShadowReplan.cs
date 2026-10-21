@@ -16,8 +16,233 @@ namespace net.rs64.TexTransTool.NDMF
     /// generated assets registrations, or changes to original materials.
     /// This is an assumed texture unbinding, NOT permission to disable lilToon.
     /// </summary>
+    // This models the fragment equations in lilToon. A static mip0 result is
+    // NOT proof of animation-, mip-, shader-variant-, or renderer-equivalence.
+    internal static class AutoAtlasFeatureDisableRules
+    {
+        internal sealed class Rule
+        {
+            internal readonly string Name;
+            internal readonly string SwitchProperty;
+            internal readonly string Condition;
+            internal readonly string[] TextureProperties;
+
+            internal Rule(string name, string switchProperty,
+                string condition, params string[] textures)
+            {
+                Name = name;
+                SwitchProperty = switchProperty;
+                Condition = condition;
+                TextureProperties = textures;
+            }
+        }
+
+        internal static bool TryClassify(Material material, string property,
+            Color coveredColor, out Rule? rule)
+        {
+            rule = null;
+            if (material == null || material.shader == null
+                || material.shader.name.IndexOf("lilToon",
+                    StringComparison.OrdinalIgnoreCase) < 0
+                || material.shader.name.IndexOf("Lite",
+                    StringComparison.OrdinalIgnoreCase) >= 0
+                || coveredColor.r != 0f || coveredColor.g != 0f
+                || coveredColor.b != 0f)
+                return false;
+
+            Rule candidate;
+            switch (property)
+            {
+                case "_MatCapBlendMask":
+                    candidate = new Rule("MatCap1", "_UseMatCap",
+                        "zero-RGB-multiplies-final-blend-factor",
+                        "_MatCapTex", "_MatCapBlendMask", "_MatCapBumpMap");
+                    break;
+                case "_MatCap2ndBlendMask":
+                    candidate = new Rule("MatCap2", "_UseMatCap2nd",
+                        "zero-RGB-multiplies-final-blend-factor",
+                        "_MatCap2ndTex", "_MatCap2ndBlendMask",
+                        "_MatCap2ndBumpMap");
+                    break;
+                case "_Main2ndBlendMask":
+                    // lilToon can overwrite opacity when AlphaMode != 0.
+                    if (!material.HasProperty("_Main2ndTexAlphaMode")
+                        || material.GetFloat("_Main2ndTexAlphaMode") != 0f)
+                        return false;
+                    candidate = new Rule("Main2nd", "_UseMain2ndTex",
+                        "zero-R-alpha-and-alpha-mode-0",
+                        "_Main2ndTex", "_Main2ndBlendMask",
+                        "_Main2ndDissolveMask", "_Main2ndDissolveNoiseMask");
+                    break;
+                case "_EmissionBlendMask":
+                    if (!ZeroEmissionBlend(material, "_EmissionBlendMode"))
+                        return false;
+                    candidate = new Rule("Emission1", "_UseEmission",
+                        "zero-RGB-add-or-screen-blend",
+                        "_EmissionMap", "_EmissionBlendMask", "_EmissionGradTex");
+                    break;
+                case "_Emission2ndBlendMask":
+                    if (!ZeroEmissionBlend(material, "_Emission2ndBlendMode"))
+                        return false;
+                    candidate = new Rule("Emission2", "_UseEmission2nd",
+                        "zero-RGB-add-or-screen-blend",
+                        "_Emission2ndMap", "_Emission2ndBlendMask",
+                        "_Emission2ndGradTex");
+                    break;
+                default:
+                    // Notably _OutlineWidthMask has side effects in vertex
+                    // paths and _Bump2ndMap neutral sampling is unproven.
+                    return false;
+            }
+            if (!material.HasProperty(candidate.SwitchProperty)
+                || material.GetFloat(candidate.SwitchProperty) == 0f)
+                return false;
+            rule = candidate;
+            return true;
+        }
+
+        private static bool ZeroEmissionBlend(Material material, string name)
+        {
+            if (!material.HasProperty(name)) return false;
+            var value = Mathf.RoundToInt(material.GetFloat(name));
+            return value == 1 || value == 2;
+        }
+
+        internal static Material CreateDisabledClone(Material original, Rule rule)
+        {
+            var clone = UnityEngine.Object.Instantiate(original);
+            clone.name = original.name + "(shader-disable-diagnostic)";
+            clone.SetFloat(rule.SwitchProperty, 0f);
+            foreach (var property in rule.TextureProperties)
+                if (clone.HasShaderTextureProperty(property))
+                    clone.SetTexture(property, null);
+            return clone;
+        }
+    }
+
     internal static class AutoAtlasShadowReplan
     {
+
+        internal static IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
+            ProjectFeatureUses(
+                IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> source,
+                Material material, AutoAtlasFeatureDisableRules.Rule rule)
+        {
+            var result = source.ToDictionary(item => item.Key, item => item.Value);
+            if (!result.TryGetValue(material, out var original))
+                return result;
+            var copy = original.ToDictionary(item => item.Key, item => item.Value);
+            foreach (var property in rule.TextureProperties)
+                copy.Remove(property);
+            result[material] = copy;
+            return result;
+        }
+
+        // Project all eligible atomic groups through the EXISTING production
+        // merge planner. The material toggle is applied to a clone, never to
+        // the domain. This is an analytical what-if, not an avatar output.
+        internal static string CompareMergePlans(
+            IDomain domain,
+            AutoAtlasTexture configuration,
+            AtlasSetting settings,
+            IReadOnlyList<AutoAtlasTextureMergePlanner.PreparedGroup> originalGroups,
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> originalUses,
+            AutoAtlasTextureMergePlanner.PlanResult originalPlan,
+            Material material, AutoAtlasFeatureDisableRules.Rule rule)
+        {
+            if (!originalUses.ContainsKey(material))
+                return "feature=" + rule.Name + ", result=missing-material";
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            Material? clone = null;
+            try
+            {
+                clone = AutoAtlasFeatureDisableRules.CreateDisabledClone(material, rule);
+                if (clone.GetFloat(rule.SwitchProperty) != 0f
+                    || rule.TextureProperties.Any(name =>
+                        clone.HasShaderTextureProperty(name)
+                        && clone.GetTexture(name) != null))
+                    return "feature=" + rule.Name + ", result=clone-toggle-failed";
+
+                var uses = ProjectFeatureUses(originalUses, material, rule);
+                var materials = originalGroups
+                    .SelectMany(group => group.Materials).ToHashSet();
+                var connected = AutoAtlasTextureProcessor.MakeTextureConnectedGroups(
+                    materials, uses);
+                var allReferenced = domain.GetAllMaterials();
+                var alternatives = new List<AutoAtlasTextureMergePlanner.PreparedGroup>();
+                foreach (var groupMaterials in connected)
+                {
+                    var renderers = AutoAtlasTextureProcessor.ResolveAutoAtlasTargetRenderers(
+                        domain, configuration, groupMaterials);
+                    if (renderers.Length == 0) continue;
+                    var sources = groupMaterials.SelectMany(mat => uses[mat].Values)
+                        .Where(texture => texture != null).ToHashSet();
+                    if (sources.Count == 0) continue;
+
+                    var retained = new HashSet<Texture>();
+                    foreach (var mat in allReferenced)
+                    {
+                        var belongs = groupMaterials.Contains(mat);
+                        uses.TryGetValue(mat, out var usesForMaterial);
+                        foreach (var pair in mat.GetTextureReferences())
+                        {
+                            if (!sources.Contains(pair.Value)) continue;
+                            if (mat == material &&
+                                rule.TextureProperties.Contains(pair.Key,
+                                    StringComparer.Ordinal)) continue;
+                            if (!belongs || usesForMaterial == null
+                                || !usesForMaterial.TryGetValue(pair.Key, out var mapped)
+                                || mapped != pair.Value)
+                                retained.Add(pair.Value);
+                        }
+                    }
+                    alternatives.Add(new AutoAtlasTextureMergePlanner.PreparedGroup
+                    {
+                        Id = alternatives.Count,
+                        Materials = groupMaterials,
+                        Renderers = renderers,
+                        SourceTextures = sources,
+                        RetainedSourceTextures = retained,
+                        OriginalPixels = sources.Sum(texture =>
+                            (long)texture.width * texture.height),
+                        ExcludedFromTextureMerging = originalGroups
+                            .Where(original => original.Materials.Overlaps(groupMaterials))
+                            .Any(original => original.ExcludedFromTextureMerging),
+                    });
+                }
+                var projectedPlan = AutoAtlasTextureMergePlanner.Plan(
+                    domain, configuration, settings, uses, alternatives,
+                    useProjectedSources: true);
+                long before = originalPlan.Selections.Sum(x => x.PredictedSavingBytes);
+                long after = projectedPlan.Selections.Sum(x => x.PredictedSavingBytes);
+                return "material=" + material.name
+                    + ", feature=" + rule.Name
+                    + ", switch=" + rule.SwitchProperty
+                    + ", removedUses=[" + string.Join(",",
+                        rule.TextureProperties.Where(name =>
+                            originalUses[material].ContainsKey(name))) + "]"
+                    + ", atomicGroups=" + originalGroups.Count
+                    + "->" + alternatives.Count
+                    + ", selectedMerges=" + originalPlan.Selections.Count
+                    + "->" + projectedPlan.Selections.Count
+                    + ", selectedMergeSavingBytes=" + before + "->" + after
+                    + ", layoutsBefore=[" + string.Join(";",
+                        originalPlan.Selections.Select(x =>
+                            x.PlannedLayoutSize.x + "x" + x.PlannedLayoutSize.y))
+                    + "], layoutsAfter=[" + string.Join(";",
+                        projectedPlan.Selections.Select(x =>
+                            x.PlannedLayoutSize.x + "x" + x.PlannedLayoutSize.y))
+                    + "], elapsedMs=" + watch.ElapsedMilliseconds
+                    + ", status=conditional-shadow-only"
+                    + ", limitations=mip0;animations;shader-variants;"
+                    + "render-equivalence-unverified;selected-merge-cost-not-total";
+            }
+            finally
+            {
+                if (clone != null) UnityEngine.Object.DestroyImmediate(clone);
+            }
+        }
+
         internal static IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
             WithoutUse(
                 IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> source,
