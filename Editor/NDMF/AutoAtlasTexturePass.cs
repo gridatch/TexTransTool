@@ -159,9 +159,8 @@ namespace net.rs64.TexTransTool.NDMF
             Renderer[] renderers,
             Dictionary<Material, Material> materialMap)
         {
-            _zeroMaskCandidates.Clear();
-            // Feature candidates are reported across all executed groups.
-            // The old emission ownership probe remains per-group.
+            // Candidates accumulate across original groups. The complete
+            // scan happens before any domain material/mesh replacements.
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
             // The actual pre-atlas material slots and UVs, not output meshes.
@@ -637,7 +636,8 @@ namespace net.rs64.TexTransTool.NDMF
                 .Distinct().ToArray();
 
             foreach (var (material, property, source) in _zeroMaskCandidates
-                         .Distinct())
+                         .Distinct()
+                         .Where(candidate => materialMap.ContainsKey(candidate.material)))
             {
                 string id = "material=" + material.name
                     + ", property=" + property
@@ -2041,6 +2041,51 @@ namespace net.rs64.TexTransTool.NDMF
                 propertyTextures,
                 preparedGroups);
 
+            // Source shader-feature hypotheses and their full merge-planner
+            // counterfactual MUST be evaluated before any application changes
+            // the domain's materials or meshes. Previously this ran inside
+            // the execution loop, making processed renderers vanish from the
+            // counterfactual and producing misleading 29->17 group counts.
+            foreach (var prepared in preparedGroups)
+            {
+                try
+                {
+                    emissionProbe.Observe(domain, prepared.Renderers,
+                        prepared.Materials.ToDictionary(material => material,
+                            material => material));
+                }
+                catch (Exception ex)
+                {
+                    emissionProbe.AddFeatureDisableLine(
+                        "source-feature-survey=unknown:" + ex.GetType().Name);
+                }
+            }
+
+            foreach (var candidate in emissionProbe.GetFeatureCandidates()
+                         .OrderBy(item => item.rule.Name, StringComparer.Ordinal)
+                         .ThenBy(item => item.material.name, StringComparer.Ordinal))
+            {
+                var kind = candidate.rule.Name.StartsWith(
+                    "Emission", StringComparison.Ordinal) ? "emission" : "non-emission";
+                if (!comparedFeatureKinds.Add(kind)) continue;
+                try
+                {
+                    emissionProbe.AddFeatureDisableLine(
+                        AutoAtlasShadowReplan.CompareMergePlans(
+                            domain, configuration, settings,
+                            preparedGroups, propertyTextures, mergePlan,
+                            candidate.material, candidate.rule));
+                }
+                catch (Exception ex)
+                {
+                    emissionProbe.AddFeatureDisableLine(
+                        "material=" + candidate.material.name
+                        + ", feature=" + candidate.rule.Name
+                        + ", planner=unknown:" + ex.GetType().Name
+                        + ":" + ex.Message.Replace('\n', ' '));
+                }
+            }
+
             var executionGroups = CreateExecutionGroups(
                 preparedGroups, mergePlan.Selections);
 
@@ -2467,10 +2512,9 @@ namespace net.rs64.TexTransTool.NDMF
                             finalTotalTextureMemoryBytes));
                 }
 
-                // Diagnostic readback is intentionally after all execution
-                // safety gates, and before generated textures are disposed.
-                emissionProbe.Observe(domain, atlasRenderers,
-                    atlasMaterialMaps.materialMap);
+                // Source readback and merge comparison already ran on the
+                // original domain before any execution changed its state.
+                // Here only final-output ownership is inspected.
                 try
                 {
                     emissionProbe.InspectZeroMaskOutputOwnership(
@@ -2483,32 +2527,6 @@ namespace net.rs64.TexTransTool.NDMF
                     // Diagnostics are observational and must never block
                     // an otherwise valid avatar atlas build.
                     emissionProbe.RecordOwnershipDiagnosticError(ex);
-                }
-
-                foreach (var candidate in emissionProbe.GetFeatureCandidates()
-                             .Where(item => group.Contains(item.material))
-                             .OrderBy(item => item.rule.Name, StringComparer.Ordinal)
-                             .ThenBy(item => item.material.name, StringComparer.Ordinal))
-                {
-                    var kind = candidate.rule.Name.StartsWith(
-                        "Emission", StringComparison.Ordinal) ? "emission" : "non-emission";
-                    if (!comparedFeatureKinds.Add(kind)) continue;
-                    try
-                    {
-                        emissionProbe.AddFeatureDisableLine(
-                            AutoAtlasShadowReplan.CompareMergePlans(
-                                domain, configuration, settings,
-                                preparedGroups, propertyTextures, mergePlan,
-                                candidate.material, candidate.rule));
-                    }
-                    catch (Exception ex)
-                    {
-                        emissionProbe.AddFeatureDisableLine(
-                            "material=" + candidate.material.name
-                            + ", feature=" + candidate.rule.Name
-                            + ", planner=unknown:" + ex.GetType().Name
-                            + ":" + ex.Message.Replace('\n', ' '));
-                    }
                 }
 
                 if (shadowReplansRemaining > 0 && execution.MergeSelection == null)
