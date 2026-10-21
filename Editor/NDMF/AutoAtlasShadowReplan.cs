@@ -190,13 +190,40 @@ namespace net.rs64.TexTransTool.NDMF
                     .SelectMany(group => group.Materials).ToHashSet();
                 var connected = AutoAtlasTextureProcessor.MakeTextureConnectedGroups(
                     materials, uses);
+                var beforeConnected =
+                    AutoAtlasTextureProcessor.MakeTextureConnectedGroups(
+                        materials, originalUses);
+                if (beforeConnected.Count != originalGroups.Count
+                    || beforeConnected.Any(component =>
+                        !originalGroups.Any(baseline =>
+                            baseline.Materials.SetEquals(component))))
+                {
+                    return "feature=" + rule.Name
+                        + ", status=unknown:baseline-connectivity-mismatch"
+                        + ", preparedGroups=" + originalGroups.Count
+                        + ", originalConnected=" + beforeConnected.Count;
+                }
+
+                // Removing texture-use edges cannot merge originally
+                // disconnected components. Only the candidate material may
+                // disappear entirely when no properties remain.
+                if (connected.Count < beforeConnected.Count - 1)
+                {
+                    return "feature=" + rule.Name
+                        + ", status=unknown:projected-connectivity-invariant"
+                        + ", originalConnected=" + beforeConnected.Count
+                        + ", projectedConnected=" + connected.Count;
+                }
                 var allReferenced = domain.GetAllMaterials();
                 var alternatives = new List<AutoAtlasTextureMergePlanner.PreparedGroup>();
                 foreach (var groupMaterials in connected)
                 {
                     var renderers = AutoAtlasTextureProcessor.ResolveAutoAtlasTargetRenderers(
                         domain, configuration, groupMaterials);
-                    if (renderers.Length == 0) continue;
+                    if (renderers.Length == 0)
+                        return "feature=" + rule.Name
+                            + ", status=unknown:renderer-disappeared-in-projection"
+                            + ", materialCount=" + groupMaterials.Count;
                     var sources = groupMaterials.SelectMany(mat => uses[mat].Values)
                         .Where(texture => texture != null).ToHashSet();
                     if (sources.Count == 0) continue;
@@ -232,6 +259,13 @@ namespace net.rs64.TexTransTool.NDMF
                             .Any(original => original.ExcludedFromTextureMerging),
                     });
                 }
+                var missing = connected.Count - alternatives.Count;
+                if (missing != 0)
+                    return "feature=" + rule.Name
+                        + ", status=unknown:projected-groups-missing"
+                        + ", planned=" + alternatives.Count
+                        + ", connected=" + connected.Count;
+
                 var projectedPlan = AutoAtlasTextureMergePlanner.Plan(
                     domain, configuration, settings, uses, alternatives,
                     useProjectedSources: true);
