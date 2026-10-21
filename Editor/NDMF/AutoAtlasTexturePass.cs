@@ -583,13 +583,18 @@ namespace net.rs64.TexTransTool.NDMF
             TexFineTuningResult tuningResult,
             Dictionary<Material, Material> materialMap,
             IReadOnlyDictionary<string, TTexture> resultingTextures,
-            IReadOnlyCollection<Texture> retainedOriginalSources)
+            IReadOnlyCollection<Texture> retainedOriginalSources,
+            AtlasTexture.AtlasExecutionMetrics executedLayout)
             where TTexture : Texture
         {
             if (_zeroMaskCandidates.Count == 0) return;
             var knownZeroMasks = _zeroMaskCandidates
                 .Select(candidate => (candidate.material, candidate.property))
                 .ToHashSet();
+            var activeGroups = atlasContext.AtlasSubMeshIndexSetCtx
+                .AtlasSubMeshIndexIDHash
+                .Select(submesh => submesh.MaterialGroupID)
+                .Distinct().ToArray();
 
             foreach (var (material, property, source) in _zeroMaskCandidates
                          .Distinct())
@@ -605,6 +610,9 @@ namespace net.rs64.TexTransTool.NDMF
                     originalBytes = originalMemory.ToString(
                         System.Globalization.CultureInfo.InvariantCulture);
                 bool sourceRetained = retainedOriginalSources.Contains(source);
+                var counterfactual = AnalyzeZeroMaskExclusion(
+                    atlasContext, activeGroups, knownZeroMasks,
+                    material, property, source, executedLayout);
 
                 if (!materialMap.TryGetValue(material, out var outputMaterial)
                     || !tuningResult.RenderTextures.TryGetValue(
@@ -617,6 +625,7 @@ namespace net.rs64.TexTransTool.NDMF
                         + ", result=not-bound-to-new-atlas-output"
                         + ", originalSourceBytes=" + originalBytes
                         + ", originalSourceRetainedByOtherRefs=" + sourceRetained
+                        + ", " + counterfactual
                         + ", note=no-output-memory-savings-inferred");
                     continue;
                 }
@@ -685,9 +694,163 @@ namespace net.rs64.TexTransTool.NDMF
                     + ", outputExclusivelyZeroMasks="
                     + (outputMaterialReferences.Length != 0
                         && otherConsumers.Length == 0)
+                    + ", " + counterfactual
                     + ", note=outputBytes-is-conditional-upper-bound-not-savings");
             }
         }
+
+        /// <summary>
+        /// Fixed-material-group counterfactual. Computes only what can be
+        /// inferred without changing the atlas context, mesh or material.
+        /// A primary-size change requires a full layout/merge replan and
+        /// cannot be represented by a claimed new free-space percentage.
+        /// </summary>
+        internal static string AnalyzeZeroMaskExclusion(
+            AtlasContext context,
+            IReadOnlyCollection<int> activeGroupIds,
+            HashSet<(Material material, string property)> knownZeroMasks,
+            Material candidateMaterial, string property, Texture source,
+            AtlasTexture.AtlasExecutionMetrics layout)
+        {
+            var materialGroups = context.MaterialGroupingCtx.GroupMaterials;
+            var materialProperties =
+                context.MaterialGroupingCtx.ContainsTextureDictionaries;
+            var groupId = context.MaterialGroupingCtx
+                .GetMaterialGroupID(candidateMaterial);
+            if (!activeGroupIds.Contains(groupId) || groupId < 0)
+                return "whatIf=unknown:inactive-material-group";
+
+            var group = materialGroups[groupId];
+            if (!group.GroupedTexture.TryGetValue(property, out var groupSource)
+                || groupSource != source)
+                return "whatIf=unknown:source-not-group-input";
+
+            var groupConsumers = group
+                .Where(material => materialProperties
+                    .TryGetValue(material, out var properties)
+                    && properties.TryGetValue(property, out var tex)
+                    && tex == groupSource)
+                .ToArray();
+
+            // Removing a property from one material is NOT equivalent to
+            // removing its group source when another material still uses it.
+            if (groupConsumers.Length == 0
+                || groupConsumers.Any(material =>
+                    !knownZeroMasks.Contains((material, property))))
+                return "whatIf=blocked:other-group-material-needs-source"
+                    + ", fixedGroupTopFree=unchanged";
+
+            // Source removal may alter connectivity among materials. Do not
+            // claim this fixed-group projection captures regrouping/merging.
+            var oldPrimary = context.MaterialGroupingCtx
+                .GetPrimaryTexture(groupId);
+            var remaining = group.GroupedTexture
+                .Where(entry => !string.Equals(
+                    entry.Key, property, StringComparison.Ordinal))
+                .Select(entry => entry.Value)
+                .Where(texture => texture != null)
+                .ToArray();
+            Texture? newPrimary = null;
+            long maxArea = -1;
+            foreach (var tex in remaining)
+            {
+                var area = (long)tex.width * tex.height;
+                if (area <= maxArea) continue;
+                newPrimary = tex;
+                maxArea = area;
+            }
+
+            bool primaryDimensionChanged =
+                oldPrimary?.width != newPrimary?.width
+                || oldPrimary?.height != newPrimary?.height;
+
+            // Determine whether this change can affect any virtual island
+            // actually scaled using the candidate group's primary texture.
+            bool scaledIslandAffected = false;
+            foreach (var virtualIsland in context.SourceVirtualIslands)
+            {
+                var firstOrigin = context
+                    .ReverseSourceVirtualIsland2OriginIslands[virtualIsland]
+                    .FirstOrDefault();
+                if (firstOrigin == null
+                    || context.AtlasIslandCtx.ReverseOriginDict[firstOrigin]
+                        .MaterialGroupID != groupId)
+                    continue;
+                if (primaryDimensionChanged)
+                    scaledIslandAffected = true;
+            }
+
+            var layoutSize = layout.LayoutSize;
+            string before = layout.PropertySizes.TryGetValue(
+                property, out var originalSize)
+                ? originalSize.x + "x" + originalSize.y
+                : "none";
+            var primarySizes = new List<Vector2Int?>();
+            var sourceSizes = new List<Vector2Int>();
+            foreach (var id in activeGroupIds)
+            {
+                var currentGroup = materialGroups[id];
+                if (id == groupId) continue; // hypothetical removed source
+                if (!currentGroup.GroupedTexture.TryGetValue(
+                        property, out var remainingSource)
+                    || remainingSource == null) continue;
+
+                var primary = context.MaterialGroupingCtx.GetPrimaryTexture(id);
+                primarySizes.Add(primary == null ? null :
+                    new Vector2Int(primary.width, primary.height));
+                sourceSizes.Add(new Vector2Int(
+                    remainingSource.width, remainingSource.height));
+            }
+
+            if (scaledIslandAffected)
+                return "whatIf=fixed-group-input-exclusion"
+                    + ", layoutImpact=repack-required:primary-size-changed"
+                    + ", baselineLayout=" + layoutSize.x + "x" + layoutSize.y
+                    + ", baselineTopFree=" + FormatSurveyFraction(
+                        layout.TopFreeFraction)
+                    + ", hypotheticalTopFree=unknown"
+                    + ", propertyPlanBefore=" + before
+                    + ", propertyPlanAfter=unknown"
+                    + ", regroupAndMerge=not-simulated";
+
+            // The current packing geometry is unchanged only UNDER the
+            // fixed-group assumption. The property-specific resolution
+            // requirement can still change, even for a shared RT.
+            string after = sourceSizes.Count == 0
+                ? "absent"
+                : TryCalculateHypotheticalPropertySize(
+                    layoutSize, primarySizes, sourceSizes);
+            return "whatIf=fixed-group-input-exclusion"
+                + ", layoutImpact=unchanged-under-fixed-group-assumption"
+                + ", baselineLayout=" + layoutSize.x + "x" + layoutSize.y
+                + ", baselineTopFree=" + FormatSurveyFraction(
+                    layout.TopFreeFraction)
+                + ", hypotheticalTopFree=fixed-group-same"
+                + ", propertyPlanBefore=" + before
+                + ", propertyPlanAfter=" + after
+                + ", regroupAndMerge=not-simulated";
+        }
+
+        private static string TryCalculateHypotheticalPropertySize(
+            Vector2Int layoutSize,
+            IReadOnlyList<Vector2Int?> primarySizes,
+            IReadOnlyList<Vector2Int> sourceSizes)
+        {
+            try
+            {
+                var next = AtlasTextureResolutionPlan.CalculatePropertySize(
+                    layoutSize, true, primarySizes, sourceSizes);
+                return next.x + "x" + next.y;
+            }
+            catch (Exception ex)
+            {
+                return "unknown:" + ex.GetType().Name;
+            }
+        }
+
+        private static string FormatSurveyFraction(float value) =>
+            value.ToString("F6",
+                System.Globalization.CultureInfo.InvariantCulture);
 
         // Production and regression tests use the same float-precision
         // scan. Counts/amplitudes are diagnostic only: they are NOT used
@@ -2169,7 +2332,7 @@ namespace net.rs64.TexTransTool.NDMF
                     emissionProbe.InspectZeroMaskOutputOwnership(
                         domain, atlasContext, tuningResult,
                         atlasMaterialMaps.materialMap, resultingTextures,
-                        execution.RetainedSourceTextures);
+                        execution.RetainedSourceTextures, executionMetrics);
                 }
                 catch (Exception ex)
                 {
