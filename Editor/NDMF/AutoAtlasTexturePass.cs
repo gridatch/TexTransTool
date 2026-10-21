@@ -625,7 +625,7 @@ namespace net.rs64.TexTransTool.NDMF
                         + ", result=not-bound-to-new-atlas-output"
                         + ", originalSourceBytes=" + originalBytes
                         + ", originalSourceRetainedByOtherRefs=" + sourceRetained
-                        + ", " + counterfactual
+                        + ", " + counterfactual.report
                         + ", note=no-output-memory-savings-inferred");
                     continue;
                 }
@@ -673,7 +673,48 @@ namespace net.rs64.TexTransTool.NDMF
                             System.Globalization.CultureInfo.InvariantCulture);
                 }
 
-                var remainingLabels = otherConsumers
+                // Only an unshared, untuned-size output may be projected
+                // through the existing final-memory estimator. Shared
+                // outputs must never be counted as removable resources.
+                string conditionalOutputMemoryDelta = "unresolved";
+                if (counterfactual.inputRemoved
+                    && counterfactual.layoutUnchanged
+                    && outputProperties.Length == 1
+                    && outputProperties[0] == property)
+                {
+                    if (counterfactual.newPropertySize == null)
+                    {
+                        if (otherConsumers.Length == 0 && bytes != "unknown")
+                            conditionalOutputMemoryDelta = bytes
+                                + ":whole-output-conditional";
+                        else
+                            conditionalOutputMemoryDelta =
+                                "unresolved:other-output-references";
+                    }
+                    else if (executedLayout.PropertySizes.TryGetValue(
+                                 property, out var oldPlannedSize)
+                             && outputRt.Width == oldPlannedSize.x
+                             && outputRt.Hight == oldPlannedSize.y)
+                    {
+                        var alternative = new Dictionary<
+                            ITTRenderTexture, Vector2Int>
+                        {
+                            [outputRt] = counterfactual.newPropertySize.Value
+                        };
+                        if (AtlasTexture.TryCalculateFinalTextureMemory(
+                                atlasContext, tuningResult, out var currentBytes)
+                            && AtlasTexture.TryCalculateFinalTextureMemory(
+                                atlasContext, tuningResult, out var projectedBytes,
+                                alternative))
+                        {
+                            conditionalOutputMemoryDelta = Math.Max(
+                                0L, currentBytes - projectedBytes)
+                                + ":same-format-and-sharing-conditional";
+                        }
+                    }
+                }
+
+                var remainingLabels
                     .Select(reference => reference.material.name
                         + "/" + reference.property)
                     .OrderBy(value => value, StringComparer.Ordinal)
@@ -694,8 +735,10 @@ namespace net.rs64.TexTransTool.NDMF
                     + ", outputExclusivelyZeroMasks="
                     + (outputMaterialReferences.Length != 0
                         && otherConsumers.Length == 0)
-                    + ", " + counterfactual
-                    + ", note=outputBytes-is-conditional-upper-bound-not-savings");
+                    + ", " + counterfactual.report
+                    + ", conditionalOutputMemoryDeltaBytes="
+                    + conditionalOutputMemoryDelta
+                    + ", note=projected-delta-excludes-relayout-and-changed-retained-sources");
             }
         }
 
@@ -705,7 +748,9 @@ namespace net.rs64.TexTransTool.NDMF
         /// A primary-size change requires a full layout/merge replan and
         /// cannot be represented by a claimed new free-space percentage.
         /// </summary>
-        internal static string AnalyzeZeroMaskExclusion(
+        internal static (string report, bool inputRemoved,
+            bool layoutUnchanged, Vector2Int? newPropertySize)
+            AnalyzeZeroMaskExclusion(
             AtlasContext context,
             IReadOnlyCollection<int> activeGroupIds,
             HashSet<(Material material, string property)> knownZeroMasks,
@@ -718,12 +763,14 @@ namespace net.rs64.TexTransTool.NDMF
             var groupId = context.MaterialGroupingCtx
                 .GetMaterialGroupID(candidateMaterial);
             if (!activeGroupIds.Contains(groupId) || groupId < 0)
-                return "whatIf=unknown:inactive-material-group";
+                return ("whatIf=unknown:inactive-material-group",
+                    false, false, null);
 
             var group = materialGroups[groupId];
             if (!group.GroupedTexture.TryGetValue(property, out var groupSource)
                 || groupSource != source)
-                return "whatIf=unknown:source-not-group-input";
+                return ("whatIf=unknown:source-not-group-input",
+                    false, false, null);
 
             var groupConsumers = group
                 .Where(material => materialProperties
@@ -737,8 +784,9 @@ namespace net.rs64.TexTransTool.NDMF
             if (groupConsumers.Length == 0
                 || groupConsumers.Any(material =>
                     !knownZeroMasks.Contains((material, property))))
-                return "whatIf=blocked:other-group-material-needs-source"
-                    + ", fixedGroupTopFree=unchanged";
+                return ("whatIf=blocked:other-group-material-needs-source"
+                    + ", fixedGroupTopFree=unchanged",
+                    false, true, null);
 
             // Source removal may alter connectivity among materials. Do not
             // claim this fixed-group projection captures regrouping/merging.
@@ -802,7 +850,7 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             if (scaledIslandAffected)
-                return "whatIf=fixed-group-input-exclusion"
+                return ("whatIf=fixed-group-input-exclusion"
                     + ", layoutImpact=repack-required:primary-size-changed"
                     + ", baselineLayout=" + layoutSize.x + "x" + layoutSize.y
                     + ", baselineTopFree=" + FormatSurveyFraction(
@@ -810,16 +858,22 @@ namespace net.rs64.TexTransTool.NDMF
                     + ", hypotheticalTopFree=unknown"
                     + ", propertyPlanBefore=" + before
                     + ", propertyPlanAfter=unknown"
-                    + ", regroupAndMerge=not-simulated";
+                    + ", regroupAndMerge=not-simulated",
+                    true, false, null);
 
             // The current packing geometry is unchanged only UNDER the
             // fixed-group assumption. The property-specific resolution
             // requirement can still change, even for a shared RT.
-            string after = sourceSizes.Count == 0
-                ? "absent"
+            Vector2Int? afterSize = sourceSizes.Count == 0
+                ? null
                 : TryCalculateHypotheticalPropertySize(
                     layoutSize, primarySizes, sourceSizes);
-            return "whatIf=fixed-group-input-exclusion"
+            string after = sourceSizes.Count == 0
+                ? "absent"
+                : afterSize is { } size
+                    ? size.x + "x" + size.y
+                    : "unknown";
+            return ("whatIf=fixed-group-input-exclusion"
                 + ", layoutImpact=unchanged-under-fixed-group-assumption"
                 + ", baselineLayout=" + layoutSize.x + "x" + layoutSize.y
                 + ", baselineTopFree=" + FormatSurveyFraction(
@@ -827,10 +881,12 @@ namespace net.rs64.TexTransTool.NDMF
                 + ", hypotheticalTopFree=fixed-group-same"
                 + ", propertyPlanBefore=" + before
                 + ", propertyPlanAfter=" + after
-                + ", regroupAndMerge=not-simulated";
+                + ", regroupAndMerge=not-simulated",
+                true, afterSize != null || sourceSizes.Count == 0,
+                afterSize);
         }
 
-        private static string TryCalculateHypotheticalPropertySize(
+        private static Vector2Int? TryCalculateHypotheticalPropertySize(
             Vector2Int layoutSize,
             IReadOnlyList<Vector2Int?> primarySizes,
             IReadOnlyList<Vector2Int> sourceSizes)
@@ -839,11 +895,13 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 var next = AtlasTextureResolutionPlan.CalculatePropertySize(
                     layoutSize, true, primarySizes, sourceSizes);
-                return next.x + "x" + next.y;
+                return next;
             }
             catch (Exception ex)
             {
-                return "unknown:" + ex.GetType().Name;
+                // Unknown-size projection is not a removal benefit.
+                _ = ex;
+                return null;
             }
         }
 
