@@ -335,6 +335,20 @@ namespace net.rs64.TexTransTool.NDMF
             var scroll = new ScrollView(ScrollViewMode.VerticalAndHorizontal);
             scroll.style.height = 380;
             scroll.style.minWidth = 0;
+            // Do not reinterpret a vertical mouse wheel as horizontal scrolling
+            // when the report has no vertical overflow. Explicit horizontal
+            // input (including Shift+wheel) and scrollbar dragging still work.
+            scroll.contentViewport.RegisterCallback<WheelEvent>(evt =>
+            {
+                if (scroll.verticalScroller.highValue >
+                        scroll.verticalScroller.lowValue + 0.5f
+                    || evt.shiftKey
+                    || !Mathf.Approximately(evt.delta.x, 0f)
+                    || Mathf.Approximately(evt.delta.y, 0f))
+                    return;
+                evt.PreventDefault();
+                evt.StopImmediatePropagation();
+            }, TrickleDown.TrickleDown);
             var lines = new VisualElement();
             foreach (var line in _message.Split(
                          new[] { '\n' }, StringSplitOptions.None))
