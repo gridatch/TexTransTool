@@ -49,8 +49,8 @@ namespace net.rs64.TexTransTool.NDMF
             Material? material = null;
             RenderTexture? rt = null;
             Texture2D? readback = null;
+            CommandBuffer? command = null;
             var previousActive = RenderTexture.active;
-            bool pushedMatrix = false;
             try
             {
                 // Validate all slots before drawing. No approximation by a
@@ -115,19 +115,19 @@ namespace net.rs64.TexTransTool.NDMF
                     RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear, 1);
                 rt.filterMode = FilterMode.Point;
                 rt.antiAliasing = 1;
-                RenderTexture.active = rt;
-                GL.Clear(true, true, Color.black);
-                GL.PushMatrix();
-                pushedMatrix = true;
-                GL.LoadIdentity();
-                if (!material.SetPass(0))
+                // Issue offscreen rendering directly. This is called from
+                // the NDMF editor build pass, not a camera render callback.
+                command = new CommandBuffer
                 {
-                    reason = "gpu-mask-setpass-failed";
-                    return false;
-                }
+                    name = "TTT Diagnostic Source UV Interior Mask"
+                };
+                command.SetRenderTarget(rt);
+                command.ClearRenderTarget(true, true, Color.black);
                 foreach (var draw in drawMeshes)
-                    Graphics.DrawMeshNow(draw, Matrix4x4.identity);
+                    command.DrawMesh(draw, Matrix4x4.identity, material, 0, 0);
+                Graphics.ExecuteCommandBuffer(command);
 
+                RenderTexture.active = rt;
                 readback = new Texture2D(width, height,
                     TextureFormat.RGBA32, false, true)
                 {
@@ -163,8 +163,8 @@ namespace net.rs64.TexTransTool.NDMF
             }
             finally
             {
-                if (pushedMatrix) GL.PopMatrix();
                 RenderTexture.active = previousActive;
+                if (command != null) command.Dispose();
                 if (readback != null) UnityEngine.Object.DestroyImmediate(readback);
                 if (rt != null) RenderTexture.ReleaseTemporary(rt);
                 if (material != null) UnityEngine.Object.DestroyImmediate(material);
