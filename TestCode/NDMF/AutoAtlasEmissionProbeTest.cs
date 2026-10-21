@@ -306,6 +306,88 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void GpuUvTriangleScreenDoesNotUseBoundingRectangleAsCoverage()
+        {
+            if (!SystemInfo.SupportsRenderTextureFormat(
+                    RenderTextureFormat.ARGB32)
+                || Shader.Find("Hidden/TexTransTool/DiagnosticSourceUvCoverage") == null)
+                Assert.Ignore("GPU UV mask shader/format unavailable.");
+
+            var mesh = Triangle();
+            try
+            {
+                var slots = new HashSet<(Mesh, int)> { (mesh, 0) };
+                bool ok = DiagnosticSourceUvGpuMask.TryRender(
+                    slots, Vector2.one, Vector2.zero, 8, 8, 64,
+                    out var gpu, out var used, out var reason);
+                Assert.That(ok, Is.True, reason);
+                Assert.That(used, Is.GreaterThan(0));
+                Assert.That(used, Is.LessThan(64));
+                Assert.That(gpu[7 * 8 + 7], Is.False,
+                    "Pixels in the enclosing rectangle or source image"
+                    + " must not become occupied by default.");
+
+                var strict = Coverage(mesh, FilterMode.Bilinear);
+                for (int i = 0; i < gpu.Length; ++i)
+                    if (gpu[i]) Assert.That(strict[i], Is.True,
+                        "GPU interior pixel must be included in strict"
+                        + " bilinear contributors, index=" + i);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void GpuInteriorUniformCannotApproveDifferentBilinearBoundary()
+        {
+            if (!SystemInfo.SupportsRenderTextureFormat(
+                    RenderTextureFormat.ARGB32)
+                || Shader.Find("Hidden/TexTransTool/DiagnosticSourceUvCoverage") == null)
+                Assert.Ignore("GPU UV mask shader/format unavailable.");
+
+            var mesh = Triangle();
+            try
+            {
+                var slots = new HashSet<(Mesh, int)> { (mesh, 0) };
+                bool ok = DiagnosticSourceUvGpuMask.TryRender(
+                    slots, Vector2.one, Vector2.zero, 8, 8, 64,
+                    out var gpu, out _, out var reason);
+                Assert.That(ok, Is.True, reason);
+                var strict = Coverage(mesh, FilterMode.Bilinear);
+
+                int boundary = -1;
+                for (int i = 0; i < strict.Length; ++i)
+                    if (strict[i] && !gpu[i])
+                    {
+                        boundary = i;
+                        break;
+                    }
+                Assert.That(boundary, Is.GreaterThanOrEqualTo(0),
+                    "Bilinear footprint must include neighboring texels.");
+
+                var pixels = new Color[64];
+                for (int i = 0; i < pixels.Length; ++i)
+                    pixels[i] = new Color(0f, 0f, 0f, 1f);
+                pixels[boundary] = Color.white;
+
+                var interior = AutoAtlasEmissionProbe.ScanCoveredSourcePixels(
+                    pixels, gpu);
+                var complete = AutoAtlasEmissionProbe.ScanCoveredSourcePixels(
+                    pixels, strict);
+                Assert.That(interior.isConstant, Is.True,
+                    "The initial GPU screen should find this candidate.");
+                Assert.That(complete.isConstant, Is.False,
+                    "Strict boundary validation must reject the candidate.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
         public void AtlasContextComparisonRejectsAnySingleTexelDifference()
         {
             var mesh = Triangle();
