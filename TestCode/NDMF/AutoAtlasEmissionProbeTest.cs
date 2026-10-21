@@ -234,6 +234,78 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void SourceImageCacheEvictionDoesNotStarveLaterMaterials()
+        {
+            var first = new Texture2D(8, 8, TextureFormat.RGBAFloat, false, true);
+            var second = new Texture2D(8, 8, TextureFormat.RGBAFloat, false, true);
+            var third = new Texture2D(8, 8, TextureFormat.RGBAFloat, false, true);
+            try
+            {
+                var pixels = new Color[64];
+                for (int i = 0; i < pixels.Length; i++)
+                    pixels[i] = new Color(0f, 0f, 0f, 1f);
+                pixels[0] = new Color(0.5f, 0f, 0f, 1f);
+                first.SetPixels(pixels);
+                first.Apply(false, false);
+
+                var probe = new AutoAtlasEmissionProbe(residentPixelBudget: 64);
+                var initial = probe.ReadOriginalForTest(first);
+                Assert.That(initial.status, Is.EqualTo("source-CPU-float"));
+                Assert.That(initial.pixels, Is.Not.Null);
+                Assert.That(initial.pixels![0].r, Is.EqualTo(0.5f));
+
+                var later = probe.ReadOriginalForTest(second);
+                Assert.That(later.status, Is.EqualTo("source-CPU-float"));
+                Assert.That(later.pixels, Is.Not.Null);
+
+                var evenLater = probe.ReadOriginalForTest(third);
+                Assert.That(evenLater.status, Is.EqualTo("source-CPU-float"));
+                Assert.That(evenLater.pixels, Is.Not.Null);
+
+                var revisited = probe.ReadOriginalForTest(first);
+                Assert.That(revisited.status, Is.EqualTo("source-CPU-float"));
+                Assert.That(revisited.pixels, Is.Not.Null);
+                Assert.That(revisited.pixels![0].r, Is.EqualTo(0.5f));
+
+                var report = probe.Report();
+                Assert.That(report, Does.Contain("evictions 3"));
+                Assert.That(report, Does.Contain("reloads 1"));
+                Assert.That(report, Does.Contain("Unique 2D source images loaded: 3"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(first);
+                UnityEngine.Object.DestroyImmediate(second);
+                UnityEngine.Object.DestroyImmediate(third);
+            }
+        }
+
+        [Test]
+        public void SingleOversizedImageIsUnknownWithoutBlockingSmallSources()
+        {
+            var oversized = new Texture2D(9, 8, TextureFormat.RGBAFloat,
+                false, true);
+            var small = new Texture2D(8, 8, TextureFormat.RGBAFloat,
+                false, true);
+            try
+            {
+                var probe = new AutoAtlasEmissionProbe(residentPixelBudget: 64);
+                var failure = probe.ReadOriginalForTest(oversized);
+                Assert.That(failure.pixels, Is.Null);
+                Assert.That(failure.status,
+                    Is.EqualTo("source-exceeds-per-image-memory-budget"));
+                var success = probe.ReadOriginalForTest(small);
+                Assert.That(success.pixels, Is.Not.Null);
+                Assert.That(success.status, Is.EqualTo("source-CPU-float"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(oversized);
+                UnityEngine.Object.DestroyImmediate(small);
+            }
+        }
+
+        [Test]
         public void ProbeReportUsesNoNestedScrollView()
         {
             var error = new AutoAtlasEmissionProbeError("sample\nsample 2");
