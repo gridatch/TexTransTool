@@ -17,6 +17,7 @@ using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.UIElements;
+using Color = UnityEngine.Color;
 
 namespace net.rs64.TexTransTool.NDMF
 {
@@ -639,10 +640,10 @@ namespace net.rs64.TexTransTool.NDMF
             float bb = Vector2.Dot(b, normal);
             float cc = Vector2.Dot(c, normal);
             float center = Vector2.Dot(pixel, normal);
-            float radius = (Mathf.Abs(normal.x) + Mathf.Abs(normal.y))
+            float projectedRadius = (Mathf.Abs(normal.x) + Mathf.Abs(normal.y))
                 * radius;
-            return Mathf.Max(aa, Mathf.Max(bb, cc)) > center - radius
-                && Mathf.Min(aa, Mathf.Min(bb, cc)) < center + radius;
+            return Mathf.Max(aa, Mathf.Max(bb, cc)) > center - projectedRadius
+                && Mathf.Min(aa, Mathf.Min(bb, cc)) < center + projectedRadius;
         }
 
         internal string Report()
