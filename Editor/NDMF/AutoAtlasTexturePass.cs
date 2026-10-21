@@ -69,9 +69,9 @@ namespace net.rs64.TexTransTool.NDMF
     {
         private const long MaxReadbackPixels = 8L * 1024 * 1024;
         private const long MaxTrianglePixelChecks = 12L * 1024 * 1024;
-        // Pixel-center coordinates: a bilinear texel can contribute when a
-        // triangle intersects the +/-1px square around that texel center.
-        private const float BilinearRadius = 1f;
+        // The half-width of a texel's contributing UV region measured
+        // relative to its pixel center. Linear filtering spans +/-1px;
+        // point filtering spans +/-0.5px.
 
         private readonly List<string> _lines = new();
         private readonly Dictionary<Texture, SourceImage> _images = new();
@@ -86,7 +86,7 @@ namespace net.rs64.TexTransTool.NDMF
         private sealed class SourceImage
         {
             internal string Status = "";
-            internal Color32[]? Pixels;
+            internal Color[]? Pixels;
             internal int Width;
             internal int Height;
         }
@@ -220,7 +220,8 @@ namespace net.rs64.TexTransTool.NDMF
                 ? material.GetTexture("_MainTex") ?? texture : texture;
             if (!TrySourceCoverage(slots, scale, offset, source.Width,
                     source.Height, sampler.wrapModeU, sampler.wrapModeV,
-                    out var covered, out var count, out reason))
+                    sampler.filterMode, out var covered, out var count,
+                    out reason))
                 return new Inspection { Status = reason };
 
             bool rgbZero = true, alphaZero = true;
@@ -229,9 +230,9 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 if (!covered[i]) continue;
                 var pixel = pixels[i];
-                if (pixel.r != 0 || pixel.g != 0 || pixel.b != 0)
+                if (pixel.r != 0f || pixel.g != 0f || pixel.b != 0f)
                     rgbZero = false;
-                if (pixel.a != 0) alphaZero = false;
+                if (pixel.a != 0f) alphaZero = false;
                 if (!rgbZero && !alphaZero) break;
             }
 
@@ -279,11 +280,11 @@ namespace net.rs64.TexTransTool.NDMF
                 {
                     try
                     {
-                        var sourcePixels = source2D.GetPixels32(0);
+                        var sourcePixels = source2D.GetPixels(0);
                         if (sourcePixels.Length == pixelCount)
                         {
                             image.Pixels = sourcePixels;
-                            image.Status = "source-CPU-GetPixels32";
+                            image.Status = "source-CPU-float";
                             return image;
                         }
                         directFailure = "CPU-size-mismatch";
@@ -294,13 +295,21 @@ namespace net.rs64.TexTransTool.NDMF
                     }
                 }
 
-                // Stage the GPU texture into a readable, uncompressed RGBA
-                // render target. This is a COPY ONLY: the imported texture,
-                // atlas and all material/UV settings remain untouched.
-                // A 1:1 Graphics.Blit may involve color space conversion and
-                // GPU texture filtering; the probe is only provisional.
+                // 8-bit RGBA staging can quantize genuinely nonzero emission
+                // texels to black (for example sRGB 1/255 converted to linear).
+                // That would yield a false "unused" diagnosis. Fail closed
+                // rather than fall back to RGBA32 when RGBAFloat is unavailable.
+                if (!SystemInfo.SupportsRenderTextureFormat(
+                        RenderTextureFormat.ARGBFloat))
+                {
+                    image.Status = "source-float-staging-unsupported";
+                    return image;
+                }
+                // Stage a copy of the original GPU image, never the generated
+                // atlas. 1:1 Blit can involve color-space conversion, so this
+                // still is a mip0 screening observation, not lossless proof.
                 staging = RenderTexture.GetTemporary(texture.width,
-                    texture.height, 0, RenderTextureFormat.ARGB32,
+                    texture.height, 0, RenderTextureFormat.ARGBFloat,
                     RenderTextureReadWrite.Linear);
                 Graphics.Blit(texture, staging);
 
@@ -309,15 +318,15 @@ namespace net.rs64.TexTransTool.NDMF
                     try
                     {
                         var request = AsyncGPUReadback.Request(
-                            staging, 0, TextureFormat.RGBA32);
+                            staging, 0, TextureFormat.RGBAFloat);
                         request.WaitForCompletion();
                         if (!request.hasError)
                         {
-                            var data = request.GetData<Color32>();
+                            var data = request.GetData<Color>();
                             if (data.Length == pixelCount)
                             {
                                 image.Pixels = data.ToArray();
-                                image.Status = "source-GPU-staged-RGBA32";
+                                image.Status = "source-GPU-staged-RGBAFloat";
                                 return image;
                             }
                             stagingFailure = "GPU-staging-size-mismatch";
@@ -341,15 +350,15 @@ namespace net.rs64.TexTransTool.NDMF
                 // fails even for the staging RT. ReadPixels transfers only
                 // the temporary staging target, never changes a source asset.
                 copy = new Texture2D(texture.width, texture.height,
-                    TextureFormat.RGBA32, false, true);
+                    TextureFormat.RGBAFloat, false, true);
                 RenderTexture.active = staging;
                 copy.ReadPixels(new Rect(0, 0, texture.width,
                     texture.height), 0, 0, false);
-                var fallbackPixels = copy.GetPixels32(0);
+                var fallbackPixels = copy.GetPixels(0);
                 if (fallbackPixels.Length == pixelCount)
                 {
                     image.Pixels = fallbackPixels;
-                    image.Status = "source-GPU-staged-ReadPixels"
+                    image.Status = "source-GPU-staged-ReadPixelsFloat"
                         + "(after=" + stagingFailure + ")";
                     return image;
                 }
@@ -373,6 +382,13 @@ namespace net.rs64.TexTransTool.NDMF
                 _readbackMilliseconds += clock.ElapsedMilliseconds;
             }
             return image;
+        }
+
+        // Test seam: shares the exact source-reading path used at build time.
+        internal (Color[]? pixels, string status) ReadOriginalForTest(Texture texture)
+        {
+            var source = ReadOriginal(texture);
+            return (source.Pixels, source.Status);
         }
 
         private static bool TryStaticUvTransform(Material material,
@@ -440,9 +456,9 @@ namespace net.rs64.TexTransTool.NDMF
         private static bool ValidFloat(float value) =>
             !float.IsNaN(value) && !float.IsInfinity(value);
 
-        private bool TrySourceCoverage(HashSet<(Mesh, int)> slots,
+        internal bool TrySourceCoverage(HashSet<(Mesh, int)> slots,
             Vector2 scale, Vector2 offset, int width, int height,
-            TextureWrapMode wrapU, TextureWrapMode wrapV,
+            TextureWrapMode wrapU, TextureWrapMode wrapV, FilterMode filterMode,
             out bool[] coverage, out int coveredCount, out string reason)
         {
             coverage = Array.Empty<bool>();
@@ -454,6 +470,14 @@ namespace net.rs64.TexTransTool.NDMF
                 reason = "invalid-source-size";
                 return false;
             }
+            if (filterMode != FilterMode.Point
+                && filterMode != FilterMode.Bilinear
+                && filterMode != FilterMode.Trilinear)
+            {
+                reason = "source-filter-unsupported";
+                return false;
+            }
+            float radius = filterMode == FilterMode.Point ? 0.5f : 1f;
             coverage = new bool[width * height];
             var uvs = new List<Vector2>();
             bool encountered = false;
@@ -499,13 +523,13 @@ namespace net.rs64.TexTransTool.NDMF
                         c = new Vector2(c.x * width - 0.5f, c.y * height - 0.5f);
 
                         int x0 = Mathf.FloorToInt(
-                            Mathf.Min(a.x, Mathf.Min(b.x, c.x)) - BilinearRadius);
+                            Mathf.Min(a.x, Mathf.Min(b.x, c.x)) - radius);
                         int x1 = Mathf.CeilToInt(
-                            Mathf.Max(a.x, Mathf.Max(b.x, c.x)) + BilinearRadius);
+                            Mathf.Max(a.x, Mathf.Max(b.x, c.x)) + radius);
                         int y0 = Mathf.FloorToInt(
-                            Mathf.Min(a.y, Mathf.Min(b.y, c.y)) - BilinearRadius);
+                            Mathf.Min(a.y, Mathf.Min(b.y, c.y)) - radius);
                         int y1 = Mathf.CeilToInt(
-                            Mathf.Max(a.y, Mathf.Max(b.y, c.y)) + BilinearRadius);
+                            Mathf.Max(a.y, Mathf.Max(b.y, c.y)) + radius);
                         long checks = (long)(x1 - x0 + 1) * (y1 - y0 + 1);
                         if (checks > MaxTrianglePixelChecks - _triangleChecks)
                         {
@@ -518,7 +542,7 @@ namespace net.rs64.TexTransTool.NDMF
                             for (int x = x0; x <= x1; ++x)
                             {
                                 if (!TriangleOverlapsTexelFilter(
-                                        new Vector2(x, y), a, b, c)) continue;
+                                        new Vector2(x, y), a, b, c, radius)) continue;
                                 if (!TryWrapTexel(x, width, wrapU,
                                         out var wrappedX)
                                     || !TryWrapTexel(y, height, wrapV,
@@ -553,10 +577,10 @@ namespace net.rs64.TexTransTool.NDMF
         {
             wrapped = Mathf.Clamp(texel, 0, size - 1);
             if (texel >= 0 && texel < size) return true;
-            if (mode == TextureWrapMode.Clamp
-                || mode == TextureWrapMode.Mirror
-                || mode == TextureWrapMode.MirrorOnce)
+            if (mode == TextureWrapMode.Clamp)
                 return true;
+            // Mirrored addressing outside [0,1] must not silently
+            // be treated as Clamp; let the diagnostic return unknown.
             if (mode != TextureWrapMode.Repeat) return false;
             wrapped = ((texel % size) + size) % size;
             return true;
@@ -566,24 +590,24 @@ namespace net.rs64.TexTransTool.NDMF
             ValidFloat(pos.x) && ValidFloat(pos.y)
             && pos.x >= 0f && pos.x <= 1f && pos.y >= 0f && pos.y <= 1f;
 
-        private static bool TriangleOverlapsTexelFilter(
-            Vector2 pixel, Vector2 a, Vector2 b, Vector2 c)
+        internal static bool TriangleOverlapsTexelFilter(
+            Vector2 pixel, Vector2 a, Vector2 b, Vector2 c, float radius)
         {
             var minX = Mathf.Min(a.x, Mathf.Min(b.x, c.x));
             var maxX = Mathf.Max(a.x, Mathf.Max(b.x, c.x));
             var minY = Mathf.Min(a.y, Mathf.Min(b.y, c.y));
             var maxY = Mathf.Max(a.y, Mathf.Max(b.y, c.y));
-            if (maxX < pixel.x - BilinearRadius
-                || minX > pixel.x + BilinearRadius
-                || maxY < pixel.y - BilinearRadius
-                || minY > pixel.y + BilinearRadius) return false;
-            return OverlapAxis(pixel, a, b, c)
-                && OverlapAxis(pixel, b, c, a)
-                && OverlapAxis(pixel, c, a, b);
+            if (maxX < pixel.x - radius
+                || minX > pixel.x + radius
+                || maxY < pixel.y - radius
+                || minY > pixel.y + radius) return false;
+            return OverlapAxis(pixel, a, b, c, radius)
+                && OverlapAxis(pixel, b, c, a, radius)
+                && OverlapAxis(pixel, c, a, b, radius);
         }
 
         private static bool OverlapAxis(
-            Vector2 pixel, Vector2 a, Vector2 b, Vector2 c)
+            Vector2 pixel, Vector2 a, Vector2 b, Vector2 c, float radius)
         {
             var edge = b - a;
             var normal = new Vector2(-edge.y, edge.x);
@@ -592,7 +616,7 @@ namespace net.rs64.TexTransTool.NDMF
             float cc = Vector2.Dot(c, normal);
             float center = Vector2.Dot(pixel, normal);
             float radius = (Mathf.Abs(normal.x) + Mathf.Abs(normal.y))
-                * BilinearRadius;
+                * radius;
             return Mathf.Max(aa, Mathf.Max(bb, cc)) >= center - radius
                 && Mathf.Min(aa, Mathf.Min(bb, cc)) <= center + radius;
         }
@@ -612,7 +636,8 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\nTriangle pixel checks: " + _triangleChecks
                 + "\nSource images read: " + _images.Count
                 + "\nLimits: original mesh UV0 and source image mip0 only;"
-                + " geometric bilinear-texel support (strict zero test)." 
+                + " geometric point/bilinear texel support (strict float zero test)." 
+                + " RGBAFloat source staging is required when CPU pixels are unavailable;"
                 + " GPU-staged source images may have sampling/color conversion;"
                 + " the source-read method is logged for each property."
                 + " Unknown UV transforms/animations, mipmaps,"
