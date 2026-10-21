@@ -772,18 +772,10 @@ namespace net.rs64.TexTransTool.NDMF
                 return ("whatIf=unknown:source-not-group-input",
                     false, false, null);
 
-            var groupConsumers = group
-                .Where(material => materialProperties
-                    .TryGetValue(material, out var properties)
-                    && properties.TryGetValue(property, out var tex)
-                    && tex == groupSource)
-                .ToArray();
-
             // Removing a property from one material is NOT equivalent to
             // removing its group source when another material still uses it.
-            if (groupConsumers.Length == 0
-                || groupConsumers.Any(material =>
-                    !knownZeroMasks.Contains((material, property))))
+            if (!AllGroupSourceConsumersHaveProof(group, materialProperties,
+                    knownZeroMasks, property, groupSource))
                 return ("whatIf=blocked:other-group-material-needs-source"
                     + ", fixedGroupTopFree=unchanged",
                     false, true, null);
@@ -792,21 +784,8 @@ namespace net.rs64.TexTransTool.NDMF
             // claim this fixed-group projection captures regrouping/merging.
             var oldPrimary = context.MaterialGroupingCtx
                 .GetPrimaryTexture(groupId);
-            var remaining = group.GroupedTexture
-                .Where(entry => !string.Equals(
-                    entry.Key, property, StringComparison.Ordinal))
-                .Select(entry => entry.Value)
-                .Where(texture => texture != null)
-                .ToArray();
-            Texture? newPrimary = null;
-            long maxArea = -1;
-            foreach (var tex in remaining)
-            {
-                var area = (long)tex.width * tex.height;
-                if (area <= maxArea) continue;
-                newPrimary = tex;
-                maxArea = area;
-            }
+            Texture? newPrimary = PrimaryTextureWithoutProperty(
+                group.GroupedTexture, property);
 
             bool primaryDimensionChanged =
                 oldPrimary?.width != newPrimary?.width
@@ -884,6 +863,45 @@ namespace net.rs64.TexTransTool.NDMF
                 + ", regroupAndMerge=not-simulated",
                 true, afterSize != null || sourceSizes.Count == 0,
                 afterSize);
+        }
+
+        internal static bool AllGroupSourceConsumersHaveProof(
+            IEnumerable<Material> materials,
+            IReadOnlyDictionary<Material,
+                IReadOnlyDictionary<string, Texture>> materialProperties,
+            HashSet<(Material material, string property)> knownZeroMasks,
+            string property, Texture groupSource)
+        {
+            bool found = false;
+            foreach (var material in materials)
+            {
+                if (!materialProperties.TryGetValue(material, out var inputs)
+                    || !inputs.TryGetValue(property, out var tex)
+                    || tex != groupSource) continue;
+                found = true;
+                if (!knownZeroMasks.Contains((material, property)))
+                    return false;
+            }
+            return found;
+        }
+
+        internal static Texture? PrimaryTextureWithoutProperty(
+            IReadOnlyDictionary<string, Texture> groupedTextures,
+            string excludedProperty)
+        {
+            Texture? next = null;
+            long largest = -1;
+            foreach (var input in groupedTextures)
+            {
+                if (string.Equals(input.Key, excludedProperty,
+                        StringComparison.Ordinal)
+                    || input.Value == null) continue;
+                var pixels = (long)input.Value.width * input.Value.height;
+                if (pixels <= largest) continue;
+                next = input.Value;
+                largest = pixels;
+            }
+            return next;
         }
 
         private static Vector2Int? TryCalculateHypotheticalPropertySize(
