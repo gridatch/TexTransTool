@@ -618,10 +618,13 @@ namespace net.rs64.TexTransTool.NDMF
             var maxX = Mathf.Max(a.x, Mathf.Max(b.x, c.x));
             var minY = Mathf.Min(a.y, Mathf.Min(b.y, c.y));
             var maxY = Mathf.Max(a.y, Mathf.Max(b.y, c.y));
-            if (maxX < pixel.x - radius
-                || minX > pixel.x + radius
-                || maxY < pixel.y - radius
-                || minY > pixel.y + radius) return false;
+            // A triangle which only touches the boundary of the filter
+            // square has zero bilinear weight at that texel: do not treat
+            // such a tangency as nonzero emission.
+            if (maxX <= pixel.x - radius
+                || minX >= pixel.x + radius
+                || maxY <= pixel.y - radius
+                || minY >= pixel.y + radius) return false;
             return OverlapAxis(pixel, a, b, c, radius)
                 && OverlapAxis(pixel, b, c, a, radius)
                 && OverlapAxis(pixel, c, a, b, radius);
@@ -638,8 +641,8 @@ namespace net.rs64.TexTransTool.NDMF
             float center = Vector2.Dot(pixel, normal);
             float radius = (Mathf.Abs(normal.x) + Mathf.Abs(normal.y))
                 * radius;
-            return Mathf.Max(aa, Mathf.Max(bb, cc)) >= center - radius
-                && Mathf.Min(aa, Mathf.Min(bb, cc)) <= center + radius;
+            return Mathf.Max(aa, Mathf.Max(bb, cc)) > center - radius
+                && Mathf.Min(aa, Mathf.Min(bb, cc)) < center + radius;
         }
 
         internal string Report()
