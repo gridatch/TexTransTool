@@ -337,7 +337,11 @@ namespace net.rs64.TexTransTool.NDMF
                                         used, property, texture, scale, offset,
                                         image.Width, image.Height, covered, count,
                                         baselineWatch.Elapsed.TotalMilliseconds);
-                                if (baselineOk && _gpuMaskCompared < MaxGpuMaskComparisons
+                                // A whole-source constant (often a 4x4
+                                // placeholder) needs no UV candidate screen.
+                                // Reserve diagnostics for variable sources.
+                                if (baselineOk && !image.WholeIsConstant
+                                    && _gpuMaskCompared < MaxGpuMaskComparisons
                                     && (constant
                                         || _gpuVariableSamples < MaxGpuVariableSamples))
                                     CompareGpuUvScreen(material, property, used,
@@ -1301,13 +1305,15 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\nGPU mask: " + FormatMs(_gpuMaskElapsedMs)
                 + "ms; matched CPU coverage: "
                 + FormatMs(_gpuMaskBaselineMs)
-                + "ms; projected GPU+candidate-only CPU/fallback: "
+                + "ms; projected mask+conditional CPU coverage only: "
                 + FormatMs(_gpuMaskProjectedMs) + "ms"
                 + "\nGPU pixel-center raster is only a preliminary screen."
                 + " GPU Y orientation is measured with an independent marker."
                 + " Boundary-only differences are expected; GPU mask is never"
                 + " treated as a removal guarantee. A mismatch uses the CPU"
-                + " fallback in projected cost."
+                + " fallback in projected cost. Times exclude source"
+                + " image readback and color scanning; the CPU baseline"
+                + " is still executed in this diagnostic."
                 + "\n"
                 + (_gpuMaskLines.Count == 0
                     ? "No eligible comparison."
