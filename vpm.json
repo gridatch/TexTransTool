@@ -455,6 +455,31 @@
             "net.rs64.tex-trans-core": "^0.2.0"
           },
           "zipSHA256": "52cca87cbc55da1df8be54eb14b45eab7687cc29e461583ae55331cbc4c99859"
+        },
+        "0.1.21+wdt.ttt.1.0.2.debug.951.autoatlas-emission-candidate-probe.7aa7ed4": {
+          "name": "net.gridatch.tex-trans-tool",
+          "displayName": "TexTransTool (WDT)",
+          "version": "0.1.21+wdt.ttt.1.0.2.debug.951.autoatlas-emission-candidate-probe.7aa7ed4",
+          "unity": "2022.3",
+          "description": "Debug build 951 for autoatlas-emission-candidate-probe from feat/autoatlas-emission-candidate-probe at 7aa7ed4. Based on WDT 0.1.21+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "author": {
+            "name": "ReinaSakiria",
+            "url": "https://rs64.net/"
+          },
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.21+wdt.ttt.1.0.2.debug.951.autoatlas-emission-candidate-probe.7aa7ed4.zip",
+          "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
+          "legacyFolders": {
+            "Packages\\rs64.tex-trans-tool": ""
+          },
+          "dependencies": {
+            "net.rs64.tex-trans-core": "0.2.0",
+            "com.unity.burst": "1.8.0",
+            "com.unity.mathematics": "1.3.2"
+          },
+          "vpmDependencies": {
+            "net.rs64.tex-trans-core": "^0.2.0"
+          },
+          "zipSHA256": "2f72226909575a40c5d28dab3ca052bf1f43043a16e34e141ac5e05ae058a71f"
         }
       }
     }
