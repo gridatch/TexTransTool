@@ -597,6 +597,14 @@ namespace net.rs64.TexTransTool.NDMF
                 string id = "material=" + material.name
                     + ", property=" + property
                     + ", source=" + source.name;
+                // Source residency is a separate axis from atlas output
+                // residency, even when no new atlas output was assigned.
+                string originalBytes = "unknown";
+                if (AtlasTexture.TryCalculateSourceTextureMemory(
+                        domain, new[] { source }, out var originalMemory))
+                    originalBytes = originalMemory.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture);
+                bool sourceRetained = retainedOriginalSources.Contains(source);
 
                 if (!materialMap.TryGetValue(material, out var outputMaterial)
                     || !tuningResult.RenderTextures.TryGetValue(
@@ -607,6 +615,8 @@ namespace net.rs64.TexTransTool.NDMF
                 {
                     _zeroMaskOwnershipLines.Add(id
                         + ", result=not-bound-to-new-atlas-output"
+                        + ", originalSourceBytes=" + originalBytes
+                        + ", originalSourceRetainedByOtherRefs=" + sourceRetained
                         + ", note=no-output-memory-savings-inferred");
                     continue;
                 }
@@ -654,14 +664,6 @@ namespace net.rs64.TexTransTool.NDMF
                             System.Globalization.CultureInfo.InvariantCulture);
                 }
 
-                // The original may have ALREADY been eliminated by normal
-                // atlasing; counting it as an incremental saving is wrong.
-                string originalBytes = "unknown";
-                if (AtlasTexture.TryCalculateSourceTextureMemory(
-                        domain, new[] { source }, out var originalMemory))
-                    originalBytes = originalMemory.ToString(
-                        System.Globalization.CultureInfo.InvariantCulture);
-
                 var remainingLabels = otherConsumers
                     .Select(reference => reference.material.name
                         + "/" + reference.property)
@@ -679,7 +681,7 @@ namespace net.rs64.TexTransTool.NDMF
                         ? ", ..." : "") + "]"
                     + ", originalSourceBytes=" + originalBytes
                     + ", originalSourceRetainedByOtherRefs="
-                    + retainedOriginalSources.Contains(source)
+                    + sourceRetained
                     + ", outputExclusivelyZeroMasks="
                     + (outputMaterialReferences.Length != 0
                         && otherConsumers.Length == 0)
