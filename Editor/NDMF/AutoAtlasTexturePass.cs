@@ -694,44 +694,25 @@ namespace net.rs64.TexTransTool.NDMF
 
         public override VisualElement CreateVisualElement(ErrorReport report)
         {
+            // The NDMF console already owns vertical scrolling. A nested
+            // fixed-height ScrollView traps its wheel events and prevents
+            // users from navigating the surrounding diagnostics.
             var root = new VisualElement();
-            root.style.flexGrow = 1;
-            var scroll = new ScrollView(ScrollViewMode.VerticalAndHorizontal);
-            scroll.style.height = 380;
-            scroll.style.minWidth = 0;
-            // Receive the event BEFORE ScrollView's own trickle-down handler.
-            // A contentViewport callback runs too late on some Unity versions:
-            // ScrollView has already rerouted the vertical wheel horizontally.
-            var scrollHost = new VisualElement();
-            scrollHost.style.minWidth = 0;
-            scrollHost.RegisterCallback<WheelEvent>(evt =>
-            {
-                if (evt.shiftKey || Mathf.Abs(evt.delta.y) < 0.001f
-                    || scroll.verticalScroller.highValue >
-                       scroll.verticalScroller.lowValue + 0.5f)
-                    return;
-                evt.PreventDefault();
-                evt.StopImmediatePropagation();
-            }, TrickleDown.TrickleDown);
-            scrollHost.Add(scroll);
-            var lines = new VisualElement();
+            root.style.minWidth = 0;
             foreach (var line in _message.Split(
                          new[] { '\n' }, StringSplitOptions.None))
             {
                 var label = new Label(line) { enableRichText = false };
-                label.style.whiteSpace = WhiteSpace.NoWrap;
+                label.style.whiteSpace = WhiteSpace.Normal;
                 if (line.Length == 0)
                     label.style.minHeight = EditorGUIUtility.singleLineHeight;
-                lines.Add(label);
+                root.Add(label);
             }
-            scroll.Add(lines);
-            root.Add(scrollHost);
-            var copy = new Button(() =>
+            root.Add(new Button(() =>
                 EditorGUIUtility.systemCopyBuffer = _message)
             {
                 text = "AutoAtlasTexture:button:EmissionProbeCopy".GetLocalize(),
-            };
-            root.Add(copy);
+            });
             return root;
         }
     }
