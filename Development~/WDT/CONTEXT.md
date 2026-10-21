@@ -1028,6 +1028,24 @@ Therefore workflow success does not establish:
 - scene/build behavior;
 - graphical correctness.
 
+## 10.6 Commit responsibilities and pre-merge history curation
+
+WDT development may accumulate provisional commits, follow-up fixes, diagnostics, performance adjustments, and tests while a feature is being validated. **Those intermediate commits are not automatically the appropriate history to merge into `wdt`.**
+
+Before merging a completed and validated feature branch:
+
+1. Review the complete commit history and the changes in **each commit**, not just the final tree diff or the number of commits.
+2. Identify *meaningful functional/responsibility units*. Put each feature together with its directly related bug fixes, performance follow-ups, and regression tests. Squash/reorder the provisional commits as needed so the resulting history is coherent, reviewable, and appropriately reversible.
+3. Keep unrelated responsibilities separate even when they were developed or validated in one session. Do not create one opaque "everything in this feature branch" squash, and do not split a single feature into arbitrary implementation/fix/test fragments merely to preserve development chronology.
+4. Treat incidental or out-of-scope changes (for example, removal of an unrelated setting) as a separate commit with its own stated responsibility. Keep deliberate, independent shared-core correctness fixes distinguishable from an AutoAtlas-only optimization.
+5. After curating history, verify the **final tree is equivalent to the user-validated tree**, verify the intended commit boundaries, and repeat any validation made necessary by a changed tree. History-only reorganization must not silently alter runtime behavior.
+6. Only **after** this review choose the merge method. A merge commit preserves whatever commits already exist on the feature branch; `merge_method=merge` alone does **not** satisfy this policy. Where the boundaries are wrong, curate commits on the unmerged feature branch first, with appropriate safeguards against moving a published/ref-shared head unexpectedly.
+7. Do not rewrite already-merged `wdt` history solely to improve commit aesthetics. Report an already-merged granularity mistake accurately and enforce this review on subsequent PRs.
+
+The unit of organization is the **feature/responsibility**, not the number of development commits or the number of files. For example, independent atlas sizing, source-derived mipmap behavior, and retained-source cost accounting can be separate coherent units; their respective follow-up corrections and regression tests normally belong in those units.
+
+This policy was established during earlier WDT development and the PR #25 responsibility-based reconstruction. The 2026-10-21 PR #31 merge preserved nine intermediate commits instead of curating them into functional units: its final product tree was validated, but preserving that uncurated history was **not** compliant with this workflow. Do not repeat that mistake.
+
 ---
 
 # 11. Diagnostics and production logs
@@ -1400,5 +1418,6 @@ Before changing WDT behavior:
 8. do not describe package workflow success as Unity compilation/test success;
 9. keep user-facing Japanese terminology `テクスチャ統合`; do not introduce `追加統合` as a UI/product term;
 10. when a new design decision changes one of these invariants, update this file in the **same feature change**, not later as a handoff cleanup.
-11. maintenance of this document is an implementation responsibility: update, correct, reorganize, and prune it as needed without requesting separate user approval for documentation-only maintenance, provided the changes faithfully reflect accepted implementation/design state and do not change product behavior.
+11. before any `wdt` feature merge, audit the **per-commit responsibility boundaries** and curate development/fix/test commits into meaningful functional units as specified in section 10.6; checking only the final tree or preserving all feature-branch commits is not sufficient.
+12. maintenance of this document is an implementation responsibility: update, correct, reorganize, and prune it as needed without requesting separate user approval for documentation-only maintenance, provided the changes faithfully reflect accepted implementation/design state and do not change product behavior.
 
