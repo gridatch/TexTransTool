@@ -1,10 +1,5 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
-  "baseVersion": "0.1.20+wdt.ttt.1.0.2",
-  "lastDebugSerial": 950,
-  "currentDebugVersion": "0.1.20+wdt.ttt.1.0.2.debug.950.autoatlas-processing-time-spacing.aca18f5",
-  "currentDebugChange": "autoatlas-processing-time-spacing",
-  "currentDebugBranch": "fix/autoatlas-processing-time-spacing",
-  "currentDebugCommit": "aca18f5c05347d237b994397815c81346c08a82a",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.20+wdt.ttt.1.0.2.debug.950.autoatlas-processing-time-spacing.aca18f5.zip"
+  "baseVersion": "0.1.21+wdt.ttt.1.0.2",
+  "lastDebugSerial": 950
 }

@@ -431,17 +431,17 @@
           },
           "zipSHA256": "af3e8199c9699b34eaba640c3bb3a0820bb1bc46189f9ad03d1bc7d054c54113"
         },
-        "0.1.20+wdt.ttt.1.0.2.debug.950.autoatlas-processing-time-spacing.aca18f5": {
+        "0.1.21+wdt.ttt.1.0.2": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.20+wdt.ttt.1.0.2.debug.950.autoatlas-processing-time-spacing.aca18f5",
+          "version": "0.1.21+wdt.ttt.1.0.2",
           "unity": "2022.3",
-          "description": "Debug build 950 for autoatlas-processing-time-spacing from fix/autoatlas-processing-time-spacing at aca18f5. Based on WDT 0.1.20+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Non-destructive modification to Texture!",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.20+wdt.ttt.1.0.2.debug.950.autoatlas-processing-time-spacing.aca18f5.zip",
+          "url": "https://github.com/gridatch/TexTransTool/releases/download/wdt-v0.1.21+wdt.ttt.1.0.2/net.gridatch.tex-trans-tool-0.1.21+wdt.ttt.1.0.2.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -454,7 +454,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "4055ee62cbaafbd8900e1c25fcd92d526574614e4b9219ed958a295fd000547d"
+          "zipSHA256": "52cca87cbc55da1df8be54eb14b45eab7687cc29e461583ae55331cbc4c99859"
         }
       }
     }
