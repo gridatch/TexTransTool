@@ -389,6 +389,10 @@ namespace net.rs64.TexTransTool.NDMF
             if (!ok)
             {
                 ++_gpuMaskUnavailable;
+                // A production candidate screen must fall back to the
+                // original CPU footprint when GPU screening is unavailable.
+                _gpuMaskProjectedMs += timer.Elapsed.TotalMilliseconds
+                    + baselineCoverageMs;
                 _gpuMaskLines.Add("material=" + material.name
                     + ", property=" + property + ", GPU=unavailable:"
                     + reason + ", GPUms=" + FormatMs(timer.Elapsed.TotalMilliseconds)
@@ -1291,7 +1295,7 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\nGPU mask: " + FormatMs(_gpuMaskElapsedMs)
                 + "ms; matched CPU coverage: "
                 + FormatMs(_gpuMaskBaselineMs)
-                + "ms; projected GPU+candidate-only CPU: "
+                + "ms; projected GPU+candidate-only CPU/fallback: "
                 + FormatMs(_gpuMaskProjectedMs) + "ms"
                 + "\nGPU pixel-center raster is only a preliminary screen."
                 + " Boundary-only differences are expected; GPU mask is never"
