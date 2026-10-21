@@ -334,7 +334,10 @@ namespace net.rs64.TexTransTool.NDMF
                     ? "_EmissionMap_UVMode" : "_Emission2ndMap_UVMode";
                 var parallax = property == "_EmissionMap"
                     ? "_EmissionParallaxDepth" : "_Emission2ndParallaxDepth";
-                if ((material.HasProperty(mode) && material.GetFloat(mode) != 0f)
+                if ((material.HasProperty(mode)
+                        && (material.HasInt(mode)
+                            ? material.GetInt(mode) != 0
+                            : material.GetFloat(mode) != 0f))
                     || (material.HasProperty(parallax)
                         && material.GetFloat(parallax) != 0f)
                     || !ZeroVector(material, property + "_ScrollRotate"))
