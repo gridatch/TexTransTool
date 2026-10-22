@@ -111,11 +111,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal HashSet<Material> GetAtlasMaterials(
             IEnumerable<Material> materials)
         {
-            return materials
-                .Where(material =>
-                    ProjectedTextureUses.TryGetValue(material, out var textures)
-                    && textures.Count != 0)
-                .ToHashSet();
+            var selected = materials.ToHashSet();
+            selected.ExceptWith(GetOptimizationOnlyMaterials(selected));
+            return selected;
         }
 
         internal HashSet<Material> GetOptimizationOnlyMaterials(
