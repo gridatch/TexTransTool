@@ -249,6 +249,54 @@ namespace net.rs64.TexTransTool.NDMF
                 && Affects(name, "_Emission2ndParallaxDepth"))
                 return true;
 
+            if (property == "_MainTex")
+                return true;
+
+            if (material != null)
+            {
+                var shaderName = material.shader != null
+                    ? material.shader.name
+                    : string.Empty;
+                if (!(shaderName == "lilToon"
+                      || shaderName.StartsWith(
+                          "Hidden/lilToon", StringComparison.Ordinal))
+                    || shaderName.Contains("Lite")
+                    || shaderName.Contains("Gem"))
+                    return false;
+
+                if (property == "_GlitterColorTex")
+                    return !material.HasProperty("_GlitterColorTex_UVMode")
+                        || Mathf.RoundToInt(
+                            material.GetFloat("_GlitterColorTex_UVMode")) == 0;
+                if (property == "_OutlineVectorTex")
+                    return !material.HasProperty("_OutlineVectorUVMode")
+                        || Mathf.RoundToInt(
+                            material.GetFloat("_OutlineVectorUVMode")) == 0;
+                if (property == "_AudioLinkMask")
+                    return !material.HasProperty("_AudioLinkMask_UVMode")
+                        || Mathf.RoundToInt(
+                            material.GetFloat("_AudioLinkMask_UVMode")) == 0;
+            }
+
+            if (property is "_EmissionBlendMask" or "_Emission2ndBlendMask")
+            {
+                if (Affects(name, "_EmissionBlendMask_ScrollRotate")
+                    || Affects(name, "_Emission2ndBlendMask_ScrollRotate"))
+                    return true;
+            }
+
+            if (property == "_OutlineVectorTex"
+                && Affects(name, "_OutlineVectorUVMode"))
+                return true;
+
+            if (property is "_ShadowColorTex"
+                or "_Shadow2ndColorTex"
+                or "_Shadow3rdColorTex")
+            {
+                if (Affects(name, "_ShadowColorType"))
+                    return true;
+            }
+
             if (!UsesMainUvControls(material, property))
                 return false;
 
