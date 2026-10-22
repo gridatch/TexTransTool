@@ -3,6 +3,7 @@ Shader "Hidden/TexTransTool/AtlasSourceAnalysis"
     Properties
     {
         [HideInInspector] _Source ("Source", 2D) = "white" {}
+        [HideInInspector] _MainTex ("Reduction Source", 2D) = "black" {}
     }
 
     SubShader
