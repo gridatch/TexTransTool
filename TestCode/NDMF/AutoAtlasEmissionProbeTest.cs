@@ -901,6 +901,83 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void MultipleFeatureProjectionCanSplitConnectivityAndPreservesInputs()
+        {
+            var shader = Shader.Find("Standard")
+                ?? Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+            var a = new Material(shader);
+            var b = new Material(shader);
+            var c = new Material(shader);
+            var mainA = new Texture2D(16, 16);
+            var mainB = new Texture2D(16, 16);
+            var mainC = new Texture2D(16, 16);
+            var bridge1 = new Texture2D(16, 16);
+            var bridge2 = new Texture2D(16, 16);
+            try
+            {
+                var sources = new Dictionary<Material,
+                    IReadOnlyDictionary<string, Texture>>
+                {
+                    [a] = new Dictionary<string, Texture>
+                    {
+                        ["_MainTex"] = mainA, ["_Emission2ndBlendMask"] = bridge1
+                    },
+                    [b] = new Dictionary<string, Texture>
+                    {
+                        ["_MainTex"] = mainB,
+                        ["_Emission2ndBlendMask"] = bridge1,
+                        ["_Main2ndBlendMask"] = bridge2,
+                    },
+                    [c] = new Dictionary<string, Texture>
+                    {
+                        ["_MainTex"] = mainC, ["_Main2ndBlendMask"] = bridge2
+                    },
+                };
+                var selected = new HashSet<Material> { a, b, c };
+                Assert.That(AutoAtlasTextureProcessor.MakeTextureConnectedGroups(
+                    selected, sources).Count, Is.EqualTo(1));
+
+                var disabled = new (Material material,
+                    AutoAtlasFeatureDisableRules.Rule rule)[]
+                {
+                    (a, new AutoAtlasFeatureDisableRules.Rule(
+                        "Emission2", "_UseEmission2nd", "test",
+                        "_Emission2ndBlendMask")),
+                    (b, new AutoAtlasFeatureDisableRules.Rule(
+                        "Main2nd", "_UseMain2ndTex", "test",
+                        "_Main2ndBlendMask")),
+                };
+                var after = AutoAtlasShadowReplan.ProjectFeatureSetUses(
+                    sources, disabled);
+                Assert.That(AutoAtlasTextureProcessor.MakeTextureConnectedGroups(
+                    selected, after).Count, Is.EqualTo(3));
+                Assert.That(after[a].ContainsKey("_Emission2ndBlendMask"),
+                    Is.False);
+                Assert.That(after[b].ContainsKey("_Main2ndBlendMask"),
+                    Is.False);
+                Assert.That(after[b]["_Emission2ndBlendMask"],
+                    Is.SameAs(bridge1));
+                Assert.That(after[c]["_Main2ndBlendMask"], Is.SameAs(bridge2));
+                Assert.That(sources[a]["_Emission2ndBlendMask"],
+                    Is.SameAs(bridge1));
+                Assert.That(sources[b]["_Main2ndBlendMask"],
+                    Is.SameAs(bridge2));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(a);
+                UnityEngine.Object.DestroyImmediate(b);
+                UnityEngine.Object.DestroyImmediate(c);
+                UnityEngine.Object.DestroyImmediate(mainA);
+                UnityEngine.Object.DestroyImmediate(mainB);
+                UnityEngine.Object.DestroyImmediate(mainC);
+                UnityEngine.Object.DestroyImmediate(bridge1);
+                UnityEngine.Object.DestroyImmediate(bridge2);
+            }
+        }
+
+        [Test]
         public void ProbeReportUsesNoNestedScrollView()
         {
             var error = new AutoAtlasEmissionProbeError("sample\nsample 2");
