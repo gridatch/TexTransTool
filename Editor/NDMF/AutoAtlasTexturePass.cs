@@ -1701,7 +1701,14 @@ namespace net.rs64.TexTransTool.NDMF
 
             // Any animated texture transform or material property on a
             // removed texture may invalidate its current mask coverage.
-            if (rule.TextureProperties.Any(Affects))
+            if (rule.TextureProperties.Any(property =>
+                    Affects(property)
+                    || Affects(property + "_ST")
+                    || Affects(property + "_ScrollRotate")
+                    || name.StartsWith(property + ".offset.",
+                        StringComparison.Ordinal)
+                    || name.StartsWith(property + ".scale.",
+                        StringComparison.Ordinal)))
                 return true;
             if (Affects("_MainTex_ST") || Affects("_MainTex_ScrollRotate")
                 || Affects("_ShiftBackfaceUV"))
@@ -1724,6 +1731,7 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         internal static bool HasUnsafeFeatureAnimation(
+            IRendererTargeting domain,
             AnimationIndex? index, ObjectPathRemapper? remapper,
             Material material, AutoAtlasFeatureDisableRules.Rule rule,
             IEnumerable<Renderer> renderers, Transform? avatarRoot)
@@ -1748,7 +1756,7 @@ namespace net.rs64.TexTransTool.NDMF
                                 continue;
                             if (IsUnsafeFloatBinding(binding.propertyName, rule)
                                 && clip.GetFloatCurve(binding) != null
-                                && renderer.sharedMaterials.Contains(material))
+                                && domain.GetMaterials(renderer).Contains(material))
                                 return true;
                         }
 
@@ -1766,7 +1774,7 @@ namespace net.rs64.TexTransTool.NDMF
                                     binding.propertyName == "material." + property))
                             {
                                 var curve = clip.GetObjectCurve(binding);
-                                if (renderer.sharedMaterials.Contains(material)
+                                if (domain.GetMaterials(renderer).Contains(material)
                                     && curve != null
                                     && curve.Any(key => key.value !=
                                         material.GetTexture(
@@ -1788,7 +1796,7 @@ namespace net.rs64.TexTransTool.NDMF
                                     binding.propertyName.Substring(start, end - start),
                                     out var slot))
                                 return true;
-                            var currentMaterials = renderer.sharedMaterials;
+                            var currentMaterials = domain.GetMaterials(renderer);
                             if (slot >= currentMaterials.Length
                                 || currentMaterials[slot] != material)
                                 return true;
@@ -2311,7 +2319,7 @@ namespace net.rs64.TexTransTool.NDMF
                 .Where(item => eligibleMaterials.Contains(item.material))
                 .Where(item => !AutoAtlasFeatureAnimationSafety
                     .HasUnsafeFeatureAnimation(
-                        animationIndex, objectPathRemapper,
+                        domain, animationIndex, objectPathRemapper,
                         item.material, item.rule,
                         allRenderers, avatarRoot))
                 .GroupBy(item => (item.material, item.rule.SwitchProperty))
