@@ -32,14 +32,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
     internal sealed class AtlasFeatureDisableRule
     {
-        internal readonly string Name;
         internal readonly string SwitchProperty;
         internal readonly string[] TextureProperties;
 
         internal AtlasFeatureDisableRule(
-            string name, string switchProperty, params string[] textureProperties)
+            string switchProperty, params string[] textureProperties)
         {
-            Name = name;
             SwitchProperty = switchProperty;
             TextureProperties = textureProperties;
         }
@@ -1024,7 +1022,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         result.Add(new AtlasFeatureDisableDecision(
                             material,
                             new AtlasFeatureDisableRule(
-                                "MatCap1", "_UseMatCap",
+                                "_UseMatCap",
                                 "_MatCapTex",
                                 "_MatCapBlendMask",
                                 "_MatCapBumpMap"),
@@ -1047,7 +1045,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         result.Add(new AtlasFeatureDisableDecision(
                             material,
                             new AtlasFeatureDisableRule(
-                                "MatCap2", "_UseMatCap2nd",
+                                "_UseMatCap2nd",
                                 "_MatCap2ndTex",
                                 "_MatCap2ndBlendMask",
                                 "_MatCap2ndBumpMap"),
@@ -1115,7 +1113,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         result.Add(new AtlasFeatureDisableDecision(
                             material,
                             new AtlasFeatureDisableRule(
-                                "Main2nd", "_UseMain2ndTex",
+                                "_UseMain2ndTex",
                                 "_Main2ndTex",
                                 "_Main2ndBlendMask",
                                 "_Main2ndDissolveMask",
@@ -1131,8 +1129,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     "_EmissionColor",
                     "_EmissionMap",
                     "_EmissionBlendMask",
-                    "_EmissionGradTex",
-                    "Emission1");
+                    "_EmissionGradTex");
                 TryEmission(
                     "_UseEmission2nd",
                     "_Emission2ndBlendMode",
@@ -1140,8 +1137,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     "_Emission2ndColor",
                     "_Emission2ndMap",
                     "_Emission2ndBlendMask",
-                    "_Emission2ndGradTex",
-                    "Emission2");
+                    "_Emission2ndGradTex");
 
                 void TryEmission(
                     string switchProperty,
@@ -1150,8 +1146,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     string colorProperty,
                     string mapProperty,
                     string maskProperty,
-                    string gradProperty,
-                    string name)
+                    string gradProperty)
                 {
                     if (!Enabled(switchProperty)
                         || !material.HasProperty(blendModeProperty))
@@ -1207,7 +1202,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     result.Add(new AtlasFeatureDisableDecision(
                         material,
                         new AtlasFeatureDisableRule(
-                            name, switchProperty,
+                            switchProperty,
                             mapProperty, maskProperty, gradProperty),
                         safety.ToArray()));
                 }
