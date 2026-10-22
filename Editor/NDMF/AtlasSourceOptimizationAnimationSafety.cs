@@ -318,9 +318,7 @@ namespace net.rs64.TexTransTool.NDMF
                 return true;
 
             if (material == null)
-                return LilToonMainUvTextureProperties.Contains(property)
-                    || StandardMainUvTextureProperties.Contains(property)
-                    || VrcStandardLiteMainUvTextureProperties.Contains(property);
+                return LilToonMainUvTextureProperties.Contains(property);
 
             if (!TryGetShaderInformation(material, out var information))
                 return false;
@@ -373,12 +371,7 @@ namespace net.rs64.TexTransTool.NDMF
             string bindingName)
         {
             if (material == null)
-            {
-                if (property is "_DetailAlbedoMap" or "_DetailNormalMap")
-                    return Affects(bindingName, "_DetailAlbedoMap_ST")
-                        || Affects(bindingName, "_UVSec");
                 return false;
-            }
 
             if (!TryGetShaderInformation(material, out var information))
                 return false;
