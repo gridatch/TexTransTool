@@ -2071,9 +2071,10 @@ namespace net.rs64.TexTransTool.NDMF
                 .Select(item => (item.material, item.rule))
                 .ToArray();
             emissionProbe.AddFeatureDisableLine(
-                "live-output-trial-modes=" + AutoAtlasFeatureTrialSession.EnabledModeSummary
+                "auto-feature-removal=enabled-on-experimental-branch"
                 + ", applies-only-to-standalone-groups"
-                + ", visual-equivalence=NOT-PROVEN, disabled-by-default");
+                + ", classification=mip0-only"
+                + ", visual-equivalence=NOT-PROVEN");
             if (hypotheses.Length != 0)
             {
                 try
@@ -2141,27 +2142,25 @@ namespace net.rs64.TexTransTool.NDMF
                 var originalPixels = execution.SourceTextures.Sum(texture =>
                     (long)texture.width * texture.height);
 
-                // Explicit debug-only A/B trial. Merged atomic groups are
-                // intentionally not altered: their planned envelopes were
-                // calculated for the unmodified source inputs.
-                var trialCandidates = hypotheses
-                    .Where(item => group.Contains(item.material)
-                        && AutoAtlasFeatureTrialSession.EnabledFor(item.rule))
+                // The diagnostic branch applies eligible removal automatically.
+                // Merge selections keep their original cost/placement envelopes.
+                var autoRemovalCandidates = hypotheses
+                    .Where(item => group.Contains(item.material))
                     .ToArray();
-                if (execution.MergeSelection != null && trialCandidates.Length != 0)
+                if (execution.MergeSelection != null && autoRemovalCandidates.Length != 0)
                 {
-                    foreach (var item in trialCandidates)
+                    foreach (var item in autoRemovalCandidates)
                         emissionProbe.AddFeatureDisableLine(
-                            "trial=skipped-merged-execution, material="
+                            "auto-feature-removal=skipped-merged-execution, material="
                             + item.material.name + ", feature=" + item.rule.Name);
-                    trialCandidates = Array.Empty<(Material material,
+                    autoRemovalCandidates = Array.Empty<(Material material,
                         AutoAtlasFeatureDisableRules.Rule rule)>();
                 }
                 IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>?
-                    projectedTextureUsesForTrial = trialCandidates.Length == 0
+                    projectedTextureUsesForRemoval = autoRemovalCandidates.Length == 0
                         ? null
                         : AutoAtlasShadowReplan.ProjectFeatureSetUses(
-                            propertyTextures, trialCandidates);
+                            propertyTextures, autoRemovalCandidates);
 
                 var engine = domain.GetTexTransCoreEngineForUnity();
 
@@ -2276,7 +2275,7 @@ namespace net.rs64.TexTransTool.NDMF
                             // mutation.
                             return metrics.OutputTexturePixelCount > 0;
                         },
-                    }, projectedTextureUsesForTrial);
+                    }, projectedTextureUsesForRemoval);
                 if (!atlasResult.IsSuccess)
                 {
                     if (execution.MergeSelection is { } failedMerge)
@@ -2476,7 +2475,7 @@ namespace net.rs64.TexTransTool.NDMF
 
                 // All changes are confined to freshly generated AtlasedMaterial
                 // clones. Nothing is applied to a source Unity material.
-                foreach (var item in trialCandidates)
+                foreach (var item in autoRemovalCandidates)
                 {
                     if (!atlasMaterialMaps.materialMap.TryGetValue(
                             item.material, out var outputMaterial))
@@ -2606,9 +2605,9 @@ namespace net.rs64.TexTransTool.NDMF
                     atlasMaterialMaps.materialMap,
                     atlasMaterialMaps.domainsMaterial2ReplaceMaterial);
 
-                foreach (var item in trialCandidates)
+                foreach (var item in autoRemovalCandidates)
                     emissionProbe.AddFeatureDisableLine(
-                        "trial=APPLIED-to-generated-material, material="
+                        "auto-feature-removal=APPLIED-to-generated-material, material="
                         + item.material.name + ", feature=" + item.rule.Name
                         + ", switch=" + item.rule.SwitchProperty
                         + ", texturesCleared=["
