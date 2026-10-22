@@ -11,6 +11,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private SerializedProperty _islandPadding = null!;
         private SerializedProperty _enableAdditionalAtlasMerging = null!;
         private SerializedProperty _excludeVisibilityAnimatedItemsFromTextureMerging = null!;
+        private SerializedProperty _optimizeConstantTextures = null!;
+        private SerializedProperty _disableVisuallyUnusedShaderFeatures = null!;
         private SerializedProperty _textureMergingExcludedRenderers = null!;
         private SerializedProperty _textureMergingExcludedMaterials = null!;
         private SerializedProperty _excludedRenderers = null!;
@@ -22,6 +24,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _islandPadding = serializedObject.FindProperty(nameof(AutoAtlasTexture.IslandPadding));
             _enableAdditionalAtlasMerging = serializedObject.FindProperty(nameof(AutoAtlasTexture.EnableAdditionalAtlasMerging));
             _excludeVisibilityAnimatedItemsFromTextureMerging = serializedObject.FindProperty(nameof(AutoAtlasTexture.ExcludeVisibilityAnimatedItemsFromTextureMerging));
+            _optimizeConstantTextures = serializedObject.FindProperty(nameof(AutoAtlasTexture.OptimizeConstantTextures));
+            _disableVisuallyUnusedShaderFeatures = serializedObject.FindProperty(nameof(AutoAtlasTexture.DisableVisuallyUnusedShaderFeatures));
             _textureMergingExcludedRenderers = serializedObject.FindProperty(nameof(AutoAtlasTexture.TextureMergingExcludedRenderers));
             _textureMergingExcludedMaterials = serializedObject.FindProperty(nameof(AutoAtlasTexture.TextureMergingExcludedMaterials));
             _excludedRenderers = serializedObject.FindProperty(nameof(AutoAtlasTexture.ExcludedRenderers));
@@ -41,6 +45,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 EditorGUILayout.PropertyField(
                     _islandPadding, "AtlasTexture:prop:Padding".GlcV());
+                EditorGUILayout.PropertyField(
+                    _optimizeConstantTextures,
+                    "AtlasTexture:prop:OptimizeConstantTextures".GlcV());
+                EditorGUILayout.PropertyField(
+                    _disableVisuallyUnusedShaderFeatures,
+                    "AtlasTexture:prop:DisableVisuallyUnusedShaderFeatures".GlcV());
                 EditorGUILayout.PropertyField(
                     _enableAdditionalAtlasMerging,
                     "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging".GlcV());

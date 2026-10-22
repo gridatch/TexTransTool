@@ -39,6 +39,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal HashSet<Material> Materials = new();
             internal Renderer[] Renderers = Array.Empty<Renderer>();
             internal HashSet<Texture> SourceTextures = new();
+            internal HashSet<Texture> OriginalSourceTextures = new();
             internal HashSet<Texture> RetainedSourceTextures = new();
             internal long OriginalPixels;
 
@@ -797,7 +798,7 @@ namespace net.rs64.TexTransTool.NDMF
             foreach (var group in mergeGroups)
             {
                 group.StandaloneMetrics = AnalyzeAtlas(
-                    domain, settings, group);
+                    domain, settings, group, propertyTextures);
             }
 
             foreach (var group in mergeGroups)
@@ -1669,7 +1670,9 @@ namespace net.rs64.TexTransTool.NDMF
         private static AtlasTexture.AtlasExecutionMetrics? AnalyzeAtlas(
             IDomain domain,
             AtlasSetting settings,
-            PreparedGroup group)
+            PreparedGroup group,
+            IReadOnlyDictionary<
+                Material, IReadOnlyDictionary<string, Texture>> propertyTextures)
         {
             group.TwoDimensionalProfileHeights.Clear();
 
@@ -1677,7 +1680,8 @@ namespace net.rs64.TexTransTool.NDMF
                 domain,
                 group.Materials,
                 group.Renderers,
-                settings);
+                settings,
+                propertyTextures);
             if (prepared is null)
                 return null;
 
@@ -1786,7 +1790,13 @@ namespace net.rs64.TexTransTool.NDMF
             var entries = new List<TextureCostEntry>();
             var bytesPerTexel = new Dictionary<Texture, double>();
 
-            foreach (var texture in group.SourceTextures)
+            // A source removed from projected atlas bindings can still remain
+            // resident through another material/property. Such retained-only
+            // sources exist on both sides of the standalone/merge comparison,
+            // so include them in the original side as well. Union preserves
+            // the existing behavior for retained projected sources.
+            foreach (var texture in group.SourceTextures
+                         .Union(group.RetainedSourceTextures))
             {
                 if (!AtlasTexture.TryGetOriginalTextureCostInfo(
                         domain,

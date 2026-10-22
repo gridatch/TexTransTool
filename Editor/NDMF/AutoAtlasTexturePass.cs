@@ -193,6 +193,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly HashSet<Material> Materials;
             internal readonly Renderer[] Renderers;
             internal readonly HashSet<Texture> SourceTextures;
+            internal readonly HashSet<Texture> OriginalSourceTextures;
             internal readonly HashSet<Texture> RetainedSourceTextures;
             internal readonly AutoAtlasTextureMergePlanner.MergeSelection? MergeSelection;
 
@@ -200,12 +201,14 @@ namespace net.rs64.TexTransTool.NDMF
                 HashSet<Material> materials,
                 Renderer[] renderers,
                 HashSet<Texture> sourceTextures,
+                HashSet<Texture> originalSourceTextures,
                 HashSet<Texture> retainedSourceTextures,
                 AutoAtlasTextureMergePlanner.MergeSelection? mergeSelection)
             {
                 Materials = materials;
                 Renderers = renderers;
                 SourceTextures = sourceTextures;
+                OriginalSourceTextures = originalSourceTextures;
                 RetainedSourceTextures = retainedSourceTextures;
                 MergeSelection = mergeSelection;
             }
@@ -228,6 +231,7 @@ namespace net.rs64.TexTransTool.NDMF
                     selected.SelectMany(group => group.Materials).ToHashSet(),
                     selected.SelectMany(group => group.Renderers).Distinct().ToArray(),
                     selected.SelectMany(group => group.SourceTextures).ToHashSet(),
+                    selected.SelectMany(group => group.OriginalSourceTextures).ToHashSet(),
                     selected.SelectMany(group => group.RetainedSourceTextures).ToHashSet(),
                     selection));
             }
@@ -239,6 +243,7 @@ namespace net.rs64.TexTransTool.NDMF
                     prepared.Materials,
                     prepared.Renderers,
                     prepared.SourceTextures,
+                    prepared.OriginalSourceTextures,
                     prepared.RetainedSourceTextures,
                     null));
             }
@@ -258,6 +263,7 @@ namespace net.rs64.TexTransTool.NDMF
                     prepared.Materials,
                     prepared.Renderers,
                     prepared.SourceTextures,
+                    prepared.OriginalSourceTextures,
                     prepared.RetainedSourceTextures,
                     null));
             }
@@ -370,14 +376,6 @@ namespace net.rs64.TexTransTool.NDMF
                 return;
             }
 
-            // Material grouping remains shader/property-aware, but it is now
-            // scoped to the same renderer-selected materials as AtlasTexture.
-            var textureUsages = new MaterialGroupingContext(
-                candidateMaterials,
-                UVChannel.UV0,
-                primaryTexturePropertyOrMaximum: null);
-            var propertyTextures = textureUsages.ContainsTextureDictionaries;
-
             var excludedMaterials = domain.GetDomainsMaterialsHashSet(
                 configuration.ExcludedMaterials);
             var mergingExcludedRenderers = domain
@@ -411,7 +409,53 @@ namespace net.rs64.TexTransTool.NDMF
                 IncludeDisabledRenderer = false,
                 AtlasTargetUVChannel = UVChannel.UV0,
                 IslandPadding = Mathf.Clamp(configuration.IslandPadding, 0f, 0.05f),
+                OptimizeConstantTextures =
+                    configuration.OptimizeConstantTextures,
+                DisableVisuallyUnusedShaderFeatures =
+                    configuration.DisableVisuallyUnusedShaderFeatures,
             };
+
+            // Source optimization is evaluated against the same renderer
+            // population that AutoAtlas may rewrite. Materials with any active
+            // consumer outside that population are left untouched so the
+            // domain-wide material replacement cannot affect an excluded mesh.
+            var optimizationExcludedMaterials =
+                new HashSet<Material>(excludedMaterials);
+            optimizationExcludedMaterials.UnionWith(
+                manuallySelectedMaterials);
+            foreach (var material in candidateMaterials)
+            {
+                if (optimizationExcludedMaterials.Contains(material))
+                    continue;
+                var one = new HashSet<Material> { material };
+                var materialRenderers = ResolveAutoAtlasTargetRenderers(
+                    domain, configuration, one);
+                if (materialRenderers.Length == 0
+                    || HasActiveUntransformedMaterialConsumer(
+                        domain, one, materialRenderers))
+                {
+                    optimizationExcludedMaterials.Add(material);
+                }
+            }
+
+            var engine = domain.GetTexTransCoreEngineForUnity();
+            var sourceOptimization = AtlasSourceOptimizer.Analyze(
+                domain,
+                atlasAllowedRenderers.ToArray(),
+                candidateMaterials,
+                UVChannel.UV0,
+                settings,
+                null,
+                optimizationExcludedMaterials);
+            var propertyTextures =
+                sourceOptimization.ProjectedTextureUses;
+            var optimizationOnlyMaterials =
+                sourceOptimization.GetOptimizationOnlyMaterials(
+                    candidateMaterials)
+                    .Where(material =>
+                        !optimizationExcludedMaterials.Contains(material))
+                    .ToHashSet();
+
             var groups = MakeTextureConnectedGroups(
                 candidateMaterials, propertyTextures);
             var preparedGroups =
@@ -469,12 +513,17 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
+                var originalSourceTextures =
+                    sourceOptimization.CollectOriginalTextures(group);
+                var removedBindings =
+                    sourceOptimization.RemovedBindings(group);
                 var retainedSourceTextures =
                     FindRetainedSourceTextures(
                         allReferencedMaterials,
                         group,
                         propertyTextures,
-                        texturesToReplace);
+                        originalSourceTextures,
+                        removedBindings);
 
                 preparedGroups.Add(new AutoAtlasTextureMergePlanner.PreparedGroup
                 {
@@ -482,6 +531,7 @@ namespace net.rs64.TexTransTool.NDMF
                     Materials = group,
                     Renderers = atlasRenderers,
                     SourceTextures = texturesToReplace,
+                    OriginalSourceTextures = originalSourceTextures,
                     RetainedSourceTextures = retainedSourceTextures,
                     OriginalPixels = texturesToReplace.Sum(texture =>
                         (long)texture.width * texture.height),
@@ -544,11 +594,6 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
-                var originalPixels = execution.SourceTextures.Sum(texture =>
-                    (long)texture.width * texture.height);
-
-                var engine = domain.GetTexTransCoreEngineForUnity();
-
                 IReadOnlyDictionary<Material, int>? mergeAtomicGroupByMaterial = null;
                 if (execution.MergeSelection is { } selectedMerge)
                 {
@@ -573,6 +618,7 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         RequireLossless = true,
                         ReportProgressInfo = false,
+                        PrecomputedTextureUses = propertyTextures,
                         IslandRelocatorFactory = mergeAtomicGroupByMaterial != null
                             ? atlasContext =>
                             {
@@ -733,19 +779,42 @@ namespace net.rs64.TexTransTool.NDMF
 
                 var tuningResult = AtlasTexture.DoTextureFinTuning(
                     engine, atlasContext, settings, compiledTextures, null);
+                var constantOutputs =
+                    AtlasSourceOptimizer.CreateConstantOutputs(
+                        engine,
+                        sourceOptimization,
+                        settings,
+                        null,
+                        group);
 
-                var finalOutputPixels = tuningResult.TextureDescriptors.Keys
+                var atlasOutputPixels = tuningResult.TextureDescriptors.Keys
+                    .Distinct()
+                    .Sum(texture => (long)texture.Width * texture.Hight);
+                var constantOutputPixels = constantOutputs
+                    .Select(output => output.RenderTexture)
                     .Distinct()
                     .Sum(texture => (long)texture.Width * texture.Hight);
                 var retainedSourcePixels = execution.RetainedSourceTextures
                     .Sum(texture => (long)texture.width * texture.height);
-                var finalTotalPixels =
-                    finalOutputPixels + retainedSourcePixels;
+                var originalPixels = execution.OriginalSourceTextures
+                    .Sum(texture => (long)texture.width * texture.height);
+
+                // A merge candidate is compared against the already-optimized
+                // standalone baseline. Constant outputs exist on both sides of
+                // that comparison, so they intentionally cancel here. A
+                // standalone execution is instead compared against the actual
+                // original source set and therefore includes the 4x4 outputs.
+                var finalComparisonPixels =
+                    execution.MergeSelection != null
+                        ? atlasOutputPixels + retainedSourcePixels
+                        : atlasOutputPixels
+                          + constantOutputPixels
+                          + retainedSourcePixels;
                 var pixelBaseline = execution.MergeSelection?.BaselinePixels
                     ?? originalPixels;
 
-                if (finalOutputPixels <= 0
-                    || finalTotalPixels >= pixelBaseline)
+                if (atlasOutputPixels <= 0
+                    || finalComparisonPixels >= pixelBaseline)
                 {
                     foreach (var rt in compiledTextures.Values
                                  .Concat(tuningResult.TextureDescriptors.Keys)
@@ -753,6 +822,8 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         rt.Dispose();
                     }
+                    AtlasSourceOptimizer.DisposeConstantOutputs(
+                        constantOutputs);
                     DestroyUnappliedAtlasedMeshes(
                         atlasResult.AtlasedMeshes!);
 
@@ -765,7 +836,7 @@ namespace net.rs64.TexTransTool.NDMF
                                 + $"layout={pixelCheckedMerge.PlannedLayoutSize.x}×{pixelCheckedMerge.PlannedLayoutSize.y}: "
                                 + FormatLocalized(
                                     "AutoAtlasTexture:fallback:FinalPixelsNotReduced",
-                                    finalTotalPixels,
+                                    finalComparisonPixels,
                                     pixelCheckedMerge.BaselinePixels));
                         }
 
@@ -783,6 +854,10 @@ namespace net.rs64.TexTransTool.NDMF
                         atlasContext,
                         tuningResult,
                         out var executionTextureMemoryBytes);
+                var hasConstantTextureMemory =
+                    AtlasTexture.TryCalculateConstantTextureMemory(
+                        constantOutputs,
+                        out var constantTextureMemoryBytes);
                 var hasRetainedSourceMemory =
                     AtlasTexture.TryCalculateSourceTextureMemory(
                         domain,
@@ -791,21 +866,30 @@ namespace net.rs64.TexTransTool.NDMF
                 var hasSourceTextureMemory =
                     AtlasTexture.TryCalculateSourceTextureMemory(
                         domain,
-                        execution.SourceTextures,
+                        execution.OriginalSourceTextures,
                         out var sourceTextureMemoryBytes);
-                var hasMemoryBaseline =
+
+                var finalComparisonTextureMemoryBytes =
                     execution.MergeSelection != null
-                    || hasSourceTextureMemory;
+                        ? executionTextureMemoryBytes
+                          + retainedSourceMemoryBytes
+                        : executionTextureMemoryBytes
+                          + constantTextureMemoryBytes
+                          + retainedSourceMemoryBytes;
                 var memoryBaseline =
                     execution.MergeSelection?.BaselineBytes
                     ?? sourceTextureMemoryBytes;
                 var finalTotalTextureMemoryBytes =
-                    executionTextureMemoryBytes + retainedSourceMemoryBytes;
+                    executionTextureMemoryBytes
+                    + constantTextureMemoryBytes
+                    + retainedSourceMemoryBytes;
 
                 if (!hasExecutionTextureMemory
+                    || !hasConstantTextureMemory
                     || !hasRetainedSourceMemory
-                    || !hasMemoryBaseline
-                    || finalTotalTextureMemoryBytes >= memoryBaseline)
+                    || (!hasSourceTextureMemory
+                        && execution.MergeSelection == null)
+                    || finalComparisonTextureMemoryBytes >= memoryBaseline)
                 {
                     foreach (var rt in compiledTextures.Values
                                  .Concat(tuningResult.TextureDescriptors.Keys)
@@ -813,6 +897,8 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         rt.Dispose();
                     }
+                    AtlasSourceOptimizer.DisposeConstantOutputs(
+                        constantOutputs);
                     DestroyUnappliedAtlasedMeshes(
                         atlasResult.AtlasedMeshes!);
 
@@ -822,12 +908,13 @@ namespace net.rs64.TexTransTool.NDMF
                         {
                             var reason =
                                 !hasExecutionTextureMemory
+                                || !hasConstantTextureMemory
                                 || !hasRetainedSourceMemory
                                     ? FormatLocalized(
                                         "AutoAtlasTexture:fallback:FinalMemoryUnknown")
                                     : FormatLocalized(
                                         "AutoAtlasTexture:fallback:FinalMemoryNotReduced",
-                                        finalTotalTextureMemoryBytes,
+                                        finalComparisonTextureMemoryBytes,
                                         memoryCheckedMerge.BaselineBytes);
                             twoDimensionalFallbackReasons.Add(
                                 $"groups={string.Join(",", memoryCheckedMerge.GroupIds.Select(id => "g" + id))}, "
@@ -857,6 +944,13 @@ namespace net.rs64.TexTransTool.NDMF
                         resultingTextures,
                         atlasResult.PreserveBump2ndMaterials,
                         atlasResult.PreservedOriginalUVChannel);
+                AtlasSourceOptimizer.ApplyToGeneratedMaterials(
+                    atlasMaterialMaps.materialMap,
+                    constantOutputs,
+                    sourceOptimization.FeatureDisables,
+                    engine,
+                    settings.ForceSetTexture);
+
                 var generatedAtlasMaterials =
                     atlasMaterialMaps.materialMap.Values
                         .Concat(
@@ -866,12 +960,12 @@ namespace net.rs64.TexTransTool.NDMF
                         .ToArray();
 
                 // References already classified as retained are part of the
-                // cost model. Only an unexpected source reference invalidates
-                // the prediction and forces a conservative fallback.
+                // cost model. Only an unexpected original source reference
+                // invalidates the prediction and forces a conservative fallback.
                 var generatedRetainedSourceTextures =
                     CollectRetainedSourceTextures(
                         generatedAtlasMaterials,
-                        execution.SourceTextures);
+                        execution.OriginalSourceTextures);
                 if (generatedRetainedSourceTextures.Any(texture =>
                         !execution.RetainedSourceTextures.Contains(texture)))
                 {
@@ -883,6 +977,8 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         rt.Dispose();
                     }
+                    AtlasSourceOptimizer.DisposeConstantOutputs(
+                        constantOutputs);
                     DestroyUnappliedAtlasedMeshes(
                         atlasResult.AtlasedMeshes!);
 
@@ -907,7 +1003,12 @@ namespace net.rs64.TexTransTool.NDMF
                 }
 
                 var resolutionRoutes = AtlasResolutionRouteReport
-                    .Collect(atlasContext, tuningResult);
+                    .CollectWithOptimizations(
+                        atlasContext,
+                        tuningResult,
+                        sourceOptimization,
+                        constantOutputs,
+                        group);
                 var block = string.Format(materialBlock,
                     string.Join(", ", group.Select(OriginalMaterialName)
                         .Distinct().OrderBy(name => name, StringComparer.Ordinal)),
@@ -938,8 +1039,154 @@ namespace net.rs64.TexTransTool.NDMF
                 foreach (var descriptor in tuningResult.TextureDescriptors)
                     domain.RegisterPostProcessingAndLazyGPUReadBack(
                         descriptor.Key, descriptor.Value);
+                foreach (var output in constantOutputs)
+                    domain.RegisterPostProcessingAndLazyGPUReadBack(
+                        output.RenderTexture,
+                        output.Descriptor);
 
                 completed.Add(block);
+            }
+
+            if (optimizationOnlyMaterials.Count != 0)
+            {
+                var group = optimizationOnlyMaterials;
+                var originalSources =
+                    sourceOptimization.CollectOriginalTextures(group);
+                var removedBindings =
+                    sourceOptimization.RemovedBindings(group);
+                var retainedSources = FindRetainedSourceTextures(
+                    allReferencedMaterials,
+                    group,
+                    propertyTextures,
+                    originalSources,
+                    removedBindings);
+                var constantOutputs =
+                    AtlasSourceOptimizer.CreateConstantOutputs(
+                        engine,
+                        sourceOptimization,
+                        settings,
+                        null,
+                        group);
+
+                var originalPixels = originalSources.Sum(texture =>
+                    (long)texture.width * texture.height);
+                var finalPixels = constantOutputs
+                    .Select(output => output.RenderTexture)
+                    .Distinct()
+                    .Sum(texture => (long)texture.Width * texture.Hight)
+                    + retainedSources.Sum(texture =>
+                        (long)texture.width * texture.height);
+
+                var hasSourceMemory =
+                    AtlasTexture.TryCalculateSourceTextureMemory(
+                        domain,
+                        originalSources,
+                        out var sourceBytes);
+                var hasRetainedMemory =
+                    AtlasTexture.TryCalculateSourceTextureMemory(
+                        domain,
+                        retainedSources,
+                        out var retainedBytes);
+                var hasConstantMemory =
+                    AtlasTexture.TryCalculateConstantTextureMemory(
+                        constantOutputs,
+                        out var constantBytes);
+                var finalBytes = retainedBytes + constantBytes;
+
+                if (originalPixels > 0
+                    && finalPixels < originalPixels
+                    && hasSourceMemory
+                    && hasRetainedMemory
+                    && hasConstantMemory
+                    && finalBytes < sourceBytes)
+                {
+                    var optimizedMaps =
+                        AtlasTexture.GenerateAtlasedMaterialMaps(
+                            domain,
+                            group,
+                            settings,
+                            (new List<AtlasTexture.MaterialMergeGroup>(),
+                                null,
+                                null),
+                            new Dictionary<string, RenderTexture>(),
+                            new HashSet<Material>(),
+                            null);
+
+                    AtlasSourceOptimizer.ApplyToGeneratedMaterials(
+                        optimizedMaps.materialMap,
+                        constantOutputs,
+                        sourceOptimization.FeatureDisables,
+                        engine,
+                        settings.ForceSetTexture);
+
+                    var generatedMaterials =
+                        optimizedMaps.materialMap.Values
+                            .Concat(
+                                optimizedMaps
+                                    .domainsMaterial2ReplaceMaterial.Values)
+                            .Distinct()
+                            .ToArray();
+                    var generatedRetained =
+                        CollectRetainedSourceTextures(
+                            generatedMaterials,
+                            originalSources);
+
+                    if (!generatedRetained.Any(texture =>
+                            !retainedSources.Contains(texture)))
+                    {
+                        var routes =
+                            AtlasResolutionRouteReport
+                                .CollectWithOptimizations(
+                                    null,
+                                    null,
+                                    sourceOptimization,
+                                    constantOutputs,
+                                    group);
+                        var block = string.Format(
+                            materialBlock,
+                            string.Join(
+                                ", ",
+                                group.Select(OriginalMaterialName)
+                                    .Distinct()
+                                    .OrderBy(
+                                        name => name,
+                                        StringComparer.Ordinal)),
+                            1f,
+                            TTTLog.FormatLocalizedLines(
+                                AtlasResolutionRouteReport
+                                    .CreateLocalizedLogLines(routes)));
+                        block += "\n" + string.Format(
+                            "AtlasTexture:info:TargetTextureMemory"
+                                .GetLocalize(),
+                            AtlasTexture.FormatTextureMemory(sourceBytes),
+                            AtlasTexture.FormatTextureMemory(finalBytes));
+
+                        AtlasTexture.ApplyAtlasedMaterialMaps(
+                            domain,
+                            optimizedMaps.materialMap,
+                            optimizedMaps
+                                .domainsMaterial2ReplaceMaterial);
+
+                        foreach (var output in constantOutputs)
+                            domain.RegisterPostProcessingAndLazyGPUReadBack(
+                                output.RenderTexture,
+                                output.Descriptor);
+
+                        completed.Add(block);
+                    }
+                    else
+                    {
+                        DestroyUnappliedAtlasedMaterials(
+                            generatedMaterials);
+                        AtlasSourceOptimizer.DisposeConstantOutputs(
+                            constantOutputs);
+                    }
+                }
+                else
+                {
+                    AtlasSourceOptimizer.DisposeConstantOutputs(
+                        constantOutputs);
+                }
             }
 
             processingTimer.Stop();
@@ -1093,7 +1340,9 @@ namespace net.rs64.TexTransTool.NDMF
             IReadOnlyDictionary<
                 Material,
                 IReadOnlyDictionary<string, Texture>> propertyTextures,
-            HashSet<Texture> replacedTextures)
+            HashSet<Texture> replacedTextures,
+            HashSet<(Material material, string property)>?
+                removedBindings = null)
         {
             var retained = new HashSet<Texture>();
             foreach (var material in allReferencedMaterials)
@@ -1106,7 +1355,12 @@ namespace net.rs64.TexTransTool.NDMF
                 // exact property rewrite performed for this atlas group.
                 foreach (var property in material.GetTextureReferences())
                 {
-                    if (!replacedTextures.Contains(property.Value)) continue;
+                    if (!replacedTextures.Contains(property.Value))
+                        continue;
+                    if (isTarget
+                        && removedBindings?.Contains(
+                            (material, property.Key)) == true)
+                        continue;
                     if (!isTarget
                         || atlasProperties == null
                         || !atlasProperties.TryGetValue(
