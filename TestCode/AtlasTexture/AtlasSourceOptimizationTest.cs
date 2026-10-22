@@ -208,6 +208,64 @@ namespace net.rs64.TexTransTool.TestCode
         }
 
         [Test]
+        public void GpuAnalyzerReductionIncludesPartialEdgeBlocks()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            var mesh = CreateQuadMesh(
+                new Vector2(0f, 0f),
+                new Vector2(1f, 1f));
+            var source = CreateSource(
+                7,
+                5,
+                (x, y) => x == 6 && y == 4
+                    ? Color.blue
+                    : Color.red);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuPending? pending = null;
+            try
+            {
+                Assert.That(
+                    analyzer.TryBuildGeometry(
+                        new[] { (mesh, 0) },
+                        0,
+                        Matrix2x3.Identity,
+                        7,
+                        5,
+                        out geometry),
+                    Is.True);
+                Assert.That(
+                    analyzer.TryQueue(
+                        source,
+                        geometry!,
+                        out pending),
+                    Is.True);
+                Assert.That(
+                    pending!.TryGetFlags(out var flags),
+                    Is.True);
+                Assert.That(flags.IsConstant, Is.False);
+            }
+            finally
+            {
+                pending?.Dispose();
+                geometry?.Dispose();
+                analyzer.Dispose();
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
         public void GpuAnalyzerIgnoresUncoveredPixels()
         {
             if (!SystemInfo.supportsAsyncGPUReadback)
