@@ -962,32 +962,51 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     material.HasProperty(property)
                         ? Mathf.RoundToInt(material.GetFloat(property))
                         : -1;
-                if (Enabled("_UseMatCap")
-                    && (RgbZero("_MatCapBlendMask")
-                        || FloatZero("_MatCapBlend")
-                        || ColorAlphaZero("_MatCapColor")))
+
+                if (Enabled("_UseMatCap"))
                 {
-                    result.Add(new AtlasFeatureDisableDecision(
-                        material,
-                        new AtlasFeatureDisableRule(
-                            "MatCap1", "_UseMatCap",
-                            "_MatCapTex",
-                            "_MatCapBlendMask",
-                            "_MatCapBumpMap")));
+                    string? proof = null;
+                    if (RgbZero("_MatCapBlendMask"))
+                        proof = "_MatCapBlendMask";
+                    else if (FloatZero("_MatCapBlend"))
+                        proof = "_MatCapBlend";
+                    else if (ColorAlphaZero("_MatCapColor"))
+                        proof = "_MatCapColor";
+
+                    if (proof != null)
+                    {
+                        result.Add(new AtlasFeatureDisableDecision(
+                            material,
+                            new AtlasFeatureDisableRule(
+                                "MatCap1", "_UseMatCap",
+                                "_MatCapTex",
+                                "_MatCapBlendMask",
+                                "_MatCapBumpMap"),
+                            proof));
+                    }
                 }
 
-                if (Enabled("_UseMatCap2nd")
-                    && (RgbZero("_MatCap2ndBlendMask")
-                        || FloatZero("_MatCap2ndBlend")
-                        || ColorAlphaZero("_MatCap2ndColor")))
+                if (Enabled("_UseMatCap2nd"))
                 {
-                    result.Add(new AtlasFeatureDisableDecision(
-                        material,
-                        new AtlasFeatureDisableRule(
-                            "MatCap2", "_UseMatCap2nd",
-                            "_MatCap2ndTex",
-                            "_MatCap2ndBlendMask",
-                            "_MatCap2ndBumpMap")));
+                    string? proof = null;
+                    if (RgbZero("_MatCap2ndBlendMask"))
+                        proof = "_MatCap2ndBlendMask";
+                    else if (FloatZero("_MatCap2ndBlend"))
+                        proof = "_MatCap2ndBlend";
+                    else if (ColorAlphaZero("_MatCap2ndColor"))
+                        proof = "_MatCap2ndColor";
+
+                    if (proof != null)
+                    {
+                        result.Add(new AtlasFeatureDisableDecision(
+                            material,
+                            new AtlasFeatureDisableRule(
+                                "MatCap2", "_UseMatCap2nd",
+                                "_MatCap2ndTex",
+                                "_MatCap2ndBlendMask",
+                                "_MatCap2ndBumpMap"),
+                            proof));
+                    }
                 }
 
                 if (Enabled("_UseMain2ndTex")
@@ -996,18 +1015,51 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     && material.HasProperty("_Main2ndDissolveParams")
                     && material.GetVector("_Main2ndDissolveParams").x == 0f)
                 {
+                    var safety = new List<string>
+                    {
+                        "_Main2ndTexAlphaMode",
+                        "_Main2ndDissolveParams",
+                    };
                     var main2ndBlendMode =
                         BlendMode("_Main2ndTexBlendMode");
-                    var main2ndNeutral =
-                        RgbZero("_Main2ndBlendMask")
-                        || AlphaZero("_Main2ndTex")
-                        || ColorAlphaZero("_Color2nd")
-                        || FloatZero("_Main2ndEnableLighting")
-                        || (IsZeroRgbNeutralBlendMode(main2ndBlendMode)
-                            && (RgbZero("_Main2ndTex")
-                                || ColorRgbZero("_Color2nd")));
+                    var neutral = false;
 
-                    if (main2ndNeutral)
+                    if (RgbZero("_Main2ndBlendMask"))
+                    {
+                        safety.Add("_Main2ndBlendMask");
+                        neutral = true;
+                    }
+                    else if (AlphaZero("_Main2ndTex"))
+                    {
+                        safety.Add("_Main2ndTex");
+                        neutral = true;
+                    }
+                    else if (ColorAlphaZero("_Color2nd"))
+                    {
+                        safety.Add("_Color2nd");
+                        neutral = true;
+                    }
+                    else if (FloatZero("_Main2ndEnableLighting"))
+                    {
+                        safety.Add("_Main2ndEnableLighting");
+                        neutral = true;
+                    }
+                    else if (IsZeroRgbNeutralBlendMode(main2ndBlendMode)
+                             && RgbZero("_Main2ndTex"))
+                    {
+                        safety.Add("_Main2ndTex");
+                        safety.Add("_Main2ndTexBlendMode");
+                        neutral = true;
+                    }
+                    else if (IsZeroRgbNeutralBlendMode(main2ndBlendMode)
+                             && ColorRgbZero("_Color2nd"))
+                    {
+                        safety.Add("_Color2nd");
+                        safety.Add("_Main2ndTexBlendMode");
+                        neutral = true;
+                    }
+
+                    if (neutral)
                     {
                         result.Add(new AtlasFeatureDisableDecision(
                             material,
@@ -1016,7 +1068,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                 "_Main2ndTex",
                                 "_Main2ndBlendMask",
                                 "_Main2ndDissolveMask",
-                                "_Main2ndDissolveNoiseMask")));
+                                "_Main2ndDissolveNoiseMask"),
+                            safety.ToArray()));
                     }
                 }
 
@@ -1054,22 +1107,53 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         return;
 
                     var mode = BlendMode(blendModeProperty);
-                    var neutral =
-                        FloatZero(blendProperty)
-                        || ColorAlphaZero(colorProperty)
-                        || AlphaZero(mapProperty)
-                        || AlphaZero(maskProperty)
-                        || (IsZeroRgbNeutralBlendMode(mode)
-                            && (RgbZero(mapProperty)
-                                || RgbZero(maskProperty)
-                                || ColorRgbZero(colorProperty)));
-                    if (!neutral) return;
+                    var safety = new List<string>();
+
+                    if (FloatZero(blendProperty))
+                    {
+                        safety.Add(blendProperty);
+                    }
+                    else if (ColorAlphaZero(colorProperty))
+                    {
+                        safety.Add(colorProperty);
+                    }
+                    else if (AlphaZero(mapProperty))
+                    {
+                        safety.Add(mapProperty);
+                    }
+                    else if (AlphaZero(maskProperty))
+                    {
+                        safety.Add(maskProperty);
+                    }
+                    else if (IsZeroRgbNeutralBlendMode(mode)
+                             && RgbZero(mapProperty))
+                    {
+                        safety.Add(mapProperty);
+                        safety.Add(blendModeProperty);
+                    }
+                    else if (IsZeroRgbNeutralBlendMode(mode)
+                             && RgbZero(maskProperty))
+                    {
+                        safety.Add(maskProperty);
+                        safety.Add(blendModeProperty);
+                    }
+                    else if (IsZeroRgbNeutralBlendMode(mode)
+                             && ColorRgbZero(colorProperty))
+                    {
+                        safety.Add(colorProperty);
+                        safety.Add(blendModeProperty);
+                    }
+                    else
+                    {
+                        return;
+                    }
 
                     result.Add(new AtlasFeatureDisableDecision(
                         material,
                         new AtlasFeatureDisableRule(
                             name, switchProperty,
-                            mapProperty, maskProperty, gradProperty)));
+                            mapProperty, maskProperty, gradProperty),
+                        safety.ToArray()));
                 }
             }
 
