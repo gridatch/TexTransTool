@@ -622,6 +622,7 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         RequireLossless = true,
                         ReportProgressInfo = false,
+                        PrecomputedTextureUses = propertyTextures,
                         IslandRelocatorFactory = mergeAtomicGroupByMaterial != null
                             ? atlasContext =>
                             {
