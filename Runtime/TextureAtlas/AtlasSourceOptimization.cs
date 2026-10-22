@@ -1062,43 +1062,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 first);
         }
 
-        internal static bool TriangleOverlapsTexelFilter(
-            Vector2 pixel, Vector2 a, Vector2 b, Vector2 c, float radius)
-        {
-            var minX = Mathf.Min(a.x, Mathf.Min(b.x, c.x));
-            var maxX = Mathf.Max(a.x, Mathf.Max(b.x, c.x));
-            var minY = Mathf.Min(a.y, Mathf.Min(b.y, c.y));
-            var maxY = Mathf.Max(a.y, Mathf.Max(b.y, c.y));
-
-            if (maxX <= pixel.x - radius
-                || minX >= pixel.x + radius
-                || maxY <= pixel.y - radius
-                || minY >= pixel.y + radius)
-                return false;
-
-            return OverlapAxis(pixel, a, b, c, radius)
-                && OverlapAxis(pixel, b, c, a, radius)
-                && OverlapAxis(pixel, c, a, b, radius);
-        }
-
-        private static bool OverlapAxis(
-            Vector2 pixel, Vector2 a, Vector2 b, Vector2 c, float radius)
-        {
-            var edge = b - a;
-            var normal = new Vector2(-edge.y, edge.x);
-            var aa = Vector2.Dot(a, normal);
-            var bb = Vector2.Dot(b, normal);
-            var cc = Vector2.Dot(c, normal);
-            var center = Vector2.Dot(pixel, normal);
-            var projectedRadius =
-                (Mathf.Abs(normal.x) + Mathf.Abs(normal.y)) * radius;
-
-            return Mathf.Max(aa, Mathf.Max(bb, cc))
-                       > center - projectedRadius
-                   && Mathf.Min(aa, Mathf.Min(bb, cc))
-                       < center + projectedRadius;
-        }
-
         internal static bool TryGetExactConstantForCoverage(
             Color[] pixels,
             bool[] coverage,
