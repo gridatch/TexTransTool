@@ -49,33 +49,21 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             var atlasSetting = AtlasSetting;
 
-            if (AtlasTargetMaterials.Where(i => i != null).Any() is false)
-            {
-                TTLog.Info("AtlasTexture:info:TargetNotSet");
-                return;
-            }
+            if (AtlasTargetMaterials.Where(i => i != null).Any() is false) { TTLog.Info("AtlasTexture:info:TargetNotSet"); return; }
 
             pf.Split("targeting");
 
             var (targetMaterials, targetRenderers) = ResolveAtlasTargets(domain);
-            if (targetMaterials.Any() is false || targetRenderers.Any() is false)
-            {
-                TTLog.Info("AtlasTexture:info:TargetNotFound");
-                return;
-            }
+
+            if (targetMaterials.Any() is false || targetRenderers.Any() is false) { TTLog.Info("AtlasTexture:info:TargetNotFound"); return; }
 
             pf.Split("looking");
 
-            foreach (var mmg in MergeMaterialGroups)
-                if (mmg.Reference != null)
-                    domain.LookAt(mmg.Reference);
-            if (AllMaterialMergeReference != null)
-                domain.LookAt(AllMaterialMergeReference);
+            foreach (var mmg in MergeMaterialGroups) { if (mmg.Reference != null) { domain.LookAt(mmg.Reference); } }
+            if (AllMaterialMergeReference != null) { domain.LookAt(AllMaterialMergeReference); }
             domain.LookAtGetComponent<AtlasTextureExperimentalFeature>(gameObject);
-            var experimentalOptions =
-                GetComponent<AtlasTextureExperimentalFeature>();
-            if (experimentalOptions == null)
-                experimentalOptions = null; // Unity null -> C# null
+            var experimentalOptions = GetComponent<AtlasTextureExperimentalFeature>();
+            if (experimentalOptions == null) { experimentalOptions = null; }// UnityNull を潰す
 
             pf.Split("prepare");
 
