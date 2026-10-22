@@ -345,16 +345,23 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                 0,
                                 sourceHeight - 1));
 
-                        var hull = BuildExpandedHull(
+                        Span<Vector2> hull =
+                            stackalloc Vector2[12];
+                        var hullCount = BuildExpandedHull(
                             a,
                             b,
                             c,
-                            FilterRadius);
-                        if (hull.Count < 3)
+                            FilterRadius,
+                            hull);
+                        if (hullCount < 3)
                             return false;
 
-                        foreach (var point in hull)
+                        var vertexStart = logicalVertices.Count;
+                        for (var hullIndex = 0;
+                             hullIndex < hullCount;
+                             hullIndex += 1)
                         {
+                            var point = hull[hullIndex];
                             minX = Math.Min(
                                 minX,
                                 Mathf.FloorToInt(point.x));
@@ -367,12 +374,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             maxY = Math.Max(
                                 maxY,
                                 Mathf.CeilToInt(point.y));
+                            logicalVertices.Add(point);
                         }
 
-                        var vertexStart = logicalVertices.Count;
-                        logicalVertices.AddRange(hull);
                         for (var fan = 1;
-                             fan + 1 < hull.Count;
+                             fan + 1 < hullCount;
                              fan += 1)
                         {
                             indices.Add(vertexStart);
@@ -720,72 +726,106 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 * 2f - 1f;
         }
 
-        private static List<Vector2> BuildExpandedHull(
+        private static int BuildExpandedHull(
             Vector2 a,
             Vector2 b,
             Vector2 c,
-            float radius)
+            float radius,
+            Span<Vector2> hull)
         {
-            var points = new List<Vector2>(12);
-            AddSquareCorners(points, a, radius);
-            AddSquareCorners(points, b, radius);
-            AddSquareCorners(points, c, radius);
-            points.Sort(ComparePoint);
+            Span<Vector2> points = stackalloc Vector2[12];
+            var pointCount = 0;
+            AddSquareCorners(points, ref pointCount, a, radius);
+            AddSquareCorners(points, ref pointCount, b, radius);
+            AddSquareCorners(points, ref pointCount, c, radius);
 
-            var unique = new List<Vector2>(points.Count);
-            foreach (var point in points)
+            // The input size is fixed at twelve. An insertion sort avoids the
+            // per-triangle List allocations and comparer dispatch of List.Sort
+            // while preserving the exact lexicographic ordering used before.
+            for (var index = 1; index < pointCount; index += 1)
             {
-                if (unique.Count != 0
-                    && unique[unique.Count - 1] == point)
+                var value = points[index];
+                var insert = index - 1;
+                while (insert >= 0
+                       && ComparePoint(points[insert], value) > 0)
+                {
+                    points[insert + 1] = points[insert];
+                    insert -= 1;
+                }
+                points[insert + 1] = value;
+            }
+
+            var uniqueCount = 0;
+            for (var index = 0; index < pointCount; index += 1)
+            {
+                var point = points[index];
+                if (uniqueCount != 0
+                    && points[uniqueCount - 1] == point)
                     continue;
-                unique.Add(point);
+                points[uniqueCount] = point;
+                uniqueCount += 1;
             }
 
-            if (unique.Count <= 2)
-                return unique;
-
-            var lower = new List<Vector2>();
-            foreach (var point in unique)
+            if (uniqueCount <= 2)
             {
-                while (lower.Count >= 2
-                       && Cross(
-                           lower[lower.Count - 2],
-                           lower[lower.Count - 1],
-                           point) <= 0f)
-                    lower.RemoveAt(lower.Count - 1);
-                lower.Add(point);
+                for (var index = 0; index < uniqueCount; index += 1)
+                    hull[index] = points[index];
+                return uniqueCount;
             }
 
-            var upper = new List<Vector2>();
-            for (var index = unique.Count - 1;
+            // Same monotonic-chain convex hull as the previous List-based
+            // implementation, written into a caller-provided fixed buffer.
+            var hullCount = 0;
+            for (var index = 0; index < uniqueCount; index += 1)
+            {
+                var point = points[index];
+                while (hullCount >= 2
+                       && Cross(
+                           hull[hullCount - 2],
+                           hull[hullCount - 1],
+                           point) <= 0f)
+                    hullCount -= 1;
+                hull[hullCount] = point;
+                hullCount += 1;
+            }
+
+            var upperStart = hullCount + 1;
+            for (var index = uniqueCount - 2;
                  index >= 0;
                  index -= 1)
             {
-                var point = unique[index];
-                while (upper.Count >= 2
+                var point = points[index];
+                while (hullCount >= upperStart
                        && Cross(
-                           upper[upper.Count - 2],
-                           upper[upper.Count - 1],
+                           hull[hullCount - 2],
+                           hull[hullCount - 1],
                            point) <= 0f)
-                    upper.RemoveAt(upper.Count - 1);
-                upper.Add(point);
+                    hullCount -= 1;
+                hull[hullCount] = point;
+                hullCount += 1;
             }
 
-            lower.RemoveAt(lower.Count - 1);
-            upper.RemoveAt(upper.Count - 1);
-            lower.AddRange(upper);
-            return lower;
+            // The standard monotonic-chain construction repeats the first
+            // point as its last element.
+            if (hullCount > 1)
+                hullCount -= 1;
+            return hullCount;
         }
 
         private static void AddSquareCorners(
-            List<Vector2> points,
+            Span<Vector2> points,
+            ref int count,
             Vector2 center,
             float radius)
         {
-            points.Add(center + new Vector2(-radius, -radius));
-            points.Add(center + new Vector2(-radius, radius));
-            points.Add(center + new Vector2(radius, -radius));
-            points.Add(center + new Vector2(radius, radius));
+            points[count++] =
+                center + new Vector2(-radius, -radius);
+            points[count++] =
+                center + new Vector2(-radius, radius);
+            points[count++] =
+                center + new Vector2(radius, -radius);
+            points[count++] =
+                center + new Vector2(radius, radius);
         }
 
         private static int ComparePoint(
