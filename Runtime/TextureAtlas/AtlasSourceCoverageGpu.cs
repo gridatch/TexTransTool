@@ -346,6 +346,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     : IndexFormat.UInt16,
             };
             mesh.vertices = vertices;
+            mesh.SetUVs(0, logicalVertices);
             mesh.SetTriangles(indices, 0, true);
 
             geometry = new AtlasSourceGpuGeometry(
@@ -395,13 +396,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         source.height,
                         1f / source.width,
                         1f / source.height));
-                _material.SetVector(
-                    "_CoverageOrigin",
-                    new Vector4(
-                        geometry.Bounds.x,
-                        geometry.Bounds.y,
-                        0f,
-                        0f));
                 _material.SetVector(
                     "_ReferenceCoord",
                     new Vector4(
