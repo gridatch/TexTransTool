@@ -327,6 +327,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var rgbZeroProofCount = 0;
             var alphaZeroProofCount = 0;
             var constantColorReadbackCount = 0;
+            var gpuAnalysisCount = 0;
+            var gpuAnalysisTimer = System.Diagnostics.Stopwatch.StartNew();
 
             var engine = domain.GetTexTransCoreEngineForUnity();
             var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
@@ -358,7 +360,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         var loadedSources =
                             new List<ITTRenderTexture>();
                         var pending =
-                            new List<(Candidate candidate,
+                            new List<(Candidate[] candidates,
                                 AtlasSourceGpuPending pending)>();
                         long batchPixels = 0;
 
@@ -413,11 +415,31 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                     loadedSource = null;
                                     batchPixels += sourcePixels;
 
-                                    foreach (var candidate in textureGroup)
+                                    var analysisGroups = textureGroup
+                                        .GroupBy(candidate =>
+                                        {
+                                            var matrix = candidate.Matrix;
+                                            return (
+                                                candidate.Material,
+                                                width,
+                                                height,
+                                                matrix.M00,
+                                                matrix.M01,
+                                                matrix.M02,
+                                                matrix.M10,
+                                                matrix.M11,
+                                                matrix.M12);
+                                        });
+
+                                    foreach (var analysisGroup in analysisGroups)
                                     {
-                                        var matrix = candidate.Matrix;
+                                        var groupedCandidates =
+                                            analysisGroup.ToArray();
+                                        var representative =
+                                            groupedCandidates[0];
+                                        var matrix = representative.Matrix;
                                         var geometryKey = (
-                                            candidate.Material,
+                                            representative.Material,
                                             width,
                                             height,
                                             matrix.M00,
@@ -432,7 +454,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                                 out var geometry))
                                         {
                                             if (!analyzer.TryBuildGeometry(
-                                                    candidate.Slots,
+                                                    representative.Slots,
                                                     (int)atlasTargetUvChannel,
                                                     matrix,
                                                     width,
@@ -440,7 +462,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                                     out var builtGeometry)
                                                 || builtGeometry == null)
                                             {
-                                                geometryFailedCount += 1;
+                                                geometryFailedCount +=
+                                                    groupedCandidates.Length;
                                                 continue;
                                             }
 
@@ -456,13 +479,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                                 out var queued)
                                             || queued == null)
                                         {
-                                            queueFailedCount += 1;
+                                            queueFailedCount +=
+                                                groupedCandidates.Length;
                                             gpuDebug.AppendLine(
-                                                $"failure: {candidate.Material.name} | {candidate.Property} | {width}x{height} | queue=failed");
+                                                $"failure: {representative.Material.name} | properties={string.Join(",", groupedCandidates.Select(candidate => candidate.Property))} | {width}x{height} | queue=failed");
                                             continue;
                                         }
 
-                                        pending.Add((candidate, queued));
+                                        gpuAnalysisCount += 1;
+                                        pending.Add((
+                                            groupedCandidates,
+                                            queued));
                                     }
                                 }
                                 catch
@@ -478,7 +505,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             }
 
                             var constantRequests =
-                                new List<(Candidate candidate,
+                                new List<(Candidate[] candidates,
                                     AtlasSourceGpuFlags flags,
                                     AsyncGPUReadbackRequest request)>();
 
@@ -487,6 +514,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             // round-trip for every material/property candidate.
                             foreach (var item in pending)
                             {
+                                var representative = item.candidates[0];
                                 if (!item.pending.TryGetFlags(
                                         out var flags,
                                         out var flagReason,
@@ -511,35 +539,42 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                         }
                                     }
 
-                                    unknownCount += 1;
+                                    unknownCount += item.candidates.Length;
                                     gpuDebug.AppendLine(
-                                        $"failure: {item.candidate.Material.name} | {item.candidate.Property} | flags=unknown | reason={flagReason}{syncDetail}");
+                                        $"failure: {representative.Material.name} | properties={string.Join(",", item.candidates.Select(candidate => candidate.Property))} | flags=unknown | reason={flagReason}{syncDetail}");
                                     continue;
                                 }
 
-                                knownCount += 1;
-                                if (flags.IsConstant) constantProofCount += 1;
-                                if (flags.RgbZero) rgbZeroProofCount += 1;
-                                if (flags.AlphaZero) alphaZeroProofCount += 1;
-                                if (flags.IsConstant
-                                    || flags.RgbZero
-                                    || flags.AlphaZero)
-                                {
-                                    gpuDebug.AppendLine(
-                                        $"proof: {item.candidate.Material.name} | {item.candidate.Property} | constant={flags.IsConstant} rgbZero={flags.RgbZero} alphaZero={flags.AlphaZero}");
-                                }
+                                knownCount += item.candidates.Length;
+                                if (flags.IsConstant)
+                                    constantProofCount += item.candidates.Length;
+                                if (flags.RgbZero)
+                                    rgbZeroProofCount += item.candidates.Length;
+                                if (flags.AlphaZero)
+                                    alphaZeroProofCount += item.candidates.Length;
 
-                                // Zero proofs remain useful even if the optional
-                                // constant-color readback fails later.
-                                samples[(
-                                    item.candidate.Material,
-                                    item.candidate.Property)] =
-                                    new SampleResult(
-                                        true,
-                                        flags.RgbZero,
-                                        flags.AlphaZero,
-                                        false,
-                                        default);
+                                foreach (var candidate in item.candidates)
+                                {
+                                    if (flags.IsConstant
+                                        || flags.RgbZero
+                                        || flags.AlphaZero)
+                                    {
+                                        gpuDebug.AppendLine(
+                                            $"proof: {candidate.Material.name} | {candidate.Property} | constant={flags.IsConstant} rgbZero={flags.RgbZero} alphaZero={flags.AlphaZero}");
+                                    }
+
+                                    // Zero proofs remain useful even if the
+                                    // optional constant-color readback fails.
+                                    samples[(
+                                        candidate.Material,
+                                        candidate.Property)] =
+                                        new SampleResult(
+                                            true,
+                                            flags.RgbZero,
+                                            flags.AlphaZero,
+                                            false,
+                                            default);
+                                }
 
                                 if (!flags.IsConstant)
                                     continue;
@@ -547,13 +582,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                 try
                                 {
                                     constantRequests.Add((
-                                        item.candidate,
+                                        item.candidates,
                                         flags,
                                         item.pending.RequestReferenceColor()));
                                 }
                                 catch
                                 {
-                                    // Keep the zero proof above; only 4x4
+                                    // Keep the zero proofs above; only 4x4
                                     // constant replacement is unavailable.
                                 }
                             }
@@ -574,15 +609,18 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                     if (data.Length != 1)
                                         continue;
 
-                                    samples[(
-                                        item.candidate.Material,
-                                        item.candidate.Property)] =
-                                        new SampleResult(
-                                            true,
-                                            item.flags.RgbZero,
-                                            item.flags.AlphaZero,
-                                            true,
-                                            data[0]);
+                                    foreach (var candidate in item.candidates)
+                                    {
+                                        samples[(
+                                            candidate.Material,
+                                            candidate.Property)] =
+                                            new SampleResult(
+                                                true,
+                                                item.flags.RgbZero,
+                                                item.flags.AlphaZero,
+                                                true,
+                                                data[0]);
+                                    }
                                     constantColorReadbackCount += 1;
                                 }
                                 catch
@@ -661,20 +699,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 atlasSetting,
                 experimentalOptions);
 
-            gpuDebug.AppendLine(
-                $"summary: geometryFailed={geometryFailedCount} queueFailed={queueFailedCount} known={knownCount} unknown={unknownCount} constantProof={constantProofCount} rgbZeroProof={rgbZeroProofCount} alphaZeroProof={alphaZeroProofCount} constantColorReadback={constantColorReadbackCount}");
-            foreach (var item in constants)
-            {
-                gpuDebug.AppendLine(
-                    $"decision: constant | {item.Material.name} | {item.Property} | {item.Source.width}x{item.Source.height}->4x4");
-            }
-            foreach (var item in featureDisables)
-            {
-                gpuDebug.AppendLine(
-                    $"decision: disable | {item.Material.name} | {item.Rule.Name} | proof={string.Join(",", item.SafetyProperties)}");
-            }
-            Debug.Log(gpuDebug.ToString().TrimEnd());
-
             var projected = original.ToDictionary(
                 pair => pair.Key,
                 pair => pair.Value.ToDictionary(
@@ -705,6 +729,21 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 .ToHashSet();
             constants.RemoveAll(item =>
                 disabledBindings.Contains((item.Material, item.Property)));
+
+            gpuAnalysisTimer.Stop();
+            gpuDebug.AppendLine(
+                $"summary: geometryFailed={geometryFailedCount} queueFailed={queueFailedCount} known={knownCount} unknown={unknownCount} gpuAnalyses={gpuAnalysisCount} constantProof={constantProofCount} rgbZeroProof={rgbZeroProofCount} alphaZeroProof={alphaZeroProofCount} constantColorReadbacks={constantColorReadbackCount} elapsedMs={gpuAnalysisTimer.ElapsedMilliseconds}");
+            foreach (var item in constants)
+            {
+                gpuDebug.AppendLine(
+                    $"decision: constant | {item.Material.name} | {item.Property} | {item.Source.width}x{item.Source.height}->4x4");
+            }
+            foreach (var item in featureDisables)
+            {
+                gpuDebug.AppendLine(
+                    $"decision: disable | {item.Material.name} | {item.Rule.Name} | proof={string.Join(",", item.SafetyProperties)}");
+            }
+            Debug.Log(gpuDebug.ToString().TrimEnd());
 
             return new AtlasSourceOptimizationPlan(
                 original, projected, constants, featureDisables);
