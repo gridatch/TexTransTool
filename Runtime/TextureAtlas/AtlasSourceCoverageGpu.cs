@@ -412,10 +412,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         0f,
                         0f));
 
-                // NDMF invokes this outside a camera render callback. Submit
-                // offscreen rendering explicitly instead of relying on the
-                // immediate DrawMeshNow path; the earlier GPU UV probe used
-                // the same submission model successfully.
+                // NDMF invokes this outside a camera render callback.
+                // Submit the offscreen draw explicitly through a command buffer.
                 using (var command = new CommandBuffer
                 {
                     name = "TTT Atlas Source GPU Analysis",
