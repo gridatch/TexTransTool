@@ -110,11 +110,30 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal HashSet<Texture> CollectOriginalTextures(
             IEnumerable<Material> materials)
         {
-            return materials
+            var selected = materials.ToHashSet();
+            var result = selected
                 .Where(OriginalTextureUses.ContainsKey)
                 .SelectMany(material => OriginalTextureUses[material].Values)
                 .Where(texture => texture != null)
                 .ToHashSet();
+
+            // Feature removal can also release textures that were never atlas
+            // inputs themselves (for example a non-mesh-UV MatCap texture
+            // whose UV-space blend mask proves the whole feature inactive).
+            foreach (var item in FeatureDisables)
+            {
+                if (!selected.Contains(item.Material)) continue;
+                foreach (var property in item.Rule.TextureProperties)
+                {
+                    if (!item.Material.HasShaderTextureProperty(property))
+                        continue;
+                    var texture = item.Material.GetTexture(property);
+                    if (texture is Texture2D or RenderTexture)
+                        result.Add(texture);
+                }
+            }
+
+            return result;
         }
 
         internal HashSet<(Material material, string property)>
