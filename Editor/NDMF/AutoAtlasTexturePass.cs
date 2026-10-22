@@ -1869,7 +1869,7 @@ namespace net.rs64.TexTransTool.NDMF
             var emissionProbe = new AutoAtlasEmissionProbe();
             // Expensive full-pipeline diagnostic: at most one hypothetical use per build.
             var shadowReplansRemaining = 1;
-            var comparedFeatureKinds = new HashSet<string>();
+
 
             var twoDimensionalFallbackReasons = new List<string>();
 
@@ -2061,28 +2061,31 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
-            foreach (var candidate in emissionProbe.GetFeatureCandidates()
-                         .OrderBy(item => item.rule.Name, StringComparer.Ordinal)
-                         .ThenBy(item => item.material.name, StringComparer.Ordinal))
+            var hypotheses = emissionProbe.GetFeatureCandidates()
+                .Where(item => preparedGroups.Any(group =>
+                    group.Materials.Contains(item.material)))
+                .GroupBy(item => (item.material, item.rule.SwitchProperty))
+                .Select(group => group.First())
+                .OrderBy(item => item.material.name, StringComparer.Ordinal)
+                .ThenBy(item => item.rule.Name, StringComparer.Ordinal)
+                .Select(item => (item.material, item.rule))
+                .ToArray();
+            if (hypotheses.Length != 0)
             {
-                var kind = candidate.rule.Name.StartsWith(
-                    "Emission", StringComparison.Ordinal) ? "emission" : "non-emission";
-                if (!comparedFeatureKinds.Add(kind)) continue;
                 try
                 {
                     emissionProbe.AddFeatureDisableLine(
                         AutoAtlasShadowReplan.CompareMergePlans(
                             domain, configuration, settings,
                             preparedGroups, propertyTextures, mergePlan,
-                            candidate.material, candidate.rule));
+                            hypotheses));
                 }
                 catch (Exception ex)
                 {
                     emissionProbe.AddFeatureDisableLine(
-                        "material=" + candidate.material.name
-                        + ", feature=" + candidate.rule.Name
-                        + ", planner=unknown:" + ex.GetType().Name
-                        + ":" + ex.Message.Replace('\n', ' '));
+                        "featureSet=combined, planner=unknown:"
+                        + ex.GetType().Name + ":"
+                        + ex.Message.Replace('\n', ' '));
                 }
             }
 
