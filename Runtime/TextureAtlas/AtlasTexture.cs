@@ -96,7 +96,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         targetMaterials.Where(material =>
                             group.Group.Any(groupMaterial =>
                                 domain.OriginEqual(
-                                    material, groupMaterial))));
+                                    material, groupMaterial))
+                            || domain.OriginEqual(
+                                material, group.Reference)));
                 }
             }
 
