@@ -49,110 +49,292 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             var atlasSetting = AtlasSetting;
 
-            if (AtlasTargetMaterials.Where(i => i != null).Any() is false) { TTLog.Info("AtlasTexture:info:TargetNotSet"); return; }
+            if (AtlasTargetMaterials.Where(i => i != null).Any() is false)
+            {
+                TTLog.Info("AtlasTexture:info:TargetNotSet");
+                return;
+            }
 
             pf.Split("targeting");
 
             var (targetMaterials, targetRenderers) = ResolveAtlasTargets(domain);
-
-            if (targetMaterials.Any() is false || targetRenderers.Any() is false) { TTLog.Info("AtlasTexture:info:TargetNotFound"); return; }
+            if (targetMaterials.Any() is false || targetRenderers.Any() is false)
+            {
+                TTLog.Info("AtlasTexture:info:TargetNotFound");
+                return;
+            }
 
             pf.Split("looking");
 
-            foreach (var mmg in MergeMaterialGroups) { if (mmg.Reference != null) { domain.LookAt(mmg.Reference); } }
-            if (AllMaterialMergeReference != null) { domain.LookAt(AllMaterialMergeReference); }
+            foreach (var mmg in MergeMaterialGroups)
+                if (mmg.Reference != null)
+                    domain.LookAt(mmg.Reference);
+            if (AllMaterialMergeReference != null)
+                domain.LookAt(AllMaterialMergeReference);
             domain.LookAtGetComponent<AtlasTextureExperimentalFeature>(gameObject);
-            var experimentalOptions = GetComponent<AtlasTextureExperimentalFeature>();
-            if (experimentalOptions == null) { experimentalOptions = null; }// UnityNull を潰す
+            var experimentalOptions =
+                GetComponent<AtlasTextureExperimentalFeature>();
+            if (experimentalOptions == null)
+                experimentalOptions = null; // Unity null -> C# null
 
             pf.Split("prepare");
 
             var engine = domain.GetTexTransCoreEngineForUnity();
-
-            pf.Split("Atlasing!");
-            // Do Atlasing!
-            var atlasResult = DoAtlasTexture(
-                domain,
-                engine,
-                targetMaterials,
-                targetRenderers,
-                IslandSizePriorityTuner,
-                atlasSetting,
-                new AtlasExecutionOptions { ReportProgressInfo = false }
-            );
-            if (atlasResult.IsSuccess is false) { return; }
-            using var atlasContext = atlasResult.AtlasContext!;
-            var atlasedMeshes = atlasResult.AtlasedMeshes!;
-            var compiledAtlasTextures = atlasResult.CompiledAtlasTextures!;
-            var preserveBump2ndMaterials = atlasResult.PreserveBump2ndMaterials;
-            var preservedOriginalUVChannel = atlasResult.PreservedOriginalUVChannel;
-
-            pf.Split("tex fine tuning");
-            //Texture Fine Tuning
-            var tunedAtlasTextures = DoTextureFinTuning(engine, atlasContext, atlasSetting, compiledAtlasTextures, experimentalOptions);
-
-            if (atlasResult.RelocationMetrics is { } relocationMetrics)
+            var sourceOptimizationExclusions = new HashSet<Material>();
+            if (AllMaterialMergeReference != null)
             {
-                var resolutionRoutes = AtlasResolutionRouteReport.Collect(
+                sourceOptimizationExclusions.UnionWith(targetMaterials);
+            }
+            else
+            {
+                foreach (var group in MergeMaterialGroups)
+                {
+                    sourceOptimizationExclusions.UnionWith(
+                        domain.OriginEqual.GetDomainsMaterialsHashSet(
+                            targetMaterials, group.Group));
+                }
+            }
+
+            var sourceOptimization = AtlasSourceOptimizer.Analyze(
+                engine,
+                domain,
+                targetRenderers,
+                targetMaterials,
+                atlasSetting.AtlasTargetUVChannel,
+                atlasSetting.OptimizeConstantTextures,
+                atlasSetting.DisableVisuallyUnusedShaderFeatures,
+                sourceOptimizationExclusions);
+
+            var atlasMaterials = sourceOptimization.HasChanges
+                ? sourceOptimization.GetAtlasMaterials(targetMaterials)
+                : targetMaterials;
+            var optimizationOnlyMaterials = sourceOptimization.HasChanges
+                ? sourceOptimization.GetOptimizationOnlyMaterials(
+                    targetMaterials)
+                : new HashSet<Material>();
+
+            var atlasRenderers = atlasMaterials.Count == 0
+                ? Array.Empty<Renderer>()
+                : FilterExistUVChannel(
+                    domain,
+                    FilterTargetRenderers(
+                        domain,
+                        targetRenderers.ToList(),
+                        atlasMaterials),
+                    atlasSetting.AtlasTargetUVChannel);
+
+            AtlasContext? atlasContext = null;
+            Mesh[] atlasedMeshes = Array.Empty<Mesh>();
+            Dictionary<string, ITTRenderTexture> compiledAtlasTextures =
+                new();
+            TexFineTuningResult? tunedAtlasTextures = null;
+            HashSet<Material> preserveBump2ndMaterials = new();
+            int? preservedOriginalUVChannel = null;
+            AtlasRelocationMetrics? relocationMetrics = null;
+
+            if (atlasMaterials.Count != 0 && atlasRenderers.Length != 0)
+            {
+                pf.Split("Atlasing!");
+                var atlasResult = DoAtlasTexture(
+                    domain,
+                    engine,
+                    atlasMaterials,
+                    atlasRenderers,
+                    IslandSizePriorityTuner,
+                    atlasSetting,
+                    new AtlasExecutionOptions
+                    {
+                        ReportProgressInfo = false,
+                        PrecomputedTextureUses =
+                            sourceOptimization.ProjectedTextureUses,
+                    });
+                if (atlasResult.IsSuccess is false)
+                    return;
+
+                atlasContext = atlasResult.AtlasContext!;
+                atlasedMeshes = atlasResult.AtlasedMeshes!;
+                compiledAtlasTextures = atlasResult.CompiledAtlasTextures!;
+                preserveBump2ndMaterials =
+                    atlasResult.PreserveBump2ndMaterials;
+                preservedOriginalUVChannel =
+                    atlasResult.PreservedOriginalUVChannel;
+                relocationMetrics = atlasResult.RelocationMetrics;
+
+                pf.Split("tex fine tuning");
+                tunedAtlasTextures = DoTextureFinTuning(
+                    engine,
                     atlasContext,
-                    tunedAtlasTextures
-                );
+                    atlasSetting,
+                    compiledAtlasTextures,
+                    experimentalOptions);
+            }
+
+            var constantOutputs = sourceOptimization.HasChanges
+                ? AtlasSourceOptimizer.CreateConstantOutputs(
+                    engine,
+                    sourceOptimization,
+                    atlasSetting,
+                    experimentalOptions,
+                    targetMaterials)
+                : Array.Empty<AtlasConstantTextureOutput>();
+
+            var effectiveMetrics = relocationMetrics
+                ?? (sourceOptimization.HasChanges
+                    ? new AtlasRelocationMetrics(
+                        1f, 1f, 1f, 0, 0)
+                    : (AtlasRelocationMetrics?)null);
+
+            if (effectiveMetrics is { } metrics)
+            {
+                var resolutionRoutes =
+                    AtlasResolutionRouteReport.CollectWithOptimizations(
+                        atlasContext,
+                        tunedAtlasTextures,
+                        sourceOptimization,
+                        constantOutputs,
+                        targetMaterials);
                 var localizedResolutionRoutes =
                     AtlasResolutionRouteReport.CreateLocalizedLogLines(
                         resolutionRoutes);
 
-                var sourceTextures = CollectSourceTextures(atlasContext);
-                if (TryCalculateSourceTextureMemory(
-                        domain,
-                        sourceTextures,
-                        out var sourceTextureMemoryBytes)
-                    && TryCalculateFinalTextureMemory(
+                var sourceTextures =
+                    sourceOptimization.CollectOriginalTextures(targetMaterials);
+                var hasSourceMemory = TryCalculateSourceTextureMemory(
+                    domain,
+                    sourceTextures,
+                    out var sourceTextureMemoryBytes);
+                var hasAtlasMemory = atlasContext == null
+                    || tunedAtlasTextures == null
+                    || TryCalculateFinalTextureMemory(
                         atlasContext,
                         tunedAtlasTextures,
-                        out var outputTextureMemoryBytes))
+                        out var atlasTextureMemoryBytes);
+                if (atlasContext == null || tunedAtlasTextures == null)
+                    atlasTextureMemoryBytes = 0;
+                var hasConstantMemory = TryCalculateConstantTextureMemory(
+                    constantOutputs,
+                    out var constantTextureMemoryBytes);
+
+                if (hasSourceMemory && hasAtlasMemory && hasConstantMemory)
                 {
                     TTLog.Info(
                         "AtlasTexture:info:RelocateResultWithResolutionAndMemory",
-                        relocationMetrics.TopFreeFraction,
-                        relocationMetrics.PriorityDownScale,
-                        relocationMetrics.OverallDownScale,
+                        metrics.TopFreeFraction,
+                        metrics.PriorityDownScale,
+                        metrics.OverallDownScale,
                         localizedResolutionRoutes,
                         FormatTextureMemory(sourceTextureMemoryBytes),
-                        FormatTextureMemory(outputTextureMemoryBytes),
-                        relocationMetrics.TotalRelocateCount,
-                        relocationMetrics.RelocationTimeMilliseconds
-                    );
+                        FormatTextureMemory(
+                            atlasTextureMemoryBytes
+                            + constantTextureMemoryBytes),
+                        metrics.TotalRelocateCount,
+                        metrics.RelocationTimeMilliseconds);
                 }
                 else
                 {
                     TTLog.Info(
                         "AtlasTexture:info:RelocateResultWithResolution",
-                        relocationMetrics.TopFreeFraction,
-                        relocationMetrics.PriorityDownScale,
-                        relocationMetrics.OverallDownScale,
+                        metrics.TopFreeFraction,
+                        metrics.PriorityDownScale,
+                        metrics.OverallDownScale,
                         localizedResolutionRoutes,
-                        relocationMetrics.TotalRelocateCount,
-                        relocationMetrics.RelocationTimeMilliseconds
-                    );
+                        metrics.TotalRelocateCount,
+                        metrics.RelocationTimeMilliseconds);
                 }
             }
 
-            var tunedAtlasUnityTextures = tunedAtlasTextures.RenderTextures.ToDictionary(i => i.Key, i => engine.GetReferenceRenderTexture(i.Value));
-            var usedRT = new HashSet<ITTRenderTexture>(tunedAtlasTextures.TextureDescriptors.Keys);
+            var tunedAtlasUnityTextures = tunedAtlasTextures == null
+                ? new Dictionary<string, RenderTexture>()
+                : tunedAtlasTextures.RenderTextures.ToDictionary(
+                    item => item.Key,
+                    item => engine.GetReferenceRenderTexture(item.Value));
+            var usedRT = tunedAtlasTextures == null
+                ? new HashSet<ITTRenderTexture>()
+                : new HashSet<ITTRenderTexture>(
+                    tunedAtlasTextures.TextureDescriptors.Keys);
 
-            pf.Split("replace mesh");
-            //Mesh Change
-            ReplaceMesh(domain, targetRenderers, atlasContext, atlasedMeshes);
+            if (atlasContext != null)
+            {
+                pf.Split("replace mesh");
+                ReplaceMesh(
+                    domain,
+                    atlasRenderers,
+                    atlasContext,
+                    atlasedMeshes);
+            }
 
             pf.Split("gen and replace material");
-            //MaterialGenerate And Change
-            ReplaceAtlasedMaterials(domain, targetMaterials, atlasSetting, (MergeMaterialGroups, AllMaterialMergeReference, experimentalOptions), tunedAtlasUnityTextures, preserveBump2ndMaterials, preservedOriginalUVChannel);
+
+            var materialMap = new Dictionary<Material, Material>();
+            var domainsMaterial2ReplaceMaterial =
+                new Dictionary<Material, Material>();
+
+            if (atlasMaterials.Count != 0)
+            {
+                var atlasMaps = GenerateAtlasedMaterialMaps(
+                    domain,
+                    atlasMaterials,
+                    atlasSetting,
+                    (MergeMaterialGroups,
+                        AllMaterialMergeReference,
+                        experimentalOptions),
+                    tunedAtlasUnityTextures,
+                    preserveBump2ndMaterials,
+                    preservedOriginalUVChannel);
+                foreach (var pair in atlasMaps.materialMap)
+                    materialMap.Add(pair.Key, pair.Value);
+                foreach (var pair in atlasMaps.domainsMaterial2ReplaceMaterial)
+                    domainsMaterial2ReplaceMaterial[pair.Key] = pair.Value;
+            }
+
+            if (optimizationOnlyMaterials.Count != 0)
+            {
+                var optimizedOnlyMaps = GenerateAtlasedMaterialMaps(
+                    domain,
+                    optimizationOnlyMaterials,
+                    atlasSetting,
+                    (new List<MaterialMergeGroup>(), null, experimentalOptions),
+                    new Dictionary<string, RenderTexture>(),
+                    new HashSet<Material>(),
+                    null);
+                foreach (var pair in optimizedOnlyMaps.materialMap)
+                    materialMap.Add(pair.Key, pair.Value);
+                foreach (var pair in
+                         optimizedOnlyMaps.domainsMaterial2ReplaceMaterial)
+                    domainsMaterial2ReplaceMaterial[pair.Key] = pair.Value;
+            }
+
+            if (sourceOptimization.HasChanges)
+            {
+                AtlasSourceOptimizer.ApplyToGeneratedMaterials(
+                    materialMap,
+                    constantOutputs,
+                    sourceOptimization.FeatureDisables,
+                    engine);
+            }
+
+            ApplyAtlasedMaterialMaps(
+                domain,
+                materialMap,
+                domainsMaterial2ReplaceMaterial);
 
             pf.Split("register textures");
-            // Register AtlasedTextures
-            foreach (var t in compiledAtlasTextures.Values) { if (usedRT.Contains(t) is false) t.Dispose(); }
-            foreach (var aTex in tunedAtlasTextures.TextureDescriptors)
-                domain.RegisterPostProcessingAndLazyGPUReadBack(aTex.Key, aTex.Value);
+
+            foreach (var texture in compiledAtlasTextures.Values)
+                if (!usedRT.Contains(texture))
+                    texture.Dispose();
+
+            if (tunedAtlasTextures != null)
+            {
+                foreach (var texture in tunedAtlasTextures.TextureDescriptors)
+                    domain.RegisterPostProcessingAndLazyGPUReadBack(
+                        texture.Key, texture.Value);
+            }
+
+            foreach (var output in constantOutputs)
+                domain.RegisterPostProcessingAndLazyGPUReadBack(
+                    output.RenderTexture,
+                    output.Descriptor);
         }
 
         internal (HashSet<Material> targetMaterials, Renderer[] targetRenderers) ResolveAtlasTargets(IDomain domain)
