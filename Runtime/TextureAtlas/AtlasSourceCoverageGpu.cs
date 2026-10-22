@@ -71,35 +71,97 @@ namespace net.rs64.TexTransTool.TextureAtlas
             Request = request;
         }
 
-        internal bool TryGetFlags(out AtlasSourceGpuFlags flags)
+        internal bool TryGetFlags(
+            out AtlasSourceGpuFlags flags,
+            out string reason,
+            out Color32 rawPixel)
         {
             flags = default;
+            rawPixel = default;
             try
             {
                 var request = Request;
                 request.WaitForCompletion();
                 if (request.hasError)
+                {
+                    reason = "async-readback-error";
                     return false;
+                }
 
                 NativeArray<Color32> data =
                     request.GetData<Color32>();
                 if (data.Length != 1)
+                {
+                    reason = "async-readback-length=" + data.Length;
                     return false;
+                }
 
-                var pixel = data[0];
-                if (pixel.a < 128)
+                rawPixel = data[0];
+                if (rawPixel.a < 128)
+                {
+                    reason =
+                        $"alpha-zero raw={rawPixel.r},{rawPixel.g},{rawPixel.b},{rawPixel.a}";
                     return false;
+                }
 
                 flags = new AtlasSourceGpuFlags(
                     true,
-                    pixel.r < 128,
-                    pixel.g < 128,
-                    pixel.b < 128);
+                    rawPixel.r < 128,
+                    rawPixel.g < 128,
+                    rawPixel.b < 128);
+                reason =
+                    $"ok raw={rawPixel.r},{rawPixel.g},{rawPixel.b},{rawPixel.a}";
                 return true;
             }
-            catch
+            catch (Exception exception)
             {
+                reason = "exception=" + exception.GetType().Name;
                 return false;
+            }
+        }
+
+        internal bool TryReadResultSynchronously(
+            out Color32 pixel,
+            out string reason)
+        {
+            pixel = default;
+            Texture2D? copy = null;
+            var previous = RenderTexture.active;
+            try
+            {
+                copy = new Texture2D(
+                    1,
+                    1,
+                    TextureFormat.RGBA32,
+                    false,
+                    true)
+                {
+                    hideFlags = HideFlags.HideAndDontSave,
+                };
+                RenderTexture.active = Result;
+                copy.ReadPixels(new Rect(0, 0, 1, 1), 0, 0, false);
+                var pixels = copy.GetPixels32(0);
+                if (pixels.Length != 1)
+                {
+                    reason = "sync-readback-length=" + pixels.Length;
+                    return false;
+                }
+
+                pixel = pixels[0];
+                reason =
+                    $"ok raw={pixel.r},{pixel.g},{pixel.b},{pixel.a}";
+                return true;
+            }
+            catch (Exception exception)
+            {
+                reason = "exception=" + exception.GetType().Name;
+                return false;
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                if (copy != null)
+                    UnityEngine.Object.DestroyImmediate(copy);
             }
         }
 
