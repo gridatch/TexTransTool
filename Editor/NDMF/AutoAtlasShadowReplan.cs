@@ -20,6 +20,21 @@ namespace net.rs64.TexTransTool.NDMF
         private const string MatCapKey = "TTT.Debug.AutoAtlasFeatureTrial.MatCap";
         private const string EmissionKey = "TTT.Debug.AutoAtlasFeatureTrial.Emission";
 
+        internal static string EnabledModeSummary
+        {
+            get
+            {
+                var modes = new List<string>();
+                if (UnityEditor.SessionState.GetBool(MainKey, false))
+                    modes.Add("Main2nd");
+                if (UnityEditor.SessionState.GetBool(MatCapKey, false))
+                    modes.Add("MatCap");
+                if (UnityEditor.SessionState.GetBool(EmissionKey, false))
+                    modes.Add("Emission");
+                return modes.Count == 0 ? "OFF" : string.Join(",", modes);
+            }
+        }
+
         internal static bool EnabledFor(AutoAtlasFeatureDisableRules.Rule rule)
         {
             string? key = rule.Name switch
