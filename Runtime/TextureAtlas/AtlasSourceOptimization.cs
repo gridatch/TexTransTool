@@ -159,15 +159,21 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal readonly AtlasConstantTextureDecision Decision;
         internal readonly ITTRenderTexture RenderTexture;
         internal readonly TexTransToolTextureDescriptor Descriptor;
+        internal readonly string[] BoundProperties;
 
         internal AtlasConstantTextureOutput(
             AtlasConstantTextureDecision decision,
             ITTRenderTexture renderTexture,
-            TexTransToolTextureDescriptor descriptor)
+            TexTransToolTextureDescriptor descriptor,
+            IEnumerable<string> boundProperties)
         {
             Decision = decision;
             RenderTexture = renderTexture;
             Descriptor = descriptor;
+            BoundProperties = boundProperties
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(property => property, StringComparer.Ordinal)
+                .ToArray();
         }
     }
 
@@ -431,8 +437,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     && !tuned.TextureDescriptors.ContainsKey(created))
                     created.Dispose();
 
+                var boundProperties = tuned.RenderTextures
+                    .Where(pair => ReferenceEquals(pair.Value, final))
+                    .Select(pair => pair.Key)
+                    .ToArray();
                 outputs.Add(new AtlasConstantTextureOutput(
-                    decision, final, descriptor));
+                    decision, final, descriptor, boundProperties));
             }
 
             return outputs.ToArray();
@@ -451,19 +461,36 @@ namespace net.rs64.TexTransTool.TextureAtlas
             IReadOnlyDictionary<Material, Material> materialMap,
             IEnumerable<AtlasConstantTextureOutput> constantOutputs,
             IEnumerable<AtlasFeatureDisableDecision> featureDisables,
-            ITexTransToolForUnity engine)
+            ITexTransToolForUnity engine,
+            bool forceSetTexture = false)
         {
-            foreach (var output in constantOutputs)
-            {
-                if (!materialMap.TryGetValue(
-                        output.Decision.Material, out var generated)
-                    || !generated.HasShaderTextureProperty(
-                        output.Decision.Property))
-                    continue;
+            var outputs = constantOutputs
+                .OrderBy(output => output.Decision.Property,
+                    StringComparer.Ordinal)
+                .ToArray();
 
-                generated.SetTexture(
+            // Apply direct decisions first. FineTuning aliases such as
+            // ReferenceCopy are applied afterwards, matching normal atlas
+            // semantics where the copy source supersedes the target output.
+            foreach (var output in outputs)
+            {
+                SetTexture(
+                    output.Decision.Material,
                     output.Decision.Property,
-                    engine.GetReferenceRenderTexture(output.RenderTexture));
+                    output);
+            }
+
+            foreach (var output in outputs)
+            {
+                foreach (var property in output.BoundProperties)
+                {
+                    if (string.Equals(
+                            property,
+                            output.Decision.Property,
+                            StringComparison.Ordinal))
+                        continue;
+                    SetTexture(output.Decision.Material, property, output);
+                }
             }
 
             foreach (var item in featureDisables)
@@ -479,6 +506,29 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 foreach (var property in item.Rule.TextureProperties)
                     if (generated.HasShaderTextureProperty(property))
                         generated.SetTexture(property, null);
+            }
+
+            void SetTexture(
+                Material sourceMaterial,
+                string property,
+                AtlasConstantTextureOutput output)
+            {
+                if (!materialMap.TryGetValue(
+                        sourceMaterial, out var generated)
+                    || !generated.HasShaderTextureProperty(property))
+                    return;
+
+                var current = generated.GetTexture(property);
+                if (!forceSetTexture && current == null)
+                    return;
+                if (current != null
+                    && !(current is Texture2D)
+                    && !(current is RenderTexture))
+                    return;
+
+                generated.SetTexture(
+                    property,
+                    engine.GetReferenceRenderTexture(output.RenderTexture));
             }
         }
 
