@@ -2623,8 +2623,15 @@ namespace net.rs64.TexTransTool.NDMF
                         + retainedSourceMemoryBytes
                         + ", actualTotalTextureMemoryBytes="
                         + finalTotalTextureMemoryBytes
-                        + ", originalMemoryBaselineBytes="
-                        + memoryBaseline
+                        + ", adoptionBaselineKind="
+                        + (execution.MergeSelection != null
+                            ? "effective-standalone-atlas-plan"
+                            : "original-source-textures")
+                        + ", adoptionBaselineBytes=" + memoryBaseline
+                        + ", originalSourceMemoryBytes="
+                        + (hasSourceTextureMemory
+                            ? sourceTextureMemoryBytes.ToString()
+                            : "unknown")
                         + ", shaderVisualEquivalence=UNVERIFIED");
 
                 foreach (var rt in compiledTextures.Values)
