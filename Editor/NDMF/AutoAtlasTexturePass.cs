@@ -1728,7 +1728,8 @@ namespace net.rs64.TexTransTool.NDMF
             IReadOnlyCollection<string> sourceProperties,
             Func<Texture, (bool success, Color color)> inspect,
             Func<Material, string, Texture, bool> hasAnimatedReplacement,
-            out Color color)
+            out Color color,
+            Func<Material, bool>? isSupportedShader = null)
         {
             color = default;
             if (materials.Count == 0 || sourceProperties.Count == 0)
@@ -1741,11 +1742,12 @@ namespace net.rs64.TexTransTool.NDMF
                 {
                     var shaderName = material.shader != null
                         ? material.shader.name : "";
-                    if (!(shaderName == "lilToon"
-                          || shaderName.StartsWith("Hidden/lilToon",
-                              StringComparison.Ordinal))
-                        || shaderName.Contains("Lite")
-                        || shaderName.Contains("Gem")
+                    if (!(isSupportedShader?.Invoke(material)
+                              ?? ((shaderName == "lilToon"
+                                   || shaderName.StartsWith("Hidden/lilToon",
+                                       StringComparison.Ordinal))
+                                  && !shaderName.Contains("Lite")
+                                  && !shaderName.Contains("Gem")))
                         || !effectiveTextures.TryGetValue(material,
                             out var uses)
                         || !uses.TryGetValue(property, out var texture)
@@ -1837,15 +1839,18 @@ namespace net.rs64.TexTransTool.NDMF
                 name == property || name.StartsWith(property + ".",
                     StringComparison.Ordinal);
 
-            // Any animated texture transform or material property on a
-            // removed texture may invalidate its current mask coverage.
-            if (rule.TextureProperties.Any(property =>
-                    Affects(property)
-                    || Affects(property + "_ST")
-                    || Affects(property + "_ScrollRotate")
-                    || name.StartsWith(property + ".offset.",
+            // Only the MASK UV affects a zero-mask conclusion. Animating
+            // the discarded emission/map textures is harmless while the
+            // sampled mask remains zero.
+            var maskProperty = rule.TextureProperties.FirstOrDefault(
+                property => property.EndsWith("BlendMask",
+                    StringComparison.Ordinal));
+            if (maskProperty != null
+                && (Affects(maskProperty + "_ST")
+                    || Affects(maskProperty + "_ScrollRotate")
+                    || name.StartsWith(maskProperty + ".offset.",
                         StringComparison.Ordinal)
-                    || name.StartsWith(property + ".scale.",
+                    || name.StartsWith(maskProperty + ".scale.",
                         StringComparison.Ordinal)))
                 return true;
             if (Affects("_MainTex_ST") || Affects("_MainTex_ScrollRotate")
@@ -1948,7 +1953,9 @@ namespace net.rs64.TexTransTool.NDMF
                             if (binding.propertyName.StartsWith("material.",
                                     StringComparison.Ordinal)
                                 && rule.TextureProperties.Any(property =>
-                                    binding.propertyName == "material." + property))
+                                    property.EndsWith("BlendMask",
+                                        StringComparison.Ordinal)
+                                    && binding.propertyName == "material." + property))
                             {
                                 var curve = clip.GetObjectCurve(binding);
                                 if (domain.GetMaterials(renderer).Contains(material)
