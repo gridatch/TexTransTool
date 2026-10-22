@@ -170,6 +170,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     experimentalOptions);
             }
 
+            using var atlasContextLifetime = atlasContext;
+
             var constantOutputs = sourceOptimization.HasChanges
                 ? AtlasSourceOptimizer.CreateConstantOutputs(
                     engine,
@@ -338,7 +340,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     output.RenderTexture,
                     output.Descriptor);
 
-            atlasContext?.Dispose();
         }
 
         internal (HashSet<Material> targetMaterials, Renderer[] targetRenderers) ResolveAtlasTargets(IDomain domain)
