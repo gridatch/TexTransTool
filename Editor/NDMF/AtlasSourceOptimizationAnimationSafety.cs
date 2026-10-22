@@ -257,8 +257,8 @@ namespace net.rs64.TexTransTool.NDMF
                 var shaderName = material.shader != null
                     ? material.shader.name
                     : string.Empty;
-                if (!shaderName.Contains(
-                        "lilToon", StringComparison.Ordinal))
+                if (shaderName.IndexOf(
+                        "lilToon", StringComparison.Ordinal) < 0)
                     return false;
 
                 if (property == "_GlitterColorTex")
