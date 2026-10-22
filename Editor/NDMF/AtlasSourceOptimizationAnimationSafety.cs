@@ -183,6 +183,28 @@ namespace net.rs64.TexTransTool.NDMF
                     property + ".scale.", StringComparison.Ordinal))
                 return true;
 
+            if (property == "_Main2ndTex"
+                || property == "_Main3rdTex")
+            {
+                if (Affects(name, property + "Angle")
+                    || Affects(name, property + "IsDecal")
+                    || Affects(name, property + "IsLeftOnly")
+                    || Affects(name, property + "IsRightOnly")
+                    || Affects(name, property + "ShouldCopy")
+                    || Affects(name, property + "ShouldFlipMirror")
+                    || Affects(name, property + "ShouldFlipCopy")
+                    || Affects(name, property + "DecalAnimation")
+                    || Affects(name, property + "DecalSubParam"))
+                    return true;
+            }
+
+            if (property == "_EmissionMap"
+                && Affects(name, "_EmissionParallaxDepth"))
+                return true;
+            if (property == "_Emission2ndMap"
+                && Affects(name, "_Emission2ndParallaxDepth"))
+                return true;
+
             if (!MainUvTextureProperties.Contains(property))
                 return false;
 
