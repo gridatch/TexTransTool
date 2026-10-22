@@ -17,6 +17,66 @@ namespace net.rs64.TexTransTool.NDMF
     /// generated assets registrations, or changes to original materials.
     /// This is an assumed texture unbinding, NOT permission to disable lilToon.
     /// </summary>
+    // Debug-only, session-scoped opt-in. These switches are OFF by default
+    // and are not serialized into the avatar or project. Users can A/B test
+    // an actual processed avatar while the normal release path is unchanged.
+    internal static class AutoAtlasFeatureTrialSession
+    {
+        private const string MainKey = "TTT.Debug.AutoAtlasFeatureTrial.Main2nd";
+        private const string MatCapKey = "TTT.Debug.AutoAtlasFeatureTrial.MatCap";
+        private const string EmissionKey = "TTT.Debug.AutoAtlasFeatureTrial.Emission";
+
+        internal static bool EnabledFor(AutoAtlasFeatureDisableRules.Rule rule)
+        {
+            string? key = rule.Name switch
+            {
+                "Main2nd" => MainKey,
+                "MatCap1" or "MatCap2" => MatCapKey,
+                "Emission1" or "Emission2" => EmissionKey,
+                _ => null,
+            };
+            return key != null && UnityEditor.SessionState.GetBool(key, false);
+        }
+
+        [UnityEditor.MenuItem("Tools/WDT/Diagnostics/Trial Main2nd Removal (Session)")]
+        private static void ToggleMain() =>
+            Toggle(MainKey, "Tools/WDT/Diagnostics/Trial Main2nd Removal (Session)");
+
+        [UnityEditor.MenuItem("Tools/WDT/Diagnostics/Trial Main2nd Removal (Session)", true)]
+        private static bool ValidateMain() =>
+            Refresh(MainKey, "Tools/WDT/Diagnostics/Trial Main2nd Removal (Session)");
+
+        [UnityEditor.MenuItem("Tools/WDT/Diagnostics/Trial MatCap Removal (Session)")]
+        private static void ToggleMatCap() =>
+            Toggle(MatCapKey, "Tools/WDT/Diagnostics/Trial MatCap Removal (Session)");
+
+        [UnityEditor.MenuItem("Tools/WDT/Diagnostics/Trial MatCap Removal (Session)", true)]
+        private static bool ValidateMatCap() =>
+            Refresh(MatCapKey, "Tools/WDT/Diagnostics/Trial MatCap Removal (Session)");
+
+        [UnityEditor.MenuItem("Tools/WDT/Diagnostics/Trial Emission Removal (Session)")]
+        private static void ToggleEmission() =>
+            Toggle(EmissionKey, "Tools/WDT/Diagnostics/Trial Emission Removal (Session)");
+
+        [UnityEditor.MenuItem("Tools/WDT/Diagnostics/Trial Emission Removal (Session)", true)]
+        private static bool ValidateEmission() =>
+            Refresh(EmissionKey, "Tools/WDT/Diagnostics/Trial Emission Removal (Session)");
+
+        private static void Toggle(string key, string path)
+        {
+            UnityEditor.SessionState.SetBool(key,
+                !UnityEditor.SessionState.GetBool(key, false));
+            Refresh(key, path);
+        }
+
+        private static bool Refresh(string key, string path)
+        {
+            UnityEditor.Menu.SetChecked(path,
+                UnityEditor.SessionState.GetBool(key, false));
+            return true;
+        }
+    }
+
     // This models the fragment equations in lilToon. A static mip0 result is
     // NOT proof of animation-, mip-, shader-variant-, or renderer-equivalence.
     internal static class AutoAtlasFeatureDisableRules
@@ -141,14 +201,26 @@ namespace net.rs64.TexTransTool.NDMF
             return value == 1 || value == 2;
         }
 
+        // Only call on AtlasTexture-generated clones, never on source
+        // materials in the NDMF domain. This is explicitly NOT a safety
+        // certification; use only with an enabled debug trial switch.
+        internal static void DisableOnGeneratedMaterial(Material generated, Rule rule)
+        {
+            if (!generated.HasProperty(rule.SwitchProperty))
+                throw new InvalidOperationException(
+                    "Missing shader switch: " + rule.SwitchProperty);
+
+            generated.SetFloat(rule.SwitchProperty, 0f);
+            foreach (var property in rule.TextureProperties)
+                if (generated.HasShaderTextureProperty(property))
+                    generated.SetTexture(property, null);
+        }
+
         internal static Material CreateDisabledClone(Material original, Rule rule)
         {
             var clone = UnityEngine.Object.Instantiate(original);
             clone.name = original.name + "(shader-disable-diagnostic)";
-            clone.SetFloat(rule.SwitchProperty, 0f);
-            foreach (var property in rule.TextureProperties)
-                if (clone.HasShaderTextureProperty(property))
-                    clone.SetTexture(property, null);
+            DisableOnGeneratedMaterial(clone, rule);
             return clone;
         }
     }
