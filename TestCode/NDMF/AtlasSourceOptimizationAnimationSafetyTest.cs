@@ -133,6 +133,39 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void OtherEmissionMaskScrollChangesMaskUvMode()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._Emission2ndBlendMask_ScrollRotate.x",
+                    "_EmissionBlendMask",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
+        public void OutlineVectorUvModeInvalidatesCoverageProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._OutlineVectorUVMode",
+                    "_OutlineVectorTex",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
+        public void ShadowColorTypeInvalidatesCoverageProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._ShadowColorType",
+                    "_ShadowColorTex",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
         public void IndependentEmissionMapIgnoresMainTextureStAnimation()
         {
             Assert.That(
