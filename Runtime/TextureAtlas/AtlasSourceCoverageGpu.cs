@@ -460,13 +460,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     }
 
                     Graphics.Blit(
-                        current,
+                        current!,
                         next,
                         _material,
                         1);
 
                     if (currentIsTemporary)
-                        RenderTexture.ReleaseTemporary(current);
+                        RenderTexture.ReleaseTemporary(current!);
 
                     current = next;
                     currentIsTemporary = nextIsTemporary;
@@ -477,12 +477,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 if (!ReferenceEquals(current, result))
                 {
                     Graphics.Blit(
-                        current,
+                        current!,
                         result,
                         _material,
                         1);
                     if (currentIsTemporary)
-                        RenderTexture.ReleaseTemporary(current);
+                        RenderTexture.ReleaseTemporary(current!);
                     current = result;
                     currentIsTemporary = false;
                 }
