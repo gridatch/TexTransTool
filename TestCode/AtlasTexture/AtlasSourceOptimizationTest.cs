@@ -77,6 +77,21 @@ namespace net.rs64.TexTransTool.TestCode
         }
 
         [Test]
+        public void CoverageBoundsContainOnlyMarkedTexels()
+        {
+            var coverage = new bool[4 * 3];
+            coverage[1 * 4 + 1] = true;
+            coverage[2 * 4 + 3] = true;
+
+            Assert.That(
+                AtlasSourceOptimizer.TryGetCoverageBounds(
+                    coverage, 4, 3, out var bounds),
+                Is.True);
+            Assert.That(bounds, Is.EqualTo(
+                new RectInt(1, 1, 3, 2)));
+        }
+
+        [Test]
         public void FilterCoverageIncludesTriangleTouchingTexelSupport()
         {
             var triangleA = new Vector2(0f, 0f);
