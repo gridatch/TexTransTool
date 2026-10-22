@@ -205,6 +205,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
     internal static class AtlasSourceOptimizer
     {
         private const long MaxSourcePixels = 4096L * 4096L;
+        private const long MaxGpuBatchSourcePixels = 32L * 1024L * 1024L;
 
         private readonly struct SampleResult
         {
@@ -311,91 +312,231 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 new Dictionary<(Material material, string property), SampleResult>();
 
             var engine = domain.GetTexTransCoreEngineForUnity();
-            var coverageCache = new Dictionary<
-                (Material material,
-                 int width,
-                 int height,
-                 float m00,
-                 float m01,
-                 float m02,
-                 float m10,
-                 float m11,
-                 float m12),
-                AtlasSourceCoverageMask>();
-
-            foreach (var textureGroup in candidates.GroupBy(item => item.Texture))
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer != null)
             {
-                var source = textureGroup.Key;
-                var width = source.width;
-                var height = source.height;
-                if (width <= 0 || height <= 0
-                    || (long)width * height > MaxSourcePixels)
-                    continue;
+                var geometryCache = new Dictionary<
+                    (Material material,
+                     int width,
+                     int height,
+                     float m00,
+                     float m01,
+                     float m02,
+                     float m10,
+                     float m11,
+                     float m12),
+                    AtlasSourceGpuGeometry>();
 
-                ITTRenderTexture? loadedSource = null;
                 try
                 {
-                    // Use exactly the same source loading path as AtlasContext.
-                    // This preserves TTT's raw sRGB representation and normal-map
-                    // packing adjustments instead of observing a shader-decoded
-                    // Graphics.Blit value.
-                    loadedSource =
-                        engine.WrappingOrUploadToLoadFullScale(source);
-                    var sampledSource =
-                        engine.GetReferenceRenderTexture(loadedSource);
-                    if (sampledSource.width != width
-                        || sampledSource.height != height)
-                        continue;
+                    var textureGroups = candidates
+                        .GroupBy(item => item.Texture)
+                        .ToArray();
+                    var groupIndex = 0;
 
-                    foreach (var candidate in textureGroup)
+                    while (groupIndex < textureGroups.Length)
                     {
-                        var matrix = candidate.Matrix;
-                        var coverageKey = (
-                            candidate.Material,
-                            width,
-                            height,
-                            matrix.M00,
-                            matrix.M01,
-                            matrix.M02,
-                            matrix.M10,
-                            matrix.M11,
-                            matrix.M12);
-                        if (!coverageCache.TryGetValue(
-                                coverageKey,
-                                out var coverage))
+                        var loadedSources =
+                            new List<ITTRenderTexture>();
+                        var pending =
+                            new List<(Candidate candidate,
+                                AtlasSourceGpuPending pending)>();
+                        long batchPixels = 0;
+
+                        try
                         {
-                            if (!AtlasSourceCoverageGpu.TryRender(
-                                    candidate.Slots,
-                                    (int)atlasTargetUvChannel,
-                                    matrix,
-                                    width,
-                                    height,
-                                    out coverage))
-                                continue;
-                            coverageCache.Add(
-                                coverageKey,
-                                coverage);
+                            while (groupIndex < textureGroups.Length)
+                            {
+                                var textureGroup =
+                                    textureGroups[groupIndex];
+                                var source = textureGroup.Key;
+                                var width = source.width;
+                                var height = source.height;
+                                var sourcePixels =
+                                    (long)width * height;
+
+                                if (width <= 0
+                                    || height <= 0
+                                    || sourcePixels > MaxSourcePixels)
+                                {
+                                    groupIndex += 1;
+                                    continue;
+                                }
+
+                                if (loadedSources.Count != 0
+                                    && batchPixels + sourcePixels
+                                        > MaxGpuBatchSourcePixels)
+                                    break;
+
+                                groupIndex += 1;
+                                ITTRenderTexture? loadedSource = null;
+                                try
+                                {
+                                    // Use the same canonical source loading path
+                                    // as AtlasContext. The GPU proof only asks
+                                    // equality/zero questions, while an accepted
+                                    // constant color is read back separately as
+                                    // RGBAFloat from this same render texture.
+                                    loadedSource =
+                                        engine.WrappingOrUploadToLoadFullScale(
+                                            source);
+                                    var sampledSource =
+                                        engine.GetReferenceRenderTexture(
+                                            loadedSource);
+                                    if (sampledSource.width != width
+                                        || sampledSource.height != height)
+                                        continue;
+
+                                    loadedSources.Add(loadedSource);
+                                    loadedSource = null;
+                                    batchPixels += sourcePixels;
+
+                                    foreach (var candidate in textureGroup)
+                                    {
+                                        var matrix = candidate.Matrix;
+                                        var geometryKey = (
+                                            candidate.Material,
+                                            width,
+                                            height,
+                                            matrix.M00,
+                                            matrix.M01,
+                                            matrix.M02,
+                                            matrix.M10,
+                                            matrix.M11,
+                                            matrix.M12);
+
+                                        if (!geometryCache.TryGetValue(
+                                                geometryKey,
+                                                out var geometry))
+                                        {
+                                            if (!analyzer.TryBuildGeometry(
+                                                    candidate.Slots,
+                                                    (int)atlasTargetUvChannel,
+                                                    matrix,
+                                                    width,
+                                                    height,
+                                                    out var builtGeometry)
+                                                || builtGeometry == null)
+                                                continue;
+
+                                            geometry = builtGeometry;
+                                            geometryCache.Add(
+                                                geometryKey,
+                                                geometry);
+                                        }
+
+                                        if (!analyzer.TryQueue(
+                                                sampledSource,
+                                                geometry,
+                                                out var queued)
+                                            || queued == null)
+                                            continue;
+
+                                        pending.Add((candidate, queued));
+                                    }
+                                }
+                                catch
+                                {
+                                    // Source optimization is optional. A source
+                                    // that cannot enter the canonical GPU path is
+                                    // left to the existing Atlas implementation.
+                                }
+                                finally
+                                {
+                                    loadedSource?.Dispose();
+                                }
+                            }
+
+                            var constantRequests =
+                                new List<(Candidate candidate,
+                                    AtlasSourceGpuFlags flags,
+                                    AsyncGPUReadbackRequest request)>();
+
+                            // Every result request in this batch has already
+                            // been issued. Waiting here avoids a render->wait
+                            // round-trip for every material/property candidate.
+                            foreach (var item in pending)
+                            {
+                                if (!item.pending.TryGetFlags(
+                                        out var flags)
+                                    || !flags.Known)
+                                    continue;
+
+                                // Zero proofs remain useful even if the optional
+                                // constant-color readback fails later.
+                                samples[(
+                                    item.candidate.Material,
+                                    item.candidate.Property)] =
+                                    new SampleResult(
+                                        true,
+                                        flags.RgbZero,
+                                        flags.AlphaZero,
+                                        false,
+                                        default);
+
+                                if (!flags.IsConstant)
+                                    continue;
+
+                                try
+                                {
+                                    constantRequests.Add((
+                                        item.candidate,
+                                        flags,
+                                        item.pending.RequestReferenceColor()));
+                                }
+                                catch
+                                {
+                                    // Keep the zero proof above; only 4x4
+                                    // constant replacement is unavailable.
+                                }
+                            }
+
+                            // Issue every 1x1 color request before waiting for
+                            // any of them. This preserves the exact canonical
+                            // RGBAFloat value used by the previous CPU path.
+                            foreach (var item in constantRequests)
+                            {
+                                try
+                                {
+                                    var request = item.request;
+                                    request.WaitForCompletion();
+                                    if (request.hasError)
+                                        continue;
+
+                                    var data = request.GetData<Color>();
+                                    if (data.Length != 1)
+                                        continue;
+
+                                    samples[(
+                                        item.candidate.Material,
+                                        item.candidate.Property)] =
+                                        new SampleResult(
+                                            true,
+                                            item.flags.RgbZero,
+                                            item.flags.AlphaZero,
+                                            true,
+                                            data[0]);
+                                }
+                                catch
+                                {
+                                    // Keep the zero proof recorded above.
+                                }
+                            }
                         }
-
-                        if (!TryScanSourceTexture(
-                                sampledSource,
-                                coverage,
-                                out var sample))
-                            continue;
-
-                        samples[(candidate.Material, candidate.Property)] =
-                            sample;
+                        finally
+                        {
+                            foreach (var item in pending)
+                                item.pending.Dispose();
+                            foreach (var loadedSource in loadedSources)
+                                loadedSource.Dispose();
+                        }
                     }
-                }
-                catch
-                {
-                    // Source optimization is optional. If a source cannot be
-                    // represented through the normal Atlas load path, leave it
-                    // to the existing Atlas implementation unchanged.
                 }
                 finally
                 {
-                    loadedSource?.Dispose();
+                    foreach (var geometry in geometryCache.Values)
+                        geometry.Dispose();
+                    analyzer.Dispose();
                 }
             }
 
