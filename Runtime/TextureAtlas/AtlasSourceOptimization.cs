@@ -855,14 +855,29 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 bool Enabled(string property) =>
                     material.HasProperty(property)
                     && Mathf.RoundToInt(material.GetFloat(property)) != 0;
-                bool AudioLinkTargets(string property) =>
-                    material.HasProperty("_UseAudioLink")
-                    && material.GetFloat("_UseAudioLink") != 0f
-                    && material.HasProperty(property)
-                    && material.GetFloat(property) != 0f;
+                bool FloatZero(string property) =>
+                    material.HasProperty(property)
+                    && material.GetFloat(property) == 0f;
+                bool ColorAlphaZero(string property) =>
+                    material.HasProperty(property)
+                    && material.GetColor(property).a == 0f;
+                bool ColorRgbZero(string property)
+                {
+                    if (!material.HasProperty(property)) return false;
+                    var color = material.GetColor(property);
+                    return color.r == 0f && color.g == 0f && color.b == 0f;
+                }
+                int BlendMode(string property) =>
+                    material.HasProperty(property)
+                        ? Mathf.RoundToInt(material.GetFloat(property))
+                        : -1;
+                bool ZeroRgbIsNeutral(int blendMode) =>
+                    blendMode == 1 || blendMode == 2;
 
                 if (Enabled("_UseMatCap")
-                    && RgbZero("_MatCapBlendMask"))
+                    && (RgbZero("_MatCapBlendMask")
+                        || FloatZero("_MatCapBlend")
+                        || ColorAlphaZero("_MatCapColor")))
                 {
                     result.Add(new AtlasFeatureDisableDecision(
                         material,
@@ -874,7 +889,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 }
 
                 if (Enabled("_UseMatCap2nd")
-                    && RgbZero("_MatCap2ndBlendMask"))
+                    && (RgbZero("_MatCap2ndBlendMask")
+                        || FloatZero("_MatCap2ndBlend")
+                        || ColorAlphaZero("_MatCap2ndColor")))
                 {
                     result.Add(new AtlasFeatureDisableDecision(
                         material,
@@ -886,63 +903,79 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 }
 
                 if (Enabled("_UseMain2ndTex")
-                    && !AudioLinkTargets("_AudioLink2Main2nd")
-                    && RgbZero("_Main2ndBlendMask")
                     && material.HasProperty("_Main2ndTexAlphaMode")
                     && material.GetFloat("_Main2ndTexAlphaMode") == 0f
                     && material.HasProperty("_Main2ndDissolveParams")
                     && material.GetVector("_Main2ndDissolveParams").x == 0f)
                 {
-                    result.Add(new AtlasFeatureDisableDecision(
-                        material,
-                        new AtlasFeatureDisableRule(
-                            "Main2nd", "_UseMain2ndTex",
-                            "_Main2ndTex",
-                            "_Main2ndBlendMask",
-                            "_Main2ndDissolveMask",
-                            "_Main2ndDissolveNoiseMask")));
+                    var main2ndBlendMode =
+                        BlendMode("_Main2ndTexBlendMode");
+                    var main2ndNeutral =
+                        RgbZero("_Main2ndBlendMask")
+                        || AlphaZero("_Main2ndTex")
+                        || ColorAlphaZero("_Color2nd")
+                        || FloatZero("_Main2ndEnableLighting")
+                        || (ZeroRgbIsNeutral(main2ndBlendMode)
+                            && (RgbZero("_Main2ndTex")
+                                || ColorRgbZero("_Color2nd")));
+
+                    if (main2ndNeutral)
+                    {
+                        result.Add(new AtlasFeatureDisableDecision(
+                            material,
+                            new AtlasFeatureDisableRule(
+                                "Main2nd", "_UseMain2ndTex",
+                                "_Main2ndTex",
+                                "_Main2ndBlendMask",
+                                "_Main2ndDissolveMask",
+                                "_Main2ndDissolveNoiseMask")));
+                    }
                 }
 
                 TryEmission(
                     "_UseEmission",
                     "_EmissionBlendMode",
+                    "_EmissionBlend",
+                    "_EmissionColor",
                     "_EmissionMap",
                     "_EmissionBlendMask",
                     "_EmissionGradTex",
-                    "_AudioLink2Emission",
                     "Emission1");
                 TryEmission(
                     "_UseEmission2nd",
                     "_Emission2ndBlendMode",
+                    "_Emission2ndBlend",
+                    "_Emission2ndColor",
                     "_Emission2ndMap",
                     "_Emission2ndBlendMask",
                     "_Emission2ndGradTex",
-                    "_AudioLink2Emission2nd",
                     "Emission2");
 
                 void TryEmission(
                     string switchProperty,
                     string blendModeProperty,
+                    string blendProperty,
+                    string colorProperty,
                     string mapProperty,
                     string maskProperty,
                     string gradProperty,
-                    string audioLinkProperty,
                     string name)
                 {
                     if (!Enabled(switchProperty)
-                        || AudioLinkTargets(audioLinkProperty)
                         || !material.HasProperty(blendModeProperty))
                         return;
 
-                    var mode = Mathf.RoundToInt(
-                        material.GetFloat(blendModeProperty));
-                    var mapZero = AlphaZero(mapProperty)
-                        || ((mode == 1 || mode == 2)
-                            && RgbZero(mapProperty));
-                    var maskZero = AlphaZero(maskProperty)
-                        || ((mode == 1 || mode == 2)
-                            && RgbZero(maskProperty));
-                    if (!mapZero && !maskZero) return;
+                    var mode = BlendMode(blendModeProperty);
+                    var neutral =
+                        FloatZero(blendProperty)
+                        || ColorAlphaZero(colorProperty)
+                        || AlphaZero(mapProperty)
+                        || AlphaZero(maskProperty)
+                        || (ZeroRgbIsNeutral(mode)
+                            && (RgbZero(mapProperty)
+                                || RgbZero(maskProperty)
+                                || ColorRgbZero(colorProperty)));
+                    if (!neutral) return;
 
                     result.Add(new AtlasFeatureDisableDecision(
                         material,
