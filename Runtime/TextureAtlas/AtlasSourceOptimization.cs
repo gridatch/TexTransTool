@@ -318,6 +318,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             gpuDebug.AppendLine("[atlas-source-gpu-debug]");
             gpuDebug.AppendLine("Unityプロジェクト名: " + projectName);
             gpuDebug.AppendLine("candidates: " + candidates.Count);
+            var synchronousUnknownProbes = 0;
 
             var engine = domain.GetTexTransCoreEngineForUnity();
             var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
@@ -481,16 +482,36 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             foreach (var item in pending)
                             {
                                 if (!item.pending.TryGetFlags(
-                                        out var flags)
+                                        out var flags,
+                                        out var flagReason,
+                                        out var rawPixel)
                                     || !flags.Known)
                                 {
+                                    var syncDetail = "";
+                                    if (synchronousUnknownProbes < 3)
+                                    {
+                                        synchronousUnknownProbes += 1;
+                                        if (item.pending.TryReadResultSynchronously(
+                                                out var syncPixel,
+                                                out var syncReason))
+                                        {
+                                            syncDetail =
+                                                $" | sync={syncReason}";
+                                        }
+                                        else
+                                        {
+                                            syncDetail =
+                                                $" | sync-failed={syncReason}";
+                                        }
+                                    }
+
                                     gpuDebug.AppendLine(
-                                        $"result: {item.candidate.Material.name} | {item.candidate.Property} | flags=unknown");
+                                        $"result: {item.candidate.Material.name} | {item.candidate.Property} | flags=unknown | reason={flagReason}{syncDetail}");
                                     continue;
                                 }
 
                                 gpuDebug.AppendLine(
-                                    $"result: {item.candidate.Material.name} | {item.candidate.Property} | flags=known constant={flags.IsConstant} rgbZero={flags.RgbZero} alphaZero={flags.AlphaZero}");
+                                    $"result: {item.candidate.Material.name} | {item.candidate.Property} | flags=known constant={flags.IsConstant} rgbZero={flags.RgbZero} alphaZero={flags.AlphaZero} | {flagReason}");
 
                                 // Zero proofs remain useful even if the optional
                                 // constant-color readback fails later.
