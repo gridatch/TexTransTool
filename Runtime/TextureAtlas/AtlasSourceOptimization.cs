@@ -174,7 +174,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
     internal static class AtlasSourceOptimizer
     {
         private const long MaxSourcePixels = 4096L * 4096L;
-        private const long MaxTrianglePixelChecks = 24L * 1024L * 1024L;
 
         private readonly struct SampleResult
         {
@@ -609,6 +608,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
             coverage = new bool[width * height];
             var uvs = new List<Vector2>();
             long checks = 0;
+            var maxChecks = Math.Max(
+                4L * 1024L * 1024L,
+                (long)width * height * 4L);
             var any = false;
 
             foreach (var slot in slots)
@@ -668,7 +670,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                         var triangleChecks =
                             (long)(x1 - x0 + 1) * (y1 - y0 + 1);
-                        if (triangleChecks > MaxTrianglePixelChecks - checks)
+                        if (triangleChecks > maxChecks - checks)
                             return false;
                         checks += triangleChecks;
 
