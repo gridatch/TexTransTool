@@ -2,8 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.IO;
-using System.Text;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCoreEngineForUnity;
 using net.rs64.TexTransTool.TextureAtlas.AAOCode;
@@ -312,40 +310,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             var samples =
                 new Dictionary<(Material material, string property), SampleResult>();
-            var gpuDebug = new StringBuilder();
-            var projectName = Path.GetFileName(
-                Path.GetDirectoryName(Application.dataPath) ?? "");
-            gpuDebug.AppendLine("[atlas-source-gpu-debug]");
-            gpuDebug.AppendLine("Unityプロジェクト名: " + projectName);
-            gpuDebug.AppendLine("candidates: " + candidates.Count);
-            var synchronousUnknownProbes = 0;
-            var geometryFailedCount = 0;
-            var queueFailedCount = 0;
-            var knownCount = 0;
-            var unknownCount = 0;
-            var constantProofCount = 0;
-            var rgbZeroProofCount = 0;
-            var alphaZeroProofCount = 0;
-            var constantColorReadbackCount = 0;
-            var gpuAnalysisCount = 0;
-            var gpuAnalysisTimer = System.Diagnostics.Stopwatch.StartNew();
-            long sourceLoadTicks = 0;
-            long geometryTicks = 0;
-            long queueTicks = 0;
-            long flagWaitTicks = 0;
-            long colorReadbackTicks = 0;
-            var uniqueSourceCount = 0;
-            long sourceSlotTicks = 0;
-            long triangleExpansionTicks = 0;
-            long meshBuildTicks = 0;
-            long geometryTriangleCount = 0;
-            var sourceSlotCacheHits = 0;
-            var sourceSlotCacheMisses = 0;
-
             var engine = domain.GetTexTransCoreEngineForUnity();
             var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
-            gpuDebug.AppendLine(
-                "analyzer: " + (analyzer != null ? "available" : "unavailable"));
             if (analyzer != null)
             {
                 var geometryCache = new Dictionary<
@@ -383,7 +349,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                 var textureGroup =
                                     textureGroups[groupIndex];
                                 var source = textureGroup.Key;
-                                uniqueSourceCount += 1;
                                 var width = source.width;
                                 var height = source.height;
                                 var sourcePixels =
@@ -411,17 +376,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                     // equality/zero questions, while an accepted
                                     // constant color is read back separately as
                                     // RGBAFloat from this same render texture.
-                                    var sourceLoadTimer =
-                                        System.Diagnostics.Stopwatch.StartNew();
                                     loadedSource =
                                         engine.WrappingOrUploadToLoadFullScale(
                                             source);
                                     var sampledSource =
                                         engine.GetReferenceRenderTexture(
                                             loadedSource);
-                                    sourceLoadTimer.Stop();
-                                    sourceLoadTicks +=
-                                        sourceLoadTimer.ElapsedTicks;
                                     if (sampledSource.width != width
                                         || sampledSource.height != height)
                                         continue;
@@ -471,26 +431,15 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                                 geometryKey,
                                                 out var geometry))
                                         {
-                                            var geometryTimer =
-                                                System.Diagnostics.Stopwatch.StartNew();
-                                            var geometryBuilt =
-                                                analyzer.TryBuildGeometry(
+                                            if (!analyzer.TryBuildGeometry(
                                                     representative.Slots,
                                                     (int)atlasTargetUvChannel,
                                                     matrix,
                                                     width,
                                                     height,
-                                                    out var builtGeometry);
-                                            geometryTimer.Stop();
-                                            geometryTicks +=
-                                                geometryTimer.ElapsedTicks;
-                                            if (!geometryBuilt
+                                                    out var builtGeometry)
                                                 || builtGeometry == null)
-                                            {
-                                                geometryFailedCount +=
-                                                    groupedCandidates.Length;
                                                 continue;
-                                            }
 
                                             geometry = builtGeometry;
                                             geometryCache.Add(
@@ -498,25 +447,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                                 geometry);
                                         }
 
-                                        var queueTimer =
-                                            System.Diagnostics.Stopwatch.StartNew();
-                                        var queuedOk = analyzer.TryQueue(
-                                            sampledSource,
-                                            geometry,
-                                            out var queued);
-                                        queueTimer.Stop();
-                                        queueTicks += queueTimer.ElapsedTicks;
-                                        if (!queuedOk
+                                        if (!analyzer.TryQueue(
+                                                sampledSource,
+                                                geometry,
+                                                out var queued)
                                             || queued == null)
-                                        {
-                                            queueFailedCount +=
-                                                groupedCandidates.Length;
-                                            gpuDebug.AppendLine(
-                                                $"failure: {representative.Material.name} | properties={string.Join(",", groupedCandidates.Select(candidate => candidate.Property))} | {width}x{height} | queue=failed");
                                             continue;
-                                        }
 
-                                        gpuAnalysisCount += 1;
                                         pending.Add((
                                             groupedCandidates,
                                             queued));
@@ -544,59 +481,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             // round-trip for every material/property candidate.
                             foreach (var item in pending)
                             {
-                                var representative = item.candidates[0];
-                                var flagTimer =
-                                    System.Diagnostics.Stopwatch.StartNew();
-                                var gotFlags = item.pending.TryGetFlags(
-                                    out var flags,
-                                    out var flagReason,
-                                    out var rawPixel);
-                                flagTimer.Stop();
-                                flagWaitTicks += flagTimer.ElapsedTicks;
-                                if (!gotFlags || !flags.Known)
-                                {
-                                    var syncDetail = "";
-                                    if (synchronousUnknownProbes < 3)
-                                    {
-                                        synchronousUnknownProbes += 1;
-                                        if (item.pending.TryReadResultSynchronously(
-                                                out var syncPixel,
-                                                out var syncReason))
-                                        {
-                                            syncDetail =
-                                                $" | sync={syncReason}";
-                                        }
-                                        else
-                                        {
-                                            syncDetail =
-                                                $" | sync-failed={syncReason}";
-                                        }
-                                    }
-
-                                    unknownCount += item.candidates.Length;
-                                    gpuDebug.AppendLine(
-                                        $"failure: {representative.Material.name} | properties={string.Join(",", item.candidates.Select(candidate => candidate.Property))} | flags=unknown | reason={flagReason}{syncDetail}");
+                                if (!item.pending.TryGetFlags(out var flags)
+                                    || !flags.Known)
                                     continue;
-                                }
-
-                                knownCount += item.candidates.Length;
-                                if (flags.IsConstant)
-                                    constantProofCount += item.candidates.Length;
-                                if (flags.RgbZero)
-                                    rgbZeroProofCount += item.candidates.Length;
-                                if (flags.AlphaZero)
-                                    alphaZeroProofCount += item.candidates.Length;
 
                                 foreach (var candidate in item.candidates)
                                 {
-                                    if (flags.IsConstant
-                                        || flags.RgbZero
-                                        || flags.AlphaZero)
-                                    {
-                                        gpuDebug.AppendLine(
-                                            $"proof: {candidate.Material.name} | {candidate.Property} | constant={flags.IsConstant} rgbZero={flags.RgbZero} alphaZero={flags.AlphaZero}");
-                                    }
-
                                     // Zero proofs remain useful even if the
                                     // optional constant-color readback fails.
                                     samples[(
@@ -635,12 +525,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                 try
                                 {
                                     var request = item.request;
-                                    var colorTimer =
-                                        System.Diagnostics.Stopwatch.StartNew();
                                     request.WaitForCompletion();
-                                    colorTimer.Stop();
-                                    colorReadbackTicks +=
-                                        colorTimer.ElapsedTicks;
                                     if (request.hasError)
                                         continue;
 
@@ -660,7 +545,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                                 true,
                                                 data[0]);
                                     }
-                                    constantColorReadbackCount += 1;
                                 }
                                 catch
                                 {
@@ -679,23 +563,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 }
                 finally
                 {
-                    sourceSlotTicks = analyzer.SourceSlotTicks;
-                    triangleExpansionTicks =
-                        analyzer.TriangleExpansionTicks;
-                    meshBuildTicks = analyzer.MeshBuildTicks;
-                    geometryTriangleCount = analyzer.TriangleCount;
-                    sourceSlotCacheHits =
-                        analyzer.SourceSlotCacheHits;
-                    sourceSlotCacheMisses =
-                        analyzer.SourceSlotCacheMisses;
                     foreach (var geometry in geometryCache.Values)
                         geometry.Dispose();
                     analyzer.Dispose();
                 }
             }
 
-            var postDecisionTimer =
-                System.Diagnostics.Stopwatch.StartNew();
             var animationSafety =
                 domain.GetCustomContext<IAtlasSourceOptimizationAnimationSafety>();
 
@@ -779,28 +652,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 .ToHashSet();
             constants.RemoveAll(item =>
                 disabledBindings.Contains((item.Material, item.Property)));
-
-            postDecisionTimer.Stop();
-            gpuAnalysisTimer.Stop();
-            static double TicksToMs(long ticks) =>
-                ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-            gpuDebug.AppendLine(
-                $"summary: geometryFailed={geometryFailedCount} queueFailed={queueFailedCount} known={knownCount} unknown={unknownCount} uniqueSources={uniqueSourceCount} gpuAnalyses={gpuAnalysisCount} constantProof={constantProofCount} rgbZeroProof={rgbZeroProofCount} alphaZeroProof={alphaZeroProofCount} constantColorReadbacks={constantColorReadbackCount}");
-            gpuDebug.AppendLine(
-                $"timingMs: total={gpuAnalysisTimer.Elapsed.TotalMilliseconds:F1} sourceLoad={TicksToMs(sourceLoadTicks):F1} geometry={TicksToMs(geometryTicks):F1} queue={TicksToMs(queueTicks):F1} flagWait={TicksToMs(flagWaitTicks):F1} colorWait={TicksToMs(colorReadbackTicks):F1} postDecision={postDecisionTimer.Elapsed.TotalMilliseconds:F1}");
-            gpuDebug.AppendLine(
-                $"geometryProfile: triangles={geometryTriangleCount} sourceSlot={TicksToMs(sourceSlotTicks):F1} expansion={TicksToMs(triangleExpansionTicks):F1} meshBuild={TicksToMs(meshBuildTicks):F1} cacheHit={sourceSlotCacheHits} cacheMiss={sourceSlotCacheMisses}");
-            foreach (var item in constants)
-            {
-                gpuDebug.AppendLine(
-                    $"decision: constant | {item.Material.name} | {item.Property} | {item.Source.width}x{item.Source.height}->4x4");
-            }
-            foreach (var item in featureDisables)
-            {
-                gpuDebug.AppendLine(
-                    $"decision: disable | {item.Material.name} | {item.Rule.Name} | proof={string.Join(",", item.SafetyProperties)}");
-            }
-            Debug.Log(gpuDebug.ToString().TrimEnd());
 
             return new AtlasSourceOptimizationPlan(
                 original, projected, constants, featureDisables);
