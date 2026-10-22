@@ -110,10 +110,14 @@ namespace net.rs64.TexTransTool.NDMF
             if (image.Pixels == null) return false;
             var whole = ScanSourcePixels(image.Pixels, null);
             if (!whole.isConstant
-                || !float.IsFinite(whole.constantColor.r)
-                || !float.IsFinite(whole.constantColor.g)
-                || !float.IsFinite(whole.constantColor.b)
-                || !float.IsFinite(whole.constantColor.a))
+                || float.IsNaN(whole.constantColor.r)
+                || float.IsInfinity(whole.constantColor.r)
+                || float.IsNaN(whole.constantColor.g)
+                || float.IsInfinity(whole.constantColor.g)
+                || float.IsNaN(whole.constantColor.b)
+                || float.IsInfinity(whole.constantColor.b)
+                || float.IsNaN(whole.constantColor.a)
+                || float.IsInfinity(whole.constantColor.a))
                 return false;
             color = whole.constantColor;
             return true;
@@ -1864,6 +1868,45 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
+        // A constant source is UV-independent. Only an animation that
+        // replaces this particular texture reference defeats constant output.
+        internal static bool HasAnimatedTextureReplacement(
+            IRendererTargeting domain, AnimationIndex? index,
+            ObjectPathRemapper? remapper,
+            Material material, string property, Texture source,
+            IEnumerable<Renderer> renderers)
+        {
+            if (index == null || remapper == null) return true;
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null ||
+                    !domain.GetMaterials(renderer).Contains(material))
+                    continue;
+                remapper.GetVirtualPathForObject(renderer.transform);
+                foreach (var path in remapper
+                             .GetAllPathsForObject(renderer.transform)
+                             .Distinct(StringComparer.Ordinal))
+                {
+                    foreach (var clip in index.GetClipsForObjectPath(path))
+                    {
+                        foreach (var binding in clip.GetObjectCurveBindings())
+                        {
+                            if (binding.path != path || binding.type == null
+                                || !typeof(Renderer).IsAssignableFrom(binding.type)
+                                || !binding.type.IsAssignableFrom(renderer.GetType())
+                                || binding.propertyName != "material." + property)
+                                continue;
+                            var curve = clip.GetObjectCurve(binding);
+                            if (curve != null
+                                && curve.Any(frame => frame.value != source))
+                                return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
         internal static bool HasUnsafeFeatureAnimation(
             IRendererTargeting domain,
             AnimationIndex? index, ObjectPathRemapper? remapper,
@@ -2754,6 +2797,29 @@ namespace net.rs64.TexTransTool.NDMF
                 var tuningResult = AtlasTexture.DoTextureFinTuning(
                     engine, atlasContext, settings, compiledTextures, null);
 
+                // Compact only an ENTIRE output whose every source image is
+                // full-image constant with identical RGBA. The atlas layout
+                // and original material assignments remain unchanged.
+                var sourceConstantCache = new Dictionary<Texture,
+                    (bool success, Color color)>();
+                (bool success, Color color) LookupConstant(Texture texture)
+                {
+                    if (sourceConstantCache.TryGetValue(texture, out var found))
+                        return found;
+                    var ok = emissionProbe.TryGetWholeSourceConstant(
+                        texture, out var color);
+                    return sourceConstantCache[texture] = (ok, color);
+                }
+                var supersededOutputs = AutoAtlasUniformTextureOptimizer
+                    .CompactOutputs(
+                        engine, tuningResult, group, propertyTextures,
+                        LookupConstant,
+                        (material, property, source) =>
+                            AutoAtlasFeatureAnimationSafety
+                                .HasAnimatedTextureReplacement(
+                                    domain, animationIndex, objectPathRemapper,
+                                    material, property, source, allRenderers));
+
                 var finalOutputPixels = tuningResult.TextureDescriptors.Keys
                     .Distinct()
                     .Sum(texture => (long)texture.Width * texture.Hight);
@@ -2769,6 +2835,7 @@ namespace net.rs64.TexTransTool.NDMF
                 {
                     foreach (var rt in compiledTextures.Values
                                  .Concat(tuningResult.TextureDescriptors.Keys)
+                                 .Concat(supersededOutputs)
                                  .Distinct())
                     {
                         rt.Dispose();
@@ -2836,6 +2903,7 @@ namespace net.rs64.TexTransTool.NDMF
                 {
                     foreach (var rt in compiledTextures.Values
                                  .Concat(tuningResult.TextureDescriptors.Keys)
+                                 .Concat(supersededOutputs)
                                  .Distinct())
                     {
                         rt.Dispose();
@@ -2928,6 +2996,7 @@ namespace net.rs64.TexTransTool.NDMF
                         generatedAtlasMaterials);
                     foreach (var rt in compiledTextures.Values
                                  .Concat(tuningResult.TextureDescriptors.Keys)
+                                 .Concat(supersededOutputs)
                                  .Distinct())
                     {
                         rt.Dispose();
@@ -3024,7 +3093,9 @@ namespace net.rs64.TexTransTool.NDMF
                             : "unknown")
                         + ", shaderVisualEquivalence=UNVERIFIED");
 
-                foreach (var rt in compiledTextures.Values)
+                foreach (var rt in compiledTextures.Values
+                             .Concat(supersededOutputs)
+                             .Distinct())
                     if (!retainedRenderTextures.Contains(rt)) rt.Dispose();
 
                 foreach (var descriptor in tuningResult.TextureDescriptors)
