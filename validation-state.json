@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.21+wdt.ttt.1.0.2",
-  "lastDebugSerial": 1123,
-  "currentDebugVersion": "0.1.21+wdt.ttt.1.0.2.debug.1123.atlas-source-optimization.94f4966",
+  "lastDebugSerial": 1124,
+  "currentDebugVersion": "0.1.21+wdt.ttt.1.0.2.debug.1124.atlas-source-optimization.bf52e63",
   "currentDebugChange": "atlas-source-optimization",
   "currentDebugBranch": "feat/atlas-source-optimization",
-  "currentDebugCommit": "94f496647eb4110ab378d6f043c3167b7a668593",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.21+wdt.ttt.1.0.2.debug.1123.atlas-source-optimization.94f4966.zip"
+  "currentDebugCommit": "bf52e630f89e7eeb63c0f87637cc40e753e7de65",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.21+wdt.ttt.1.0.2.debug.1124.atlas-source-optimization.bf52e63.zip"
 }
