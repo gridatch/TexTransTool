@@ -67,11 +67,18 @@ namespace net.rs64.TexTransTool.NDMF
                     break;
                 case "_Main2ndBlendMask":
                     // lilToon can overwrite opacity when AlphaMode != 0.
+                    // Additionally, lil_pass_forward_normal.hlsl adds
+                    // _Main2ndDissolveColor * main2ndDissolveAlpha even if
+                    // the layer's color alpha becomes zero; disabling the
+                    // feature skips that emission. Reject active/unknown
+                    // dissolve modes until that path is proven neutral.
                     if (!material.HasProperty("_Main2ndTexAlphaMode")
-                        || material.GetFloat("_Main2ndTexAlphaMode") != 0f)
+                        || material.GetFloat("_Main2ndTexAlphaMode") != 0f
+                        || !material.HasProperty("_Main2ndDissolveParams")
+                        || material.GetVector("_Main2ndDissolveParams").x != 0f)
                         return false;
                     candidate = new Rule("Main2nd", "_UseMain2ndTex",
-                        "zero-R-alpha-and-alpha-mode-0",
+                        "zero-R-alpha-and-alpha-mode-0-dissolve-off",
                         "_Main2ndTex", "_Main2ndBlendMask",
                         "_Main2ndDissolveMask", "_Main2ndDissolveNoiseMask");
                     break;
@@ -114,7 +121,11 @@ namespace net.rs64.TexTransTool.NDMF
                     ? "main2nd-alpha-mode-unavailable"
                     : material.GetFloat("_Main2ndTexAlphaMode") != 0f
                         ? "main2nd-alpha-mode-not-zero"
-                        : "main2nd-disabled-or-unsupported-shader";
+                        : !material.HasProperty("_Main2ndDissolveParams")
+                            ? "main2nd-dissolve-params-unavailable"
+                            : material.GetVector("_Main2ndDissolveParams").x != 0f
+                                ? "main2nd-dissolve-emission-may-remain"
+                                : "main2nd-disabled-or-unsupported-shader";
             if (property == "_MatCapBlendMask"
                 || property == "_MatCap2ndBlendMask"
                 || property == "_EmissionBlendMask"
