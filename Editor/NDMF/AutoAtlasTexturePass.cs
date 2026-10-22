@@ -2137,6 +2137,28 @@ namespace net.rs64.TexTransTool.NDMF
                 var originalPixels = execution.SourceTextures.Sum(texture =>
                     (long)texture.width * texture.height);
 
+                // Explicit debug-only A/B trial. Merged atomic groups are
+                // intentionally not altered: their planned envelopes were
+                // calculated for the unmodified source inputs.
+                var trialCandidates = hypotheses
+                    .Where(item => group.Contains(item.material)
+                        && AutoAtlasFeatureTrialSession.EnabledFor(item.rule))
+                    .ToArray();
+                if (execution.MergeSelection != null && trialCandidates.Length != 0)
+                {
+                    foreach (var item in trialCandidates)
+                        emissionProbe.AddFeatureDisableLine(
+                            "trial=skipped-merged-execution, material="
+                            + item.material.name + ", feature=" + item.rule.Name);
+                    trialCandidates = Array.Empty<(Material material,
+                        AutoAtlasFeatureDisableRules.Rule rule)>();
+                }
+                IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>?
+                    projectedTextureUsesForTrial = trialCandidates.Length == 0
+                        ? null
+                        : AutoAtlasShadowReplan.ProjectFeatureSetUses(
+                            propertyTextures, trialCandidates);
+
                 var engine = domain.GetTexTransCoreEngineForUnity();
 
                 IReadOnlyDictionary<Material, int>? mergeAtomicGroupByMaterial = null;
@@ -2250,7 +2272,7 @@ namespace net.rs64.TexTransTool.NDMF
                             // mutation.
                             return metrics.OutputTexturePixelCount > 0;
                         },
-                    });
+                    }, projectedTextureUsesForTrial);
                 if (!atlasResult.IsSuccess)
                 {
                     if (execution.MergeSelection is { } failedMerge)
@@ -2447,6 +2469,19 @@ namespace net.rs64.TexTransTool.NDMF
                         resultingTextures,
                         atlasResult.PreserveBump2ndMaterials,
                         atlasResult.PreservedOriginalUVChannel);
+
+                // All changes are confined to freshly generated AtlasedMaterial
+                // clones. Nothing is applied to a source Unity material.
+                foreach (var item in trialCandidates)
+                {
+                    if (!atlasMaterialMaps.materialMap.TryGetValue(
+                            item.material, out var outputMaterial))
+                        throw new InvalidOperationException(
+                            "Trial material was not generated: " + item.material.name);
+                    AutoAtlasFeatureDisableRules.DisableOnGeneratedMaterial(
+                        outputMaterial, item.rule);
+                }
+
                 var generatedAtlasMaterials =
                     atlasMaterialMaps.materialMap.Values
                         .Concat(
@@ -2566,6 +2601,15 @@ namespace net.rs64.TexTransTool.NDMF
                     domain,
                     atlasMaterialMaps.materialMap,
                     atlasMaterialMaps.domainsMaterial2ReplaceMaterial);
+
+                foreach (var item in trialCandidates)
+                    emissionProbe.AddFeatureDisableLine(
+                        "trial=APPLIED-to-generated-material, material="
+                        + item.material.name + ", feature=" + item.rule.Name
+                        + ", switch=" + item.rule.SwitchProperty
+                        + ", texturesCleared=["
+                        + string.Join(",", item.rule.TextureProperties) + "]"
+                        + ", shaderVisualEquivalence=UNVERIFIED");
 
                 foreach (var rt in compiledTextures.Values)
                     if (!retainedRenderTextures.Contains(rt)) rt.Dispose();
