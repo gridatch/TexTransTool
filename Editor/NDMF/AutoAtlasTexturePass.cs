@@ -2103,9 +2103,15 @@ namespace net.rs64.TexTransTool.NDMF
                         .SelectMany(material => uses[material].Values)
                         .Where(texture => texture != null).ToHashSet();
                     if (sources.Count == 0) continue;
+                    // Sources removed from the effective atlas may remain
+                    // referenced by other materials and must be charged.
+                    var originalSources = group
+                        .SelectMany(material =>
+                            originalPropertyTextures[material].Values)
+                        .Where(texture => texture != null).ToHashSet();
                     var retained = FindRetainedSourceTextures(
-                        allReferencedMaterials, group, uses, sources,
-                        removedBindings);
+                        allReferencedMaterials, group, uses,
+                        originalSources, removedBindings);
                     result.Add(new AutoAtlasTextureMergePlanner.PreparedGroup
                     {
                         Id = result.Count,
@@ -2574,7 +2580,7 @@ namespace net.rs64.TexTransTool.NDMF
                 var generatedRetainedSourceTextures =
                     CollectRetainedSourceTextures(
                         generatedAtlasMaterials,
-                        execution.SourceTextures);
+                        originalSourceTextures);
                 if (generatedRetainedSourceTextures.Any(texture =>
                         !execution.RetainedSourceTextures.Contains(texture)))
                 {
