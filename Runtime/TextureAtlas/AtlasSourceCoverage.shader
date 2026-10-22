@@ -1,5 +1,10 @@
 Shader "Hidden/TexTransTool/AtlasSourceAnalysis"
 {
+    Properties
+    {
+        [HideInInspector] _Source ("Source", 2D) = "white" {}
+    }
+
     SubShader
     {
         Tags { "RenderType"="Opaque" }
