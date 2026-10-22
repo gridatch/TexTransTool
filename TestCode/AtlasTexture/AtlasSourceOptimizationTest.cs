@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.AAOCode;
@@ -7,6 +8,61 @@ namespace net.rs64.TexTransTool.TestCode
 {
     internal class AtlasSourceOptimizationTest
     {
+        [Test]
+        public void AtlasMaterialsRetainUnchangedTexturelessTargets()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var changed = new Material(shader);
+            var unchanged = new Material(shader);
+            var source = new Texture2D(8, 8);
+            try
+            {
+                var original = new Dictionary<
+                    Material, IReadOnlyDictionary<string, Texture>>
+                {
+                    [changed] = new Dictionary<string, Texture>
+                    {
+                        ["_MainTex"] = source,
+                    },
+                    [unchanged] = new Dictionary<string, Texture>(),
+                };
+                var projected = new Dictionary<
+                    Material, IReadOnlyDictionary<string, Texture>>
+                {
+                    [changed] = new Dictionary<string, Texture>(),
+                    [unchanged] = new Dictionary<string, Texture>(),
+                };
+                var plan = new AtlasSourceOptimizationPlan(
+                    original,
+                    projected,
+                    new[]
+                    {
+                        new AtlasConstantTextureDecision(
+                            changed,
+                            "_MainTex",
+                            source,
+                            Color.white),
+                    },
+                    System.Array.Empty<AtlasFeatureDisableDecision>());
+
+                Assert.That(
+                    plan.GetOptimizationOnlyMaterials(
+                        new[] { changed, unchanged }),
+                    Is.EquivalentTo(new[] { changed }));
+                Assert.That(
+                    plan.GetAtlasMaterials(new[] { changed, unchanged }),
+                    Is.EquivalentTo(new[] { unchanged }));
+            }
+            finally
+            {
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(changed);
+                Object.DestroyImmediate(unchanged);
+            }
+        }
+
         [Test]
         public void ConstantDetectionIgnoresUncoveredPixels()
         {
