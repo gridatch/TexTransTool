@@ -160,9 +160,20 @@ namespace net.rs64.TexTransTool.NDMF
             return result;
         }
 
-        // Project all eligible atomic groups through the EXISTING production
-        // merge planner. The material toggle is applied to a clone, never to
-        // the domain. This is an analytical what-if, not an avatar output.
+        internal static IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
+            ProjectFeatureSetUses(
+                IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> source,
+                IReadOnlyList<(Material material, AutoAtlasFeatureDisableRules.Rule rule)> disables)
+        {
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> current = source;
+            foreach (var item in disables)
+                current = ProjectFeatureUses(current, item.material, item.rule);
+            return current;
+        }
+
+        // Compare a SET of independent zero-mask hypotheses, since removing
+        // just one edge can miss improvements enabled by multiple removals.
+        // The domain stays unchanged, and all shaders are shadow-cloned only.
         internal static string CompareMergePlans(
             IDomain domain,
             AutoAtlasTexture configuration,
@@ -170,22 +181,32 @@ namespace net.rs64.TexTransTool.NDMF
             IReadOnlyList<AutoAtlasTextureMergePlanner.PreparedGroup> originalGroups,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> originalUses,
             AutoAtlasTextureMergePlanner.PlanResult originalPlan,
-            Material material, AutoAtlasFeatureDisableRules.Rule rule)
+            IReadOnlyList<(Material material, AutoAtlasFeatureDisableRules.Rule rule)> candidates)
         {
-            if (!originalUses.ContainsKey(material))
-                return "feature=" + rule.Name + ", result=missing-material";
+            if (candidates.Count == 0)
+                return "status=not-run:no-feature-candidates";
+            var unique = candidates.Distinct().ToArray();
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            Material? clone = null;
+            var clones = new List<Material>();
             try
             {
-                clone = AutoAtlasFeatureDisableRules.CreateDisabledClone(material, rule);
-                if (clone.GetFloat(rule.SwitchProperty) != 0f
-                    || rule.TextureProperties.Any(name =>
-                        clone.HasShaderTextureProperty(name)
-                        && clone.GetTexture(name) != null))
-                    return "feature=" + rule.Name + ", result=clone-toggle-failed";
+                foreach (var item in unique)
+                {
+                    if (!originalUses.ContainsKey(item.material))
+                        return "status=unknown:missing-material:"
+                            + item.material.name;
+                    var clone = AutoAtlasFeatureDisableRules.CreateDisabledClone(
+                        item.material, item.rule);
+                    clones.Add(clone);
+                    if (clone.GetFloat(item.rule.SwitchProperty) != 0f
+                        || item.rule.TextureProperties.Any(name =>
+                            clone.HasShaderTextureProperty(name)
+                            && clone.GetTexture(name) != null))
+                        return "status=unknown:clone-toggle-failed:"
+                            + item.material.name;
+                }
 
-                var uses = ProjectFeatureUses(originalUses, material, rule);
+                var uses = ProjectFeatureSetUses(originalUses, unique);
                 var materials = originalGroups
                     .SelectMany(group => group.Materials).ToHashSet();
                 var connected = AutoAtlasTextureProcessor.MakeTextureConnectedGroups(
@@ -236,9 +257,11 @@ namespace net.rs64.TexTransTool.NDMF
                         foreach (var pair in mat.GetTextureReferences())
                         {
                             if (!sources.Contains(pair.Value)) continue;
-                            if (mat == material &&
-                                rule.TextureProperties.Contains(pair.Key,
-                                    StringComparer.Ordinal)) continue;
+                            if (unique.Any(item =>
+                                item.material == mat
+                                && item.rule.TextureProperties.Contains(
+                                    pair.Key, StringComparer.Ordinal)))
+                                continue;
                             if (!belongs || usesForMaterial == null
                                 || !usesForMaterial.TryGetValue(pair.Key, out var mapped)
                                 || mapped != pair.Value)
@@ -280,9 +303,11 @@ namespace net.rs64.TexTransTool.NDMF
                 var projectedScope = projectedEligible
                     .SelectMany(g => g.Materials).ToHashSet();
                 bool sameEligibleScope = originalScope.SetEquals(projectedScope);
+                int beforeKnown = originalEligible.Count(g => g.BaselineCostKnown);
+                int afterKnown = projectedEligible.Count(g => g.BaselineCostKnown);
                 bool costKnown = sameEligibleScope
-                    && originalEligible.All(g => g.BaselineCostKnown)
-                    && projectedEligible.All(g => g.BaselineCostKnown);
+                    && beforeKnown == originalEligible.Length
+                    && afterKnown == projectedEligible.Length;
                 var originalEstimate = costKnown
                     ? originalEligible.Sum(g => g.BaselineCost.FullResidentBytes)
                         - before
@@ -296,12 +321,14 @@ namespace net.rs64.TexTransTool.NDMF
                         + ", conditionalPlanSavingBytes="
                         + (originalEstimate - projectedEstimate)
                     : "unknown:eligibility-changed-or-cost-model-incomplete";
-                return "material=" + material.name
-                    + ", feature=" + rule.Name
-                    + ", switch=" + rule.SwitchProperty
-                    + ", removedUses=[" + string.Join(",",
-                        rule.TextureProperties.Where(name =>
-                            originalUses[material].ContainsKey(name))) + "]"
+                return "featureSet=[" + string.Join(";",
+                        unique.Select(item =>
+                            item.material.name + ":" + item.rule.Name))
+                    + "], removedUses=[" + string.Join(";",
+                        unique.Select(item => item.material.name + ":"
+                            + string.Join(",", item.rule.TextureProperties
+                                .Where(name => originalUses[item.material]
+                                    .ContainsKey(name))))) + "]"
                     + ", atomicGroups=" + originalGroups.Count
                     + "->" + alternatives.Count
                     + ", selectedMerges=" + originalPlan.Selections.Count
@@ -310,6 +337,9 @@ namespace net.rs64.TexTransTool.NDMF
                     + ", eligibleMaterialCount=" + originalScope.Count
                     + "->" + projectedScope.Count
                     + ", sameEligibleScope=" + sameEligibleScope
+                    + ", knownBaselineGroups=" + beforeKnown
+                    + "/" + originalEligible.Length + "->" + afterKnown
+                    + "/" + projectedEligible.Length
                     + ", estimatedEligibleFinalBytes=" + comparableCost
                     + ", layoutsBefore=[" + string.Join(";",
                         originalPlan.Selections.Select(x =>
@@ -324,7 +354,9 @@ namespace net.rs64.TexTransTool.NDMF
             }
             finally
             {
-                if (clone != null) UnityEngine.Object.DestroyImmediate(clone);
+                foreach (var clone in clones)
+                    if (clone != null)
+                        UnityEngine.Object.DestroyImmediate(clone);
             }
         }
 
