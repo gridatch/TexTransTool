@@ -219,7 +219,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
                 }
 
                 mergeParticipants.Add(tuning.Key);
-                mergeParticipants.Add(merge.MargeParent);
+                mergeParticipants.Add(merge.MargeParent!);
             }
 
             var existingReferenceSources = tuningHolders
