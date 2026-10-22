@@ -349,31 +349,33 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             foreach (var textureGroup in candidates.GroupBy(item => item.Texture))
             {
-                if (!TryReadSourcePixels(
-                        textureGroup.Key, out var pixels,
-                        out var width, out var height))
+                var source = textureGroup.Key;
+                var width = source.width;
+                var height = source.height;
+                if (width <= 0 || height <= 0
+                    || (long)width * height > MaxSourcePixels)
                     continue;
 
-                try
+                foreach (var candidate in textureGroup)
                 {
-                    foreach (var candidate in textureGroup)
-                    {
-                        if (!TryBuildCoverage(
-                                candidate.Slots,
-                                (int)atlasTargetUvChannel,
-                                candidate.Matrix,
-                                width,
-                                height,
-                                out var coverage))
-                            continue;
+                    if (!TryBuildCoverage(
+                            candidate.Slots,
+                            (int)atlasTargetUvChannel,
+                            candidate.Matrix,
+                            width,
+                            height,
+                            out var coverage))
+                        continue;
 
-                        samples[(candidate.Material, candidate.Property)] =
-                            Scan(pixels, coverage);
-                    }
-                }
-                finally
-                {
-                    pixels = Array.Empty<Color>();
+                    if (!TryScanSourceTexture(
+                            source,
+                            coverage,
+                            width,
+                            height,
+                            out var sample))
+                        continue;
+
+                    samples[(candidate.Material, candidate.Property)] = sample;
                 }
             }
 
@@ -727,34 +729,60 @@ namespace net.rs64.TexTransTool.TextureAtlas
             return result;
         }
 
-        private static bool TryReadSourcePixels(
+        private static bool TryScanSourceTexture(
             Texture texture,
-            out Color[] pixels,
-            out int width,
-            out int height)
+            bool[] coverage,
+            int width,
+            int height,
+            out SampleResult result)
         {
-            pixels = Array.Empty<Color>();
-            width = texture.width;
-            height = texture.height;
-
-            var pixelCount = (long)width * height;
-            if (width <= 0 || height <= 0
-                || pixelCount <= 0
-                || pixelCount > MaxSourcePixels
-                || !SystemInfo.SupportsRenderTextureFormat(
-                    RenderTextureFormat.ARGBFloat))
+            result = default;
+            if (coverage.Length != width * height
+                || !TryGetCoverageBounds(
+                    coverage, width, height, out var bounds))
                 return false;
 
+            Color[]? cpuPixels = null;
             RenderTexture? staging = null;
             Texture2D? copy = null;
             var previous = RenderTexture.active;
             try
             {
+                if (texture is Texture2D source2D && source2D.isReadable)
+                {
+                    cpuPixels = source2D.GetPixels(
+                        bounds.x,
+                        bounds.y,
+                        bounds.width,
+                        bounds.height,
+                        0);
+                    if (cpuPixels.Length
+                        != bounds.width * bounds.height)
+                        return false;
+
+                    result = ScanRegion(
+                        cpuPixels, coverage, width, bounds);
+                    return result.Known;
+                }
+
+                if (!SystemInfo.SupportsRenderTextureFormat(
+                        RenderTextureFormat.ARGBFloat))
+                    return false;
+
                 staging = RenderTexture.GetTemporary(
-                    width, height, 0,
+                    bounds.width,
+                    bounds.height,
+                    0,
                     RenderTextureFormat.ARGBFloat,
                     RenderTextureReadWrite.Linear);
-                Graphics.Blit(texture, staging);
+
+                var scale = new Vector2(
+                    bounds.width / (float)width,
+                    bounds.height / (float)height);
+                var offset = new Vector2(
+                    bounds.x / (float)width,
+                    bounds.y / (float)height);
+                Graphics.Blit(texture, staging, scale, offset);
 
                 if (SystemInfo.supportsAsyncGPUReadback)
                 {
@@ -766,30 +794,47 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         if (!request.hasError)
                         {
                             var data = request.GetData<Color>();
-                            if (data.Length == pixelCount)
+                            if (data.Length
+                                == bounds.width * bounds.height)
                             {
-                                pixels = data.ToArray();
-                                return true;
+                                result = ScanRegion(
+                                    index => data[index],
+                                    coverage,
+                                    width,
+                                    bounds);
+                                return result.Known;
                             }
                         }
                     }
                     catch
                     {
-                        // Fall through to ReadPixels.
+                        // Fall through to bounded ReadPixels.
                     }
                 }
 
                 copy = new Texture2D(
-                    width, height, TextureFormat.RGBAFloat, false, true);
+                    bounds.width,
+                    bounds.height,
+                    TextureFormat.RGBAFloat,
+                    false,
+                    true);
                 RenderTexture.active = staging;
-                copy.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
-                var fallback = copy.GetPixels(0);
-                if (fallback.Length != pixelCount) return false;
-                pixels = fallback;
-                return true;
+                copy.ReadPixels(
+                    new Rect(
+                        0, 0, bounds.width, bounds.height),
+                    0, 0, false);
+                cpuPixels = copy.GetPixels(0);
+                if (cpuPixels.Length
+                    != bounds.width * bounds.height)
+                    return false;
+
+                result = ScanRegion(
+                    cpuPixels, coverage, width, bounds);
+                return result.Known;
             }
             catch
             {
+                result = default;
                 return false;
             }
             finally
@@ -800,6 +845,114 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 if (staging != null)
                     RenderTexture.ReleaseTemporary(staging);
             }
+        }
+
+        private static bool TryGetCoverageBounds(
+            bool[] coverage,
+            int width,
+            int height,
+            out RectInt bounds)
+        {
+            var minX = width;
+            var minY = height;
+            var maxX = -1;
+            var maxY = -1;
+
+            for (var y = 0; y < height; y += 1)
+            for (var x = 0; x < width; x += 1)
+            {
+                if (!coverage[y * width + x]) continue;
+                minX = Math.Min(minX, x);
+                minY = Math.Min(minY, y);
+                maxX = Math.Max(maxX, x);
+                maxY = Math.Max(maxY, y);
+            }
+
+            if (maxX < minX || maxY < minY)
+            {
+                bounds = default;
+                return false;
+            }
+
+            bounds = new RectInt(
+                minX,
+                minY,
+                maxX - minX + 1,
+                maxY - minY + 1);
+            return true;
+        }
+
+        private static SampleResult ScanRegion(
+            Color[] pixels,
+            bool[] coverage,
+            int sourceWidth,
+            RectInt bounds)
+        {
+            return ScanRegion(
+                index => pixels[index],
+                coverage,
+                sourceWidth,
+                bounds);
+        }
+
+        private static SampleResult ScanRegion(
+            Func<int, Color> readPixel,
+            bool[] coverage,
+            int sourceWidth,
+            RectInt bounds)
+        {
+            var hasFirst = false;
+            var first = default(Color);
+            var constant = true;
+            var rgbZero = true;
+            var alphaZero = true;
+
+            for (var localY = 0;
+                 localY < bounds.height;
+                 localY += 1)
+            for (var localX = 0;
+                 localX < bounds.width;
+                 localX += 1)
+            {
+                var sourceX = bounds.x + localX;
+                var sourceY = bounds.y + localY;
+                if (!coverage[sourceY * sourceWidth + sourceX])
+                    continue;
+
+                var pixel =
+                    readPixel(localY * bounds.width + localX);
+                if (!hasFirst)
+                {
+                    first = pixel;
+                    hasFirst = true;
+                }
+                else if (constant
+                         && (pixel.r != first.r
+                             || pixel.g != first.g
+                             || pixel.b != first.b
+                             || pixel.a != first.a))
+                {
+                    constant = false;
+                }
+
+                if (pixel.r != 0f
+                    || pixel.g != 0f
+                    || pixel.b != 0f)
+                    rgbZero = false;
+                if (pixel.a != 0f)
+                    alphaZero = false;
+
+                if (!constant && !rgbZero && !alphaZero)
+                    return new SampleResult(
+                        true, false, false, false, first);
+            }
+
+            return new SampleResult(
+                hasFirst,
+                rgbZero,
+                alphaZero,
+                hasFirst && constant,
+                first);
         }
 
         private static bool TryBuildCoverage(
