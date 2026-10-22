@@ -90,6 +90,9 @@ namespace net.rs64.TexTransTool.NDMF
         private readonly List<string> _shadowReplanLines = new();
         private readonly List<string> _featureDisableLines = new();
         private readonly List<string> _featureRejections = new();
+        // TEMPORARY: report the concrete mesh slots and UV channels behind
+        // each candidate instead of inferring channel from asset naming.
+        private readonly List<string> _candidateUvBindings = new();
         private readonly List<(Material material, string property, Texture source,
             AutoAtlasFeatureDisableRules.Rule rule)> _featureCandidates = new();
         internal (Material material, string property, Texture source,
@@ -166,6 +169,8 @@ namespace net.rs64.TexTransTool.NDMF
             // The actual pre-atlas material slots and UVs, not output meshes.
             // Keep multiple users of a material; any one may emit.
             var slots = new Dictionary<Material, HashSet<(Mesh, int)>>();
+            var bindings = new Dictionary<Material,
+                List<(Renderer renderer, Mesh mesh, int materialSlot, int submesh)>>();
             var unresolved = new HashSet<Material>();
             foreach (var renderer in renderers)
             {
@@ -186,6 +191,11 @@ namespace net.rs64.TexTransTool.NDMF
                     if (!slots.TryGetValue(material, out var usedSlots))
                         slots.Add(material, usedSlots = new HashSet<(Mesh, int)>());
                     usedSlots.Add((originalMesh, submesh));
+                    if (!bindings.TryGetValue(material, out var sources))
+                        bindings.Add(material, sources =
+                            new List<(Renderer renderer, Mesh mesh,
+                                int materialSlot, int submesh)>());
+                    sources.Add((renderer, originalMesh, materialIndex, submesh));
                 }
             }
 
@@ -212,7 +222,8 @@ namespace net.rs64.TexTransTool.NDMF
             // These are observations, never deletion approvals.
             try
             {
-                SurveySourceTextures(materialMap.Keys, slots, unresolved);
+                SurveySourceTextures(materialMap.Keys, slots, unresolved,
+                    bindings);
             }
             catch (Exception ex)
             {
@@ -232,7 +243,9 @@ namespace net.rs64.TexTransTool.NDMF
         private void SurveySourceTextures(
             IEnumerable<Material> materials,
             Dictionary<Material, HashSet<(Mesh, int)>> slots,
-            HashSet<Material> unresolved)
+            HashSet<Material> unresolved,
+            Dictionary<Material, List<(Renderer renderer, Mesh mesh,
+                int materialSlot, int submesh)>> bindings)
         {
             // Cache only within this survey invocation. Identical source
             // textures and UV transforms on the same material must not
@@ -332,7 +345,15 @@ namespace net.rs64.TexTransTool.NDMF
                             {
                                 if (AutoAtlasFeatureDisableRules.TryClassify(
                                         material, property, constantColor, out var rule))
+                                {
                                     _featureCandidates.Add((material, property, texture, rule!));
+                                    _candidateUvBindings.Add(DescribeCandidateUvBindings(
+                                        material, property, texture, uvUsage,
+                                        strictCountFromStatus: uvStatus,
+                                        bindings.TryGetValue(material,
+                                            out var materialBindings)
+                                            ? materialBindings : null));
+                                }
                                 else
                                 {
                                     var reason = AutoAtlasFeatureDisableRules
@@ -480,6 +501,99 @@ namespace net.rs64.TexTransTool.NDMF
         private static string FormatMs(double milliseconds) =>
             milliseconds.ToString("F3",
                 System.Globalization.CultureInfo.InvariantCulture);
+
+        // The UV source proof is observational and never changes eligibility.
+        // A shared mask may be nonzero elsewhere on the texture while the
+        // candidate material's own drawable submeshes only cover black texels.
+        private static string DescribeCandidateUvBindings(
+            Material material, string property, Texture texture,
+            TextureUVUsage usage, string strictCountFromStatus,
+            List<(Renderer renderer, Mesh mesh, int materialSlot, int submesh)>?
+                bindings)
+        {
+            var matrix = usage.UVMatrix;
+            var map = matrix is { } m
+                ? "matrix=(" + m.M00 + "," + m.M01 + "," + m.M02
+                  + ";" + m.M10 + "," + m.M11 + "," + m.M12 + ")"
+                : "matrix=unknown";
+            var prefix = "material=" + material.name
+                + ", shader=" + material.shader.name
+                + ", property=" + property
+                + ", texture=" + texture.name
+                + ", uvChannel=" + usage.UVChannel
+                + ", " + map + ", coverage=" + strictCountFromStatus;
+            if (bindings == null || bindings.Count == 0)
+                return prefix + ", drawableBindings=none";
+            var lines = new List<string> { prefix };
+            foreach (var item in bindings
+                         .OrderBy(item => item.renderer.name, StringComparer.Ordinal)
+                         .ThenBy(item => item.mesh.name, StringComparer.Ordinal)
+                         .ThenBy(item => item.materialSlot))
+            {
+                try
+                {
+                    var indices = item.mesh.GetTriangles(item.submesh);
+                    var uv0 = SourceUvBounds(item.mesh, indices, 0);
+                    var uv1 = SourceUvBounds(item.mesh, indices, 1);
+                    var uv2 = SourceUvBounds(item.mesh, indices, 2);
+                    var uv3 = SourceUvBounds(item.mesh, indices, 3);
+                    var transformed = matrix is { } transform
+                        ? SourceUvBounds(item.mesh, indices, 0, transform)
+                        : "unknown";
+                    lines.Add("  renderer=" + item.renderer.name
+                        + ", mesh=" + item.mesh.name
+                        + ", materialSlot=" + item.materialSlot
+                        + ", submesh=" + item.submesh
+                        + ", triangleCount=" + indices.Length / 3
+                        + ", uv0=" + uv0
+                        + ", transformedUv0=" + transformed
+                        + ", uv1=" + uv1
+                        + ", uv2=" + uv2
+                        + ", uv3=" + uv3);
+                }
+                catch (Exception e)
+                {
+                    lines.Add("  renderer=" + item.renderer.name
+                        + ", mesh=" + item.mesh.name
+                        + ", uvBounds=unknown:" + e.GetType().Name);
+                }
+            }
+            return string.Join("\n", lines);
+        }
+
+        internal static string SourceUvBounds(Mesh mesh, int[] indices,
+            int channel, Matrix2x3? transform = null)
+        {
+            var uv = new List<Vector2>();
+            mesh.GetUVs(channel, uv);
+            if (uv.Count == 0) return "absent";
+            float minX = float.PositiveInfinity, minY = float.PositiveInfinity;
+            float maxX = float.NegativeInfinity, maxY = float.NegativeInfinity;
+            foreach (var i in indices)
+            {
+                if (i < 0 || i >= uv.Count) return "invalid-index";
+                var point = uv[i];
+                if (transform is { } m)
+                    point = new Vector2(
+                        m.M00 * point.x + m.M01 * point.y + m.M02,
+                        m.M10 * point.x + m.M11 * point.y + m.M12);
+                if (!ValidFloat(point.x) || !ValidFloat(point.y))
+                    return "nonfinite";
+                minX = Mathf.Min(minX, point.x);
+                minY = Mathf.Min(minY, point.y);
+                maxX = Mathf.Max(maxX, point.x);
+                maxY = Mathf.Max(maxY, point.y);
+            }
+            if (float.IsPositiveInfinity(minX)) return "empty-submesh";
+            return "(" + minX.ToString("R",
+                       System.Globalization.CultureInfo.InvariantCulture)
+                   + "," + minY.ToString("R",
+                       System.Globalization.CultureInfo.InvariantCulture)
+                   + ")-(" + maxX.ToString("R",
+                       System.Globalization.CultureInfo.InvariantCulture)
+                   + "," + maxY.ToString("R",
+                       System.Globalization.CultureInfo.InvariantCulture) + ")";
+        }
 
         // Retained for the mask comparison regression tests.
         internal static int CountCoverageDifferences(bool[] source, bool[] alternative)
@@ -1517,6 +1631,13 @@ namespace net.rs64.TexTransTool.NDMF
                         + ", feature=" + item.rule.Name
                         + ", switch=" + item.rule.SwitchProperty
                         + ", condition=" + item.rule.Condition)))
+                + "\n\n[Feature candidate UV bindings: TEMPORARY]"
+                + "\nMesh UV0 = Unity mesh.uv; mesh UV1 = Unity mesh.uv2;"
+                + " mesh UV2 = Unity mesh.uv3. Only the candidate material's"
+                + " drawable submesh slots are included. Bounds are NOT sampled coverage."
+                + "\n" + (_candidateUvBindings.Count == 0
+                    ? "No candidate UV bindings."
+                    : string.Join("\n", _candidateUvBindings.Distinct()))
                 + "\n[Rejected zero-mask candidates]"
                 + "\n" + (_featureRejections.Count == 0
                     ? "None."
