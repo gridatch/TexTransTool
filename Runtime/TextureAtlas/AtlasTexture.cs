@@ -308,7 +308,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     materialMap,
                     constantOutputs,
                     sourceOptimization.FeatureDisables,
-                    engine);
+                    engine,
+                    atlasSetting.ForceSetTexture);
             }
 
             ApplyAtlasedMaterialMaps(
