@@ -797,7 +797,7 @@ namespace net.rs64.TexTransTool.NDMF
             foreach (var group in mergeGroups)
             {
                 group.StandaloneMetrics = AnalyzeAtlas(
-                    domain, settings, group);
+                    domain, settings, group, propertyTextures);
             }
 
             foreach (var group in mergeGroups)
@@ -1669,7 +1669,9 @@ namespace net.rs64.TexTransTool.NDMF
         private static AtlasTexture.AtlasExecutionMetrics? AnalyzeAtlas(
             IDomain domain,
             AtlasSetting settings,
-            PreparedGroup group)
+            PreparedGroup group,
+            IReadOnlyDictionary<
+                Material, IReadOnlyDictionary<string, Texture>> propertyTextures)
         {
             group.TwoDimensionalProfileHeights.Clear();
 
@@ -1677,7 +1679,8 @@ namespace net.rs64.TexTransTool.NDMF
                 domain,
                 group.Materials,
                 group.Renderers,
-                settings);
+                settings,
+                propertyTextures);
             if (prepared is null)
                 return null;
 
