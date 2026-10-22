@@ -8,6 +8,7 @@ using nadena.dev.ndmf.localization;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.Editor;
 using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
