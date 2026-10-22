@@ -2,6 +2,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
+using System.Text;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCoreEngineForUnity;
 using net.rs64.TexTransTool.TextureAtlas.AAOCode;
@@ -310,9 +312,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             var samples =
                 new Dictionary<(Material material, string property), SampleResult>();
+            var gpuDebug = new StringBuilder();
+            var projectName = Path.GetFileName(
+                Path.GetDirectoryName(Application.dataPath) ?? "");
+            gpuDebug.AppendLine("[atlas-source-gpu-debug]");
+            gpuDebug.AppendLine("Unityプロジェクト名: " + projectName);
+            gpuDebug.AppendLine("candidates: " + candidates.Count);
 
             var engine = domain.GetTexTransCoreEngineForUnity();
             var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            gpuDebug.AppendLine(
+                "analyzer: " + (analyzer != null ? "available" : "unavailable"));
             if (analyzer != null)
             {
                 var geometryCache = new Dictionary<
@@ -420,7 +430,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                                     height,
                                                     out var builtGeometry)
                                                 || builtGeometry == null)
+                                            {
+                                                gpuDebug.AppendLine(
+                                                    $"candidate: {candidate.Material.name} | {candidate.Property} | {width}x{height} | geometry=failed");
                                                 continue;
+                                            }
 
                                             geometry = builtGeometry;
                                             geometryCache.Add(
@@ -433,8 +447,14 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                                 geometry,
                                                 out var queued)
                                             || queued == null)
+                                        {
+                                            gpuDebug.AppendLine(
+                                                $"candidate: {candidate.Material.name} | {candidate.Property} | {width}x{height} | geometry=ok | queue=failed");
                                             continue;
+                                        }
 
+                                        gpuDebug.AppendLine(
+                                            $"candidate: {candidate.Material.name} | {candidate.Property} | {width}x{height} | geometry=ok | queue=ok");
                                         pending.Add((candidate, queued));
                                     }
                                 }
@@ -463,7 +483,14 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                 if (!item.pending.TryGetFlags(
                                         out var flags)
                                     || !flags.Known)
+                                {
+                                    gpuDebug.AppendLine(
+                                        $"result: {item.candidate.Material.name} | {item.candidate.Property} | flags=unknown");
                                     continue;
+                                }
+
+                                gpuDebug.AppendLine(
+                                    $"result: {item.candidate.Material.name} | {item.candidate.Property} | flags=known constant={flags.IsConstant} rgbZero={flags.RgbZero} alphaZero={flags.AlphaZero}");
 
                                 // Zero proofs remain useful even if the optional
                                 // constant-color readback fails later.
@@ -519,6 +546,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                             item.flags.AlphaZero,
                                             true,
                                             data[0]);
+                                    gpuDebug.AppendLine(
+                                        $"constant-color: {item.candidate.Material.name} | {item.candidate.Property} | readback=ok");
                                 }
                                 catch
                                 {
@@ -542,6 +571,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     analyzer.Dispose();
                 }
             }
+
+            Debug.Log(gpuDebug.ToString().TrimEnd());
 
             var animationSafety =
                 domain.GetCustomContext<IAtlasSourceOptimizationAnimationSafety>();
