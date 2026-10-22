@@ -311,7 +311,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var samples =
                 new Dictionary<(Material material, string property), SampleResult>();
             var engine = domain.GetTexTransCoreEngineForUnity();
-            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            var analyzer = CanUseUnityGpuSourceAnalyzer(engine)
+                ? AtlasSourceGpuAnalyzer.TryCreate()
+                : null;
             if (analyzer != null)
             {
                 var geometryCache = new Dictionary<
@@ -1240,6 +1242,20 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
 
             return result;
+        }
+
+        private static bool CanUseUnityGpuSourceAnalyzer(
+            ITexTransToolForUnity engine)
+        {
+#if CONTAINS_TTCE_WGPU
+            // WGPU exposes a Unity RenderTexture placeholder so normal TTT
+            // outputs can be replaced after deferred readback. Its pixels are
+            // not synchronized with the TTWgpuRenderTexture at this point, so
+            // source proof must not sample that placeholder.
+            if (engine is global::net.rs64.TexTransTool.TTCEWgpuWithTTT4Unity)
+                return false;
+#endif
+            return true;
         }
 
         internal static bool IsZeroRgbNeutralBlendMode(
