@@ -1059,7 +1059,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     else if (FloatZero("_MatCapBlend"))
                         proof = "_MatCapBlend";
                     else if (ColorAlphaZero("_MatCapColor"))
-                        proof = "_MatCapColor";
+                        proof = "_MatCapColor.a";
 
                     if (proof != null)
                     {
@@ -1082,7 +1082,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     else if (FloatZero("_MatCap2ndBlend"))
                         proof = "_MatCap2ndBlend";
                     else if (ColorAlphaZero("_MatCap2ndColor"))
-                        proof = "_MatCap2ndColor";
+                        proof = "_MatCap2ndColor.a";
 
                     if (proof != null)
                     {
@@ -1106,7 +1106,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     var safety = new List<string>
                     {
                         "_Main2ndTexAlphaMode",
-                        "_Main2ndDissolveParams",
+                        "_Main2ndDissolveParams.x",
                     };
                     var main2ndBlendMode =
                         BlendMode("_Main2ndTexBlendMode");
@@ -1124,7 +1124,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     }
                     else if (ColorAlphaZero("_Color2nd"))
                     {
-                        safety.Add("_Color2nd");
+                        safety.Add("_Color2nd.a");
                         neutral = true;
                     }
                     else if (FloatZero("_Main2ndEnableLighting"))
@@ -1142,7 +1142,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     else if (IsZeroRgbNeutralBlendMode(main2ndBlendMode)
                              && ColorRgbZero("_Color2nd"))
                     {
-                        safety.Add("_Color2nd");
+                        safety.AddRange(new[]
+                        {
+                            "_Color2nd.r",
+                            "_Color2nd.g",
+                            "_Color2nd.b",
+                        });
                         safety.Add("_Main2ndTexBlendMode");
                         neutral = true;
                     }
@@ -1203,7 +1208,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     }
                     else if (ColorAlphaZero(colorProperty))
                     {
-                        safety.Add(colorProperty);
+                        safety.Add(colorProperty + ".a");
                     }
                     else if (AlphaZero(mapProperty))
                     {
@@ -1228,7 +1233,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     else if (IsZeroRgbNeutralBlendMode(mode)
                              && ColorRgbZero(colorProperty))
                     {
-                        safety.Add(colorProperty);
+                        safety.AddRange(new[]
+                        {
+                            colorProperty + ".r",
+                            colorProperty + ".g",
+                            colorProperty + ".b",
+                        });
                         safety.Add(blendModeProperty);
                     }
                     else
