@@ -514,12 +514,17 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
+                var originalSourceTextures =
+                    sourceOptimization.CollectOriginalTextures(group);
+                var removedBindings =
+                    sourceOptimization.RemovedBindings(group);
                 var retainedSourceTextures =
                     FindRetainedSourceTextures(
                         allReferencedMaterials,
                         group,
                         propertyTextures,
-                        texturesToReplace);
+                        originalSourceTextures,
+                        removedBindings);
 
                 preparedGroups.Add(new AutoAtlasTextureMergePlanner.PreparedGroup
                 {
@@ -527,6 +532,7 @@ namespace net.rs64.TexTransTool.NDMF
                     Materials = group,
                     Renderers = atlasRenderers,
                     SourceTextures = texturesToReplace,
+                    OriginalSourceTextures = originalSourceTextures,
                     RetainedSourceTextures = retainedSourceTextures,
                     OriginalPixels = texturesToReplace.Sum(texture =>
                         (long)texture.width * texture.height),
