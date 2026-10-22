@@ -781,6 +781,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
                        < center + projectedRadius;
         }
 
+        internal static bool TryGetExactConstantForCoverage(
+            Color[] pixels,
+            bool[] coverage,
+            out Color color)
+        {
+            var result = Scan(pixels, coverage);
+            color = result.ConstantColor;
+            return result.Known && result.IsConstant;
+        }
+
         private static SampleResult Scan(Color[] pixels, bool[] coverage)
         {
             if (pixels.Length != coverage.Length)
