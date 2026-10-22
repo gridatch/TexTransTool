@@ -249,16 +249,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
             Renderer[] targetRenderers,
             HashSet<Material> targetMaterials,
             UVChannel atlasTargetUvChannel,
-            bool optimizeConstantTextures,
-            bool disableVisuallyUnusedShaderFeatures,
+            AtlasSetting atlasSetting,
+            AtlasTextureExperimentalFeature? experimentalOptions = null,
             IReadOnlyCollection<Material>? excludedMaterials = null)
         {
             var original =
                 MaterialGroupingContext.BuildContainsTextureDictionaries(
                     targetMaterials, atlasTargetUvChannel);
 
-            if (!optimizeConstantTextures
-                && !disableVisuallyUnusedShaderFeatures)
+            if (!atlasSetting.OptimizeConstantTextures
+                && !atlasSetting.DisableVisuallyUnusedShaderFeatures)
             {
                 return new AtlasSourceOptimizationPlan(
                     original, original,
@@ -342,7 +342,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 domain.GetCustomContext<IAtlasSourceOptimizationAnimationSafety>();
 
             var constants = new List<AtlasConstantTextureDecision>();
-            if (optimizeConstantTextures)
+            if (atlasSetting.OptimizeConstantTextures)
             {
                 foreach (var candidate in candidates)
                 {
@@ -373,7 +373,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 }
             }
 
-            var featureDisables = disableVisuallyUnusedShaderFeatures
+            var featureDisables =
+                atlasSetting.DisableVisuallyUnusedShaderFeatures
                 ? DetectFeatureDisables(targetMaterials, samples)
                     .Where(decision =>
                         animationSafety?.HasUnsafeFeatureDisableAnimation(
@@ -382,6 +383,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             targetRenderers) != true)
                     .ToList()
                 : new List<AtlasFeatureDisableDecision>();
+
+            FilterFineTuningConflicts(
+                constants,
+                featureDisables,
+                original,
+                atlasSetting,
+                experimentalOptions);
 
             var projected = original.ToDictionary(
                 pair => pair.Key,
@@ -416,6 +424,80 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             return new AtlasSourceOptimizationPlan(
                 original, projected, constants, featureDisables);
+        }
+
+        private static void FilterFineTuningConflicts(
+            List<AtlasConstantTextureDecision> constants,
+            List<AtlasFeatureDisableDecision> featureDisables,
+            IReadOnlyDictionary<
+                Material, IReadOnlyDictionary<string, Texture>> original,
+            AtlasSetting atlasSetting,
+            AtlasTextureExperimentalFeature? experimentalOptions)
+        {
+            if (constants.Count == 0 && featureDisables.Count == 0)
+                return;
+
+            // The automatic experimental merge/reference-copy modes derive
+            // relationships from the complete atlas group. Reproducing those
+            // semantics per material would be a second atlas planner, so leave
+            // source optimization disabled while either mode is active.
+            if (experimentalOptions?.AutoMergeTextureSetting == true
+                || experimentalOptions?.AutoReferenceCopySetting == true)
+            {
+                constants.Clear();
+                featureDisables.Clear();
+                return;
+            }
+
+            var properties = original.Values
+                .SelectMany(textures => textures.Keys)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (properties.Length == 0)
+                return;
+
+            var holders =
+                TexFineTuningUtility.InitTexFineTuningHolders(properties);
+            foreach (var fineTuning in atlasSetting.TextureFineTuning)
+                fineTuning?.AddSetting(holders);
+            if (experimentalOptions != null)
+                AtlasTexture.IndividualTuningAddSettings(
+                    holders,
+                    experimentalOptions.TextureIndividualFineTuning);
+
+            var globalProperties =
+                properties.ToHashSet(StringComparer.Ordinal);
+            var blocked = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var pair in holders)
+            {
+                var remove = pair.Value.Find<RemoveData>();
+                if (remove?.IsRemove == true)
+                    blocked.Add(pair.Key);
+
+                var reference = pair.Value.Find<ReferenceCopyData>();
+                if (reference != null
+                    && !string.IsNullOrWhiteSpace(reference.CopySource)
+                    && globalProperties.Contains(reference.CopySource!))
+                {
+                    // The normal atlas intentionally replaces this property's
+                    // pixels with another property. Its own constant source is
+                    // therefore not the semantic output to optimize.
+                    blocked.Add(pair.Key);
+                }
+
+                var merge = pair.Value.Find<MergeTextureData>();
+                if (merge == null
+                    || string.IsNullOrWhiteSpace(merge.MargeParent)
+                    || !globalProperties.Contains(merge.MargeParent!))
+                    continue;
+
+                blocked.Add(pair.Key);
+                blocked.Add(merge.MargeParent!);
+            }
+
+            constants.RemoveAll(item => blocked.Contains(item.Property));
+            featureDisables.RemoveAll(item =>
+                item.Rule.TextureProperties.Any(blocked.Contains));
         }
 
         internal static AtlasConstantTextureOutput[] CreateConstantOutputs(
