@@ -39,6 +39,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal HashSet<Material> Materials = new();
             internal Renderer[] Renderers = Array.Empty<Renderer>();
             internal HashSet<Texture> SourceTextures = new();
+            internal HashSet<Texture> OriginalSourceTextures = new();
             internal HashSet<Texture> RetainedSourceTextures = new();
             internal long OriginalPixels;
 
