@@ -163,7 +163,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 preservedOriginalUVChannel =
                     atlasResult.PreservedOriginalUVChannel;
                 relocationMetrics = atlasResult.RelocationMetrics;
+            }
 
+            using var atlasContextLifetime = atlasContext;
+
+            if (atlasContext != null)
+            {
                 pf.Split("tex fine tuning");
                 tunedAtlasTextures = DoTextureFinTuning(
                     engine,
@@ -172,8 +177,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     compiledAtlasTextures,
                     experimentalOptions);
             }
-
-            using var atlasContextLifetime = atlasContext;
 
             var constantOutputs = sourceOptimization.HasChanges
                 ? AtlasSourceOptimizer.CreateConstantOutputs(
