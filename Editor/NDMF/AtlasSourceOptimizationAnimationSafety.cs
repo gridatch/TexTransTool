@@ -23,12 +23,41 @@ namespace net.rs64.TexTransTool.NDMF
             new(StringComparer.Ordinal)
             {
                 "_MainTex",
+                "_BaseMap",
+                "_BaseColorMap",
+                "_MainColorAdjustMask",
                 "_Main2ndBlendMask",
                 "_Main3rdBlendMask",
+                "_AlphaMask",
+                "_BumpMap",
+                "_Bump2ndScaleMask",
+                "_AnisotropyTangentMap",
+                "_AnisotropyScaleMask",
+                "_AnisotropyShiftNoiseMask",
+                "_BacklightColorTex",
+                "_ShadowStrengthMask",
+                "_ShadowBorderMask",
+                "_ShadowBlurMask",
+                "_ShadowColorTex",
+                "_Shadow2ndColorTex",
+                "_Shadow3rdColorTex",
+                "_RimShadeMask",
+                "_SmoothnessTex",
+                "_MetallicGlossMap",
+                "_ReflectionColorTex",
                 "_MatCapBlendMask",
+                "_MatCapBumpMap",
                 "_MatCap2ndBlendMask",
-                "_EmissionBlendMask",
-                "_Emission2ndBlendMask",
+                "_MatCap2ndBumpMap",
+                "_RimColorTex",
+                "_GlitterColorTex",
+                "_AudioLinkMask",
+                "_OutlineTex",
+                "_OutlineWidthMask",
+                "_OutlineVectorTex",
+                "_FurMask",
+                "_FurLengthMask",
+                "_FurVectorTex",
             };
 
         private readonly AnimationIndex _animationIndex;
@@ -115,7 +144,8 @@ namespace net.rs64.TexTransTool.NDMF
                             if (!AffectsProofProperty(
                                     binding.propertyName,
                                     property,
-                                    includeSamplingControls))
+                                    includeSamplingControls,
+                                    material))
                                 continue;
                             if (clip.GetFloatCurve(binding) != null)
                                 return true;
@@ -163,6 +193,19 @@ namespace net.rs64.TexTransTool.NDMF
             string property,
             bool includeSamplingControls)
         {
+            return AffectsProofProperty(
+                bindingProperty,
+                property,
+                includeSamplingControls,
+                null);
+        }
+
+        private static bool AffectsProofProperty(
+            string bindingProperty,
+            string property,
+            bool includeSamplingControls,
+            Material? material)
+        {
             const string prefix = "material.";
             if (!bindingProperty.StartsWith(
                     prefix, StringComparison.Ordinal))
@@ -206,12 +249,40 @@ namespace net.rs64.TexTransTool.NDMF
                 && Affects(name, "_Emission2ndParallaxDepth"))
                 return true;
 
-            if (!MainUvTextureProperties.Contains(property))
+            if (!UsesMainUvControls(material, property))
                 return false;
 
             return Affects(name, "_MainTex_ST")
                 || Affects(name, "_MainTex_ScrollRotate")
                 || Affects(name, "_ShiftBackfaceUV");
+        }
+
+        private static bool UsesMainUvControls(
+            Material? material,
+            string property)
+        {
+            if (property is "_EmissionBlendMask" or "_Emission2ndBlendMask")
+            {
+                // lilToon switches both emission masks to independent UV0 when
+                // either mask has UV animation configured.
+                if (material == null)
+                    return true;
+
+                var first = material.HasProperty(
+                        "_EmissionBlendMask_ScrollRotate")
+                    ? material.GetVector(
+                        "_EmissionBlendMask_ScrollRotate")
+                    : Vector4.zero;
+                var second = material.HasProperty(
+                        "_Emission2ndBlendMask_ScrollRotate")
+                    ? material.GetVector(
+                        "_Emission2ndBlendMask_ScrollRotate")
+                    : Vector4.zero;
+                return first == Vector4.zero
+                    && second == Vector4.zero;
+            }
+
+            return MainUvTextureProperties.Contains(property);
         }
 
         private static bool Affects(string name, string property)
