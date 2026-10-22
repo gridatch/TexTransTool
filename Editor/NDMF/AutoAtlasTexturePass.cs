@@ -1143,7 +1143,7 @@ namespace net.rs64.TexTransTool.NDMF
                 Material,
                 IReadOnlyDictionary<string, Texture>> propertyTextures,
             HashSet<Texture> replacedTextures,
-            IReadOnlySet<(Material material, string property)>?
+            HashSet<(Material material, string property)>?
                 removedBindings = null)
         {
             var retained = new HashSet<Texture>();
