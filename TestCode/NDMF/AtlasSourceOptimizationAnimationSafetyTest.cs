@@ -11,7 +11,6 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         public void FeatureDisableSafetyIncludesFeatureSwitch()
         {
             var rule = new AtlasFeatureDisableRule(
-                "Emission1",
                 "_UseEmission",
                 "_EmissionMap");
             var decision = new AtlasFeatureDisableDecision(
