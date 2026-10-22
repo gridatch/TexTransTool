@@ -146,9 +146,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
         private const string ShaderName =
             "Hidden/TexTransTool/AtlasSourceAnalysis";
 
-        // Match the old CPU predicate exactly. Its overlap tests use
-        // strict inequalities, so texel centers lying exactly on the expanded
-        // polygon boundary are not required coverage and need no extra bias.
+        // One-pixel linear-filter support uses a strict boundary:
+        // texel centers lying exactly on the expanded polygon edge are not
+        // required coverage, so no additional epsilon is applied.
         private const float FilterRadius = 1f;
 
         private sealed class SourceSlotData
@@ -675,8 +675,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 return uniqueCount;
             }
 
-            // Same monotonic-chain convex hull as the previous List-based
-            // implementation, written into a caller-provided fixed buffer.
+            // Build the monotonic-chain convex hull directly into a
+            // caller-provided fixed buffer.
             var hullCount = 0;
             for (var index = 0; index < uniqueCount; index += 1)
             {
