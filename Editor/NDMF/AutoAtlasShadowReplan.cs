@@ -11,12 +11,6 @@ using Color = UnityEngine.Color;
 
 namespace net.rs64.TexTransTool.NDMF
 {
-    /// <summary>
-    /// TEMPORARY diagnostic. Run the existing atlas + FineTuning pipeline on
-    /// independent, read-only usage dictionaries. No domain replacements,
-    /// generated assets registrations, or changes to original materials.
-    /// This is an assumed texture unbinding, NOT permission to disable lilToon.
-    /// </summary>
     // Debug-only, session-scoped opt-in. These switches are OFF by default
     // and are not serialized into the avatar or project. Users can A/B test
     // an actual processed avatar while the normal release path is unchanged.
@@ -225,6 +219,11 @@ namespace net.rs64.TexTransTool.NDMF
         }
     }
 
+    /// <summary>
+    /// TEMPORARY diagnostic. Replan atlas usage without replacing domain
+    /// materials or meshes. A predicted shader-neutral input removal is
+    /// not proof of visual equivalence.
+    /// </summary>
     internal static class AutoAtlasShadowReplan
     {
 
