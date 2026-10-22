@@ -100,6 +100,25 @@ namespace net.rs64.TexTransTool.NDMF
         internal void AddFeatureDisableLine(string line) =>
             _featureDisableLines.Add(line);
 
+        // Reuse the source-image cache and strict full-image pixel scan.
+        // A UV-coverage constant is never enough for this optimization.
+        internal bool TryGetWholeSourceConstant(Texture texture, out Color color)
+        {
+            color = default;
+            if (texture is not Texture2D) return false;
+            var image = ReadOriginal(texture);
+            if (image.Pixels == null) return false;
+            var whole = ScanSourcePixels(image.Pixels, null);
+            if (!whole.isConstant
+                || !float.IsFinite(whole.constantColor.r)
+                || !float.IsFinite(whole.constantColor.g)
+                || !float.IsFinite(whole.constantColor.b)
+                || !float.IsFinite(whole.constantColor.a))
+                return false;
+            color = whole.constantColor;
+            return true;
+        }
+
         internal (Material material, string property, Texture source)[] GetZeroMaskCandidates() =>
             _zeroMaskCandidates.Distinct().ToArray();
 
@@ -1678,6 +1697,121 @@ namespace net.rs64.TexTransTool.NDMF
                 text = "AutoAtlasTexture:button:EmissionProbeCopy".GetLocalize(),
             });
             return root;
+        }
+    }
+
+    /// <summary>
+    /// Limits constant-output replacement to complete, identical source RGBA
+    /// across EVERY material feeding the output. The normal atlas UV layout
+    /// and all unmodified material references stay untouched.
+    /// </summary>
+    internal static class AutoAtlasUniformTextureOptimizer
+    {
+        private static readonly HashSet<string> SupportedLilToonProperties =
+            new(StringComparer.Ordinal)
+            {
+                "_MainTex", "_Main2ndTex", "_Main3rdTex",
+                "_EmissionMap", "_Emission2ndMap",
+                "_Main2ndBlendMask", "_Main3rdBlendMask",
+                "_MatCapBlendMask", "_MatCap2ndBlendMask",
+                "_EmissionBlendMask", "_Emission2ndBlendMask",
+            };
+
+        internal static bool TryFindConstantOutput(
+            IReadOnlyCollection<Material> materials,
+            IReadOnlyDictionary<Material,
+                IReadOnlyDictionary<string, Texture>> effectiveTextures,
+            IReadOnlyCollection<string> sourceProperties,
+            Func<Texture, (bool success, Color color)> inspect,
+            Func<Material, string, Texture, bool> hasAnimatedReplacement,
+            out Color color)
+        {
+            color = default;
+            if (materials.Count == 0 || sourceProperties.Count == 0)
+                return false;
+            bool hasFirst = false;
+            foreach (var property in sourceProperties)
+            {
+                if (!SupportedLilToonProperties.Contains(property)) return false;
+                foreach (var material in materials)
+                {
+                    var shaderName = material.shader != null
+                        ? material.shader.name : "";
+                    if (!(shaderName == "lilToon"
+                          || shaderName.StartsWith("Hidden/lilToon",
+                              StringComparison.Ordinal))
+                        || shaderName.Contains("Lite")
+                        || shaderName.Contains("Gem")
+                        || !effectiveTextures.TryGetValue(material,
+                            out var uses)
+                        || !uses.TryGetValue(property, out var texture)
+                        || texture is not Texture2D
+                        || hasAnimatedReplacement(material, property, texture))
+                        return false;
+
+                    var result = inspect(texture);
+                    if (!result.success) return false;
+                    if (hasFirst && (result.color.r != color.r
+                                     || result.color.g != color.g
+                                     || result.color.b != color.b
+                                     || result.color.a != color.a))
+                        return false;
+                    color = result.color;
+                    hasFirst = true;
+                }
+            }
+            return hasFirst;
+        }
+
+        internal static List<ITTRenderTexture> CompactOutputs(
+            ITexTransToolForUnity engine,
+            TexFineTuningResult tuned,
+            IReadOnlyCollection<Material> materials,
+            IReadOnlyDictionary<Material,
+                IReadOnlyDictionary<string, Texture>> effectiveTextures,
+            Func<Texture, (bool success, Color color)> inspect,
+            Func<Material, string, Texture, bool> hasAnimatedReplacement)
+        {
+            var oldOutputs = new List<ITTRenderTexture>();
+            foreach (var oldTexture in tuned.TextureDescriptors.Keys.ToArray())
+            {
+                // BC/ASTC and similar formats have a minimum physical block;
+                // 4x4 also avoids format-specific 1x1 output restrictions.
+                if ((long)oldTexture.Width * oldTexture.Hight <= 16)
+                    continue;
+                var outputProperties = tuned.RenderTextures
+                    .Where(item => ReferenceEquals(item.Value, oldTexture))
+                    .Select(item => item.Key).ToArray();
+                if (outputProperties.Length == 0) continue;
+                var sources = new HashSet<string>(StringComparer.Ordinal);
+                bool complete = true;
+                foreach (var property in outputProperties)
+                {
+                    if (!tuned.SourceProperties.TryGetValue(property,
+                            out var provenance)
+                        || provenance.Count == 0)
+                    {
+                        complete = false;
+                        break;
+                    }
+                    sources.UnionWith(provenance);
+                }
+                if (!complete || !TryFindConstantOutput(
+                        materials, effectiveTextures, sources, inspect,
+                        hasAnimatedReplacement, out var color))
+                    continue;
+
+                var replacement = engine.CreateRenderTexture(4, 4);
+                replacement.Name = oldTexture.Name + "_Uniform4x4";
+                engine.ColorFill(replacement, color.ToTTCore());
+                var descriptor = tuned.TextureDescriptors[oldTexture];
+                tuned.TextureDescriptors.Remove(oldTexture);
+                tuned.TextureDescriptors.Add(replacement, descriptor);
+                foreach (var property in outputProperties)
+                    tuned.RenderTextures[property] = replacement;
+                oldOutputs.Add(oldTexture);
+            }
+            return oldOutputs;
         }
     }
 
