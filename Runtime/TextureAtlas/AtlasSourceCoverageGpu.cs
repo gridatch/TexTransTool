@@ -385,18 +385,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 analysis.filterMode = FilterMode.Point;
                 analysis.antiAliasing = 1;
 
-                RenderTexture.active = analysis;
-                GL.Clear(false, true, Color.clear);
-
-                _material.SetTexture("_Source", source);
-                _material.SetVector(
+                var properties = new MaterialPropertyBlock();
+                properties.SetTexture("_Source", source);
+                properties.SetVector(
                     "_SourceSize",
                     new Vector4(
                         source.width,
                         source.height,
                         1f / source.width,
                         1f / source.height));
-                _material.SetVector(
+                properties.SetVector(
                     "_ReferenceCoord",
                     new Vector4(
                         geometry.ReferenceCoord.x,
@@ -404,11 +402,26 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         0f,
                         0f));
 
-                if (!_material.SetPass(0))
-                    return false;
-                Graphics.DrawMeshNow(
-                    geometry.Mesh,
-                    Matrix4x4.identity);
+                // NDMF invokes this outside a camera render callback. Submit
+                // offscreen rendering explicitly instead of relying on the
+                // immediate DrawMeshNow path; the earlier GPU UV probe used
+                // the same submission model successfully.
+                using (var command = new CommandBuffer
+                {
+                    name = "TTT Atlas Source GPU Analysis",
+                })
+                {
+                    command.SetRenderTarget(analysis);
+                    command.ClearRenderTarget(false, true, Color.clear);
+                    command.DrawMesh(
+                        geometry.Mesh,
+                        Matrix4x4.identity,
+                        _material,
+                        0,
+                        0,
+                        properties);
+                    Graphics.ExecuteCommandBuffer(command);
+                }
 
                 result = new RenderTexture(
                     1,
