@@ -1099,7 +1099,9 @@ namespace net.rs64.TexTransTool.NDMF
             IReadOnlyDictionary<
                 Material,
                 IReadOnlyDictionary<string, Texture>> propertyTextures,
-            HashSet<Texture> replacedTextures)
+            HashSet<Texture> replacedTextures,
+            IReadOnlySet<(Material material, string property)>?
+                removedBindings = null)
         {
             var retained = new HashSet<Texture>();
             foreach (var material in allReferencedMaterials)
@@ -1112,7 +1114,12 @@ namespace net.rs64.TexTransTool.NDMF
                 // exact property rewrite performed for this atlas group.
                 foreach (var property in material.GetTextureReferences())
                 {
-                    if (!replacedTextures.Contains(property.Value)) continue;
+                    if (!replacedTextures.Contains(property.Value))
+                        continue;
+                    if (isTarget
+                        && removedBindings?.Contains(
+                            (material, property.Key)) == true)
+                        continue;
                     if (!isTarget
                         || atlasProperties == null
                         || !atlasProperties.TryGetValue(
