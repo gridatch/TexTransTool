@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine;
 
 namespace net.rs64.TexTransTool.NDMF.TestCode
 {
@@ -86,6 +87,59 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     "_EmissionMap",
                     includeSamplingControls: true),
                 Is.True);
+        }
+
+        [Test]
+        public void StandardSharedMainUvControlsInvalidateBumpProof()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            try
+            {
+                Assert.That(
+                    AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                        "material._MainTex_ST.x",
+                        "_BumpMap",
+                        includeSamplingControls: true,
+                        material),
+                    Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void StandardDetailControlsInvalidateDetailNormalProof()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            try
+            {
+                Assert.That(
+                    AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                        "material._DetailAlbedoMap_ST.x",
+                        "_DetailNormalMap",
+                        includeSamplingControls: true,
+                        material),
+                    Is.True);
+                Assert.That(
+                    AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                        "material._UVSec",
+                        "_DetailNormalMap",
+                        includeSamplingControls: true,
+                        material),
+                    Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
+            }
         }
 
         [Test]
