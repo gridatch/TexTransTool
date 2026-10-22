@@ -984,6 +984,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var rgbZero = true;
             var alphaZero = true;
             const float radius = 1f;
+            Span<int> xs = stackalloc int[2];
+            Span<int> ys = stackalloc int[2];
 
             foreach (var triangle in triangles)
             {
@@ -998,8 +1000,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             radius))
                         continue;
 
-                    Span<int> xs = stackalloc int[2];
-                    Span<int> ys = stackalloc int[2];
                     var xCount = AddressCandidates(x, width, xs);
                     var yCount = AddressCandidates(y, height, ys);
 
