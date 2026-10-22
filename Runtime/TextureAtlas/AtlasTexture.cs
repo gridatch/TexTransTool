@@ -96,7 +96,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
 
             var sourceOptimization = AtlasSourceOptimizer.Analyze(
-                engine,
                 domain,
                 targetRenderers,
                 targetMaterials,
