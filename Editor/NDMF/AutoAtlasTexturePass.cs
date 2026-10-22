@@ -948,7 +948,8 @@ namespace net.rs64.TexTransTool.NDMF
                     atlasMaterialMaps.materialMap,
                     constantOutputs,
                     sourceOptimization.FeatureDisables,
-                    engine);
+                    engine,
+                    settings.ForceSetTexture);
 
                 var generatedAtlasMaterials =
                     atlasMaterialMaps.materialMap.Values
@@ -1115,7 +1116,8 @@ namespace net.rs64.TexTransTool.NDMF
                         optimizedMaps.materialMap,
                         constantOutputs,
                         sourceOptimization.FeatureDisables,
-                        engine);
+                        engine,
+                        settings.ForceSetTexture);
 
                     var generatedMaterials =
                         optimizedMaps.materialMap.Values
