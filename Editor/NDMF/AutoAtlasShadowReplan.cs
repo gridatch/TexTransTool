@@ -219,7 +219,7 @@ namespace net.rs64.TexTransTool.NDMF
                         !originalGroups.Any(baseline =>
                             baseline.Materials.SetEquals(component))))
                 {
-                    return "feature=" + rule.Name
+                    return "featureSet=combined"
                         + ", status=unknown:baseline-connectivity-mismatch"
                         + ", preparedGroups=" + originalGroups.Count
                         + ", originalConnected=" + beforeConnected.Count;
@@ -228,9 +228,11 @@ namespace net.rs64.TexTransTool.NDMF
                 // Removing texture-use edges cannot merge originally
                 // disconnected components. Only the candidate material may
                 // disappear entirely when no properties remain.
-                if (connected.Count < beforeConnected.Count - 1)
+                var removedFromGraph = materials.Count(mat =>
+                    originalUses[mat].Count != 0 && uses[mat].Count == 0);
+                if (connected.Count < beforeConnected.Count - removedFromGraph)
                 {
-                    return "feature=" + rule.Name
+                    return "featureSet=combined"
                         + ", status=unknown:projected-connectivity-invariant"
                         + ", originalConnected=" + beforeConnected.Count
                         + ", projectedConnected=" + connected.Count;
@@ -242,7 +244,7 @@ namespace net.rs64.TexTransTool.NDMF
                     var renderers = AutoAtlasTextureProcessor.ResolveAutoAtlasTargetRenderers(
                         domain, configuration, groupMaterials);
                     if (renderers.Length == 0)
-                        return "feature=" + rule.Name
+                        return "featureSet=combined"
                             + ", status=unknown:renderer-disappeared-in-projection"
                             + ", materialCount=" + groupMaterials.Count;
                     var sources = groupMaterials.SelectMany(mat => uses[mat].Values)
@@ -284,7 +286,7 @@ namespace net.rs64.TexTransTool.NDMF
                 }
                 var missing = connected.Count - alternatives.Count;
                 if (missing != 0)
-                    return "feature=" + rule.Name
+                    return "featureSet=combined"
                         + ", status=unknown:projected-groups-missing"
                         + ", planned=" + alternatives.Count
                         + ", connected=" + connected.Count;
