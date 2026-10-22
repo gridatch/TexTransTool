@@ -2695,8 +2695,20 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
+                // Include feature-disabled properties whose atlas output
+                // has completely disappeared. This uses the existing
+                // resolution-route display and does not add diagnostics.
+                var omittedRoutes = AtlasResolutionRouteReport
+                    .CollectOmittedPropertyRoutes(
+                        group,
+                        originalPropertyTextures,
+                        propertyTextures,
+                        autoRemovalCandidates.SelectMany(item =>
+                            item.rule.TextureProperties.Select(property =>
+                                (item.material, property))),
+                        tuningResult.RenderTextures.Keys);
                 var resolutionRoutes = AtlasResolutionRouteReport
-                    .Collect(atlasContext, tuningResult);
+                    .Collect(atlasContext, tuningResult, omittedRoutes);
                 var block = string.Format(materialBlock,
                     string.Join(", ", group.Select(OriginalMaterialName)
                         .Distinct().OrderBy(name => name, StringComparer.Ordinal)),
