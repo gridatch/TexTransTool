@@ -89,6 +89,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
             {
                 foreach (var group in MergeMaterialGroups)
                 {
+                    if (group.Reference == null)
+                        continue;
+
                     sourceOptimizationExclusions.UnionWith(
                         targetMaterials.Where(material =>
                             group.Group.Any(groupMaterial =>
