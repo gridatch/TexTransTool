@@ -177,44 +177,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
             return result;
         }
 
-        internal HashSet<Texture> CollectRetainedOriginalTextures(
-            IEnumerable<Material> allReferencedMaterials,
-            IEnumerable<Material> selectedMaterials)
-        {
-            var selected = selectedMaterials.ToHashSet();
-            var originalSources = CollectOriginalTextures(selected);
-            var removedBindings = RemovedBindings(selected);
-            var retained = new HashSet<Texture>();
-
-            foreach (var material in allReferencedMaterials)
-            {
-                var isTarget = selected.Contains(material);
-                ProjectedTextureUses.TryGetValue(
-                    material, out var projectedProperties);
-
-                foreach (var property in material.GetTextureReferences())
-                {
-                    if (!originalSources.Contains(property.Value))
-                        continue;
-
-                    if (isTarget
-                        && removedBindings.Contains(
-                            (material, property.Key)))
-                        continue;
-
-                    if (isTarget
-                        && projectedProperties != null
-                        && projectedProperties.TryGetValue(
-                            property.Key, out var projectedTexture)
-                        && projectedTexture == property.Value)
-                        continue;
-
-                    retained.Add(property.Value);
-                }
-            }
-
-            return retained;
-        }
     }
 
     internal readonly struct AtlasConstantTextureOutput
