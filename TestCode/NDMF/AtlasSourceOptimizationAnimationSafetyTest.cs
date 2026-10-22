@@ -49,6 +49,28 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void Main2ndDecalAnimationInvalidatesUvRegionProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._Main2ndTexDecalAnimation.x",
+                    "_Main2ndTex",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
+        public void EmissionParallaxDepthInvalidatesUvRegionProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._EmissionParallaxDepth",
+                    "_EmissionMap",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
         public void IndependentEmissionMapIgnoresMainTextureStAnimation()
         {
             Assert.That(
