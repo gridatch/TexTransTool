@@ -627,6 +627,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     .ToList()
                 : new List<AtlasFeatureDisableDecision>();
 
+            FilterUnsetTextureConflicts(
+                domain,
+                constants,
+                featureDisables,
+                targetMaterials,
+                experimentalOptions);
+
             FilterFineTuningConflicts(
                 constants,
                 featureDisables,
@@ -667,6 +674,39 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             return new AtlasSourceOptimizationPlan(
                 original, projected, constants, featureDisables);
+        }
+
+        private static void FilterUnsetTextureConflicts(
+            IDomain domain,
+            List<AtlasConstantTextureDecision> constants,
+            List<AtlasFeatureDisableDecision> featureDisables,
+            IReadOnlyCollection<Material> materials,
+            AtlasTextureExperimentalFeature? experimentalOptions)
+        {
+            if (experimentalOptions?.UnsetTextures.Any() != true)
+                return;
+
+            var referencedTextures = materials
+                .SelectMany(material => material.EnumerateReferencedTextures())
+                .Where(texture => texture != null)
+                .Distinct()
+                .ToArray();
+            var unsetTextures = experimentalOptions.UnsetTextures
+                .Select(selector => selector.SelectTexture)
+                .Where(texture => texture != null)
+                .SelectMany(selected => referencedTextures.Where(
+                    texture => domain.OriginEqual(texture, selected)))
+                .ToHashSet();
+            if (unsetTextures.Count == 0)
+                return;
+
+            constants.RemoveAll(item =>
+                unsetTextures.Contains(item.Source));
+            featureDisables.RemoveAll(item =>
+                item.Rule.TextureProperties.Any(property =>
+                    item.Material.HasShaderTextureProperty(property)
+                    && item.Material.GetTexture(property) is Texture texture
+                    && unsetTextures.Contains(texture)));
         }
 
         private static void FilterFineTuningConflicts(
