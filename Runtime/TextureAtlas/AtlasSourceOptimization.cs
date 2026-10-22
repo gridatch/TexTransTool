@@ -303,6 +303,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         || !sample.IsConstant)
                         continue;
 
+                    if ((long)candidate.Texture.width
+                            * candidate.Texture.height <= 16)
+                        continue;
+
                     constants.Add(new AtlasConstantTextureDecision(
                         candidate.Material,
                         candidate.Property,
