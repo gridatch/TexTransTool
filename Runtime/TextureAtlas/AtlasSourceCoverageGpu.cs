@@ -84,8 +84,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         width,
                         height,
                         out coverageMesh,
-                        out var rawBounds,
-                        out var sourceBounds))
+                        out var rawBounds))
                     return false;
 
                 var rtWidth = width + Padding * 2;
@@ -143,10 +142,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         out var flipRows))
                     return false;
 
-                var mask = new bool[
-                    sourceBounds.width * sourceBounds.height];
-                var count = 0;
-
                 var startX = Mathf.Max(
                     -Padding,
                     rawBounds.xMin);
@@ -162,17 +157,25 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                 Span<int> xs = stackalloc int[2];
                 Span<int> ys = stackalloc int[2];
+                var sourceMinX = width;
+                var sourceMinY = height;
+                var sourceMaxX = -1;
+                var sourceMaxY = -1;
+
+                // Derive the source readback bounds from pixels that the GPU
+                // actually rasterized, not from a triangle AABB estimate.
+                // This avoids turning a near-edge UV into an unnecessary
+                // full-width/full-height source readback.
                 for (var y = startY; y <= endY; y += 1)
                 for (var x = startX; x <= endX; x += 1)
                 {
-                    var renderX = x + Padding;
-                    var logicalRenderY = y + Padding;
-                    var readY = flipRows
-                        ? rtHeight - 1 - logicalRenderY
-                        : logicalRenderY;
-                    if (renderX < 0 || renderX >= rtWidth
-                        || readY < 0 || readY >= rtHeight
-                        || pixels[readY * rtWidth + renderX].r < 128)
+                    if (!IsCoveragePixel(
+                            pixels,
+                            rtWidth,
+                            rtHeight,
+                            flipRows,
+                            x,
+                            y))
                         continue;
 
                     var xCount = AddressCandidates(x, width, xs);
@@ -180,19 +183,49 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     for (var yi = 0; yi < yCount; yi += 1)
                     for (var xi = 0; xi < xCount; xi += 1)
                     {
-                        var sourceX = xs[xi];
-                        var sourceY = ys[yi];
-                        var localX = sourceX - sourceBounds.x;
-                        var localY = sourceY - sourceBounds.y;
-                        if (localX < 0
-                            || localX >= sourceBounds.width
-                            || localY < 0
-                            || localY >= sourceBounds.height)
-                            continue;
+                        sourceMinX = Math.Min(sourceMinX, xs[xi]);
+                        sourceMinY = Math.Min(sourceMinY, ys[yi]);
+                        sourceMaxX = Math.Max(sourceMaxX, xs[xi]);
+                        sourceMaxY = Math.Max(sourceMaxY, ys[yi]);
+                    }
+                }
 
+                if (sourceMaxX < sourceMinX
+                    || sourceMaxY < sourceMinY)
+                    return false;
+
+                var sourceBounds = new RectInt(
+                    sourceMinX,
+                    sourceMinY,
+                    sourceMaxX - sourceMinX + 1,
+                    sourceMaxY - sourceMinY + 1);
+                var mask = new bool[
+                    sourceBounds.width * sourceBounds.height];
+                var count = 0;
+
+                for (var y = startY; y <= endY; y += 1)
+                for (var x = startX; x <= endX; x += 1)
+                {
+                    if (!IsCoveragePixel(
+                            pixels,
+                            rtWidth,
+                            rtHeight,
+                            flipRows,
+                            x,
+                            y))
+                        continue;
+
+                    var xCount = AddressCandidates(x, width, xs);
+                    var yCount = AddressCandidates(y, height, ys);
+                    for (var yi = 0; yi < yCount; yi += 1)
+                    for (var xi = 0; xi < xCount; xi += 1)
+                    {
+                        var localX = xs[xi] - sourceBounds.x;
+                        var localY = ys[yi] - sourceBounds.y;
                         var index =
                             localY * sourceBounds.width + localX;
-                        if (mask[index]) continue;
+                        if (mask[index])
+                            continue;
                         mask[index] = true;
                         count += 1;
                     }
@@ -232,12 +265,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
             int width,
             int height,
             out Mesh? mesh,
-            out RectInt rawBounds,
-            out RectInt sourceBounds)
+            out RectInt rawBounds)
         {
             mesh = null;
             rawBounds = default;
-            sourceBounds = default;
 
             var vertices = new List<Vector3>();
             var colors = new List<Color32>();
@@ -248,11 +279,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var rawMinY = int.MaxValue;
             var rawMaxX = int.MinValue;
             var rawMaxY = int.MinValue;
-            var sourceMinX = width;
-            var sourceMinY = height;
-            var sourceMaxX = -1;
-            var sourceMaxY = -1;
-
             foreach (var (sourceMesh, subMesh) in slots)
             {
                 if (sourceMesh == null
@@ -339,48 +365,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     rawMaxX = Math.Max(rawMaxX, triangleMaxX);
                     rawMaxY = Math.Max(rawMaxY, triangleMaxY);
 
-                    var mappedMinX =
-                        triangleMinX < 0 || triangleMaxX >= width
-                            ? 0
-                            : Mathf.Clamp(
-                                triangleMinX,
-                                0,
-                                width - 1);
-                    var mappedMaxX =
-                        triangleMinX < 0 || triangleMaxX >= width
-                            ? width - 1
-                            : Mathf.Clamp(
-                                triangleMaxX,
-                                0,
-                                width - 1);
-                    var mappedMinY =
-                        triangleMinY < 0 || triangleMaxY >= height
-                            ? 0
-                            : Mathf.Clamp(
-                                triangleMinY,
-                                0,
-                                height - 1);
-                    var mappedMaxY =
-                        triangleMinY < 0 || triangleMaxY >= height
-                            ? height - 1
-                            : Mathf.Clamp(
-                                triangleMaxY,
-                                0,
-                                height - 1);
-
-                    sourceMinX = Math.Min(
-                        sourceMinX,
-                        mappedMinX);
-                    sourceMinY = Math.Min(
-                        sourceMinY,
-                        mappedMinY);
-                    sourceMaxX = Math.Max(
-                        sourceMaxX,
-                        mappedMaxX);
-                    sourceMaxY = Math.Max(
-                        sourceMaxY,
-                        mappedMaxY);
-
                     var vertexStart = vertices.Count;
                     foreach (var point in hull)
                     {
@@ -412,9 +396,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             if (indices.Count == 0
                 || rawMaxX < rawMinX
-                || rawMaxY < rawMinY
-                || sourceMaxX < sourceMinX
-                || sourceMaxY < sourceMinY)
+                || rawMaxY < rawMinY)
                 return false;
 
             // Add a one-pixel green marker on the physical lower row of the
@@ -456,11 +438,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 rawMinY,
                 rawMaxX - rawMinX + 1,
                 rawMaxY - rawMinY + 1);
-            sourceBounds = new RectInt(
-                sourceMinX,
-                sourceMinY,
-                sourceMaxX - sourceMinX + 1,
-                sourceMaxY - sourceMinY + 1);
             return true;
         }
 
@@ -585,6 +562,26 @@ namespace net.rs64.TexTransTool.TextureAtlas
         {
             return !float.IsNaN(value)
                 && !float.IsInfinity(value);
+        }
+
+        private static bool IsCoveragePixel(
+            Color32[] pixels,
+            int renderWidth,
+            int renderHeight,
+            bool flipRows,
+            int sourceX,
+            int sourceY)
+        {
+            var renderX = sourceX + Padding;
+            var logicalRenderY = sourceY + Padding;
+            var readY = flipRows
+                ? renderHeight - 1 - logicalRenderY
+                : logicalRenderY;
+            return renderX >= 0
+                && renderX < renderWidth
+                && readY >= 0
+                && readY < renderHeight
+                && pixels[readY * renderWidth + renderX].r >= 128;
         }
 
         private static int AddressCandidates(
