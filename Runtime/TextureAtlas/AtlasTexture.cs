@@ -214,20 +214,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 var hasConstantMemory = TryCalculateConstantTextureMemory(
                     constantOutputs,
                     out var constantTextureMemoryBytes);
-                var retainedSourceTextures =
-                    sourceOptimization.CollectRetainedOriginalTextures(
-                        domain.GetAllMaterials(),
-                        targetMaterials);
-                var hasRetainedSourceMemory =
-                    TryCalculateSourceTextureMemory(
-                        domain,
-                        retainedSourceTextures,
-                        out var retainedSourceTextureMemoryBytes);
-
                 if (hasSourceMemory
                     && hasAtlasMemory
-                    && hasConstantMemory
-                    && hasRetainedSourceMemory)
+                    && hasConstantMemory)
                 {
                     TTLog.Info(
                         "AtlasTexture:info:RelocateResultWithResolutionAndMemory",
@@ -238,8 +227,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         FormatTextureMemory(sourceTextureMemoryBytes),
                         FormatTextureMemory(
                             atlasTextureMemoryBytes
-                            + constantTextureMemoryBytes
-                            + retainedSourceTextureMemoryBytes),
+                            + constantTextureMemoryBytes),
                         metrics.TotalRelocateCount,
                         metrics.RelocationTimeMilliseconds);
                 }
