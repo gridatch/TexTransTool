@@ -203,14 +203,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     domain,
                     sourceTextures,
                     out var sourceTextureMemoryBytes);
+                long atlasTextureMemoryBytes = 0;
                 var hasAtlasMemory = atlasContext == null
                     || tunedAtlasTextures == null
                     || TryCalculateFinalTextureMemory(
                         atlasContext,
                         tunedAtlasTextures,
-                        out var atlasTextureMemoryBytes);
-                if (atlasContext == null || tunedAtlasTextures == null)
-                    atlasTextureMemoryBytes = 0;
+                        out atlasTextureMemoryBytes);
                 var hasConstantMemory = TryCalculateConstantTextureMemory(
                     constantOutputs,
                     out var constantTextureMemoryBytes);
