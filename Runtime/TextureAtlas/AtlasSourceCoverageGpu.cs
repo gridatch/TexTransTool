@@ -281,6 +281,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var maxX = int.MinValue;
             var maxY = int.MinValue;
             Vector2Int? referenceCoord = null;
+            Span<Vector2> hullBuffer = stackalloc Vector2[13];
 
             foreach (var (sourceMesh, subMesh) in slots)
             {
@@ -345,14 +346,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                 0,
                                 sourceHeight - 1));
 
-                        Span<Vector2> hull =
-                            stackalloc Vector2[12];
                         var hullCount = BuildExpandedHull(
                             a,
                             b,
                             c,
                             FilterRadius,
-                            hull);
+                            hullBuffer);
                         if (hullCount < 3)
                             return false;
 
@@ -361,7 +360,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                              hullIndex < hullCount;
                              hullIndex += 1)
                         {
-                            var point = hull[hullIndex];
+                            var point = hullBuffer[hullIndex];
                             minX = Math.Min(
                                 minX,
                                 Mathf.FloorToInt(point.x));
