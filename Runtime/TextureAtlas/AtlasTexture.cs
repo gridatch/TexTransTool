@@ -100,8 +100,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 targetRenderers,
                 targetMaterials,
                 atlasSetting.AtlasTargetUVChannel,
-                atlasSetting.OptimizeConstantTextures,
-                atlasSetting.DisableVisuallyUnusedShaderFeatures,
+                atlasSetting,
+                experimentalOptions,
                 sourceOptimizationExclusions);
 
             var atlasMaterials = sourceOptimization.HasChanges
