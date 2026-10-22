@@ -128,7 +128,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     if (!item.Material.HasShaderTextureProperty(property))
                         continue;
                     var texture = item.Material.GetTexture(property);
-                    if (texture is Texture2D or RenderTexture)
+                    if (texture is Texture2D || texture is RenderTexture)
                         result.Add(texture);
                 }
             }
