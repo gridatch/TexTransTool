@@ -275,6 +275,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     {
                         if (!TryBuildCoverage(
                                 candidate.Slots,
+                                (int)atlasTargetUvChannel,
                                 candidate.Matrix,
                                 width,
                                 height,
@@ -575,6 +576,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         private static bool TryBuildCoverage(
             IEnumerable<(Mesh mesh, int subMesh)> slots,
+            int uvChannel,
             Matrix2x3 matrix,
             int width,
             int height,
@@ -595,7 +597,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 try
                 {
                     uvs.Clear();
-                    slot.mesh.GetUVs(0, uvs);
+                    slot.mesh.GetUVs(uvChannel, uvs);
                     var indices = slot.mesh.GetTriangles(slot.subMesh);
                     if (slot.mesh.GetTopology(slot.subMesh)
                             != MeshTopology.Triangles
