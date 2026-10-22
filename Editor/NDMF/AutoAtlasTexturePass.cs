@@ -193,6 +193,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly HashSet<Material> Materials;
             internal readonly Renderer[] Renderers;
             internal readonly HashSet<Texture> SourceTextures;
+            internal readonly HashSet<Texture> OriginalSourceTextures;
             internal readonly HashSet<Texture> RetainedSourceTextures;
             internal readonly AutoAtlasTextureMergePlanner.MergeSelection? MergeSelection;
 
@@ -200,12 +201,14 @@ namespace net.rs64.TexTransTool.NDMF
                 HashSet<Material> materials,
                 Renderer[] renderers,
                 HashSet<Texture> sourceTextures,
+                HashSet<Texture> originalSourceTextures,
                 HashSet<Texture> retainedSourceTextures,
                 AutoAtlasTextureMergePlanner.MergeSelection? mergeSelection)
             {
                 Materials = materials;
                 Renderers = renderers;
                 SourceTextures = sourceTextures;
+                OriginalSourceTextures = originalSourceTextures;
                 RetainedSourceTextures = retainedSourceTextures;
                 MergeSelection = mergeSelection;
             }
@@ -228,6 +231,7 @@ namespace net.rs64.TexTransTool.NDMF
                     selected.SelectMany(group => group.Materials).ToHashSet(),
                     selected.SelectMany(group => group.Renderers).Distinct().ToArray(),
                     selected.SelectMany(group => group.SourceTextures).ToHashSet(),
+                    selected.SelectMany(group => group.OriginalSourceTextures).ToHashSet(),
                     selected.SelectMany(group => group.RetainedSourceTextures).ToHashSet(),
                     selection));
             }
@@ -239,6 +243,7 @@ namespace net.rs64.TexTransTool.NDMF
                     prepared.Materials,
                     prepared.Renderers,
                     prepared.SourceTextures,
+                    prepared.OriginalSourceTextures,
                     prepared.RetainedSourceTextures,
                     null));
             }
@@ -258,6 +263,7 @@ namespace net.rs64.TexTransTool.NDMF
                     prepared.Materials,
                     prepared.Renderers,
                     prepared.SourceTextures,
+                    prepared.OriginalSourceTextures,
                     prepared.RetainedSourceTextures,
                     null));
             }
