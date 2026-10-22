@@ -419,6 +419,15 @@ namespace net.rs64.TexTransTool.TextureAtlas
             return outputs.ToArray();
         }
 
+        internal static void DisposeConstantOutputs(
+            IEnumerable<AtlasConstantTextureOutput> outputs)
+        {
+            foreach (var texture in outputs
+                         .Select(output => output.RenderTexture)
+                         .Distinct())
+                texture.Dispose();
+        }
+
         internal static void ApplyToGeneratedMaterials(
             IReadOnlyDictionary<Material, Material> materialMap,
             IEnumerable<AtlasConstantTextureOutput> constantOutputs,
