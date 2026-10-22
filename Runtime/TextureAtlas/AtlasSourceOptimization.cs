@@ -387,7 +387,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                         || sampledSource.height != height)
                                         continue;
 
-                                    loadedSources.Add(loadedSource);
+                                    var loaded = loadedSource;
+                                    if (loaded == null)
+                                        continue;
+                                    loadedSources.Add(loaded);
                                     loadedSource = null;
                                     batchPixels += sourcePixels;
 
