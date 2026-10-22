@@ -213,7 +213,24 @@ namespace net.rs64.TexTransTool.TextureAtlas
         // polygon boundary are not required coverage and need no extra bias.
         private const float FilterRadius = 1f;
 
+        private sealed class SourceSlotData
+        {
+            internal readonly Vector2[] Uvs;
+            internal readonly int[] TriangleIndices;
+
+            internal SourceSlotData(
+                Vector2[] uvs,
+                int[] triangleIndices)
+            {
+                Uvs = uvs;
+                TriangleIndices = triangleIndices;
+            }
+        }
+
         private readonly Material _material;
+        private readonly Dictionary<
+            (Mesh mesh, int subMesh, int uvChannel),
+            SourceSlotData?> _sourceSlotCache = new();
 
         private AtlasSourceGpuAnalyzer(Material material)
         {
@@ -252,7 +269,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             var logicalVertices = new List<Vector2>();
             var indices = new List<int>();
-            var uvs = new List<Vector2>();
             var minX = int.MaxValue;
             var minY = int.MaxValue;
             var maxX = int.MinValue;
@@ -263,22 +279,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
             {
                 try
                 {
-                    if (sourceMesh == null
-                        || subMesh < 0
-                        || subMesh >= sourceMesh.subMeshCount
-                        || sourceMesh.GetTopology(subMesh)
-                            != MeshTopology.Triangles)
+                    if (!TryGetSourceSlotData(
+                            sourceMesh,
+                            subMesh,
+                            uvChannel,
+                            out var slotData)
+                        || slotData == null)
                         return false;
 
-                    uvs.Clear();
-                    sourceMesh.GetUVs(uvChannel, uvs);
-                    var triangleIndices =
-                        sourceMesh.GetTriangles(subMesh);
-                    if (uvs.Count == 0
-                        || triangleIndices.Length == 0
-                        || triangleIndices.Length % 3 != 0)
-                        return false;
-
+                    var uvs = slotData.Uvs;
+                    var triangleIndices = slotData.TriangleIndices;
                     for (var index = 0;
                          index < triangleIndices.Length;
                          index += 3)
@@ -286,11 +296,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         var i0 = triangleIndices[index];
                         var i1 = triangleIndices[index + 1];
                         var i2 = triangleIndices[index + 2];
-                        if (i0 < 0 || i1 < 0 || i2 < 0
-                            || i0 >= uvs.Count
-                            || i1 >= uvs.Count
-                            || i2 >= uvs.Count)
-                            return false;
 
                         var a = Transform(uvs[i0], matrix);
                         var b = Transform(uvs[i1], matrix);
@@ -595,8 +600,68 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
         }
 
+        private bool TryGetSourceSlotData(
+            Mesh sourceMesh,
+            int subMesh,
+            int uvChannel,
+            out SourceSlotData? data)
+        {
+            data = null;
+            if (sourceMesh == null)
+                return false;
+
+            var key = (sourceMesh, subMesh, uvChannel);
+            if (_sourceSlotCache.TryGetValue(key, out data))
+                return data != null;
+
+            try
+            {
+                if (subMesh < 0
+                    || subMesh >= sourceMesh.subMeshCount
+                    || sourceMesh.GetTopology(subMesh)
+                        != MeshTopology.Triangles)
+                {
+                    _sourceSlotCache[key] = null;
+                    return false;
+                }
+
+                var uvList = new List<Vector2>();
+                sourceMesh.GetUVs(uvChannel, uvList);
+                var triangleIndices =
+                    sourceMesh.GetTriangles(subMesh);
+                if (uvList.Count == 0
+                    || triangleIndices.Length == 0
+                    || triangleIndices.Length % 3 != 0)
+                {
+                    _sourceSlotCache[key] = null;
+                    return false;
+                }
+
+                foreach (var index in triangleIndices)
+                {
+                    if (index < 0 || index >= uvList.Count)
+                    {
+                        _sourceSlotCache[key] = null;
+                        return false;
+                    }
+                }
+
+                data = new SourceSlotData(
+                    uvList.ToArray(),
+                    triangleIndices);
+                _sourceSlotCache.Add(key, data);
+                return true;
+            }
+            catch
+            {
+                _sourceSlotCache[key] = null;
+                return false;
+            }
+        }
+
         public void Dispose()
         {
+            _sourceSlotCache.Clear();
             UnityEngine.Object.DestroyImmediate(_material);
         }
 
