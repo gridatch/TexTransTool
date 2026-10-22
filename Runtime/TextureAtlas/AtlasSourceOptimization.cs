@@ -335,6 +335,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
             long flagWaitTicks = 0;
             long colorReadbackTicks = 0;
             var uniqueSourceCount = 0;
+            long sourceSlotTicks = 0;
+            long triangleExpansionTicks = 0;
+            long meshBuildTicks = 0;
+            long geometryTriangleCount = 0;
+            var sourceSlotCacheHits = 0;
+            var sourceSlotCacheMisses = 0;
 
             var engine = domain.GetTexTransCoreEngineForUnity();
             var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
@@ -673,6 +679,15 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 }
                 finally
                 {
+                    sourceSlotTicks = analyzer.SourceSlotTicks;
+                    triangleExpansionTicks =
+                        analyzer.TriangleExpansionTicks;
+                    meshBuildTicks = analyzer.MeshBuildTicks;
+                    geometryTriangleCount = analyzer.TriangleCount;
+                    sourceSlotCacheHits =
+                        analyzer.SourceSlotCacheHits;
+                    sourceSlotCacheMisses =
+                        analyzer.SourceSlotCacheMisses;
                     foreach (var geometry in geometryCache.Values)
                         geometry.Dispose();
                     analyzer.Dispose();
@@ -773,6 +788,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 $"summary: geometryFailed={geometryFailedCount} queueFailed={queueFailedCount} known={knownCount} unknown={unknownCount} uniqueSources={uniqueSourceCount} gpuAnalyses={gpuAnalysisCount} constantProof={constantProofCount} rgbZeroProof={rgbZeroProofCount} alphaZeroProof={alphaZeroProofCount} constantColorReadbacks={constantColorReadbackCount}");
             gpuDebug.AppendLine(
                 $"timingMs: total={gpuAnalysisTimer.Elapsed.TotalMilliseconds:F1} sourceLoad={TicksToMs(sourceLoadTicks):F1} geometry={TicksToMs(geometryTicks):F1} queue={TicksToMs(queueTicks):F1} flagWait={TicksToMs(flagWaitTicks):F1} colorWait={TicksToMs(colorReadbackTicks):F1} postDecision={postDecisionTimer.Elapsed.TotalMilliseconds:F1}");
+            gpuDebug.AppendLine(
+                $"geometryProfile: triangles={geometryTriangleCount} sourceSlot={TicksToMs(sourceSlotTicks):F1} expansion={TicksToMs(triangleExpansionTicks):F1} meshBuild={TicksToMs(meshBuildTicks):F1} cacheHit={sourceSlotCacheHits} cacheMiss={sourceSlotCacheMisses}");
             foreach (var item in constants)
             {
                 gpuDebug.AppendLine(
