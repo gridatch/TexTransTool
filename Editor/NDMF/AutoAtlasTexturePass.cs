@@ -440,7 +440,6 @@ namespace net.rs64.TexTransTool.NDMF
 
             var engine = domain.GetTexTransCoreEngineForUnity();
             var sourceOptimization = AtlasSourceOptimizer.Analyze(
-                engine,
                 domain,
                 atlasAllowedRenderers.ToArray(),
                 candidateMaterials,
