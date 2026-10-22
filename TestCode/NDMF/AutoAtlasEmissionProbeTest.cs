@@ -818,6 +818,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             {
                 if (!mat.HasProperty("_UseMain2ndTex")
                     || !mat.HasProperty("_Main2ndTexAlphaMode")
+                    || !mat.HasProperty("_Main2ndDissolveParams")
                     || !mat.HasProperty("_UseEmission2nd"))
                     Assert.Ignore("The installed lilToon variant lacks required properties.");
 
@@ -827,6 +828,15 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     mat, "_Main2ndBlendMask", new Color(0,0,0,1), out _),
                     Is.False);
                 mat.SetFloat("_Main2ndTexAlphaMode", 0f);
+                mat.SetVector("_Main2ndDissolveParams",
+                    new Vector4(1f, 0f, 0.5f, 0.1f));
+                Assert.That(AutoAtlasFeatureDisableRules.TryClassify(
+                    mat, "_Main2ndBlendMask", new Color(0,0,0,1), out _),
+                    Is.False, "Dissolve edge emission may remain with alpha zero.");
+                Assert.That(AutoAtlasFeatureDisableRules.ExplainRejectedZeroMask(
+                    mat, "_Main2ndBlendMask", new Color(0,0,0,1)),
+                    Is.EqualTo("main2nd-dissolve-emission-may-remain"));
+                mat.SetVector("_Main2ndDissolveParams", Vector4.zero);
                 Assert.That(AutoAtlasFeatureDisableRules.TryClassify(
                     mat, "_Main2ndBlendMask", new Color(0,0,0,1), out var rule),
                     Is.True);
