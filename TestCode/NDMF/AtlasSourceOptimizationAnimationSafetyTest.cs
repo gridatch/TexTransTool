@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.AAOCode;
@@ -93,82 +94,71 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         [Test]
         public void StandardSharedMainUvControlsInvalidateBumpProof()
         {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
-
-            var material = new Material(shader);
-            TTShaderTextureUsageInformationRegistry.s_information
-                .TryGetValue(shader, out var previousInformation);
-            TTShaderTextureUsageInformationRegistry.s_information[shader] =
-                new StandardShaderInformation();
-            try
-            {
-                Assert.That(
-                    AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
-                        "material._MainTex_ST.x",
-                        "_BumpMap",
-                        includeSamplingControls: true,
-                        material),
-                    Is.True);
-            }
-            finally
-            {
-                if (previousInformation != null)
+            WithShaderInformation(
+                new StandardShaderInformation(),
+                material =>
                 {
-                    TTShaderTextureUsageInformationRegistry.s_information[
-                        shader] = previousInformation;
-                }
-                else
-                {
-                    TTShaderTextureUsageInformationRegistry.s_information
-                        .Remove(shader);
-                }
-                Object.DestroyImmediate(material);
-            }
+                    Assert.That(
+                        AtlasSourceOptimizationAnimationSafety
+                            .AffectsProofProperty(
+                                "material._MainTex_ST.x",
+                                "_BumpMap",
+                                includeSamplingControls: true,
+                                material),
+                        Is.True);
+                });
         }
 
         [Test]
         public void StandardDetailControlsInvalidateDetailNormalProof()
         {
-            var shader = Shader.Find("Standard");
-            Assert.That(shader, Is.Not.Null);
+            WithShaderInformation(
+                new StandardShaderInformation(),
+                material =>
+                {
+                    Assert.That(
+                        AtlasSourceOptimizationAnimationSafety
+                            .AffectsProofProperty(
+                                "material._DetailAlbedoMap_ST.x",
+                                "_DetailNormalMap",
+                                includeSamplingControls: true,
+                                material),
+                        Is.True);
+                    Assert.That(
+                        AtlasSourceOptimizationAnimationSafety
+                            .AffectsProofProperty(
+                                "material._UVSec",
+                                "_DetailNormalMap",
+                                includeSamplingControls: true,
+                                material),
+                        Is.True);
+                });
+        }
 
-            var material = new Material(shader);
-            TTShaderTextureUsageInformationRegistry.s_information
-                .TryGetValue(shader, out var previousInformation);
-            TTShaderTextureUsageInformationRegistry.s_information[shader] =
-                new StandardShaderInformation();
-            try
-            {
-                Assert.That(
-                    AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
-                        "material._DetailAlbedoMap_ST.x",
-                        "_DetailNormalMap",
-                        includeSamplingControls: true,
-                        material),
-                    Is.True);
-                Assert.That(
-                    AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
-                        "material._UVSec",
-                        "_DetailNormalMap",
-                        includeSamplingControls: true,
-                        material),
-                    Is.True);
-            }
-            finally
-            {
-                if (previousInformation != null)
+        [Test]
+        public void ToonStandardTracksOwnUvSelectorWithoutMainSt()
+        {
+            WithShaderInformation(
+                new VRCSDKToonStandardShaderInformation(false),
+                material =>
                 {
-                    TTShaderTextureUsageInformationRegistry.s_information[
-                        shader] = previousInformation;
-                }
-                else
-                {
-                    TTShaderTextureUsageInformationRegistry.s_information
-                        .Remove(shader);
-                }
-                Object.DestroyImmediate(material);
-            }
+                    Assert.That(
+                        AtlasSourceOptimizationAnimationSafety
+                            .AffectsProofProperty(
+                                "material._EmissionUV",
+                                "_EmissionMap",
+                                includeSamplingControls: true,
+                                material),
+                        Is.True);
+                    Assert.That(
+                        AtlasSourceOptimizationAnimationSafety
+                            .AffectsProofProperty(
+                                "material._MainTex_ST.x",
+                                "_EmissionMap",
+                                includeSamplingControls: true,
+                                material),
+                        Is.False);
+                });
         }
 
         [Test]
@@ -257,6 +247,38 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     "_EmissionMap",
                     includeSamplingControls: true),
                 Is.False);
+        }
+
+        private static void WithShaderInformation(
+            ITTShaderTextureUsageInformation information,
+            Action<Material> test)
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            TTShaderTextureUsageInformationRegistry.s_information
+                .TryGetValue(shader, out var previousInformation);
+            TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                information;
+            try
+            {
+                test(material);
+            }
+            finally
+            {
+                if (previousInformation != null)
+                {
+                    TTShaderTextureUsageInformationRegistry.s_information[
+                        shader] = previousInformation;
+                }
+                else
+                {
+                    TTShaderTextureUsageInformationRegistry.s_information
+                        .Remove(shader);
+                }
+                Object.DestroyImmediate(material);
+            }
         }
     }
 }
