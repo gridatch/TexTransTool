@@ -174,6 +174,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     result.Add((item.Material, property));
             }
             return result;
+        }
+
         internal HashSet<Texture> CollectRetainedOriginalTextures(
             IEnumerable<Material> allReferencedMaterials,
             IEnumerable<Material> selectedMaterials)
@@ -211,8 +213,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
 
             return retained;
-        }
-
         }
     }
 
