@@ -1815,6 +1815,77 @@ namespace net.rs64.TexTransTool.NDMF
 
     internal static class AutoAtlasTextureProcessor
     {
+        // Temporary diagnostic only. Track one final outcome per detected
+        // candidate, even when a merged execution retries as standalone.
+        internal sealed class FeatureCandidateOutcomeTracker
+        {
+            private sealed class Outcome
+            {
+                internal readonly Material Material;
+                internal readonly string Feature;
+                internal readonly string Switch;
+                internal string Status = "not-applied";
+                internal string Reason = "no-effective-execution-group";
+                internal string? MergeFallbackReason;
+
+                internal Outcome(Material material, AutoAtlasFeatureDisableRules.Rule rule)
+                {
+                    Material = material;
+                    Feature = rule.Name;
+                    Switch = rule.SwitchProperty;
+                }
+            }
+
+            private readonly Outcome[] _outcomes;
+
+            internal FeatureCandidateOutcomeTracker(
+                IEnumerable<(Material material, AutoAtlasFeatureDisableRules.Rule rule)> candidates)
+            {
+                _outcomes = candidates.Select(item =>
+                    new Outcome(item.material, item.rule)).ToArray();
+            }
+
+            internal void RecordFailure(
+                IReadOnlyCollection<Material> materials,
+                string reason, bool retryStandalone)
+            {
+                foreach (var outcome in _outcomes.Where(item =>
+                             materials.Contains(item.Material)))
+                {
+                    if (retryStandalone)
+                    {
+                        outcome.MergeFallbackReason = reason;
+                        outcome.Reason = "standalone-retry-pending";
+                        continue;
+                    }
+                    outcome.Status = "not-applied";
+                    outcome.Reason = reason;
+                }
+            }
+
+            internal void RecordApplied(IReadOnlyCollection<Material> materials)
+            {
+                foreach (var outcome in _outcomes.Where(item =>
+                             materials.Contains(item.Material)))
+                {
+                    outcome.Status = "applied";
+                    outcome.Reason = "atlas-applied";
+                }
+            }
+
+            internal string[] FinalLines() =>
+                _outcomes.Select(outcome =>
+                    "auto-feature-removal=FINAL"
+                    + ", material=" + outcome.Material.name
+                    + ", feature=" + outcome.Feature
+                    + ", switch=" + outcome.Switch
+                    + ", status=" + outcome.Status
+                    + ", reason=" + outcome.Reason
+                    + ", mergeFallbackReason="
+                    + (outcome.MergeFallbackReason ?? "none"))
+                .ToArray();
+        }
+
         internal sealed class ExecutionGroup
         {
             internal readonly HashSet<Material> Materials;
@@ -2159,6 +2230,7 @@ namespace net.rs64.TexTransTool.NDMF
 
             var executionGroups = CreateExecutionGroups(
                 preparedGroups, mergePlan.Selections);
+            var featureOutcomes = new FeatureCandidateOutcomeTracker(hypotheses);
 
             var materialBlock = "AutoAtlasTexture:info:MaterialBlock".GetLocalize();
             while (executionGroups.Count != 0)
@@ -2199,6 +2271,14 @@ namespace net.rs64.TexTransTool.NDMF
                         EnqueueStandaloneFallback(
                             executionGroups, invalidMerge, preparedGroups);
                     }
+                    featureOutcomes.RecordFailure(
+                        group,
+                        hasActiveUntransformedConsumer
+                            ? "active-untransformed-consumer"
+                            : atlasRenderers.Length == 0
+                                ? "no-atlas-target-renderers"
+                                : "renderer-set-changed",
+                        execution.MergeSelection != null);
                     continue;
                 }
 
@@ -2344,6 +2424,14 @@ namespace net.rs64.TexTransTool.NDMF
                         EnqueueStandaloneFallback(
                             executionGroups, failedMerge, preparedGroups);
                     }
+                    featureOutcomes.RecordFailure(
+                        group,
+                        twoDimensionalSizeRejection != null
+                            ? "merge-layout-or-property-limit"
+                            : twoDimensionalRelocator?.FailureDetail != null
+                                ? "merge-placement-failed"
+                                : "lossless-atlas-execution-failed",
+                        execution.MergeSelection != null);
                     continue;
                 }
 
@@ -2391,6 +2479,11 @@ namespace net.rs64.TexTransTool.NDMF
                             preparedGroups);
                     }
 
+                    featureOutcomes.RecordFailure(
+                        group,
+                        "required-atlas-mesh-unresolved:"
+                            + unresolvedRequiredRenderer.name,
+                        execution.MergeSelection != null);
                     continue;
                 }
 
@@ -2438,6 +2531,13 @@ namespace net.rs64.TexTransTool.NDMF
                             preparedGroups);
                     }
 
+                    featureOutcomes.RecordFailure(
+                        group,
+                        finalOutputPixels <= 0
+                            ? "no-output-textures"
+                            : "final-pixel-count-not-reduced:"
+                                + finalTotalPixels + ">=" + pixelBaseline,
+                        execution.MergeSelection != null);
                     continue;
                 }
 
@@ -2503,6 +2603,15 @@ namespace net.rs64.TexTransTool.NDMF
                             preparedGroups);
                     }
 
+                    featureOutcomes.RecordFailure(
+                        group,
+                        !hasExecutionTextureMemory
+                            || !hasRetainedSourceMemory
+                            || !hasMemoryBaseline
+                            ? "texture-memory-model-unavailable"
+                            : "final-texture-memory-not-reduced:"
+                                + finalTotalTextureMemoryBytes + ">=" + memoryBaseline,
+                        execution.MergeSelection != null);
                     continue;
                 }
 
@@ -2579,6 +2688,10 @@ namespace net.rs64.TexTransTool.NDMF
                             preparedGroups);
                     }
 
+                    featureOutcomes.RecordFailure(
+                        group,
+                        "unexpected-retained-source-texture",
+                        execution.MergeSelection != null);
                     continue;
                 }
 
@@ -2609,6 +2722,7 @@ namespace net.rs64.TexTransTool.NDMF
                     domain,
                     atlasMaterialMaps.materialMap,
                     atlasMaterialMaps.domainsMaterial2ReplaceMaterial);
+                featureOutcomes.RecordApplied(group);
 
                 foreach (var item in autoRemovalCandidates)
                     emissionProbe.AddFeatureDisableLine(
@@ -2645,6 +2759,9 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             processingTimer.Stop();
+
+            foreach (var outcome in featureOutcomes.FinalLines())
+                emissionProbe.AddFeatureDisableLine(outcome);
 
             TTTLog.ReportingObject(configuration, () =>
                 ErrorReport.ReportError(new AutoAtlasEmissionProbeError(
