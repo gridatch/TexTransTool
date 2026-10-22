@@ -873,9 +873,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     material.HasProperty(property)
                         ? Mathf.RoundToInt(material.GetFloat(property))
                         : -1;
-                bool ZeroRgbIsNeutral(int blendMode) =>
-                    blendMode == 1 || blendMode == 2;
-
                 if (Enabled("_UseMatCap")
                     && (RgbZero("_MatCapBlendMask")
                         || FloatZero("_MatCapBlend")
@@ -917,7 +914,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         || AlphaZero("_Main2ndTex")
                         || ColorAlphaZero("_Color2nd")
                         || FloatZero("_Main2ndEnableLighting")
-                        || (ZeroRgbIsNeutral(main2ndBlendMode)
+                        || (IsZeroRgbNeutralBlendMode(main2ndBlendMode)
                             && (RgbZero("_Main2ndTex")
                                 || ColorRgbZero("_Color2nd")));
 
@@ -973,7 +970,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         || ColorAlphaZero(colorProperty)
                         || AlphaZero(mapProperty)
                         || AlphaZero(maskProperty)
-                        || (ZeroRgbIsNeutral(mode)
+                        || (IsZeroRgbNeutralBlendMode(mode)
                             && (RgbZero(mapProperty)
                                 || RgbZero(maskProperty)
                                 || ColorRgbZero(colorProperty)));
@@ -988,6 +985,14 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
 
             return result;
+        }
+
+        internal static bool IsZeroRgbNeutralBlendMode(
+            int blendMode)
+        {
+            // lilBlendColor: black is neutral only for Add and Screen.
+            // Normal and Multiply still modify the destination when alpha > 0.
+            return blendMode == 1 || blendMode == 2;
         }
 
         private static bool IsSupportedLilToon(Material material)
