@@ -770,37 +770,28 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     coverage, width, height, out var bounds))
                 return false;
 
-            Color[]? cpuPixels = null;
-            RenderTexture? staging = null;
             Texture2D? copy = null;
             var previous = RenderTexture.active;
             try
             {
-                if (!SystemInfo.SupportsRenderTextureFormat(
-                        RenderTextureFormat.ARGBFloat))
-                    return false;
-
-                staging = RenderTexture.GetTemporary(
-                    bounds.width,
-                    bounds.height,
-                    0,
-                    RenderTextureFormat.ARGBFloat,
-                    RenderTextureReadWrite.Linear);
-
-                var scale = new Vector2(
-                    bounds.width / (float)width,
-                    bounds.height / (float)height);
-                var offset = new Vector2(
-                    bounds.x / (float)width,
-                    bounds.y / (float)height);
-                Graphics.Blit(texture, staging, scale, offset);
-
+                // Read the exact mip-0 source rectangle. Avoiding an
+                // intermediate Blit prevents platform-dependent Y inversion
+                // and avoids another full/partial GPU texture allocation.
                 if (SystemInfo.supportsAsyncGPUReadback)
                 {
                     try
                     {
                         var request = AsyncGPUReadback.Request(
-                            staging, 0, TextureFormat.RGBAFloat);
+                            texture,
+                            0,
+                            bounds.x,
+                            bounds.width,
+                            bounds.y,
+                            bounds.height,
+                            0,
+                            1,
+                            TextureFormat.RGBAFloat,
+                            null);
                         request.WaitForCompletion();
                         if (!request.hasError)
                         {
@@ -829,18 +820,23 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     TextureFormat.RGBAFloat,
                     false,
                     true);
-                RenderTexture.active = staging;
+                RenderTexture.active = texture;
                 copy.ReadPixels(
                     new Rect(
-                        0, 0, bounds.width, bounds.height),
-                    0, 0, false);
-                cpuPixels = copy.GetPixels(0);
-                if (cpuPixels.Length
+                        bounds.x,
+                        bounds.y,
+                        bounds.width,
+                        bounds.height),
+                    0,
+                    0,
+                    false);
+                var pixels = copy.GetPixels(0);
+                if (pixels.Length
                     != bounds.width * bounds.height)
                     return false;
 
                 result = ScanRegion(
-                    cpuPixels, coverage, width, bounds);
+                    pixels, coverage, width, bounds);
                 return result.Known;
             }
             catch
@@ -853,8 +849,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 RenderTexture.active = previous;
                 if (copy != null)
                     UnityEngine.Object.DestroyImmediate(copy);
-                if (staging != null)
-                    RenderTexture.ReleaseTemporary(staging);
             }
         }
 
