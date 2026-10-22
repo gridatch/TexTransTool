@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
