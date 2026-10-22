@@ -106,21 +106,34 @@ namespace net.rs64.TexTransTool.NDMF
         {
             color = default;
             if (texture is not Texture2D) return false;
-            var image = ReadOriginal(texture);
-            if (image.Pixels == null) return false;
-            var whole = ScanSourcePixels(image.Pixels, null);
-            if (!whole.isConstant
-                || float.IsNaN(whole.constantColor.r)
-                || float.IsInfinity(whole.constantColor.r)
-                || float.IsNaN(whole.constantColor.g)
-                || float.IsInfinity(whole.constantColor.g)
-                || float.IsNaN(whole.constantColor.b)
-                || float.IsInfinity(whole.constantColor.b)
-                || float.IsNaN(whole.constantColor.a)
-                || float.IsInfinity(whole.constantColor.a))
-                return false;
-            color = whole.constantColor;
+            if (!_images.TryGetValue(texture, out var image)
+                || !image.WholeScanned)
+                image = ReadOriginal(texture);
+            if (!image.WholeScanned)
+            {
+                if (image.Pixels == null) return false;
+                StoreWholeStats(image, ScanSourcePixels(image.Pixels, null));
+            }
+            if (!image.WholeIsConstant) return false;
+            color = image.WholeColor;
             return true;
+        }
+
+        private static void StoreWholeStats(
+            SourceImage image,
+            (bool rgbZero, bool alphaZero, int nonzeroRgbTexels,
+                float maxAbsRgb, bool isConstant, Color constantColor,
+                int sampledTexels) stats)
+        {
+            image.WholeStats = FormatSurveyStats(stats);
+            image.WholeScanned = true;
+            var c = stats.constantColor;
+            image.WholeIsConstant = stats.isConstant
+                && !float.IsNaN(c.r) && !float.IsInfinity(c.r)
+                && !float.IsNaN(c.g) && !float.IsInfinity(c.g)
+                && !float.IsNaN(c.b) && !float.IsInfinity(c.b)
+                && !float.IsNaN(c.a) && !float.IsInfinity(c.a);
+            image.WholeColor = c;
         }
 
         internal (Material material, string property, Texture source)[] GetZeroMaskCandidates() =>
@@ -166,6 +179,8 @@ namespace net.rs64.TexTransTool.NDMF
             internal Color[]? Pixels;
             internal string? WholeStats;
             internal bool WholeIsConstant;
+            internal bool WholeScanned;
+            internal Color WholeColor;
             internal bool WasReadSuccessfully;
             internal long LastAccess;
             internal int Width;
@@ -305,9 +320,8 @@ namespace net.rs64.TexTransTool.NDMF
 
                         if (image.WholeStats == null)
                         {
-                            var full = ScanSourcePixels(image.Pixels, null);
-                            image.WholeStats = FormatSurveyStats(full);
-                            image.WholeIsConstant = full.isConstant;
+                            StoreWholeStats(image,
+                                ScanSourcePixels(image.Pixels, null));
                         }
                         if (image.WholeIsConstant) ++_surveyUniformWhole;
                         string uvStatus;
