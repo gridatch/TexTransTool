@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using net.rs64.TexTransCore;
 using UnityEngine;
 using UnityEngine.Rendering;
+using Color = UnityEngine.Color;
 
 namespace net.rs64.TexTransTool.TextureAtlas
 {
