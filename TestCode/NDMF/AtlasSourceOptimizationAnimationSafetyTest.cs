@@ -33,6 +33,40 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void UnrelatedColorComponentDoesNotInvalidateAlphaProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._EmissionColor.r",
+                    "_EmissionColor.a",
+                    includeSamplingControls: false),
+                Is.False);
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._EmissionColor.a",
+                    "_EmissionColor.a",
+                    includeSamplingControls: false),
+                Is.True);
+        }
+
+        [Test]
+        public void UnrelatedVectorComponentDoesNotInvalidateDissolveModeProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._Main2ndDissolveParams.y",
+                    "_Main2ndDissolveParams.x",
+                    includeSamplingControls: false),
+                Is.False);
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._Main2ndDissolveParams.x",
+                    "_Main2ndDissolveParams.x",
+                    includeSamplingControls: false),
+                Is.True);
+        }
+
+        [Test]
         public void UnrelatedMaterialAnimationIsIgnored()
         {
             Assert.That(
