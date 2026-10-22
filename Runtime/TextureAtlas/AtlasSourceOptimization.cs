@@ -715,7 +715,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         || !targetMaterials.Contains(material))
                         continue;
 
-                    var subMesh = Math.Clamp(slot, 0, mesh.subMeshCount - 1);
+                    var subMesh = Mathf.Clamp(slot, 0, mesh.subMeshCount - 1);
                     if (mesh.GetSubMesh(subMesh).indexCount == 0) continue;
                     if (!result.TryGetValue(material, out var materialSlots))
                         result[material] = materialSlots =
