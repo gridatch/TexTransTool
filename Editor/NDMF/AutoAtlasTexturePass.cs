@@ -945,6 +945,12 @@ namespace net.rs64.TexTransTool.NDMF
                         resultingTextures,
                         atlasResult.PreserveBump2ndMaterials,
                         atlasResult.PreservedOriginalUVChannel);
+                AtlasSourceOptimizer.ApplyToGeneratedMaterials(
+                    atlasMaterialMaps.materialMap,
+                    constantOutputs,
+                    sourceOptimization.FeatureDisables,
+                    engine);
+
                 var generatedAtlasMaterials =
                     atlasMaterialMaps.materialMap.Values
                         .Concat(
@@ -954,12 +960,12 @@ namespace net.rs64.TexTransTool.NDMF
                         .ToArray();
 
                 // References already classified as retained are part of the
-                // cost model. Only an unexpected source reference invalidates
-                // the prediction and forces a conservative fallback.
+                // cost model. Only an unexpected original source reference
+                // invalidates the prediction and forces a conservative fallback.
                 var generatedRetainedSourceTextures =
                     CollectRetainedSourceTextures(
                         generatedAtlasMaterials,
-                        execution.SourceTextures);
+                        execution.OriginalSourceTextures);
                 if (generatedRetainedSourceTextures.Any(texture =>
                         !execution.RetainedSourceTextures.Contains(texture)))
                 {
@@ -971,6 +977,8 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         rt.Dispose();
                     }
+                    AtlasSourceOptimizer.DisposeConstantOutputs(
+                        constantOutputs);
                     DestroyUnappliedAtlasedMeshes(
                         atlasResult.AtlasedMeshes!);
 
@@ -995,7 +1003,12 @@ namespace net.rs64.TexTransTool.NDMF
                 }
 
                 var resolutionRoutes = AtlasResolutionRouteReport
-                    .Collect(atlasContext, tuningResult);
+                    .CollectWithOptimizations(
+                        atlasContext,
+                        tuningResult,
+                        sourceOptimization,
+                        constantOutputs,
+                        group);
                 var block = string.Format(materialBlock,
                     string.Join(", ", group.Select(OriginalMaterialName)
                         .Distinct().OrderBy(name => name, StringComparer.Ordinal)),
@@ -1026,6 +1039,10 @@ namespace net.rs64.TexTransTool.NDMF
                 foreach (var descriptor in tuningResult.TextureDescriptors)
                     domain.RegisterPostProcessingAndLazyGPUReadBack(
                         descriptor.Key, descriptor.Value);
+                foreach (var output in constantOutputs)
+                    domain.RegisterPostProcessingAndLazyGPUReadBack(
+                        output.RenderTexture,
+                        output.Descriptor);
 
                 completed.Add(block);
             }
