@@ -136,7 +136,7 @@ namespace net.rs64.TexTransTool.TestCode
                     Is.True);
                 Assert.That(pending, Is.Not.Null);
                 Assert.That(
-                    pending!.TryGetFlags(out var flags),
+                    pending!.TryGetFlags(out var flags, out _, out _),
                     Is.True);
                 Assert.That(flags.Known, Is.True);
                 Assert.That(flags.IsConstant, Is.False);
@@ -193,7 +193,7 @@ namespace net.rs64.TexTransTool.TestCode
                         out pending),
                     Is.True);
                 Assert.That(
-                    pending!.TryGetFlags(out var flags),
+                    pending!.TryGetFlags(out var flags, out _, out _),
                     Is.True);
                 Assert.That(flags.IsConstant, Is.True);
             }
@@ -252,7 +252,7 @@ namespace net.rs64.TexTransTool.TestCode
                         out pending),
                     Is.True);
                 Assert.That(
-                    pending!.TryGetFlags(out var flags),
+                    pending!.TryGetFlags(out var flags, out _, out _),
                     Is.True);
                 Assert.That(flags.IsConstant, Is.True);
             }
@@ -308,7 +308,7 @@ namespace net.rs64.TexTransTool.TestCode
                         out pending),
                     Is.True);
                 Assert.That(
-                    pending!.TryGetFlags(out var flags),
+                    pending!.TryGetFlags(out var flags, out _, out _),
                     Is.True);
                 Assert.That(flags.IsConstant, Is.True);
             }
@@ -369,7 +369,7 @@ namespace net.rs64.TexTransTool.TestCode
                         out pending),
                     Is.True);
                 Assert.That(
-                    pending!.TryGetFlags(out var flags),
+                    pending!.TryGetFlags(out var flags, out _, out _),
                     Is.True);
                 Assert.That(flags.IsConstant, Is.False);
             }
