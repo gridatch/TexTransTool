@@ -847,7 +847,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
         }
 
-        private static bool TryGetCoverageBounds(
+        internal static bool TryGetCoverageBounds(
             bool[] coverage,
             int width,
             int height,
