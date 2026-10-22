@@ -208,6 +208,65 @@ namespace net.rs64.TexTransTool.TestCode
         }
 
         [Test]
+        public void GpuAnalyzerDoesNotExpandPastStrictFilterBoundary()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            // x=3 is exactly on the radius=1 expanded boundary for this UV
+            // extent and is excluded by the old CPU predicate's strict
+            // inequalities. A >1 radius would incorrectly sample it.
+            var mesh = CreateQuadMesh(
+                new Vector2(0f, 0f),
+                new Vector2(0.3125f, 1f));
+            var source = CreateSource(
+                8,
+                8,
+                (x, _) => x < 3 ? Color.red : Color.blue);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuPending? pending = null;
+            try
+            {
+                Assert.That(
+                    analyzer.TryBuildGeometry(
+                        new[] { (mesh, 0) },
+                        0,
+                        Matrix2x3.Identity,
+                        8,
+                        8,
+                        out geometry),
+                    Is.True);
+                Assert.That(
+                    analyzer.TryQueue(
+                        source,
+                        geometry!,
+                        out pending),
+                    Is.True);
+                Assert.That(
+                    pending!.TryGetFlags(out var flags),
+                    Is.True);
+                Assert.That(flags.IsConstant, Is.True);
+            }
+            finally
+            {
+                pending?.Dispose();
+                geometry?.Dispose();
+                analyzer.Dispose();
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
         public void GpuAnalyzerPreservesLogicalSourceYOrientation()
         {
             if (!SystemInfo.supportsAsyncGPUReadback)
