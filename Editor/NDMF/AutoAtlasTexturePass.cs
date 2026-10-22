@@ -2229,28 +2229,13 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
-                var originalPixels = execution.SourceTextures.Sum(texture =>
+                var originalSourceTextures = group
+                    .SelectMany(material => originalPropertyTextures[material].Values)
+                    .Where(texture => texture != null).ToHashSet();
+                var originalPixels = originalSourceTextures.Sum(texture =>
                     (long)texture.width * texture.height);
-
-                // The diagnostic branch applies eligible removal automatically.
-                // Merge selections keep their original cost/placement envelopes.
                 var autoRemovalCandidates = hypotheses
-                    .Where(item => group.Contains(item.material))
-                    .ToArray();
-                if (execution.MergeSelection != null && autoRemovalCandidates.Length != 0)
-                {
-                    foreach (var item in autoRemovalCandidates)
-                        emissionProbe.AddFeatureDisableLine(
-                            "auto-feature-removal=skipped-merged-execution, material="
-                            + item.material.name + ", feature=" + item.rule.Name);
-                    autoRemovalCandidates = Array.Empty<(Material material,
-                        AutoAtlasFeatureDisableRules.Rule rule)>();
-                }
-                IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>?
-                    projectedTextureUsesForRemoval = autoRemovalCandidates.Length == 0
-                        ? null
-                        : AutoAtlasShadowReplan.ProjectFeatureSetUses(
-                            propertyTextures, autoRemovalCandidates);
+                    .Where(item => group.Contains(item.material)).ToArray();
 
                 var engine = domain.GetTexTransCoreEngineForUnity();
 
@@ -2365,7 +2350,7 @@ namespace net.rs64.TexTransTool.NDMF
                             // mutation.
                             return metrics.OutputTexturePixelCount > 0;
                         },
-                    }, projectedTextureUsesForRemoval);
+                    }, hypotheses.Length == 0 ? null : propertyTextures);
                 if (!atlasResult.IsSuccess)
                 {
                     if (execution.MergeSelection is { } failedMerge)
@@ -2496,7 +2481,7 @@ namespace net.rs64.TexTransTool.NDMF
                 var hasSourceTextureMemory =
                     AtlasTexture.TryCalculateSourceTextureMemory(
                         domain,
-                        execution.SourceTextures,
+                        originalSourceTextures,
                         out var sourceTextureMemoryBytes);
                 var hasMemoryBaseline =
                     execution.MergeSelection != null
@@ -2877,7 +2862,8 @@ namespace net.rs64.TexTransTool.NDMF
             IReadOnlyDictionary<
                 Material,
                 IReadOnlyDictionary<string, Texture>> propertyTextures,
-            HashSet<Texture> replacedTextures)
+            HashSet<Texture> replacedTextures,
+            HashSet<(Material material, string property)>? removedBindings = null)
         {
             var retained = new HashSet<Texture>();
             foreach (var material in allReferencedMaterials)
@@ -2891,6 +2877,9 @@ namespace net.rs64.TexTransTool.NDMF
                 foreach (var property in material.GetTextureReferences())
                 {
                     if (!replacedTextures.Contains(property.Value)) continue;
+                    if (isTarget && removedBindings != null
+                        && removedBindings.Contains((material, property.Key)))
+                        continue; // generated clone will clear this reference
                     if (!isTarget
                         || atlasProperties == null
                         || !atlasProperties.TryGetValue(
