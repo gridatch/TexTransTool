@@ -350,46 +350,54 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                 var textureGroup =
                                     textureGroups[groupIndex];
                                 var source = textureGroup.Key;
-                                var width = source.width;
-                                var height = source.height;
-                                var sourcePixels =
-                                    (long)width * height;
+                                var importedWidth = source.width;
+                                var importedHeight = source.height;
+                                var importedPixels =
+                                    (long)importedWidth * importedHeight;
 
-                                if (width <= 0
-                                    || height <= 0
-                                    || sourcePixels > MaxSourcePixels)
+                                if (importedWidth <= 0
+                                    || importedHeight <= 0
+                                    || importedPixels > MaxSourcePixels)
                                 {
                                     groupIndex += 1;
                                     continue;
                                 }
 
-                                if (loadedSources.Count != 0
-                                    && batchPixels + sourcePixels
-                                        > MaxGpuBatchSourcePixels)
-                                    break;
-
                                 groupIndex += 1;
                                 ITTRenderTexture? loadedSource = null;
                                 try
                                 {
-                                    // Use the same canonical source loading path
-                                    // as AtlasContext. The GPU proof only asks
-                                    // equality/zero questions, while an accepted
-                                    // constant color is read back separately as
-                                    // RGBAFloat from this same render texture.
+                                    // Use the same canonical full-scale source
+                                    // loading path as AtlasContext. Importer Max
+                                    // Size can make Texture.width/height smaller
+                                    // than this source, so build proof geometry
+                                    // against the actual canonical dimensions.
                                     loadedSource =
                                         engine.WrappingOrUploadToLoadFullScale(
                                             source);
                                     var sampledSource =
                                         engine.GetReferenceRenderTexture(
                                             loadedSource);
-                                    if (sampledSource.width != width
-                                        || sampledSource.height != height)
+                                    var width = sampledSource.width;
+                                    var height = sampledSource.height;
+                                    var sourcePixels =
+                                        (long)width * height;
+                                    if (width <= 0
+                                        || height <= 0
+                                        || sourcePixels > MaxSourcePixels)
                                         continue;
 
+                                    if (loadedSources.Count != 0
+                                        && batchPixels + sourcePixels
+                                            > MaxGpuBatchSourcePixels)
+                                    {
+                                        // Retry this source as the first item
+                                        // of the next batch.
+                                        groupIndex -= 1;
+                                        break;
+                                    }
+
                                     var loaded = loadedSource;
-                                    if (loaded == null)
-                                        continue;
                                     loadedSources.Add(loaded);
                                     loadedSource = null;
                                     batchPixels += sourcePixels;
