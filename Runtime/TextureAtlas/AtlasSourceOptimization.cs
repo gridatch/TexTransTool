@@ -671,7 +671,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             foreach (var item in featureDisables)
             {
                 gpuDebug.AppendLine(
-                    $"decision: disable | {item.Material.name} | {item.Rule.Name} | proof={item.ProofProperty}");
+                    $"decision: disable | {item.Material.name} | {item.Rule.Name} | proof={string.Join(",", item.SafetyProperties)}");
             }
             Debug.Log(gpuDebug.ToString().TrimEnd());
 
