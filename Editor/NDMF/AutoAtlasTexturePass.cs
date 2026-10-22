@@ -2070,6 +2070,10 @@ namespace net.rs64.TexTransTool.NDMF
                 .ThenBy(item => item.rule.Name, StringComparer.Ordinal)
                 .Select(item => (item.material, item.rule))
                 .ToArray();
+            emissionProbe.AddFeatureDisableLine(
+                "live-output-trial-modes=" + AutoAtlasFeatureTrialSession.EnabledModeSummary
+                + ", applies-only-to-standalone-groups"
+                + ", visual-equivalence=NOT-PROVEN, disabled-by-default");
             if (hypotheses.Length != 0)
             {
                 try
@@ -2609,6 +2613,14 @@ namespace net.rs64.TexTransTool.NDMF
                         + ", switch=" + item.rule.SwitchProperty
                         + ", texturesCleared=["
                         + string.Join(",", item.rule.TextureProperties) + "]"
+                        + ", actualGeneratedTextureMemoryBytes="
+                        + executionTextureMemoryBytes
+                        + ", actualRetainedSourceMemoryBytes="
+                        + retainedSourceMemoryBytes
+                        + ", actualTotalTextureMemoryBytes="
+                        + finalTotalTextureMemoryBytes
+                        + ", originalMemoryBaselineBytes="
+                        + memoryBaseline
                         + ", shaderVisualEquivalence=UNVERIFIED");
 
                 foreach (var rt in compiledTextures.Values)
