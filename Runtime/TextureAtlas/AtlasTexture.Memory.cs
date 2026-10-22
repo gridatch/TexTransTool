@@ -251,6 +251,49 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 : 1;
         }
 
+        internal static bool TryCalculateConstantTextureMemory(
+            IEnumerable<AtlasConstantTextureOutput> outputs,
+            out long bytes)
+        {
+            bytes = 0;
+            var alphaCache = new Dictionary<Texture, bool>();
+
+            foreach (var output in outputs)
+            {
+                if (output.Descriptor.TextureFormat
+                    is not TextureCompressionData compression)
+                    return false;
+
+                if (!TryHasAlpha(
+                        output.Decision.Source,
+                        alphaCache,
+                        out var hasAlpha))
+                    return false;
+
+                var format = compression.UseOverride
+                    ? compression.OverrideTextureFormat
+                    : TextureCompressionData.GetQuality2TextureFormat(
+                        compression.FormatQualityValue, hasAlpha);
+                var mipCount = output.Descriptor.UseMipMap
+                    ? CalculateMemoryMipCount(
+                        output.RenderTexture.Width,
+                        output.RenderTexture.Hight)
+                    : 1;
+
+                if (!TryCalculateTextureMemory(
+                        output.RenderTexture.Width,
+                        output.RenderTexture.Hight,
+                        format,
+                        mipCount,
+                        out var outputBytes))
+                    return false;
+
+                bytes += outputBytes;
+            }
+
+            return true;
+        }
+
         internal static string FormatTextureMemory(long bytes)
         {
             if (bytes < 1024)
