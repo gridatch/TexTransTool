@@ -61,7 +61,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         internal static AtlasResolutionRoute[] Collect(
             AtlasContext atlasContext,
-            TexFineTuningResult fineTuningResult)
+            TexFineTuningResult fineTuningResult,
+            IEnumerable<AtlasResolutionRouteInstance>? omittedInputRoutes = null)
         {
             var sourcePropertiesByOutput =
                 new Dictionary<ITTRenderTexture, HashSet<string>>(
@@ -142,7 +143,62 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 ));
             }
 
+            if (omittedInputRoutes != null)
+                routeInstances.AddRange(omittedInputRoutes);
+
             return AggregateRoutes(routeInstances);
+        }
+
+        // Report feature-removed output properties in the SAME resolution
+        // routes as generated atlases. 0x0 is an absent output slot, not a
+        // claim that the original Texture asset is unused elsewhere.
+        // Only an entire output property that disappeared from this atlas
+        // execution qualifies; partial removal still produces that property.
+        internal static AtlasResolutionRouteInstance[] CollectOmittedPropertyRoutes(
+            IEnumerable<Material> executionMaterials,
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
+                originalTextureUses,
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
+                effectiveTextureUses,
+            IEnumerable<(Material material, string property)> removedBindings,
+            IEnumerable<string> generatedOutputProperties)
+        {
+            var materials = executionMaterials.ToHashSet();
+            var generated = generatedOutputProperties.ToHashSet(StringComparer.Ordinal);
+            var omittedProperties = removedBindings
+                .Where(binding => materials.Contains(binding.material))
+                .Select(binding => binding.property)
+                .Distinct(StringComparer.Ordinal);
+
+            var routes = new List<AtlasResolutionRouteInstance>();
+            foreach (var property in omittedProperties)
+            {
+                // A surviving material's use still requires an output.
+                if (generated.Contains(property)
+                    || materials.Any(material =>
+                        effectiveTextureUses.TryGetValue(material, out var uses)
+                        && uses.ContainsKey(property)))
+                    continue;
+
+                var inputs = materials
+                    .Where(originalTextureUses.ContainsKey)
+                    .Select(material =>
+                        originalTextureUses[material].TryGetValue(property,
+                            out var texture) ? texture : null)
+                    .Where(texture => texture != null)
+                    .Distinct()
+                    .Select(texture =>
+                        new AtlasTextureSizeCount(
+                            texture!.width, texture.height, 1))
+                    .ToArray();
+                if (inputs.Length == 0) continue;
+
+                routes.Add(new AtlasResolutionRouteInstance(
+                    inputs,
+                    new[] { new AtlasTextureSizeCount(0, 0, 1) }));
+            }
+
+            return routes.ToArray();
         }
 
         internal static AtlasResolutionRoute[] AggregateRoutes(
