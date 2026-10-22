@@ -2480,7 +2480,7 @@ namespace net.rs64.TexTransTool.NDMF
                     if (!atlasMaterialMaps.materialMap.TryGetValue(
                             item.material, out var outputMaterial))
                         throw new InvalidOperationException(
-                            "Trial material was not generated: " + item.material.name);
+                            "Feature removal material was not generated: " + item.material.name);
                     AutoAtlasFeatureDisableRules.DisableOnGeneratedMaterial(
                         outputMaterial, item.rule);
                 }
