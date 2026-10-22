@@ -3,444 +3,554 @@ using System;
 using System.Collections.Generic;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransTool.TextureAtlas.AAOCode;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Color = UnityEngine.Color;
 
 namespace net.rs64.TexTransTool.TextureAtlas
 {
-    internal readonly struct AtlasSourceCoverageMask
+    internal readonly struct AtlasSourceGpuFlags
     {
-        internal readonly RectInt Bounds;
-        internal readonly bool[] Pixels;
+        internal readonly bool Known;
+        internal readonly bool IsConstant;
+        internal readonly bool RgbZero;
+        internal readonly bool AlphaZero;
 
-        internal AtlasSourceCoverageMask(RectInt bounds, bool[] pixels)
+        internal AtlasSourceGpuFlags(
+            bool known,
+            bool isConstant,
+            bool rgbZero,
+            bool alphaZero)
         {
-            Bounds = bounds;
-            Pixels = pixels;
-        }
-
-        internal bool IsCovered(int x, int y)
-        {
-            var localX = x - Bounds.x;
-            var localY = y - Bounds.y;
-            return localX >= 0
-                && localX < Bounds.width
-                && localY >= 0
-                && localY < Bounds.height
-                && Pixels[localY * Bounds.width + localX];
+            Known = known;
+            IsConstant = isConstant;
+            RgbZero = rgbZero;
+            AlphaZero = alphaZero;
         }
     }
 
-    /// <summary>
-    /// Builds the source-texel coverage used by source-side Atlas
-    /// optimizations. Coverage is rasterized on the GPU; CPU work is bounded
-    /// by triangle count rather than texture pixels times triangle count.
-    ///
-    /// The polygon rendered for each UV triangle is the Minkowski sum of that
-    /// triangle and a one-pixel axis-aligned square. This is the same
-    /// conservative linear-filter support model previously evaluated by
-    /// TriangleOverlapsTexelFilter. Pixels outside the source image are folded
-    /// through both clamp and repeat addressing because shader sampler aliases
-    /// are not exposed by the texture-usage registry.
-    /// </summary>
-    internal static class AtlasSourceCoverageGpu
+    internal sealed class AtlasSourceGpuGeometry : IDisposable
     {
-        private const string ShaderName =
-            "Hidden/TexTransTool/AtlasSourceCoverage";
-        private const int Padding = 4;
-        private const float FilterRadius = 1f;
+        internal readonly Mesh Mesh;
+        internal readonly RectInt Bounds;
+        internal readonly Vector2Int ReferenceCoord;
 
-        internal static bool TryRender(
-            IEnumerable<(Mesh mesh, int subMesh)> slots,
-            int uvChannel,
-            Matrix2x3 matrix,
-            int width,
-            int height,
-            out AtlasSourceCoverageMask coverage)
+        internal AtlasSourceGpuGeometry(
+            Mesh mesh,
+            RectInt bounds,
+            Vector2Int referenceCoord)
         {
-            coverage = default;
-            if (width <= 0 || height <= 0)
-                return false;
-            if (!SystemInfo.SupportsRenderTextureFormat(
-                    RenderTextureFormat.ARGB32))
-                return false;
+            Mesh = mesh;
+            Bounds = bounds;
+            ReferenceCoord = referenceCoord;
+        }
 
-            var shader = Shader.Find(ShaderName);
-            if (shader == null || !shader.isSupported)
-                return false;
+        public void Dispose()
+        {
+            UnityEngine.Object.DestroyImmediate(Mesh);
+        }
+    }
 
-            Mesh? coverageMesh = null;
-            Material? material = null;
-            RenderTexture? rt = null;
-            Texture2D? readback = null;
-            CommandBuffer? command = null;
-            var previousActive = RenderTexture.active;
+    internal sealed class AtlasSourceGpuPending : IDisposable
+    {
+        internal readonly RenderTexture Source;
+        internal readonly Vector2Int ReferenceCoord;
+        internal readonly RenderTexture Result;
+        internal readonly AsyncGPUReadbackRequest Request;
 
+        internal AtlasSourceGpuPending(
+            RenderTexture source,
+            Vector2Int referenceCoord,
+            RenderTexture result,
+            AsyncGPUReadbackRequest request)
+        {
+            Source = source;
+            ReferenceCoord = referenceCoord;
+            Result = result;
+            Request = request;
+        }
+
+        internal bool TryGetFlags(out AtlasSourceGpuFlags flags)
+        {
+            flags = default;
             try
             {
-                if (!TryBuildCoverageMesh(
-                        slots,
-                        uvChannel,
-                        matrix,
-                        width,
-                        height,
-                        out coverageMesh,
-                        out var rawBounds))
+                var request = Request;
+                request.WaitForCompletion();
+                if (request.hasError)
                     return false;
 
-                var rtWidth = width + Padding * 2;
-                var rtHeight = height + Padding * 2;
-
-                material = new Material(shader)
-                {
-                    hideFlags = HideFlags.HideAndDontSave,
-                };
-                rt = RenderTexture.GetTemporary(
-                    rtWidth,
-                    rtHeight,
-                    0,
-                    RenderTextureFormat.ARGB32,
-                    RenderTextureReadWrite.Linear,
-                    1);
-                rt.filterMode = FilterMode.Point;
-                rt.antiAliasing = 1;
-
-                command = new CommandBuffer
-                {
-                    name = "TTT Atlas Source UV Coverage",
-                };
-                command.SetRenderTarget(rt);
-                command.ClearRenderTarget(true, true, Color.black);
-                command.DrawMesh(
-                    coverageMesh,
-                    Matrix4x4.identity,
-                    material,
-                    0,
-                    0);
-                Graphics.ExecuteCommandBuffer(command);
-
-                RenderTexture.active = rt;
-                readback = new Texture2D(
-                    rtWidth,
-                    rtHeight,
-                    TextureFormat.RGBA32,
-                    false,
-                    true)
-                {
-                    hideFlags = HideFlags.HideAndDontSave,
-                };
-                readback.ReadPixels(
-                    new Rect(0, 0, rtWidth, rtHeight),
-                    0,
-                    0,
-                    false);
-                var pixels = readback.GetPixels32(0);
-                if (pixels.Length != rtWidth * rtHeight
-                    || !TryResolveUvYOrientation(
-                        pixels,
-                        rtWidth,
-                        rtHeight,
-                        out var flipRows))
+                NativeArray<Color32> data =
+                    request.GetData<Color32>();
+                if (data.Length != 1)
                     return false;
 
-                var startX = Mathf.Max(
-                    -Padding,
-                    rawBounds.xMin);
-                var endX = Mathf.Min(
-                    width + Padding - 1,
-                    rawBounds.xMax - 1);
-                var startY = Mathf.Max(
-                    -Padding,
-                    rawBounds.yMin);
-                var endY = Mathf.Min(
-                    height + Padding - 1,
-                    rawBounds.yMax - 1);
-
-                Span<int> xs = stackalloc int[2];
-                Span<int> ys = stackalloc int[2];
-                var sourceMinX = width;
-                var sourceMinY = height;
-                var sourceMaxX = -1;
-                var sourceMaxY = -1;
-
-                // Derive the source readback bounds from pixels that the GPU
-                // actually rasterized, not from a triangle AABB estimate.
-                // This avoids turning a near-edge UV into an unnecessary
-                // full-width/full-height source readback.
-                for (var y = startY; y <= endY; y += 1)
-                for (var x = startX; x <= endX; x += 1)
-                {
-                    if (!IsCoveragePixel(
-                            pixels,
-                            rtWidth,
-                            rtHeight,
-                            flipRows,
-                            x,
-                            y))
-                        continue;
-
-                    var xCount = AddressCandidates(x, width, xs);
-                    var yCount = AddressCandidates(y, height, ys);
-                    for (var yi = 0; yi < yCount; yi += 1)
-                    for (var xi = 0; xi < xCount; xi += 1)
-                    {
-                        sourceMinX = Math.Min(sourceMinX, xs[xi]);
-                        sourceMinY = Math.Min(sourceMinY, ys[yi]);
-                        sourceMaxX = Math.Max(sourceMaxX, xs[xi]);
-                        sourceMaxY = Math.Max(sourceMaxY, ys[yi]);
-                    }
-                }
-
-                if (sourceMaxX < sourceMinX
-                    || sourceMaxY < sourceMinY)
+                var pixel = data[0];
+                if (pixel.a < 128)
                     return false;
 
-                var sourceBounds = new RectInt(
-                    sourceMinX,
-                    sourceMinY,
-                    sourceMaxX - sourceMinX + 1,
-                    sourceMaxY - sourceMinY + 1);
-                var mask = new bool[
-                    sourceBounds.width * sourceBounds.height];
-                var count = 0;
-
-                for (var y = startY; y <= endY; y += 1)
-                for (var x = startX; x <= endX; x += 1)
-                {
-                    if (!IsCoveragePixel(
-                            pixels,
-                            rtWidth,
-                            rtHeight,
-                            flipRows,
-                            x,
-                            y))
-                        continue;
-
-                    var xCount = AddressCandidates(x, width, xs);
-                    var yCount = AddressCandidates(y, height, ys);
-                    for (var yi = 0; yi < yCount; yi += 1)
-                    for (var xi = 0; xi < xCount; xi += 1)
-                    {
-                        var localX = xs[xi] - sourceBounds.x;
-                        var localY = ys[yi] - sourceBounds.y;
-                        var index =
-                            localY * sourceBounds.width + localX;
-                        if (mask[index])
-                            continue;
-                        mask[index] = true;
-                        count += 1;
-                    }
-                }
-
-                if (count == 0)
-                    return false;
-
-                coverage =
-                    new AtlasSourceCoverageMask(sourceBounds, mask);
+                flags = new AtlasSourceGpuFlags(
+                    true,
+                    pixel.r < 128,
+                    pixel.g < 128,
+                    pixel.b < 128);
                 return true;
             }
             catch
             {
-                coverage = default;
                 return false;
-            }
-            finally
-            {
-                RenderTexture.active = previousActive;
-                if (command != null) command.Dispose();
-                if (readback != null)
-                    UnityEngine.Object.DestroyImmediate(readback);
-                if (rt != null)
-                    RenderTexture.ReleaseTemporary(rt);
-                if (material != null)
-                    UnityEngine.Object.DestroyImmediate(material);
-                if (coverageMesh != null)
-                    UnityEngine.Object.DestroyImmediate(coverageMesh);
             }
         }
 
-        private static bool TryBuildCoverageMesh(
+        internal AsyncGPUReadbackRequest RequestReferenceColor()
+        {
+            return AsyncGPUReadback.Request(
+                Source,
+                0,
+                ReferenceCoord.x,
+                1,
+                ReferenceCoord.y,
+                1,
+                0,
+                1,
+                TextureFormat.RGBAFloat,
+                null);
+        }
+
+        public void Dispose()
+        {
+            UnityEngine.Object.DestroyImmediate(Result);
+        }
+    }
+
+    /// <summary>
+    /// GPU implementation of source-side Atlas texture inspection.
+    ///
+    /// CPU work is proportional to UV triangle count: it transforms triangles
+    /// and expands them by the one-pixel linear-filter support. The expanded
+    /// polygons are rasterized directly while the fragment shader evaluates the
+    /// canonical TTT source texture. A 4x4 max reduction collapses the result to
+    /// one RGBA32 pixel:
+    /// R = any covered texel differs from the reference texel
+    /// G = any covered texel has non-zero RGB
+    /// B = any covered texel has non-zero alpha
+    /// A = coverage exists
+    ///
+    /// Only that one pixel is read back for the proof. The actual constant color
+    /// is read separately from one canonical source texel after a constant proof
+    /// succeeds, preserving the existing RGBAFloat source representation.
+    /// </summary>
+    internal sealed class AtlasSourceGpuAnalyzer : IDisposable
+    {
+        private const string ShaderName =
+            "Hidden/TexTransTool/AtlasSourceAnalysis";
+
+        // The old CPU predicate used radius=1 with strict inequalities.
+        // A tiny outward bias prevents GPU top-left edge rules from dropping a
+        // boundary texel while adding far less than one source pixel of margin.
+        private const float FilterRadius = 1.001f;
+
+        private readonly Material _material;
+
+        private AtlasSourceGpuAnalyzer(Material material)
+        {
+            _material = material;
+        }
+
+        internal static AtlasSourceGpuAnalyzer? TryCreate()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback
+                || !SystemInfo.SupportsRenderTextureFormat(
+                    RenderTextureFormat.ARGB32))
+                return null;
+
+            var shader = Shader.Find(ShaderName);
+            if (shader == null || !shader.isSupported)
+                return null;
+
+            return new AtlasSourceGpuAnalyzer(
+                new Material(shader)
+                {
+                    hideFlags = HideFlags.HideAndDontSave,
+                });
+        }
+
+        internal bool TryBuildGeometry(
             IEnumerable<(Mesh mesh, int subMesh)> slots,
             int uvChannel,
             Matrix2x3 matrix,
-            int width,
-            int height,
-            out Mesh? mesh,
-            out RectInt rawBounds)
+            int sourceWidth,
+            int sourceHeight,
+            out AtlasSourceGpuGeometry? geometry)
         {
-            mesh = null;
-            rawBounds = default;
+            geometry = null;
+            if (sourceWidth <= 0 || sourceHeight <= 0)
+                return false;
 
-            var vertices = new List<Vector3>();
-            var colors = new List<Color32>();
+            var logicalVertices = new List<Vector2>();
             var indices = new List<int>();
             var uvs = new List<Vector2>();
+            var minX = int.MaxValue;
+            var minY = int.MaxValue;
+            var maxX = int.MinValue;
+            var maxY = int.MinValue;
+            Vector2Int? referenceCoord = null;
 
-            var rawMinX = int.MaxValue;
-            var rawMinY = int.MaxValue;
-            var rawMaxX = int.MinValue;
-            var rawMaxY = int.MinValue;
             foreach (var (sourceMesh, subMesh) in slots)
             {
-                if (sourceMesh == null
-                    || subMesh < 0
-                    || subMesh >= sourceMesh.subMeshCount
-                    || sourceMesh.GetTopology(subMesh)
-                        != MeshTopology.Triangles)
-                    return false;
-
-                uvs.Clear();
-                sourceMesh.GetUVs(uvChannel, uvs);
-                var triangleIndices =
-                    sourceMesh.GetTriangles(subMesh);
-                if (uvs.Count == 0
-                    || triangleIndices.Length == 0
-                    || triangleIndices.Length % 3 != 0)
-                    return false;
-
-                for (var index = 0;
-                     index < triangleIndices.Length;
-                     index += 3)
+                try
                 {
-                    var i0 = triangleIndices[index];
-                    var i1 = triangleIndices[index + 1];
-                    var i2 = triangleIndices[index + 2];
-                    if (i0 < 0 || i1 < 0 || i2 < 0
-                        || i0 >= uvs.Count
-                        || i1 >= uvs.Count
-                        || i2 >= uvs.Count)
+                    if (sourceMesh == null
+                        || subMesh < 0
+                        || subMesh >= sourceMesh.subMeshCount
+                        || sourceMesh.GetTopology(subMesh)
+                            != MeshTopology.Triangles)
                         return false;
 
-                    var a = Transform(uvs[i0], matrix);
-                    var b = Transform(uvs[i1], matrix);
-                    var c = Transform(uvs[i2], matrix);
-                    if (!InsideUnitUv(a)
-                        || !InsideUnitUv(b)
-                        || !InsideUnitUv(c))
+                    uvs.Clear();
+                    sourceMesh.GetUVs(uvChannel, uvs);
+                    var triangleIndices =
+                        sourceMesh.GetTriangles(subMesh);
+                    if (uvs.Count == 0
+                        || triangleIndices.Length == 0
+                        || triangleIndices.Length % 3 != 0)
                         return false;
 
-                    a = new Vector2(
-                        a.x * width - 0.5f,
-                        a.y * height - 0.5f);
-                    b = new Vector2(
-                        b.x * width - 0.5f,
-                        b.y * height - 0.5f);
-                    c = new Vector2(
-                        c.x * width - 0.5f,
-                        c.y * height - 0.5f);
-
-                    var hull = BuildExpandedHull(
-                        a,
-                        b,
-                        c,
-                        FilterRadius);
-                    if (hull.Count < 3)
-                        return false;
-
-                    var triangleMinX = Mathf.FloorToInt(
-                        hull[0].x);
-                    var triangleMaxX = Mathf.CeilToInt(
-                        hull[0].x);
-                    var triangleMinY = Mathf.FloorToInt(
-                        hull[0].y);
-                    var triangleMaxY = Mathf.CeilToInt(
-                        hull[0].y);
-                    foreach (var point in hull)
+                    for (var index = 0;
+                         index < triangleIndices.Length;
+                         index += 3)
                     {
-                        triangleMinX = Mathf.Min(
-                            triangleMinX,
-                            Mathf.FloorToInt(point.x));
-                        triangleMaxX = Mathf.Max(
-                            triangleMaxX,
-                            Mathf.CeilToInt(point.x));
-                        triangleMinY = Mathf.Min(
-                            triangleMinY,
-                            Mathf.FloorToInt(point.y));
-                        triangleMaxY = Mathf.Max(
-                            triangleMaxY,
-                            Mathf.CeilToInt(point.y));
-                    }
+                        var i0 = triangleIndices[index];
+                        var i1 = triangleIndices[index + 1];
+                        var i2 = triangleIndices[index + 2];
+                        if (i0 < 0 || i1 < 0 || i2 < 0
+                            || i0 >= uvs.Count
+                            || i1 >= uvs.Count
+                            || i2 >= uvs.Count)
+                            return false;
 
-                    rawMinX = Math.Min(rawMinX, triangleMinX);
-                    rawMinY = Math.Min(rawMinY, triangleMinY);
-                    rawMaxX = Math.Max(rawMaxX, triangleMaxX);
-                    rawMaxY = Math.Max(rawMaxY, triangleMaxY);
+                        var a = Transform(uvs[i0], matrix);
+                        var b = Transform(uvs[i1], matrix);
+                        var c = Transform(uvs[i2], matrix);
+                        if (!InsideUnitUv(a)
+                            || !InsideUnitUv(b)
+                            || !InsideUnitUv(c))
+                            return false;
 
-                    var vertexStart = vertices.Count;
-                    foreach (var point in hull)
-                    {
-                        vertices.Add(new Vector3(
-                            ToClipCoordinate(
-                                point.x,
-                                width + Padding * 2),
-                            ToClipCoordinate(
-                                point.y,
-                                height + Padding * 2),
-                            0f));
-                        colors.Add(new Color32(
-                            255,
-                            0,
-                            0,
-                            255));
-                    }
+                        a = ToPixelCenterSpace(
+                            a,
+                            sourceWidth,
+                            sourceHeight);
+                        b = ToPixelCenterSpace(
+                            b,
+                            sourceWidth,
+                            sourceHeight);
+                        c = ToPixelCenterSpace(
+                            c,
+                            sourceWidth,
+                            sourceHeight);
 
-                    for (var fan = 1;
-                         fan + 1 < hull.Count;
-                         fan += 1)
-                    {
-                        indices.Add(vertexStart);
-                        indices.Add(vertexStart + fan);
-                        indices.Add(vertexStart + fan + 1);
+                        referenceCoord ??= new Vector2Int(
+                            Mathf.Clamp(
+                                Mathf.FloorToInt(a.x),
+                                0,
+                                sourceWidth - 1),
+                            Mathf.Clamp(
+                                Mathf.FloorToInt(a.y),
+                                0,
+                                sourceHeight - 1));
+
+                        var hull = BuildExpandedHull(
+                            a,
+                            b,
+                            c,
+                            FilterRadius);
+                        if (hull.Count < 3)
+                            return false;
+
+                        foreach (var point in hull)
+                        {
+                            minX = Math.Min(
+                                minX,
+                                Mathf.FloorToInt(point.x));
+                            minY = Math.Min(
+                                minY,
+                                Mathf.FloorToInt(point.y));
+                            maxX = Math.Max(
+                                maxX,
+                                Mathf.CeilToInt(point.x));
+                            maxY = Math.Max(
+                                maxY,
+                                Mathf.CeilToInt(point.y));
+                        }
+
+                        var vertexStart = logicalVertices.Count;
+                        logicalVertices.AddRange(hull);
+                        for (var fan = 1;
+                             fan + 1 < hull.Count;
+                             fan += 1)
+                        {
+                            indices.Add(vertexStart);
+                            indices.Add(vertexStart + fan);
+                            indices.Add(vertexStart + fan + 1);
+                        }
                     }
+                }
+                catch
+                {
+                    return false;
                 }
             }
 
             if (indices.Count == 0
-                || rawMaxX < rawMinX
-                || rawMaxY < rawMinY)
+                || referenceCoord == null
+                || maxX < minX
+                || maxY < minY)
                 return false;
 
-            // Add a one-pixel green marker on the physical lower row of the
-            // padded target. Coverage can reach at most two pixels beyond the
-            // source bounds, while this marker lives four pixels outside.
-            var markerStart = vertices.Count;
-            vertices.Add(new Vector3(-1f, -1f, 0f));
-            vertices.Add(new Vector3(1f, -1f, 0f));
-            vertices.Add(new Vector3(
-                1f,
-                -1f + 2f / (height + Padding * 2),
-                0f));
-            vertices.Add(new Vector3(
-                -1f,
-                -1f + 2f / (height + Padding * 2),
-                0f));
-            for (var i = 0; i < 4; i += 1)
-                colors.Add(new Color32(0, 255, 0, 255));
-            indices.Add(markerStart);
-            indices.Add(markerStart + 1);
-            indices.Add(markerStart + 2);
-            indices.Add(markerStart);
-            indices.Add(markerStart + 2);
-            indices.Add(markerStart + 3);
+            var bounds = new RectInt(
+                minX,
+                minY,
+                maxX - minX + 1,
+                maxY - minY + 1);
+            if (bounds.width <= 0
+                || bounds.height <= 0
+                || bounds.width > SystemInfo.maxTextureSize
+                || bounds.height > SystemInfo.maxTextureSize)
+                return false;
 
-            mesh = new Mesh
+            var vertices = new Vector3[logicalVertices.Count];
+            for (var index = 0;
+                 index < logicalVertices.Count;
+                 index += 1)
+            {
+                var point = logicalVertices[index];
+                vertices[index] = new Vector3(
+                    ToClipCoordinate(
+                        point.x,
+                        bounds.x,
+                        bounds.width),
+                    ToClipCoordinate(
+                        point.y,
+                        bounds.y,
+                        bounds.height),
+                    0f);
+            }
+
+            var mesh = new Mesh
             {
                 hideFlags = HideFlags.HideAndDontSave,
-                indexFormat = vertices.Count > 65535
+                indexFormat = vertices.Length > 65535
                     ? IndexFormat.UInt32
                     : IndexFormat.UInt16,
             };
-            mesh.SetVertices(vertices);
-            mesh.SetColors(colors);
+            mesh.vertices = vertices;
             mesh.SetTriangles(indices, 0, true);
 
-            rawBounds = new RectInt(
-                rawMinX,
-                rawMinY,
-                rawMaxX - rawMinX + 1,
-                rawMaxY - rawMinY + 1);
+            geometry = new AtlasSourceGpuGeometry(
+                mesh,
+                bounds,
+                referenceCoord.Value);
             return true;
+        }
+
+        internal bool TryQueue(
+            RenderTexture source,
+            AtlasSourceGpuGeometry geometry,
+            out AtlasSourceGpuPending? pending)
+        {
+            pending = null;
+            if (source == null
+                || source.width <= 0
+                || source.height <= 0)
+                return false;
+
+            RenderTexture? analysis = null;
+            RenderTexture? current = null;
+            var currentIsTemporary = false;
+            RenderTexture? result = null;
+            var previous = RenderTexture.active;
+
+            try
+            {
+                analysis = RenderTexture.GetTemporary(
+                    geometry.Bounds.width,
+                    geometry.Bounds.height,
+                    0,
+                    RenderTextureFormat.ARGB32,
+                    RenderTextureReadWrite.Linear,
+                    1);
+                analysis.filterMode = FilterMode.Point;
+                analysis.antiAliasing = 1;
+
+                RenderTexture.active = analysis;
+                GL.Clear(false, true, Color.clear);
+
+                _material.SetTexture("_Source", source);
+                _material.SetVector(
+                    "_SourceSize",
+                    new Vector4(
+                        source.width,
+                        source.height,
+                        1f / source.width,
+                        1f / source.height));
+                _material.SetVector(
+                    "_CoverageOrigin",
+                    new Vector4(
+                        geometry.Bounds.x,
+                        geometry.Bounds.y,
+                        0f,
+                        0f));
+                _material.SetVector(
+                    "_ReferenceCoord",
+                    new Vector4(
+                        geometry.ReferenceCoord.x,
+                        geometry.ReferenceCoord.y,
+                        0f,
+                        0f));
+
+                if (!_material.SetPass(0))
+                    return false;
+                Graphics.DrawMeshNow(
+                    geometry.Mesh,
+                    Matrix4x4.identity);
+
+                result = new RenderTexture(
+                    1,
+                    1,
+                    0,
+                    RenderTextureFormat.ARGB32,
+                    RenderTextureReadWrite.Linear)
+                {
+                    hideFlags = HideFlags.HideAndDontSave,
+                    filterMode = FilterMode.Point,
+                    antiAliasing = 1,
+                    useMipMap = false,
+                    autoGenerateMips = false,
+                };
+                result.Create();
+
+                current = analysis;
+                currentIsTemporary = true;
+                analysis = null;
+
+                var currentWidth = geometry.Bounds.width;
+                var currentHeight = geometry.Bounds.height;
+                while (currentWidth > 1
+                       || currentHeight > 1)
+                {
+                    var nextWidth =
+                        Math.Max(1, (currentWidth + 3) / 4);
+                    var nextHeight =
+                        Math.Max(1, (currentHeight + 3) / 4);
+
+                    RenderTexture next;
+                    var nextIsTemporary =
+                        nextWidth != 1 || nextHeight != 1;
+                    if (nextIsTemporary)
+                    {
+                        next = RenderTexture.GetTemporary(
+                            nextWidth,
+                            nextHeight,
+                            0,
+                            RenderTextureFormat.ARGB32,
+                            RenderTextureReadWrite.Linear,
+                            1);
+                        next.filterMode = FilterMode.Point;
+                        next.antiAliasing = 1;
+                    }
+                    else
+                    {
+                        next = result;
+                    }
+
+                    Graphics.Blit(
+                        current,
+                        next,
+                        _material,
+                        1);
+
+                    if (currentIsTemporary)
+                        RenderTexture.ReleaseTemporary(current);
+
+                    current = next;
+                    currentIsTemporary = nextIsTemporary;
+                    currentWidth = nextWidth;
+                    currentHeight = nextHeight;
+                }
+
+                if (!ReferenceEquals(current, result))
+                {
+                    Graphics.Blit(
+                        current,
+                        result,
+                        _material,
+                        1);
+                    if (currentIsTemporary)
+                        RenderTexture.ReleaseTemporary(current);
+                    current = result;
+                    currentIsTemporary = false;
+                }
+
+                var request = AsyncGPUReadback.Request(
+                    result,
+                    0,
+                    TextureFormat.RGBA32,
+                    null);
+                pending = new AtlasSourceGpuPending(
+                    source,
+                    geometry.ReferenceCoord,
+                    result,
+                    request);
+                result = null;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+
+                if (analysis != null)
+                    RenderTexture.ReleaseTemporary(analysis);
+
+                if (current != null
+                    && currentIsTemporary)
+                    RenderTexture.ReleaseTemporary(current);
+
+                if (result != null)
+                    UnityEngine.Object.DestroyImmediate(result);
+            }
+        }
+
+        public void Dispose()
+        {
+            UnityEngine.Object.DestroyImmediate(_material);
+        }
+
+        private static Vector2 ToPixelCenterSpace(
+            Vector2 uv,
+            int width,
+            int height)
+        {
+            return new Vector2(
+                uv.x * width - 0.5f,
+                uv.y * height - 0.5f);
+        }
+
+        private static float ToClipCoordinate(
+            float logicalCoordinate,
+            int logicalOrigin,
+            int targetSize)
+        {
+            return ((logicalCoordinate
+                     - logicalOrigin
+                     + 0.5f)
+                    / targetSize)
+                * 2f - 1f;
         }
 
         private static List<Vector2> BuildExpandedHull(
@@ -516,7 +626,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
             Vector2 right)
         {
             var x = left.x.CompareTo(right.x);
-            return x != 0 ? x : left.y.CompareTo(right.y);
+            return x != 0
+                ? x
+                : left.y.CompareTo(right.y);
         }
 
         private static float Cross(
@@ -524,17 +636,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
             Vector2 a,
             Vector2 b)
         {
-            return (a.x - origin.x) * (b.y - origin.y)
-                - (a.y - origin.y) * (b.x - origin.x);
-        }
-
-        private static float ToClipCoordinate(
-            float sourceCoordinate,
-            int targetSize)
-        {
-            return ((sourceCoordinate + Padding + 0.5f)
-                    / targetSize)
-                * 2f - 1f;
+            return (a.x - origin.x)
+                    * (b.y - origin.y)
+                - (a.y - origin.y)
+                    * (b.x - origin.x);
         }
 
         private static Vector2 Transform(
@@ -564,80 +669,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
         {
             return !float.IsNaN(value)
                 && !float.IsInfinity(value);
-        }
-
-        private static bool IsCoveragePixel(
-            Color32[] pixels,
-            int renderWidth,
-            int renderHeight,
-            bool flipRows,
-            int sourceX,
-            int sourceY)
-        {
-            var renderX = sourceX + Padding;
-            var logicalRenderY = sourceY + Padding;
-            var readY = flipRows
-                ? renderHeight - 1 - logicalRenderY
-                : logicalRenderY;
-            return renderX >= 0
-                && renderX < renderWidth
-                && readY >= 0
-                && readY < renderHeight
-                && pixels[readY * renderWidth + renderX].r >= 128;
-        }
-
-        private static int AddressCandidates(
-            int value,
-            int size,
-            Span<int> output)
-        {
-            if (value >= 0 && value < size)
-            {
-                output[0] = value;
-                return 1;
-            }
-
-            var clamp = Mathf.Clamp(value, 0, size - 1);
-            var repeat = ((value % size) + size) % size;
-            output[0] = clamp;
-            if (repeat == clamp)
-                return 1;
-            output[1] = repeat;
-            return 2;
-        }
-
-        internal static bool TryResolveUvYOrientation(
-            Color32[] pixels,
-            int width,
-            int height,
-            out bool flipRows)
-        {
-            flipRows = false;
-            if (width <= 0
-                || height < 2
-                || pixels.Length != width * height)
-                return false;
-
-            var bottomMarker = 0;
-            var topMarker = 0;
-            var top = (height - 1) * width;
-            for (var x = 0; x < width; x += 1)
-            {
-                if (pixels[x].g >= 128)
-                    bottomMarker += 1;
-                if (pixels[top + x].g >= 128)
-                    topMarker += 1;
-            }
-
-            if (bottomMarker != 0 && topMarker == 0)
-                return true;
-            if (topMarker != 0 && bottomMarker == 0)
-            {
-                flipRows = true;
-                return true;
-            }
-
-            return false;
         }
     }
 }
