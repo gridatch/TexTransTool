@@ -783,19 +783,42 @@ namespace net.rs64.TexTransTool.NDMF
 
                 var tuningResult = AtlasTexture.DoTextureFinTuning(
                     engine, atlasContext, settings, compiledTextures, null);
+                var constantOutputs =
+                    AtlasSourceOptimizer.CreateConstantOutputs(
+                        engine,
+                        sourceOptimization,
+                        settings,
+                        null,
+                        group);
 
-                var finalOutputPixels = tuningResult.TextureDescriptors.Keys
+                var atlasOutputPixels = tuningResult.TextureDescriptors.Keys
+                    .Distinct()
+                    .Sum(texture => (long)texture.Width * texture.Hight);
+                var constantOutputPixels = constantOutputs
+                    .Select(output => output.RenderTexture)
                     .Distinct()
                     .Sum(texture => (long)texture.Width * texture.Hight);
                 var retainedSourcePixels = execution.RetainedSourceTextures
                     .Sum(texture => (long)texture.width * texture.height);
-                var finalTotalPixels =
-                    finalOutputPixels + retainedSourcePixels;
+                var originalPixels = execution.OriginalSourceTextures
+                    .Sum(texture => (long)texture.width * texture.height);
+
+                // A merge candidate is compared against the already-optimized
+                // standalone baseline. Constant outputs exist on both sides of
+                // that comparison, so they intentionally cancel here. A
+                // standalone execution is instead compared against the actual
+                // original source set and therefore includes the 4x4 outputs.
+                var finalComparisonPixels =
+                    execution.MergeSelection != null
+                        ? atlasOutputPixels + retainedSourcePixels
+                        : atlasOutputPixels
+                          + constantOutputPixels
+                          + retainedSourcePixels;
                 var pixelBaseline = execution.MergeSelection?.BaselinePixels
                     ?? originalPixels;
 
-                if (finalOutputPixels <= 0
-                    || finalTotalPixels >= pixelBaseline)
+                if (atlasOutputPixels <= 0
+                    || finalComparisonPixels >= pixelBaseline)
                 {
                     foreach (var rt in compiledTextures.Values
                                  .Concat(tuningResult.TextureDescriptors.Keys)
@@ -803,6 +826,8 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         rt.Dispose();
                     }
+                    AtlasSourceOptimizer.DisposeConstantOutputs(
+                        constantOutputs);
                     DestroyUnappliedAtlasedMeshes(
                         atlasResult.AtlasedMeshes!);
 
@@ -815,7 +840,7 @@ namespace net.rs64.TexTransTool.NDMF
                                 + $"layout={pixelCheckedMerge.PlannedLayoutSize.x}×{pixelCheckedMerge.PlannedLayoutSize.y}: "
                                 + FormatLocalized(
                                     "AutoAtlasTexture:fallback:FinalPixelsNotReduced",
-                                    finalTotalPixels,
+                                    finalComparisonPixels,
                                     pixelCheckedMerge.BaselinePixels));
                         }
 
@@ -833,6 +858,10 @@ namespace net.rs64.TexTransTool.NDMF
                         atlasContext,
                         tuningResult,
                         out var executionTextureMemoryBytes);
+                var hasConstantTextureMemory =
+                    AtlasTexture.TryCalculateConstantTextureMemory(
+                        constantOutputs,
+                        out var constantTextureMemoryBytes);
                 var hasRetainedSourceMemory =
                     AtlasTexture.TryCalculateSourceTextureMemory(
                         domain,
@@ -841,21 +870,30 @@ namespace net.rs64.TexTransTool.NDMF
                 var hasSourceTextureMemory =
                     AtlasTexture.TryCalculateSourceTextureMemory(
                         domain,
-                        execution.SourceTextures,
+                        execution.OriginalSourceTextures,
                         out var sourceTextureMemoryBytes);
-                var hasMemoryBaseline =
+
+                var finalComparisonTextureMemoryBytes =
                     execution.MergeSelection != null
-                    || hasSourceTextureMemory;
+                        ? executionTextureMemoryBytes
+                          + retainedSourceMemoryBytes
+                        : executionTextureMemoryBytes
+                          + constantTextureMemoryBytes
+                          + retainedSourceMemoryBytes;
                 var memoryBaseline =
                     execution.MergeSelection?.BaselineBytes
                     ?? sourceTextureMemoryBytes;
                 var finalTotalTextureMemoryBytes =
-                    executionTextureMemoryBytes + retainedSourceMemoryBytes;
+                    executionTextureMemoryBytes
+                    + constantTextureMemoryBytes
+                    + retainedSourceMemoryBytes;
 
                 if (!hasExecutionTextureMemory
+                    || !hasConstantTextureMemory
                     || !hasRetainedSourceMemory
-                    || !hasMemoryBaseline
-                    || finalTotalTextureMemoryBytes >= memoryBaseline)
+                    || (!hasSourceTextureMemory
+                        && execution.MergeSelection == null)
+                    || finalComparisonTextureMemoryBytes >= memoryBaseline)
                 {
                     foreach (var rt in compiledTextures.Values
                                  .Concat(tuningResult.TextureDescriptors.Keys)
@@ -863,6 +901,8 @@ namespace net.rs64.TexTransTool.NDMF
                     {
                         rt.Dispose();
                     }
+                    AtlasSourceOptimizer.DisposeConstantOutputs(
+                        constantOutputs);
                     DestroyUnappliedAtlasedMeshes(
                         atlasResult.AtlasedMeshes!);
 
@@ -872,12 +912,13 @@ namespace net.rs64.TexTransTool.NDMF
                         {
                             var reason =
                                 !hasExecutionTextureMemory
+                                || !hasConstantTextureMemory
                                 || !hasRetainedSourceMemory
                                     ? FormatLocalized(
                                         "AutoAtlasTexture:fallback:FinalMemoryUnknown")
                                     : FormatLocalized(
                                         "AutoAtlasTexture:fallback:FinalMemoryNotReduced",
-                                        finalTotalTextureMemoryBytes,
+                                        finalComparisonTextureMemoryBytes,
                                         memoryCheckedMerge.BaselineBytes);
                             twoDimensionalFallbackReasons.Add(
                                 $"groups={string.Join(",", memoryCheckedMerge.GroupIds.Select(id => "g" + id))}, "
