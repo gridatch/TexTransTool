@@ -246,30 +246,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
         }
 
-        private readonly struct CoverageTriangle
-        {
-            internal readonly Vector2 A;
-            internal readonly Vector2 B;
-            internal readonly Vector2 C;
-            internal readonly int X0;
-            internal readonly int X1;
-            internal readonly int Y0;
-            internal readonly int Y1;
-
-            internal CoverageTriangle(
-                Vector2 a, Vector2 b, Vector2 c,
-                int x0, int x1, int y0, int y1)
-            {
-                A = a;
-                B = b;
-                C = c;
-                X0 = x0;
-                X1 = x1;
-                Y0 = y0;
-                Y1 = y1;
-            }
-        }
-
         internal static AtlasSourceOptimizationPlan Analyze(
             IDomain domain,
             Renderer[] targetRenderers,
@@ -335,6 +311,18 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 new Dictionary<(Material material, string property), SampleResult>();
 
             var engine = domain.GetTexTransCoreEngineForUnity();
+            var coverageCache = new Dictionary<
+                (Material material,
+                 int width,
+                 int height,
+                 float m00,
+                 float m01,
+                 float m02,
+                 float m10,
+                 float m11,
+                 float m12),
+                AtlasSourceCoverageMask>();
+
             foreach (var textureGroup in candidates.GroupBy(item => item.Texture))
             {
                 var source = textureGroup.Key;
@@ -361,22 +349,37 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                     foreach (var candidate in textureGroup)
                     {
-                        if (!TryBuildCoverageGeometry(
-                                candidate.Slots,
-                                (int)atlasTargetUvChannel,
-                                candidate.Matrix,
-                                width,
-                                height,
-                                out var coverageTriangles,
-                                out var coverageBounds))
-                            continue;
+                        var matrix = candidate.Matrix;
+                        var coverageKey = (
+                            candidate.Material,
+                            width,
+                            height,
+                            matrix.M00,
+                            matrix.M01,
+                            matrix.M02,
+                            matrix.M10,
+                            matrix.M11,
+                            matrix.M12);
+                        if (!coverageCache.TryGetValue(
+                                coverageKey,
+                                out var coverage))
+                        {
+                            if (!AtlasSourceCoverageGpu.TryRender(
+                                    candidate.Slots,
+                                    (int)atlasTargetUvChannel,
+                                    matrix,
+                                    width,
+                                    height,
+                                    out coverage))
+                                continue;
+                            coverageCache.Add(
+                                coverageKey,
+                                coverage);
+                        }
 
                         if (!TryScanSourceTexture(
                                 sampledSource,
-                                coverageTriangles,
-                                coverageBounds,
-                                width,
-                                height,
+                                coverage,
                                 out var sample))
                             continue;
 
@@ -748,27 +751,21 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         private static bool TryScanSourceTexture(
             RenderTexture texture,
-            IReadOnlyList<CoverageTriangle> triangles,
-            RectInt bounds,
-            int width,
-            int height,
+            AtlasSourceCoverageMask coverage,
             out SampleResult result)
         {
             result = default;
-            if (triangles.Count == 0
-                || bounds.width <= 0
+            var bounds = coverage.Bounds;
+            if (bounds.width <= 0
                 || bounds.height <= 0
-                || !HasAnyCoveredTexel(triangles))
+                || coverage.Pixels.Length
+                    != bounds.width * bounds.height)
                 return false;
 
             Texture2D? copy = null;
             var previous = RenderTexture.active;
             try
             {
-                // Read only the conservative source rectangle. Coverage itself
-                // is evaluated lazily while scanning so ordinary non-constant
-                // textures can reject after only a few covered texels instead
-                // of rasterizing a full source-resolution bool map first.
                 if (SystemInfo.supportsAsyncGPUReadback)
                 {
                     try
@@ -791,10 +788,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             if (data.Length
                                 == bounds.width * bounds.height)
                             {
-                                // If the conservative readback rectangle is
-                                // itself constant, every covered texel is
-                                // necessarily constant too. This is the common
-                                // fast path for the optimization target.
                                 var first = data[0];
                                 var allSame = true;
                                 for (var index = 1;
@@ -824,12 +817,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                     return true;
                                 }
 
-                                result = ScanCoverageGeometry(
+                                result = ScanCoverageMask(
                                     index => data[index],
-                                    triangles,
-                                    bounds,
-                                    width,
-                                    height);
+                                    coverage);
                                 return result.Known;
                             }
                         }
@@ -890,12 +880,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     return true;
                 }
 
-                result = ScanCoverageGeometry(
+                result = ScanCoverageMask(
                     index => pixels[index],
-                    triangles,
-                    bounds,
-                    width,
-                    height);
+                    coverage);
                 return result.Known;
             }
             catch
@@ -911,102 +898,52 @@ namespace net.rs64.TexTransTool.TextureAtlas
             }
         }
 
-        private static bool HasAnyCoveredTexel(
-            IReadOnlyList<CoverageTriangle> triangles)
-        {
-            const float radius = 1f;
-            foreach (var triangle in triangles)
-            {
-                for (var y = triangle.Y0; y <= triangle.Y1; y += 1)
-                for (var x = triangle.X0; x <= triangle.X1; x += 1)
-                {
-                    if (TriangleOverlapsTexelFilter(
-                            new Vector2(x, y),
-                            triangle.A,
-                            triangle.B,
-                            triangle.C,
-                            radius))
-                        return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static SampleResult ScanCoverageGeometry(
+        private static SampleResult ScanCoverageMask(
             Func<int, Color> readPixel,
-            IReadOnlyList<CoverageTriangle> triangles,
-            RectInt bounds,
-            int width,
-            int height)
+            AtlasSourceCoverageMask coverage)
         {
             var hasFirst = false;
             var first = default(Color);
             var constant = true;
             var rgbZero = true;
             var alphaZero = true;
-            const float radius = 1f;
-            Span<int> xs = stackalloc int[2];
-            Span<int> ys = stackalloc int[2];
 
-            foreach (var triangle in triangles)
+            for (var index = 0;
+                 index < coverage.Pixels.Length;
+                 index += 1)
             {
-                for (var y = triangle.Y0; y <= triangle.Y1; y += 1)
-                for (var x = triangle.X0; x <= triangle.X1; x += 1)
+                if (!coverage.Pixels[index])
+                    continue;
+
+                var pixel = readPixel(index);
+                if (!hasFirst)
                 {
-                    if (!TriangleOverlapsTexelFilter(
-                            new Vector2(x, y),
-                            triangle.A,
-                            triangle.B,
-                            triangle.C,
-                            radius))
-                        continue;
-
-                    var xCount = AddressCandidates(x, width, xs);
-                    var yCount = AddressCandidates(y, height, ys);
-
-                    for (var yi = 0; yi < yCount; yi += 1)
-                    for (var xi = 0; xi < xCount; xi += 1)
-                    {
-                        var sourceX = xs[xi];
-                        var sourceY = ys[yi];
-                        var localX = sourceX - bounds.x;
-                        var localY = sourceY - bounds.y;
-                        if (localX < 0 || localX >= bounds.width
-                            || localY < 0 || localY >= bounds.height)
-                            return default;
-
-                        var pixel = readPixel(
-                            localY * bounds.width + localX);
-                        if (!hasFirst)
-                        {
-                            first = pixel;
-                            hasFirst = true;
-                        }
-                        else if (constant
-                                 && (pixel.r != first.r
-                                     || pixel.g != first.g
-                                     || pixel.b != first.b
-                                     || pixel.a != first.a))
-                        {
-                            constant = false;
-                        }
-
-                        if (pixel.r != 0f
-                            || pixel.g != 0f
-                            || pixel.b != 0f)
-                            rgbZero = false;
-                        if (pixel.a != 0f)
-                            alphaZero = false;
-
-                        // Once every possible optimization proof has been
-                        // disproved, additional covered texels cannot change
-                        // the result.
-                        if (!constant && !rgbZero && !alphaZero)
-                            return new SampleResult(
-                                true, false, false, false, first);
-                    }
+                    first = pixel;
+                    hasFirst = true;
                 }
+                else if (constant
+                         && (pixel.r != first.r
+                             || pixel.g != first.g
+                             || pixel.b != first.b
+                             || pixel.a != first.a))
+                {
+                    constant = false;
+                }
+
+                if (pixel.r != 0f
+                    || pixel.g != 0f
+                    || pixel.b != 0f)
+                    rgbZero = false;
+                if (pixel.a != 0f)
+                    alphaZero = false;
+
+                if (!constant && !rgbZero && !alphaZero)
+                    return new SampleResult(
+                        true,
+                        false,
+                        false,
+                        false,
+                        first);
             }
 
             return new SampleResult(
@@ -1123,184 +1060,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 alphaZero,
                 hasFirst && constant,
                 first);
-        }
-
-        private static bool TryBuildCoverageGeometry(
-            IEnumerable<(Mesh mesh, int subMesh)> slots,
-            int uvChannel,
-            Matrix2x3 matrix,
-            int width,
-            int height,
-            out List<CoverageTriangle> triangles,
-            out RectInt bounds)
-        {
-            triangles = new List<CoverageTriangle>();
-            bounds = default;
-            if (width <= 0 || height <= 0
-                || (long)width * height > MaxSourcePixels)
-                return false;
-
-            var uvs = new List<Vector2>();
-            long checks = 0;
-            var maxChecks = Math.Max(
-                4L * 1024L * 1024L,
-                (long)width * height * 4L);
-            var minX = width;
-            var minY = height;
-            var maxX = -1;
-            var maxY = -1;
-
-            foreach (var slot in slots)
-            {
-                try
-                {
-                    uvs.Clear();
-                    slot.mesh.GetUVs(uvChannel, uvs);
-                    var indices = slot.mesh.GetTriangles(slot.subMesh);
-                    if (slot.mesh.GetTopology(slot.subMesh)
-                            != MeshTopology.Triangles
-                        || uvs.Count == 0
-                        || indices.Length % 3 != 0)
-                        return false;
-
-                    for (var index = 0; index < indices.Length; index += 3)
-                    {
-                        var i0 = indices[index];
-                        var i1 = indices[index + 1];
-                        var i2 = indices[index + 2];
-                        if (i0 < 0 || i1 < 0 || i2 < 0
-                            || i0 >= uvs.Count || i1 >= uvs.Count
-                            || i2 >= uvs.Count)
-                            return false;
-
-                        var a = Transform(uvs[i0], matrix);
-                        var b = Transform(uvs[i1], matrix);
-                        var c = Transform(uvs[i2], matrix);
-                        if (!InsideUnitUv(a)
-                            || !InsideUnitUv(b)
-                            || !InsideUnitUv(c))
-                            return false;
-
-                        a = new Vector2(
-                            a.x * width - 0.5f,
-                            a.y * height - 0.5f);
-                        b = new Vector2(
-                            b.x * width - 0.5f,
-                            b.y * height - 0.5f);
-                        c = new Vector2(
-                            c.x * width - 0.5f,
-                            c.y * height - 0.5f);
-
-                        const float radius = 1f;
-                        var x0 = Mathf.FloorToInt(
-                            Mathf.Min(a.x, Mathf.Min(b.x, c.x)) - radius);
-                        var x1 = Mathf.CeilToInt(
-                            Mathf.Max(a.x, Mathf.Max(b.x, c.x)) + radius);
-                        var y0 = Mathf.FloorToInt(
-                            Mathf.Min(a.y, Mathf.Min(b.y, c.y)) - radius);
-                        var y1 = Mathf.CeilToInt(
-                            Mathf.Max(a.y, Mathf.Max(b.y, c.y)) + radius);
-
-                        var triangleChecks =
-                            (long)(x1 - x0 + 1) * (y1 - y0 + 1);
-                        if (triangleChecks > maxChecks - checks)
-                            return false;
-                        checks += triangleChecks;
-
-                        triangles.Add(new CoverageTriangle(
-                            a, b, c, x0, x1, y0, y1));
-
-                        // A filter-support texel just outside 0..size can
-                        // address either the clamped edge or the repeated
-                        // opposite edge. In that case the conservative
-                        // readback rectangle must span the whole axis.
-                        var readX0 = x0 < 0 || x1 >= width
-                            ? 0
-                            : x0;
-                        var readX1 = x0 < 0 || x1 >= width
-                            ? width - 1
-                            : x1;
-                        var readY0 = y0 < 0 || y1 >= height
-                            ? 0
-                            : y0;
-                        var readY1 = y0 < 0 || y1 >= height
-                            ? height - 1
-                            : y1;
-
-                        minX = Math.Min(minX, readX0);
-                        minY = Math.Min(minY, readY0);
-                        maxX = Math.Max(maxX, readX1);
-                        maxY = Math.Max(maxY, readY1);
-                    }
-                }
-                catch
-                {
-                    return false;
-                }
-            }
-
-            if (triangles.Count == 0
-                || maxX < minX
-                || maxY < minY)
-                return false;
-
-            bounds = new RectInt(
-                minX,
-                minY,
-                maxX - minX + 1,
-                maxY - minY + 1);
-            return true;
-        }
-
-        private static Vector2 Transform(Vector2 uv, Matrix2x3 matrix)
-        {
-            return new Vector2(
-                matrix.M00 * uv.x + matrix.M01 * uv.y + matrix.M02,
-                matrix.M10 * uv.x + matrix.M11 * uv.y + matrix.M12);
-        }
-
-        private static bool InsideUnitUv(Vector2 uv)
-        {
-            return IsFinite(uv.x)
-                && IsFinite(uv.y)
-                && uv.x >= 0f && uv.x <= 1f
-                && uv.y >= 0f && uv.y <= 1f;
-        }
-
-        private static bool IsFinite(float value) =>
-            !float.IsNaN(value) && !float.IsInfinity(value);
-
-        private static void MarkConservativeAddressing(
-            bool[] coverage, int x, int y, int width, int height)
-        {
-            Span<int> xs = stackalloc int[2];
-            Span<int> ys = stackalloc int[2];
-            var xCount = AddressCandidates(x, width, xs);
-            var yCount = AddressCandidates(y, height, ys);
-
-            for (var yi = 0; yi < yCount; yi += 1)
-            for (var xi = 0; xi < xCount; xi += 1)
-                coverage[ys[yi] * width + xs[xi]] = true;
-        }
-
-        private static int AddressCandidates(
-            int value, int size, Span<int> output)
-        {
-            if (value >= 0 && value < size)
-            {
-                output[0] = value;
-                return 1;
-            }
-
-            // Shader samplers can alias another texture's sampler state.
-            // Include both clamp and repeat edge results instead of guessing
-            // which addressing mode the shader uses.
-            var clamp = Mathf.Clamp(value, 0, size - 1);
-            var repeat = ((value % size) + size) % size;
-            output[0] = clamp;
-            if (repeat == clamp) return 1;
-            output[1] = repeat;
-            return 2;
         }
 
         internal static bool TriangleOverlapsTexelFilter(
