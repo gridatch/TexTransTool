@@ -609,7 +609,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             var featureDisables =
                 atlasSetting.DisableVisuallyUnusedShaderFeatures
-                ? DetectFeatureDisables(targetMaterials, samples)
+                ? DetectFeatureDisables(
+                        targetMaterials.Where(material =>
+                            !excluded.Contains(material)),
+                        samples)
                     .Where(decision =>
                         animationSafety?.HasUnsafeFeatureDisableAnimation(
                             domain,
