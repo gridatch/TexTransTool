@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using net.rs64.TexTransCore;
+using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Color = UnityEngine.Color;
