@@ -26,23 +26,25 @@ Shader "Hidden/TexTransTool/AtlasSourceAnalysis"
             sampler2D _Source;
             float4 _Source_TexelSize;
             float4 _SourceSize;
-            float4 _CoverageOrigin;
             float4 _ReferenceCoord;
 
             struct appdata
             {
                 float4 vertex : POSITION;
+                float2 logical : TEXCOORD0;
             };
 
             struct v2f
             {
                 float4 position : SV_POSITION;
+                float2 logical : TEXCOORD0;
             };
 
             v2f vert(appdata input)
             {
                 v2f output;
                 output.position = float4(input.vertex.xy, 0.0, 1.0);
+                output.logical = input.logical;
                 return output;
             }
 
@@ -74,8 +76,12 @@ Shader "Hidden/TexTransTool/AtlasSourceAnalysis"
             float4 frag(v2f input) : SV_Target
             {
                 int2 size = int2(_SourceSize.xy);
-                int2 logical = int2(floor(input.position.xy))
-                    + int2(_CoverageOrigin.xy);
+                // The varying is affine with the clip-space geometry, so the
+                // value at each pixel center is its logical source texel
+                // coordinate regardless of the graphics API's viewport Y
+                // orientation.
+                int2 logical =
+                    int2(floor(input.logical + 0.5));
 
                 int2 clamped = clamp(logical, int2(0, 0), size - 1);
                 int2 repeated = int2(
