@@ -5,6 +5,7 @@ using System.Linq;
 using nadena.dev.ndmf;
 using nadena.dev.ndmf.animator;
 using net.rs64.TexTransTool.TextureAtlas;
+using UnityEditor;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.NDMF
