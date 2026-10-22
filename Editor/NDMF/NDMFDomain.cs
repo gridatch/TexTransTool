@@ -32,13 +32,30 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         private readonly AdditionalMaterialsProvider _additionalMaterialsProvider;
-        public NDMFDomain(BuildContext b) : base(b.AvatarRootObject, new NDMFAssetSaver(b))
+        private readonly AtlasSourceOptimizationAnimationSafety
+            _atlasSourceOptimizationAnimationSafety;
+
+        public NDMFDomain(BuildContext b)
+            : base(b.AvatarRootObject, new NDMFAssetSaver(b))
         {
             _additionalMaterialsProvider = new AdditionalMaterialsProvider(b);
+            _atlasSourceOptimizationAnimationSafety =
+                new AtlasSourceOptimizationAnimationSafety(b);
         }
-        public NDMFDomain(BuildContext b, ITexTransUnityDiskUtil diskUtil, ITexTransToolForUnity ttt4u) : base(b.AvatarRootObject, new NDMFAssetSaver(b), diskUtil, ttt4u)
+
+        public NDMFDomain(
+            BuildContext b,
+            ITexTransUnityDiskUtil diskUtil,
+            ITexTransToolForUnity ttt4u)
+            : base(
+                b.AvatarRootObject,
+                new NDMFAssetSaver(b),
+                diskUtil,
+                ttt4u)
         {
             _additionalMaterialsProvider = new AdditionalMaterialsProvider(b);
+            _atlasSourceOptimizationAnimationSafety =
+                new AtlasSourceOptimizationAnimationSafety(b);
         }
 
         public HashSet<Material> GetAllMaterials()
@@ -64,6 +81,13 @@ namespace net.rs64.TexTransTool.NDMF
             if (oldObject is not RenderTexture && nowObject is not RenderTexture) ObjectRegistry.RegisterReplacedObject(oldObject, nowObject);
         }
         public override bool OriginEqual(Object? l, Object? r) { return ObjectRegistry.GetReference(l) == ObjectRegistry.GetReference(r); }
+
+        protected override T? GetCustomContext<T>() where T : class
+        {
+            if (_atlasSourceOptimizationAnimationSafety is T safety)
+                return safety;
+            return base.GetCustomContext<T>();
+        }
 
         public override bool IsActive(GameObject gameObject)
         {
