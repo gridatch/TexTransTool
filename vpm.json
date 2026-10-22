@@ -456,17 +456,17 @@
           },
           "zipSHA256": "52cca87cbc55da1df8be54eb14b45eab7687cc29e461583ae55331cbc4c99859"
         },
-        "0.1.21+wdt.ttt.1.0.2.debug.1058.autoatlas-emission-candidate-probe.7a4d33c": {
+        "0.1.21+wdt.ttt.1.0.2.debug.1059.autoatlas-emission-candidate-probe.ecc860f": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.21+wdt.ttt.1.0.2.debug.1058.autoatlas-emission-candidate-probe.7a4d33c",
+          "version": "0.1.21+wdt.ttt.1.0.2.debug.1059.autoatlas-emission-candidate-probe.ecc860f",
           "unity": "2022.3",
-          "description": "Debug build 1058 for autoatlas-emission-candidate-probe from feat/autoatlas-emission-candidate-probe at 7a4d33c. Based on WDT 0.1.21+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 1059 for autoatlas-emission-candidate-probe from feat/autoatlas-emission-candidate-probe at ecc860f. Based on WDT 0.1.21+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.21+wdt.ttt.1.0.2.debug.1058.autoatlas-emission-candidate-probe.7a4d33c.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.21+wdt.ttt.1.0.2.debug.1059.autoatlas-emission-candidate-probe.ecc860f.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -479,7 +479,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "9e8fb3d4c772edf65f2b52b6714c0203ec8f7c5f9e8e385e71b0cba7f453aabe"
+          "zipSHA256": "3ac90ac4b2d6eab9ee2774563fae4b432bcd2c6b916aa39d980ffb9324395ad0"
         }
       }
     }
