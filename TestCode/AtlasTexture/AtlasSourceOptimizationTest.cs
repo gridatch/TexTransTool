@@ -64,6 +64,18 @@ namespace net.rs64.TexTransTool.TestCode
                 Is.False);
         }
 
+        [TestCase(0, false)]
+        [TestCase(1, true)]
+        [TestCase(2, true)]
+        [TestCase(3, false)]
+        public void BlackRgbNeutralityMatchesLilToonBlendMode(
+            int blendMode, bool expected)
+        {
+            Assert.That(
+                AtlasSourceOptimizer.IsZeroRgbNeutralBlendMode(blendMode),
+                Is.EqualTo(expected));
+        }
+
         [Test]
         public void FilterCoverageIncludesTriangleTouchingTexelSupport()
         {
