@@ -146,10 +146,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
         private const string ShaderName =
             "Hidden/TexTransTool/AtlasSourceAnalysis";
 
-        // The old CPU predicate used radius=1 with strict inequalities.
-        // A tiny outward bias prevents GPU top-left edge rules from dropping a
-        // boundary texel while adding far less than one source pixel of margin.
-        private const float FilterRadius = 1.001f;
+        // Match the old CPU predicate exactly. Its overlap tests use
+        // strict inequalities, so texel centers lying exactly on the expanded
+        // polygon boundary are not required coverage and need no extra bias.
+        private const float FilterRadius = 1f;
 
         private readonly Material _material;
 
