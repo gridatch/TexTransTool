@@ -9,6 +9,7 @@ using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.Utils;
 using UnityEngine;
 using UnityEngine.Rendering;
+using Color = UnityEngine.Color;
 
 namespace net.rs64.TexTransTool.TextureAtlas
 {
