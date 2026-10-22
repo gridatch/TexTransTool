@@ -444,8 +444,8 @@ namespace net.rs64.TexTransTool.NDMF
                 atlasAllowedRenderers.ToArray(),
                 candidateMaterials,
                 UVChannel.UV0,
-                settings.OptimizeConstantTextures,
-                settings.DisableVisuallyUnusedShaderFeatures,
+                settings,
+                null,
                 optimizationExcludedMaterials);
             var propertyTextures =
                 sourceOptimization.ProjectedTextureUses;
