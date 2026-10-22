@@ -2040,7 +2040,7 @@ namespace net.rs64.TexTransTool.NDMF
                 candidateMaterials,
                 UVChannel.UV0,
                 primaryTexturePropertyOrMaximum: null);
-            var propertyTextures = textureUsages.ContainsTextureDictionaries;
+            var originalPropertyTextures = textureUsages.ContainsTextureDictionaries;
 
             var excludedMaterials = domain.GetDomainsMaterialsHashSet(
                 configuration.ExcludedMaterials);
@@ -2076,99 +2076,60 @@ namespace net.rs64.TexTransTool.NDMF
                 AtlasTargetUVChannel = UVChannel.UV0,
                 IslandPadding = Mathf.Clamp(configuration.IslandPadding, 0f, 0.05f),
             };
-            var groups = MakeTextureConnectedGroups(
-                candidateMaterials, propertyTextures);
-            var preparedGroups =
-                new List<AutoAtlasTextureMergePlanner.PreparedGroup>();
-
-            foreach (var group in groups)
+            // Preserve the original eligibility/exclusion boundaries. Removing
+            // a texture edge must not admit a previously excluded component.
+            List<AutoAtlasTextureMergePlanner.PreparedGroup> PrepareGroups(
+                HashSet<Material> selectedMaterials,
+                IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> uses,
+                HashSet<(Material material, string property)> removedBindings)
             {
-                if (group.Any(material => excludedMaterials.Contains(material)
-                    || manuallySelectedMaterials.Contains(material)))
+                var result = new List<AutoAtlasTextureMergePlanner.PreparedGroup>();
+                foreach (var group in MakeTextureConnectedGroups(selectedMaterials, uses))
                 {
-                    continue;
+                    if (group.Any(material => excludedMaterials.Contains(material)
+                        || manuallySelectedMaterials.Contains(material)))
+                        continue;
+                    if (excludedRenderers.Any(renderer =>
+                            domain.GetMaterials(renderer).UOfType<Material>()
+                                .Any(group.Contains)))
+                        continue;
+                    var renderers = ResolveAutoAtlasTargetRenderers(
+                        domain, configuration, group);
+                    if (renderers.Length == 0
+                        || HasActiveUntransformedMaterialConsumer(
+                            domain, group, renderers))
+                        continue;
+                    var sources = group
+                        .SelectMany(material => uses[material].Values)
+                        .Where(texture => texture != null).ToHashSet();
+                    if (sources.Count == 0) continue;
+                    var retained = FindRetainedSourceTextures(
+                        allReferencedMaterials, group, uses, sources,
+                        removedBindings);
+                    result.Add(new AutoAtlasTextureMergePlanner.PreparedGroup
+                    {
+                        Id = result.Count,
+                        Materials = group,
+                        Renderers = renderers,
+                        SourceTextures = sources,
+                        RetainedSourceTextures = retained,
+                        OriginalPixels = sources.Sum(texture =>
+                            (long)texture.width * texture.height),
+                        ExcludedFromTextureMerging = IsExcludedFromTextureMerging(
+                            group, renderers, mergingExcludedMaterials,
+                            mergingExcludedRenderers)
+                            || renderers.Any(animatedVisibilityRenderers.Contains),
+                    });
                 }
-
-                // Preserve the explicit AutoAtlas renderer exclusion contract.
-                // A shared material would otherwise be replaced globally even
-                // though the user explicitly excluded one of its consumers.
-                var explicitlyExcludedConsumers = excludedRenderers
-                    .Where(renderer => domain.GetMaterials(renderer)
-                        .UOfType<Material>()
-                        .Any(group.Contains))
-                    .ToArray();
-                if (explicitlyExcludedConsumers.Length != 0)
-                {
-                    continue;
-                }
-
-                // Resolve renderers through the same AtlasTexture-equivalent
-                // path that execution revalidation uses.
-                var atlasRenderers = ResolveAutoAtlasTargetRenderers(
-                    domain, configuration, group);
-                if (atlasRenderers.Length == 0)
-                {
-                    continue;
-                }
-
-                // Material replacement is domain-wide. A currently
-                // active consumer that cannot receive the corresponding UV
-                // rewrite would otherwise get an atlased material on its
-                // original mesh. Disabled/inactive consumers remain outside
-                // this check to preserve AtlasTexture's default targeting.
-                if (HasActiveUntransformedMaterialConsumer(
-                        domain,
-                        group,
-                        atlasRenderers))
-                {
-                    continue;
-                }
-
-                var texturesToReplace = group
-                    .SelectMany(material => propertyTextures[material].Values)
-                    .Where(texture => texture != null)
-                    .ToHashSet();
-                if (texturesToReplace.Count == 0)
-                {
-                    continue;
-                }
-
-                var retainedSourceTextures =
-                    FindRetainedSourceTextures(
-                        allReferencedMaterials,
-                        group,
-                        propertyTextures,
-                        texturesToReplace);
-
-                preparedGroups.Add(new AutoAtlasTextureMergePlanner.PreparedGroup
-                {
-                    Id = preparedGroups.Count,
-                    Materials = group,
-                    Renderers = atlasRenderers,
-                    SourceTextures = texturesToReplace,
-                    RetainedSourceTextures = retainedSourceTextures,
-                    OriginalPixels = texturesToReplace.Sum(texture =>
-                        (long)texture.width * texture.height),
-                    ExcludedFromTextureMerging = IsExcludedFromTextureMerging(
-                        group, atlasRenderers, mergingExcludedMaterials,
-                        mergingExcludedRenderers)
-                        || atlasRenderers.Any(animatedVisibilityRenderers.Contains),
-                });
+                return result;
             }
 
-            var mergePlan = AutoAtlasTextureMergePlanner.Plan(
-                domain,
-                configuration,
-                settings,
-                propertyTextures,
-                preparedGroups);
+            var originalPreparedGroups = PrepareGroups(
+                candidateMaterials, originalPropertyTextures,
+                new HashSet<(Material, string)>());
 
-            // Source shader-feature hypotheses and their full merge-planner
-            // counterfactual MUST be evaluated before any application changes
-            // the domain's materials or meshes. Previously this ran inside
-            // the execution loop, making processed renderers vanish from the
-            // counterfactual and producing misleading 29->17 group counts.
-            foreach (var prepared in preparedGroups)
+            // Source inspection precedes ALL merge decisions and mutations.
+            foreach (var prepared in originalPreparedGroups)
             {
                 try
                 {
@@ -2183,38 +2144,45 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
+            var eligibleMaterials = originalPreparedGroups
+                .SelectMany(group => group.Materials).ToHashSet();
             var hypotheses = emissionProbe.GetFeatureCandidates()
-                .Where(item => preparedGroups.Any(group =>
-                    group.Materials.Contains(item.material)))
+                .Where(item => eligibleMaterials.Contains(item.material))
                 .GroupBy(item => (item.material, item.rule.SwitchProperty))
                 .Select(group => group.First())
                 .OrderBy(item => item.material.name, StringComparer.Ordinal)
                 .ThenBy(item => item.rule.Name, StringComparer.Ordinal)
                 .Select(item => (item.material, item.rule))
                 .ToArray();
+
+            // One canonical, immutable texture-use projection for the plan
+            // AND execution (including standalone fallbacks). No source
+            // Unity material is modified by this projection.
+            var propertyTextures = hypotheses.Length == 0
+                ? originalPropertyTextures
+                : AutoAtlasShadowReplan.ProjectFeatureSetUses(
+                    originalPropertyTextures, hypotheses);
+            var removedBindings = hypotheses
+                .SelectMany(item => item.rule.TextureProperties.Select(
+                    property => (item.material, property)))
+                .ToHashSet();
+            var preparedGroups = hypotheses.Length == 0
+                ? originalPreparedGroups
+                : PrepareGroups(eligibleMaterials, propertyTextures,
+                    removedBindings);
+            var mergePlan = AutoAtlasTextureMergePlanner.Plan(
+                domain, configuration, settings, propertyTextures,
+                preparedGroups, useProjectedSources: hypotheses.Length != 0);
+
             emissionProbe.AddFeatureDisableLine(
-                "auto-feature-removal=enabled-on-experimental-branch"
-                + ", applies-only-to-standalone-groups"
+                "auto-feature-removal=planned-before-atlas-merging"
+                + ", eligibleCandidates=" + hypotheses.Length
+                + ", originalAtomicGroups=" + originalPreparedGroups.Count
+                + ", effectiveAtomicGroups=" + preparedGroups.Count
+                + ", selectedMerges=" + mergePlan.Selections.Count
+                + ", applies-to=standalone-and-merged"
                 + ", classification=mip0-only"
                 + ", visual-equivalence=NOT-PROVEN");
-            if (hypotheses.Length != 0)
-            {
-                try
-                {
-                    emissionProbe.AddFeatureDisableLine(
-                        AutoAtlasShadowReplan.CompareMergePlans(
-                            domain, configuration, settings,
-                            preparedGroups, propertyTextures, mergePlan,
-                            hypotheses));
-                }
-                catch (Exception ex)
-                {
-                    emissionProbe.AddFeatureDisableLine(
-                        "featureSet=combined, planner=unknown:"
-                        + ex.GetType().Name + ":"
-                        + ex.Message.Replace('\n', ' '));
-                }
-            }
 
             var executionGroups = CreateExecutionGroups(
                 preparedGroups, mergePlan.Selections);
