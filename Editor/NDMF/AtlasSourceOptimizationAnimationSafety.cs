@@ -5,6 +5,7 @@ using System.Linq;
 using nadena.dev.ndmf;
 using nadena.dev.ndmf.animator;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using net.rs64.TexTransTool.Utils;
 using UnityEditor;
 using UnityEngine;
@@ -19,7 +20,7 @@ namespace net.rs64.TexTransTool.NDMF
     internal sealed class AtlasSourceOptimizationAnimationSafety
         : IAtlasSourceOptimizationAnimationSafety
     {
-        private static readonly HashSet<string> MainUvTextureProperties =
+        private static readonly HashSet<string> LilToonMainUvTextureProperties =
             new(StringComparer.Ordinal)
             {
                 "_MainTex",
@@ -59,6 +60,30 @@ namespace net.rs64.TexTransTool.NDMF
                 "_FurLengthMask",
                 "_FurVectorTex",
             };
+
+        private static readonly HashSet<string> StandardMainUvTextureProperties =
+            new(StringComparer.Ordinal)
+            {
+                "_MainTex",
+                "_ParallaxMap",
+                "_MetallicGlossMap",
+                "_BumpMap",
+                "_OcclusionMap",
+                "_EmissionMap",
+                "_DetailMask",
+            };
+
+        private static readonly HashSet<string>
+            VrcStandardLiteMainUvTextureProperties =
+                new(StringComparer.Ordinal)
+                {
+                    "_MainTex",
+                    "_MetallicGlossMap",
+                    "_BumpMap",
+                    "_OcclusionMap",
+                    "_EmissionMap",
+                    "_DetailMask",
+                };
 
         private readonly AnimationIndex _animationIndex;
         private readonly ObjectPathRemapper _pathRemapper;
@@ -249,46 +274,29 @@ namespace net.rs64.TexTransTool.NDMF
                 && Affects(name, "_Emission2ndParallaxDepth"))
                 return true;
 
-            if (property == "_MainTex")
+            if (AffectsRegisteredShaderSamplingControl(
+                    material,
+                    property,
+                    name))
                 return true;
 
-            if (material != null)
-            {
-                var shaderName = material.shader != null
-                    ? material.shader.name
-                    : string.Empty;
-                if (shaderName.IndexOf(
-                        "lilToon", StringComparison.Ordinal) < 0)
-                    return false;
-
-                if (property == "_GlitterColorTex")
-                    return !material.HasProperty("_GlitterColorTex_UVMode")
-                        || Mathf.RoundToInt(
-                            material.GetFloat("_GlitterColorTex_UVMode")) == 0;
-                if (property == "_OutlineVectorTex")
-                    return !material.HasProperty("_OutlineVectorUVMode")
-                        || Mathf.RoundToInt(
-                            material.GetFloat("_OutlineVectorUVMode")) == 0;
-                if (property == "_AudioLinkMask")
-                    return !material.HasProperty("_AudioLinkMask_UVMode")
-                        || Mathf.RoundToInt(
-                            material.GetFloat("_AudioLinkMask_UVMode")) == 0;
-            }
-
-            if (property is "_EmissionBlendMask" or "_Emission2ndBlendMask")
+            if (IsLilToonUsage(material)
+                && property is "_EmissionBlendMask" or "_Emission2ndBlendMask")
             {
                 if (Affects(name, "_EmissionBlendMask_ScrollRotate")
                     || Affects(name, "_Emission2ndBlendMask_ScrollRotate"))
                     return true;
             }
 
-            if (property == "_OutlineVectorTex"
+            if (IsLilToonUsage(material)
+                && property == "_OutlineVectorTex"
                 && Affects(name, "_OutlineVectorUVMode"))
                 return true;
 
-            if (property is "_ShadowColorTex"
-                or "_Shadow2ndColorTex"
-                or "_Shadow3rdColorTex")
+            if (IsLilToonUsage(material)
+                && property is "_ShadowColorTex"
+                    or "_Shadow2ndColorTex"
+                    or "_Shadow3rdColorTex")
             {
                 if (Affects(name, "_ShadowColorType"))
                     return true;
@@ -306,13 +314,29 @@ namespace net.rs64.TexTransTool.NDMF
             Material? material,
             string property)
         {
+            if (property == "_MainTex")
+                return true;
+
+            if (material == null)
+                return LilToonMainUvTextureProperties.Contains(property)
+                    || StandardMainUvTextureProperties.Contains(property)
+                    || VrcStandardLiteMainUvTextureProperties.Contains(property);
+
+            if (!TryGetShaderInformation(material, out var information))
+                return false;
+
+            if (information is StandardShaderInformation)
+                return StandardMainUvTextureProperties.Contains(property);
+            if (information is VRCSDKStandardLiteShaderInformation)
+                return VrcStandardLiteMainUvTextureProperties.Contains(property);
+            if (information is not LiltoonShaderInformationWithOutline
+                && information is not LiltoonShaderInformationWithOutOutline)
+                return false;
+
             if (property is "_EmissionBlendMask" or "_Emission2ndBlendMask")
             {
                 // lilToon switches both emission masks to independent UV0 when
                 // either mask has UV animation configured.
-                if (material == null)
-                    return true;
-
                 var first = material.HasProperty(
                         "_EmissionBlendMask_ScrollRotate")
                     ? material.GetVector(
@@ -327,7 +351,78 @@ namespace net.rs64.TexTransTool.NDMF
                     && second == Vector4.zero;
             }
 
-            return MainUvTextureProperties.Contains(property);
+            if (property == "_GlitterColorTex")
+                return !material.HasProperty("_GlitterColorTex_UVMode")
+                    || Mathf.RoundToInt(
+                        material.GetFloat("_GlitterColorTex_UVMode")) == 0;
+            if (property == "_OutlineVectorTex")
+                return !material.HasProperty("_OutlineVectorUVMode")
+                    || Mathf.RoundToInt(
+                        material.GetFloat("_OutlineVectorUVMode")) == 0;
+            if (property == "_AudioLinkMask")
+                return !material.HasProperty("_AudioLinkMask_UVMode")
+                    || Mathf.RoundToInt(
+                        material.GetFloat("_AudioLinkMask_UVMode")) == 0;
+
+            return LilToonMainUvTextureProperties.Contains(property);
+        }
+
+        private static bool AffectsRegisteredShaderSamplingControl(
+            Material? material,
+            string property,
+            string bindingName)
+        {
+            if (material == null)
+            {
+                if (property is "_DetailAlbedoMap" or "_DetailNormalMap")
+                    return Affects(bindingName, "_DetailAlbedoMap_ST")
+                        || Affects(bindingName, "_UVSec");
+                return false;
+            }
+
+            if (!TryGetShaderInformation(material, out var information))
+                return false;
+
+            if (information is StandardShaderInformation
+                or VRCSDKStandardLiteShaderInformation)
+            {
+                if (property is "_DetailAlbedoMap" or "_DetailNormalMap")
+                    return Affects(bindingName, "_DetailAlbedoMap_ST")
+                        || Affects(bindingName, "_UVSec");
+                return false;
+            }
+
+            if (information is VRCSDKToonStandardShaderInformation)
+            {
+                if (property == "_EmissionMap")
+                    return Affects(bindingName, "_EmissionUV");
+                if (property is "_DetailAlbedoMap" or "_DetailNormalMap")
+                    return Affects(bindingName, "_DetailUV");
+                if (property == "_AudioLinkMask")
+                    return Affects(bindingName, "_ALMaskUVChannel")
+                        || Affects(bindingName, "_ALEffectUVChannel");
+            }
+
+            return false;
+        }
+
+        private static bool IsLilToonUsage(Material? material)
+        {
+            if (material == null)
+                return true;
+            return TryGetShaderInformation(material, out var information)
+                && (information is LiltoonShaderInformationWithOutline
+                    || information is LiltoonShaderInformationWithOutOutline);
+        }
+
+        private static bool TryGetShaderInformation(
+            Material material,
+            out ITTShaderTextureUsageInformation? information)
+        {
+            information = null;
+            return material.shader != null
+                && TTShaderTextureUsageInformationRegistry.s_information
+                    .TryGetValue(material.shader, out information);
         }
 
         private static bool Affects(string name, string property)
