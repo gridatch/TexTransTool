@@ -11,81 +11,6 @@ using Color = UnityEngine.Color;
 
 namespace net.rs64.TexTransTool.NDMF
 {
-    // Debug-only, session-scoped opt-in. These switches are OFF by default
-    // and are not serialized into the avatar or project. Users can A/B test
-    // an actual processed avatar while the normal release path is unchanged.
-    internal static class AutoAtlasFeatureTrialSession
-    {
-        private const string MainKey = "TTT.Debug.AutoAtlasFeatureTrial.Main2nd";
-        private const string MatCapKey = "TTT.Debug.AutoAtlasFeatureTrial.MatCap";
-        private const string EmissionKey = "TTT.Debug.AutoAtlasFeatureTrial.Emission";
-
-        internal static string EnabledModeSummary
-        {
-            get
-            {
-                var modes = new List<string>();
-                if (UnityEditor.SessionState.GetBool(MainKey, false))
-                    modes.Add("Main2nd");
-                if (UnityEditor.SessionState.GetBool(MatCapKey, false))
-                    modes.Add("MatCap");
-                if (UnityEditor.SessionState.GetBool(EmissionKey, false))
-                    modes.Add("Emission");
-                return modes.Count == 0 ? "OFF" : string.Join(",", modes);
-            }
-        }
-
-        internal static bool EnabledFor(AutoAtlasFeatureDisableRules.Rule rule)
-        {
-            string? key = rule.Name switch
-            {
-                "Main2nd" => MainKey,
-                "MatCap1" or "MatCap2" => MatCapKey,
-                "Emission1" or "Emission2" => EmissionKey,
-                _ => null,
-            };
-            return key != null && UnityEditor.SessionState.GetBool(key, false);
-        }
-
-        [UnityEditor.MenuItem("Tools/WDT/Diagnostics/Trial Main2nd Removal (Session)")]
-        private static void ToggleMain() =>
-            Toggle(MainKey, "Tools/WDT/Diagnostics/Trial Main2nd Removal (Session)");
-
-        [UnityEditor.MenuItem("Tools/WDT/Diagnostics/Trial Main2nd Removal (Session)", true)]
-        private static bool ValidateMain() =>
-            Refresh(MainKey, "Tools/WDT/Diagnostics/Trial Main2nd Removal (Session)");
-
-        [UnityEditor.MenuItem("Tools/WDT/Diagnostics/Trial MatCap Removal (Session)")]
-        private static void ToggleMatCap() =>
-            Toggle(MatCapKey, "Tools/WDT/Diagnostics/Trial MatCap Removal (Session)");
-
-        [UnityEditor.MenuItem("Tools/WDT/Diagnostics/Trial MatCap Removal (Session)", true)]
-        private static bool ValidateMatCap() =>
-            Refresh(MatCapKey, "Tools/WDT/Diagnostics/Trial MatCap Removal (Session)");
-
-        [UnityEditor.MenuItem("Tools/WDT/Diagnostics/Trial Emission Removal (Session)")]
-        private static void ToggleEmission() =>
-            Toggle(EmissionKey, "Tools/WDT/Diagnostics/Trial Emission Removal (Session)");
-
-        [UnityEditor.MenuItem("Tools/WDT/Diagnostics/Trial Emission Removal (Session)", true)]
-        private static bool ValidateEmission() =>
-            Refresh(EmissionKey, "Tools/WDT/Diagnostics/Trial Emission Removal (Session)");
-
-        private static void Toggle(string key, string path)
-        {
-            UnityEditor.SessionState.SetBool(key,
-                !UnityEditor.SessionState.GetBool(key, false));
-            Refresh(key, path);
-        }
-
-        private static bool Refresh(string key, string path)
-        {
-            UnityEditor.Menu.SetChecked(path,
-                UnityEditor.SessionState.GetBool(key, false));
-            return true;
-        }
-    }
-
     // This models the fragment equations in lilToon. A static mip0 result is
     // NOT proof of animation-, mip-, shader-variant-, or renderer-equivalence.
     internal static class AutoAtlasFeatureDisableRules
@@ -211,8 +136,9 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         // Only call on AtlasTexture-generated clones, never on source
-        // materials in the NDMF domain. This is explicitly NOT a safety
-        // certification; use only with an enabled debug trial switch.
+        // materials in the NDMF domain. The experimental branch automatically
+        // applies classified removals; classification is still mip0-only
+        // and does not certify animation or shader visual equivalence.
         internal static void DisableOnGeneratedMaterial(Material generated, Rule rule)
         {
             if (!generated.HasProperty(rule.SwitchProperty))
