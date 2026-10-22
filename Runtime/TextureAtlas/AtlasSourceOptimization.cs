@@ -347,6 +347,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var samples =
                 new Dictionary<(Material material, string property), SampleResult>();
 
+            var engine = domain.GetTexTransCoreEngineForUnity();
             foreach (var textureGroup in candidates.GroupBy(item => item.Texture))
             {
                 var source = textureGroup.Key;
@@ -356,26 +357,53 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     || (long)width * height > MaxSourcePixels)
                     continue;
 
-                foreach (var candidate in textureGroup)
+                ITTRenderTexture? loadedSource = null;
+                try
                 {
-                    if (!TryBuildCoverage(
-                            candidate.Slots,
-                            (int)atlasTargetUvChannel,
-                            candidate.Matrix,
-                            width,
-                            height,
-                            out var coverage))
+                    // Use exactly the same source loading path as AtlasContext.
+                    // This preserves TTT's raw sRGB representation and normal-map
+                    // packing adjustments instead of observing a shader-decoded
+                    // Graphics.Blit value.
+                    loadedSource =
+                        engine.WrappingOrUploadToLoadFullScale(source);
+                    var sampledSource =
+                        engine.GetReferenceRenderTexture(loadedSource);
+                    if (sampledSource.width != width
+                        || sampledSource.height != height)
                         continue;
 
-                    if (!TryScanSourceTexture(
-                            source,
-                            coverage,
-                            width,
-                            height,
-                            out var sample))
-                        continue;
+                    foreach (var candidate in textureGroup)
+                    {
+                        if (!TryBuildCoverage(
+                                candidate.Slots,
+                                (int)atlasTargetUvChannel,
+                                candidate.Matrix,
+                                width,
+                                height,
+                                out var coverage))
+                            continue;
 
-                    samples[(candidate.Material, candidate.Property)] = sample;
+                        if (!TryScanSourceTexture(
+                                sampledSource,
+                                coverage,
+                                width,
+                                height,
+                                out var sample))
+                            continue;
+
+                        samples[(candidate.Material, candidate.Property)] =
+                            sample;
+                    }
+                }
+                catch
+                {
+                    // Source optimization is optional. If a source cannot be
+                    // represented through the normal Atlas load path, leave it
+                    // to the existing Atlas implementation unchanged.
+                }
+                finally
+                {
+                    loadedSource?.Dispose();
                 }
             }
 
@@ -730,7 +758,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
         }
 
         private static bool TryScanSourceTexture(
-            Texture texture,
+            RenderTexture texture,
             bool[] coverage,
             int width,
             int height,
@@ -748,23 +776,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var previous = RenderTexture.active;
             try
             {
-                if (texture is Texture2D source2D && source2D.isReadable)
-                {
-                    cpuPixels = source2D.GetPixels(
-                        bounds.x,
-                        bounds.y,
-                        bounds.width,
-                        bounds.height,
-                        0);
-                    if (cpuPixels.Length
-                        != bounds.width * bounds.height)
-                        return false;
-
-                    result = ScanRegion(
-                        cpuPixels, coverage, width, bounds);
-                    return result.Known;
-                }
-
                 if (!SystemInfo.SupportsRenderTextureFormat(
                         RenderTextureFormat.ARGBFloat))
                     return false;
