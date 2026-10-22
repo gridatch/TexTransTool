@@ -911,7 +911,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void ActualTrialDisablesTwoFeaturesOnlyOnGeneratedAtlasMaterial()
+        public void AutomaticFeatureRemovalChangesOnlyGeneratedAtlasMaterial()
         {
             var shader = Shader.Find("lilToon");
             if (shader == null) Assert.Ignore("lilToon shader not installed");
