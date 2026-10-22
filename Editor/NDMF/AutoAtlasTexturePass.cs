@@ -275,7 +275,13 @@ namespace net.rs64.TexTransTool.NDMF
 
                 slots.TryGetValue(material, out var used);
                 if (unresolved.Contains(material)) used = null;
+                // Do not scan every diffuse/normal/auxiliary texture:
+                // feature eligibility is determined by these supported
+                // zero-mask rules, so inspect only their active masks.
                 foreach (var property in material.GetTexturePropertyNames()
+                             .Where(name =>
+                                 AutoAtlasFeatureDisableRules.TryClassify(
+                                     material, name, Color.black, out _))
                              .OrderBy(name => name, StringComparer.Ordinal))
                 {
                     try
@@ -1590,7 +1596,7 @@ namespace net.rs64.TexTransTool.NDMF
                 + " (per-coverage cap: " + MaxTrianglePixelChecks + ")"
                 + "\nUnique source textures observed (including unsupported): "
                 + _images.Count
-                + "\nTexture-property survey: " + _surveyProperties
+                + "\nCandidate-mask texture survey: " + _surveyProperties
                 + ", whole-source constants: " + _surveyUniformWhole
                 + ", UV0-covered constants: " + _surveyUniformUsed
                 + ", unknown coverage: " + _surveyUnknownCoverage
@@ -1665,9 +1671,9 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\n" + (_gpuStatusLines.Count == 0
                     ? "No GPU source survey entries."
                     : string.Join("\n", _gpuStatusLines))
-                + "\n\n[Source texture property survey: mip0; informational]"
-                + "\nWhole-source and UV-covered constants are observations,"
-                + " NOT removability claims. Unsupported UV usage is unknown."
+                + "\n\n[Candidate-mask source survey: mip0; informational]"
+                + "\nOnly active supported feature masks are inspected."
+                + " Unknown UV usage remains ineligible for removal."
                 + "\n"
                 + (_sourceSurvey.Count == 0
                     ? "No source texture properties observed."
@@ -1989,9 +1995,7 @@ namespace net.rs64.TexTransTool.NDMF
 
             // Temporary emission-content survey; never alters atlas selection.
             var emissionProbe = new AutoAtlasEmissionProbe();
-            // Expensive full-pipeline diagnostic: at most one hypothetical use per build.
-            var shadowReplansRemaining = 1;
-
+            // Only the effective atlas plan is executed; no shadow replans.
 
             var twoDimensionalFallbackReasons = new List<string>();
 
@@ -2636,49 +2640,6 @@ namespace net.rs64.TexTransTool.NDMF
 
                 // Source readback and merge comparison already ran on the
                 // original domain before any execution changed its state.
-                // Here only final-output ownership is inspected.
-                try
-                {
-                    emissionProbe.InspectZeroMaskOutputOwnership(
-                        domain, atlasContext, tuningResult,
-                        atlasMaterialMaps.materialMap, resultingTextures,
-                        execution.RetainedSourceTextures, executionMetrics);
-                }
-                catch (Exception ex)
-                {
-                    // Diagnostics are observational and must never block
-                    // an otherwise valid avatar atlas build.
-                    emissionProbe.RecordOwnershipDiagnosticError(ex);
-                }
-
-                if (shadowReplansRemaining > 0 && execution.MergeSelection == null)
-                {
-                    var candidate = emissionProbe.GetZeroMaskCandidates()
-                        .Where(item => group.Contains(item.material))
-                        .OrderBy(item => item.material.name, StringComparer.Ordinal)
-                        .ThenBy(item => item.property, StringComparer.Ordinal)
-                        .FirstOrDefault();
-                    if (candidate.material != null)
-                    {
-                        shadowReplansRemaining--;
-                        try
-                        {
-                            emissionProbe.AddShadowReplanLine(
-                                AutoAtlasShadowReplan.Compare(
-                                    domain, configuration, settings, group,
-                                    propertyTextures, execution.SourceTextures,
-                                    finalTotalPixels, finalTotalTextureMemoryBytes,
-                                    executionMetrics,
-                                    candidate.material, candidate.property));
-                        }
-                        catch (Exception ex)
-                        {
-                            emissionProbe.AddShadowReplanLine(
-                                "shadow-replan=unknown:" + ex.GetType().Name);
-                        }
-                    }
-                }
-
                 AtlasTexture.ReplaceMesh(
                     domain, atlasRenderers, atlasContext, atlasResult.AtlasedMeshes!);
                 AtlasTexture.ApplyAtlasedMaterialMaps(
