@@ -1790,7 +1790,13 @@ namespace net.rs64.TexTransTool.NDMF
             var entries = new List<TextureCostEntry>();
             var bytesPerTexel = new Dictionary<Texture, double>();
 
-            foreach (var texture in group.SourceTextures)
+            // A source removed from projected atlas bindings can still remain
+            // resident through another material/property. Such retained-only
+            // sources exist on both sides of the standalone/merge comparison,
+            // so include them in the original side as well. Union preserves
+            // the existing behavior for retained projected sources.
+            foreach (var texture in group.SourceTextures
+                         .Union(group.RetainedSourceTextures))
             {
                 if (!AtlasTexture.TryGetOriginalTextureCostInfo(
                         domain,
