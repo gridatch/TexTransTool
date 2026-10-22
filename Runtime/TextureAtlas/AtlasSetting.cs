@@ -34,6 +34,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
         public bool ForceSetTexture = false;
 
+        // Source-side reductions shared by manual AtlasTexture and AutoAtlasTexture.
+        // Both are enabled by default and can be disabled independently.
+        public bool OptimizeConstantTextures = true;
+        public bool DisableVisuallyUnusedShaderFeatures = true;
+
 
         [SerializeReference, SubclassSelector] internal IIslandRelocatorProvider AtlasIslandRelocator = null;
 
