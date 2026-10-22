@@ -376,14 +376,6 @@ namespace net.rs64.TexTransTool.NDMF
                 return;
             }
 
-            // Material grouping remains shader/property-aware, but it is now
-            // scoped to the same renderer-selected materials as AtlasTexture.
-            var textureUsages = new MaterialGroupingContext(
-                candidateMaterials,
-                UVChannel.UV0,
-                primaryTexturePropertyOrMaximum: null);
-            var propertyTextures = textureUsages.ContainsTextureDictionaries;
-
             var excludedMaterials = domain.GetDomainsMaterialsHashSet(
                 configuration.ExcludedMaterials);
             var mergingExcludedRenderers = domain
@@ -417,7 +409,54 @@ namespace net.rs64.TexTransTool.NDMF
                 IncludeDisabledRenderer = false,
                 AtlasTargetUVChannel = UVChannel.UV0,
                 IslandPadding = Mathf.Clamp(configuration.IslandPadding, 0f, 0.05f),
+                OptimizeConstantTextures =
+                    configuration.OptimizeConstantTextures,
+                DisableVisuallyUnusedShaderFeatures =
+                    configuration.DisableVisuallyUnusedShaderFeatures,
             };
+
+            // Source optimization is evaluated against the same renderer
+            // population that AutoAtlas may rewrite. Materials with any active
+            // consumer outside that population are left untouched so the
+            // domain-wide material replacement cannot affect an excluded mesh.
+            var optimizationExcludedMaterials =
+                new HashSet<Material>(excludedMaterials);
+            optimizationExcludedMaterials.UnionWith(
+                manuallySelectedMaterials);
+            foreach (var material in candidateMaterials)
+            {
+                if (optimizationExcludedMaterials.Contains(material))
+                    continue;
+                var one = new HashSet<Material> { material };
+                var materialRenderers = ResolveAutoAtlasTargetRenderers(
+                    domain, configuration, one);
+                if (materialRenderers.Length == 0
+                    || HasActiveUntransformedMaterialConsumer(
+                        domain, one, materialRenderers))
+                {
+                    optimizationExcludedMaterials.Add(material);
+                }
+            }
+
+            var engine = domain.GetTexTransCoreEngineForUnity();
+            var sourceOptimization = AtlasSourceOptimizer.Analyze(
+                engine,
+                domain,
+                atlasAllowedRenderers.ToArray(),
+                candidateMaterials,
+                UVChannel.UV0,
+                settings.OptimizeConstantTextures,
+                settings.DisableVisuallyUnusedShaderFeatures,
+                optimizationExcludedMaterials);
+            var propertyTextures =
+                sourceOptimization.ProjectedTextureUses;
+            var optimizationOnlyMaterials =
+                sourceOptimization.GetOptimizationOnlyMaterials(
+                    candidateMaterials)
+                    .Where(material =>
+                        !optimizationExcludedMaterials.Contains(material))
+                    .ToHashSet();
+
             var groups = MakeTextureConnectedGroups(
                 candidateMaterials, propertyTextures);
             var preparedGroups =
@@ -552,8 +591,6 @@ namespace net.rs64.TexTransTool.NDMF
 
                 var originalPixels = execution.SourceTextures.Sum(texture =>
                     (long)texture.width * texture.height);
-
-                var engine = domain.GetTexTransCoreEngineForUnity();
 
                 IReadOnlyDictionary<Material, int>? mergeAtomicGroupByMaterial = null;
                 if (execution.MergeSelection is { } selectedMerge)
