@@ -456,17 +456,17 @@
           },
           "zipSHA256": "52cca87cbc55da1df8be54eb14b45eab7687cc29e461583ae55331cbc4c99859"
         },
-        "0.1.21+wdt.ttt.1.0.2.debug.1080.atlas-source-optimization.c6fae6b": {
+        "0.1.21+wdt.ttt.1.0.2.debug.1081.atlas-source-optimization.d48c187": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.21+wdt.ttt.1.0.2.debug.1080.atlas-source-optimization.c6fae6b",
+          "version": "0.1.21+wdt.ttt.1.0.2.debug.1081.atlas-source-optimization.d48c187",
           "unity": "2022.3",
-          "description": "Debug build 1080 for atlas-source-optimization from feat/atlas-source-optimization at c6fae6b. Based on WDT 0.1.21+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 1081 for atlas-source-optimization from feat/atlas-source-optimization at d48c187. Based on WDT 0.1.21+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.21+wdt.ttt.1.0.2.debug.1080.atlas-source-optimization.c6fae6b.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.21+wdt.ttt.1.0.2.debug.1081.atlas-source-optimization.d48c187.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -479,7 +479,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "1acf5b44bc37c104e20d3b83e6078982613f29afaf90b2d5e27b563801d35627"
+          "zipSHA256": "bf654002b055f4babc8432ba4605e779d8695033e4cf80380d61259770205132"
         }
       }
     }
