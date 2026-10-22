@@ -911,6 +911,59 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void ActualTrialDisablesTwoFeaturesOnlyOnGeneratedAtlasMaterial()
+        {
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("lilToon shader not installed");
+            var original = new Material(shader);
+            Material? generated = null;
+            var mainMask = new Texture2D(4, 4);
+            var matCapMask = new Texture2D(4, 4);
+            try
+            {
+                if (!original.HasProperty("_UseMain2ndTex")
+                    || !original.HasProperty("_UseMatCap")
+                    || !original.HasProperty("_Main2ndBlendMask")
+                    || !original.HasProperty("_MatCapBlendMask"))
+                    Assert.Ignore("Required lilToon properties are not installed.");
+
+                original.SetFloat("_UseMain2ndTex", 1f);
+                original.SetFloat("_UseMatCap", 1f);
+                original.SetTexture("_Main2ndBlendMask", mainMask);
+                original.SetTexture("_MatCapBlendMask", matCapMask);
+                generated = new Material(original);
+                var rules = new[]
+                {
+                    new AutoAtlasFeatureDisableRules.Rule(
+                        "Main2nd", "_UseMain2ndTex", "test",
+                        "_Main2ndBlendMask"),
+                    new AutoAtlasFeatureDisableRules.Rule(
+                        "MatCap1", "_UseMatCap", "test",
+                        "_MatCapBlendMask"),
+                };
+                foreach (var rule in rules)
+                    AutoAtlasFeatureDisableRules.DisableOnGeneratedMaterial(
+                        generated, rule);
+                Assert.That(generated.GetFloat("_UseMain2ndTex"), Is.Zero);
+                Assert.That(generated.GetFloat("_UseMatCap"), Is.Zero);
+                Assert.That(generated.GetTexture("_Main2ndBlendMask"), Is.Null);
+                Assert.That(generated.GetTexture("_MatCapBlendMask"), Is.Null);
+                Assert.That(original.GetFloat("_UseMain2ndTex"), Is.EqualTo(1f));
+                Assert.That(original.GetFloat("_UseMatCap"), Is.EqualTo(1f));
+                Assert.That(original.GetTexture("_Main2ndBlendMask"), Is.SameAs(mainMask));
+                Assert.That(original.GetTexture("_MatCapBlendMask"), Is.SameAs(matCapMask));
+            }
+            finally
+            {
+                if (generated != null)
+                    UnityEngine.Object.DestroyImmediate(generated);
+                UnityEngine.Object.DestroyImmediate(original);
+                UnityEngine.Object.DestroyImmediate(mainMask);
+                UnityEngine.Object.DestroyImmediate(matCapMask);
+            }
+        }
+
+        [Test]
         public void MultipleFeatureProjectionCanSplitConnectivityAndPreservesInputs()
         {
             var shader = Shader.Find("Standard")
