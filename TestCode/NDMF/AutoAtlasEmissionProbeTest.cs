@@ -1087,6 +1087,57 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void FeatureRemovalOutcomeReportsFinalReasonAfterMergeFallback()
+        {
+            var shader = Shader.Find("Standard")
+                ?? Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+            var applied = new Material(shader);
+            var rejected = new Material(shader);
+            var unexecuted = new Material(shader);
+            try
+            {
+                var rule = new AutoAtlasFeatureDisableRules.Rule(
+                    "Emission2", "_UseEmission2nd", "test", "_Emission2ndBlendMask");
+                var candidates = new (Material material,
+                    AutoAtlasFeatureDisableRules.Rule rule)[]
+                {
+                    (applied, rule), (rejected, rule), (unexecuted, rule)
+                };
+                var outcomes = new AutoAtlasTextureProcessor
+                    .FeatureCandidateOutcomeTracker(candidates);
+                var mergedGroup = new HashSet<Material> { applied, rejected };
+                outcomes.RecordFailure(
+                    mergedGroup, "merge-layout-or-property-limit", true);
+                outcomes.RecordApplied(new HashSet<Material> { applied });
+                outcomes.RecordFailure(
+                    new HashSet<Material> { rejected },
+                    "final-pixel-count-not-reduced:512>=512", false);
+
+                var lines = outcomes.FinalLines();
+                Assert.That(lines.Length, Is.EqualTo(3));
+                Assert.That(lines[0], Does.Contain("status=applied"));
+                Assert.That(lines[0], Does.Contain(
+                    "mergeFallbackReason=merge-layout-or-property-limit"));
+                Assert.That(lines[1], Does.Contain("status=not-applied"));
+                Assert.That(lines[1], Does.Contain(
+                    "reason=final-pixel-count-not-reduced:512>=512"));
+                Assert.That(lines[1], Does.Contain(
+                    "mergeFallbackReason=merge-layout-or-property-limit"));
+                Assert.That(lines[2], Does.Contain("status=not-applied"));
+                Assert.That(lines[2], Does.Contain(
+                    "reason=no-effective-execution-group"));
+                Assert.That(lines[2], Does.Contain("mergeFallbackReason=none"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(applied);
+                UnityEngine.Object.DestroyImmediate(rejected);
+                UnityEngine.Object.DestroyImmediate(unexecuted);
+            }
+        }
+
+        [Test]
         public void ProbeReportUsesNoNestedScrollView()
         {
             var error = new AutoAtlasEmissionProbeError("sample\nsample 2");
