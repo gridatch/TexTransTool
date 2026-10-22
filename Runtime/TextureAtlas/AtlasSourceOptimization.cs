@@ -526,7 +526,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                             // Issue every 1x1 color request before waiting for
                             // any of them. This preserves the exact canonical
-                            // RGBAFloat value used by the previous CPU path.
+                            // RGBAFloat value from the canonical source.
                             foreach (var item in constantRequests)
                             {
                                 try
