@@ -44,6 +44,52 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void CandidateBindingBoundsDistinguishMeshUv0FromUv1AndUv2()
+        {
+            var mesh = new Mesh();
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero, Vector3.right, Vector3.up,
+                };
+                mesh.uv = new[]
+                {
+                    Vector2.zero, new Vector2(0.125f, 0),
+                    new Vector2(0, 0.125f),
+                };
+                mesh.uv2 = new[]
+                {
+                    Vector2.zero, Vector2.right, Vector2.up,
+                };
+                mesh.uv3 = new[]
+                {
+                    new Vector2(0.5f, 0.5f),
+                    new Vector2(0.625f, 0.5f),
+                    new Vector2(0.5f, 0.625f),
+                };
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                var indices = mesh.GetTriangles(0);
+                var uv0 = AutoAtlasEmissionProbe.SourceUvBounds(mesh, indices, 0);
+                var uv1 = AutoAtlasEmissionProbe.SourceUvBounds(mesh, indices, 1);
+                var uv2 = AutoAtlasEmissionProbe.SourceUvBounds(mesh, indices, 2);
+                Assert.That(uv0, Is.EqualTo("(0,0)-(0.125,0.125)"));
+                Assert.That(uv1, Is.EqualTo("(0,0)-(1,1)"));
+                Assert.That(uv2, Is.EqualTo("(0.5,0.5)-(0.625,0.625)"));
+                var transformed = AutoAtlasEmissionProbe.SourceUvBounds(
+                    mesh, indices, 0,
+                    net.rs64.TexTransTool.TextureAtlas.AAOCode.Matrix2x3
+                        .Translate(0.5f, 0.5f));
+                Assert.That(transformed, Is.EqualTo(
+                    "(0.5,0.5)-(0.625,0.625)"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
         public void PixelNearUvBoundaryContributesToBilinearButNotPoint()
         {
             var a = new Vector2(1.5f, 1.5f);
