@@ -59,7 +59,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 primaryTexturePropertyOrMaximum;
         }
 
-        private static IReadOnlyDictionary<
+        internal static IReadOnlyDictionary<
                 Material,
                 IReadOnlyDictionary<string, Texture>>
             BuildContainsTextureDictionaries(

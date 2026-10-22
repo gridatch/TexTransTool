@@ -48,6 +48,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal int? ForcedAutoAtlasWidth;
             internal Func<AtlasContext, IIslandRelocator>? IslandRelocatorFactory;
             internal Func<AtlasContext, Vector2Int, AtlasExecutionMetrics, bool>? AcceptAtlasSize;
+            internal IReadOnlyDictionary<
+                Material, IReadOnlyDictionary<string, Texture>>?
+                PrecomputedTextureUses;
         }
 
         internal readonly struct AtlasRelocationMetrics
