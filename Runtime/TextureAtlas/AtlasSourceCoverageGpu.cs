@@ -232,6 +232,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
             (Mesh mesh, int subMesh, int uvChannel),
             SourceSlotData?> _sourceSlotCache = new();
 
+        internal long SourceSlotTicks { get; private set; }
+        internal long TriangleExpansionTicks { get; private set; }
+        internal long MeshBuildTicks { get; private set; }
+        internal long TriangleCount { get; private set; }
+        internal int SourceSlotCacheHits { get; private set; }
+        internal int SourceSlotCacheMisses { get; private set; }
+
         private AtlasSourceGpuAnalyzer(Material material)
         {
             _material = material;
@@ -279,16 +286,26 @@ namespace net.rs64.TexTransTool.TextureAtlas
             {
                 try
                 {
-                    if (!TryGetSourceSlotData(
-                            sourceMesh,
-                            subMesh,
-                            uvChannel,
-                            out var slotData)
-                        || slotData == null)
+                    var sourceSlotStart =
+                        System.Diagnostics.Stopwatch.GetTimestamp();
+                    var gotSlotData = TryGetSourceSlotData(
+                        sourceMesh,
+                        subMesh,
+                        uvChannel,
+                        out var slotData);
+                    SourceSlotTicks +=
+                        System.Diagnostics.Stopwatch.GetTimestamp()
+                        - sourceSlotStart;
+                    if (!gotSlotData || slotData == null)
                         return false;
 
                     var uvs = slotData.Uvs;
                     var triangleIndices = slotData.TriangleIndices;
+                    TriangleCount += triangleIndices.Length / 3;
+                    var expansionStart =
+                        System.Diagnostics.Stopwatch.GetTimestamp();
+                    try
+                    {
                     for (var index = 0;
                          index < triangleIndices.Length;
                          index += 3)
@@ -363,6 +380,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             indices.Add(vertexStart + fan + 1);
                         }
                     }
+                    }
+                    finally
+                    {
+                        TriangleExpansionTicks +=
+                            System.Diagnostics.Stopwatch.GetTimestamp()
+                            - expansionStart;
+                    }
                 }
                 catch
                 {
@@ -405,6 +429,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     0f);
             }
 
+            var meshBuildStart =
+                System.Diagnostics.Stopwatch.GetTimestamp();
             var mesh = new Mesh
             {
                 hideFlags = HideFlags.HideAndDontSave,
@@ -415,6 +441,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
             mesh.vertices = vertices;
             mesh.SetUVs(0, logicalVertices);
             mesh.SetTriangles(indices, 0, true);
+            MeshBuildTicks +=
+                System.Diagnostics.Stopwatch.GetTimestamp()
+                - meshBuildStart;
 
             geometry = new AtlasSourceGpuGeometry(
                 mesh,
@@ -612,8 +641,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             var key = (sourceMesh, subMesh, uvChannel);
             if (_sourceSlotCache.TryGetValue(key, out data))
+            {
+                SourceSlotCacheHits += 1;
                 return data != null;
+            }
 
+            SourceSlotCacheMisses += 1;
             try
             {
                 if (subMesh < 0
