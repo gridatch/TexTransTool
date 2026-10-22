@@ -5,6 +5,23 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
     internal class AtlasSourceOptimizationAnimationSafetyTest
     {
         [Test]
+        public void FeatureDisableSafetyIncludesFeatureSwitch()
+        {
+            var rule = new AtlasFeatureDisableRule(
+                "Emission1",
+                "_UseEmission",
+                "_EmissionMap");
+            var decision = new AtlasFeatureDisableDecision(
+                null,
+                rule,
+                "_EmissionBlend");
+
+            Assert.That(
+                decision.SafetyProperties,
+                Does.Contain("_UseEmission"));
+        }
+
+        [Test]
         public void ExactProofPropertyAnimationIsRelevant()
         {
             Assert.That(
