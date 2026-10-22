@@ -225,7 +225,7 @@ namespace net.rs64.TexTransTool.NDMF
                 null);
         }
 
-        private static bool AffectsProofProperty(
+        internal static bool AffectsProofProperty(
             string bindingProperty,
             string property,
             bool includeSamplingControls,
