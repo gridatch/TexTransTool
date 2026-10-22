@@ -200,27 +200,8 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
-            foreach (var entry in materialMap.OrderBy(x => x.Key.name,
-                         StringComparer.Ordinal))
-            {
-                var original = entry.Key;
-                if (original == null || original.shader == null) continue;
-                var shader = original.shader.name;
-                if (shader.IndexOf("lilToon", StringComparison.OrdinalIgnoreCase) < 0
-                    || shader.IndexOf("Lite", StringComparison.OrdinalIgnoreCase) >= 0)
-                    continue;
-
-                slots.TryGetValue(original, out var used);
-                if (unresolved.Contains(original)) used = null;
-                InspectLayer(original, used, "_UseEmission", "_EmissionBlendMode",
-                    "_EmissionMap", "_EmissionBlendMask", "1st");
-                InspectLayer(original, used, "_UseEmission2nd", "_Emission2ndBlendMode",
-                    "_Emission2ndMap", "_Emission2ndBlendMask", "2nd");
-            }
-
-            // Emission-specific interpretation remains separate. In parallel,
-            // collect candidate examples from every source texture property.
-            // These are observations, never deletion approvals.
+            // The feature classifier screens supported mask properties only.
+            // Unknown UV/mip behavior does not produce a removal hypothesis.
             try
             {
                 SurveySourceTextures(materialMap.Keys, slots, unresolved,
@@ -1578,11 +1559,9 @@ namespace net.rs64.TexTransTool.NDMF
         {
             var project = new System.IO.DirectoryInfo(Application.dataPath)
                 .Parent?.Name ?? "(unknown)";
-            return "[Original-source texture probe: TEMPORARY; observation only]"
+            return "[AutoAtlasTexture feature input survey: EXPERIMENTAL]"
                 + "\nUnity project: " + project
-                + "\nLayers observed: " + _observed
-                + "\nSource mip0 zero-emission candidates: " + _candidates
-                + "\nUnknown layers: " + _unknown
+
                 + "\nOriginal-source image pixels read (including reloads): " + _readbackPixels
                 + "\nUnique 2D source images loaded: "
                 + _images.Values.Count(image => image.WasReadSuccessfully)
@@ -1612,22 +1591,6 @@ namespace net.rs64.TexTransTool.NDMF
                 + " Clamp/repeat texture-edge texels are included at mip0."
                 + " Atlas pixels/background are NEVER sampled."
                 + " Candidates are NOT approved-to-remove textures."
-                + "\n[Emission use: mip0 diagnostic]"
-                + "\n"
-                + (_lines.Count == 0
-                    ? "No non-Lite lilToon emission source textures found."
-                    : string.Join("\n", _lines))
-                + "\n\n[Zero emission source-mask output ownership: TEMPORARY]"
-                + "\nThis section describes resource ownership only."
-                + " It does not authorize shader changes or texture removal."
-                + "\n" + (_zeroMaskOwnershipLines.Count == 0
-                    ? "No zero-mask ownership candidates observed."
-                    : string.Join("\n", _zeroMaskOwnershipLines))
-                + "\n\n[Zero-mask shadow atlas replan: TEMPORARY]" 
-                + "\nGenerated meshes, textures and materials are not applied. An assumed removal is not shader-equivalence proof."
-                + "\n" + (_shadowReplanLines.Count == 0
-                    ? "No shadow-replan candidate evaluated."
-                    : string.Join("\n", _shadowReplanLines))
                 + "\n\n[Shader-neutral feature-disable candidates: TEMPORARY]"
                 + "\nOnly strict mip0 sampling is tested. No animation, mip, shader-variant or render-equivalence proof."
                 + "\n" + (_featureCandidates.Count == 0
@@ -1649,9 +1612,9 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\n" + (_featureRejections.Count == 0
                     ? "None."
                     : string.Join("\n", _featureRejections.Distinct()))
-                + "\n\n[Feature-disable merge-planner comparison: TEMPORARY]"
+                + "\n\n[Feature removal and effective atlas execution: TEMPORARY]"
                 + "\n" + (_featureDisableLines.Count == 0
-                    ? "No feature-disable comparison run."
+                    ? "No feature-removal execution recorded."
                     : string.Join("\n", _featureDisableLines))
                 + "\n\n[GPU-first UV source survey: diagnostic only]"
                 + "\nGPU screens: " + _gpuScreens
@@ -1667,7 +1630,7 @@ namespace net.rs64.TexTransTool.NDMF
                 + "\nGPU variable source observations are interior-only;"
                 + " they do not report a full CPU-filter texel count."
                 + " The CPU validator still determines all uniform candidates."
-                + " Original Emission-layer diagnostics remain unchanged."
+                + " Only supported feature-mask candidates are screened."
                 + "\n" + (_gpuStatusLines.Count == 0
                     ? "No GPU source survey entries."
                     : string.Join("\n", _gpuStatusLines))
