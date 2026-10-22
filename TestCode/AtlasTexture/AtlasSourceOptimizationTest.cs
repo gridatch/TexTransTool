@@ -92,6 +92,78 @@ namespace net.rs64.TexTransTool.TestCode
         }
 
         [Test]
+        public void GpuCoverageFoldsClampAndRepeatAtUvOrigin()
+        {
+            var mesh = new Mesh();
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.uv = new[]
+                {
+                    Vector2.zero,
+                    Vector2.right,
+                    Vector2.up,
+                };
+                mesh.triangles = new[] { 0, 1, 2 };
+
+                // default(Matrix2x3) maps every UV vertex to (0, 0).
+                // The one-pixel filter footprint therefore extends below and
+                // left of the image. Production coverage conservatively folds
+                // those texels through both clamp and repeat addressing.
+                Assert.That(
+                    AtlasSourceCoverageGpu.TryRender(
+                        new[] { (mesh, 0) },
+                        0,
+                        default,
+                        8,
+                        8,
+                        out var coverage),
+                    Is.True);
+
+                Assert.That(coverage.IsCovered(0, 0), Is.True);
+                Assert.That(coverage.IsCovered(7, 0), Is.True);
+                Assert.That(coverage.IsCovered(0, 7), Is.True);
+                Assert.That(coverage.IsCovered(7, 7), Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void GpuCoverageOrientationMarkerDetectsBothDirections()
+        {
+            const int width = 4;
+            const int height = 4;
+
+            var bottom = new Color32[width * height];
+            for (var x = 0; x < width; x += 1)
+                bottom[x] = new Color32(0, 255, 0, 255);
+            Assert.That(
+                AtlasSourceCoverageGpu.TryResolveUvYOrientation(
+                    bottom, width, height, out var bottomFlip),
+                Is.True);
+            Assert.That(bottomFlip, Is.False);
+
+            var top = new Color32[width * height];
+            var topOffset = (height - 1) * width;
+            for (var x = 0; x < width; x += 1)
+                top[topOffset + x] =
+                    new Color32(0, 255, 0, 255);
+            Assert.That(
+                AtlasSourceCoverageGpu.TryResolveUvYOrientation(
+                    top, width, height, out var topFlip),
+                Is.True);
+            Assert.That(topFlip, Is.True);
+        }
+
+        [Test]
         public void FilterCoverageIncludesTriangleTouchingTexelSupport()
         {
             var triangleA = new Vector2(0f, 0f);
