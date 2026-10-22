@@ -201,8 +201,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                 foreach (var property in item.Rule.TextureProperties)
                 {
-                    if (!properties.TryGetValue(property, out var source)
-                        || source == null)
+                    Texture? source = null;
+                    properties.TryGetValue(property, out source);
+                    if (source == null
+                        && item.Material.HasShaderTextureProperty(property))
+                        source = item.Material.GetTexture(property);
+                    if (source is not Texture2D
+                        && source is not RenderTexture)
                         continue;
 
                     routeInstances.Add(new AtlasResolutionRouteInstance(
