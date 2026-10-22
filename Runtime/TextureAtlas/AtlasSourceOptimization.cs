@@ -48,13 +48,36 @@ namespace net.rs64.TexTransTool.TextureAtlas
     {
         internal readonly Material Material;
         internal readonly AtlasFeatureDisableRule Rule;
+        internal readonly string[] SafetyProperties;
 
         internal AtlasFeatureDisableDecision(
-            Material material, AtlasFeatureDisableRule rule)
+            Material material,
+            AtlasFeatureDisableRule rule,
+            params string[] safetyProperties)
         {
             Material = material;
             Rule = rule;
+            SafetyProperties = safetyProperties
+                .Where(property => !string.IsNullOrWhiteSpace(property))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
         }
+    }
+
+    internal interface IAtlasSourceOptimizationAnimationSafety
+        : IDomainCustomContextData
+    {
+        bool HasUnsafeConstantTextureAnimation(
+            IRendererTargeting targeting,
+            Material material,
+            string property,
+            Texture source,
+            IEnumerable<Renderer> renderers);
+
+        bool HasUnsafeFeatureDisableAnimation(
+            IRendererTargeting targeting,
+            AtlasFeatureDisableDecision decision,
+            IEnumerable<Renderer> renderers);
     }
 
     internal sealed class AtlasSourceOptimizationPlan
@@ -222,8 +245,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
         }
 
         internal static AtlasSourceOptimizationPlan Analyze(
-            ITexTransToolForUnity engine,
-            IRendererTargeting targeting,
+            IDomain domain,
             Renderer[] targetRenderers,
             HashSet<Material> targetMaterials,
             UVChannel atlasTargetUvChannel,
@@ -247,7 +269,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var excluded = excludedMaterials?.ToHashSet()
                 ?? new HashSet<Material>();
             var slots = BuildMaterialSlots(
-                targeting, targetRenderers, targetMaterials);
+                domain, targetRenderers, targetMaterials);
             var candidates = new List<Candidate>();
 
             foreach (var material in targetMaterials)
@@ -316,6 +338,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 }
             }
 
+            var animationSafety =
+                domain.GetCustomContext<IAtlasSourceOptimizationAnimationSafety>();
+
             var constants = new List<AtlasConstantTextureDecision>();
             if (optimizeConstantTextures)
             {
@@ -332,6 +357,14 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             * candidate.Texture.height <= 16)
                         continue;
 
+                    if (animationSafety?.HasUnsafeConstantTextureAnimation(
+                            domain,
+                            candidate.Material,
+                            candidate.Property,
+                            candidate.Texture,
+                            targetRenderers) == true)
+                        continue;
+
                     constants.Add(new AtlasConstantTextureDecision(
                         candidate.Material,
                         candidate.Property,
@@ -342,6 +375,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             var featureDisables = disableVisuallyUnusedShaderFeatures
                 ? DetectFeatureDisables(targetMaterials, samples)
+                    .Where(decision =>
+                        animationSafety?.HasUnsafeFeatureDisableAnimation(
+                            domain,
+                            decision,
+                            targetRenderers) != true)
+                    .ToList()
                 : new List<AtlasFeatureDisableDecision>();
 
             var projected = original.ToDictionary(
