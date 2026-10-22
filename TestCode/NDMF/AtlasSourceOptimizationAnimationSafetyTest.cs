@@ -1,0 +1,285 @@
+using System;
+using NUnit.Framework;
+using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.AAOCode;
+using UnityEngine;
+using Object = UnityEngine.Object;
+
+namespace net.rs64.TexTransTool.NDMF.TestCode
+{
+    internal class AtlasSourceOptimizationAnimationSafetyTest
+    {
+        [Test]
+        public void FeatureDisableSafetyIncludesFeatureSwitch()
+        {
+            var rule = new AtlasFeatureDisableRule(
+                "_UseEmission",
+                "_EmissionMap");
+            var decision = new AtlasFeatureDisableDecision(
+                null,
+                rule,
+                "_EmissionBlend");
+
+            Assert.That(
+                decision.SafetyProperties,
+                Does.Contain("_UseEmission"));
+        }
+
+        [Test]
+        public void ExactProofPropertyAnimationIsRelevant()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._EmissionBlend",
+                    "_EmissionBlend",
+                    includeSamplingControls: false),
+                Is.True);
+        }
+
+        [Test]
+        public void UnrelatedColorComponentDoesNotInvalidateAlphaProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._EmissionColor.r",
+                    "_EmissionColor.a",
+                    includeSamplingControls: false),
+                Is.False);
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._EmissionColor.a",
+                    "_EmissionColor.a",
+                    includeSamplingControls: false),
+                Is.True);
+        }
+
+        [Test]
+        public void UnrelatedVectorComponentDoesNotInvalidateDissolveModeProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._Main2ndDissolveParams.y",
+                    "_Main2ndDissolveParams.x",
+                    includeSamplingControls: false),
+                Is.False);
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._Main2ndDissolveParams.x",
+                    "_Main2ndDissolveParams.x",
+                    includeSamplingControls: false),
+                Is.True);
+        }
+
+        [Test]
+        public void UnrelatedMaterialAnimationIsIgnored()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._Color.r",
+                    "_EmissionBlend",
+                    includeSamplingControls: false),
+                Is.False);
+        }
+
+        [Test]
+        public void TextureOwnStAnimationInvalidatesUvRegionProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._EmissionMap_ST.x",
+                    "_EmissionMap",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
+        public void StandardSharedMainUvControlsInvalidateBumpProof()
+        {
+            WithShaderInformation(
+                new StandardShaderInformation(),
+                material =>
+                {
+                    Assert.That(
+                        AtlasSourceOptimizationAnimationSafety
+                            .AffectsProofProperty(
+                                "material._MainTex_ST.x",
+                                "_BumpMap",
+                                includeSamplingControls: true,
+                                material),
+                        Is.True);
+                });
+        }
+
+        [Test]
+        public void StandardDetailControlsInvalidateDetailNormalProof()
+        {
+            WithShaderInformation(
+                new StandardShaderInformation(),
+                material =>
+                {
+                    Assert.That(
+                        AtlasSourceOptimizationAnimationSafety
+                            .AffectsProofProperty(
+                                "material._DetailAlbedoMap_ST.x",
+                                "_DetailNormalMap",
+                                includeSamplingControls: true,
+                                material),
+                        Is.True);
+                    Assert.That(
+                        AtlasSourceOptimizationAnimationSafety
+                            .AffectsProofProperty(
+                                "material._UVSec",
+                                "_DetailNormalMap",
+                                includeSamplingControls: true,
+                                material),
+                        Is.True);
+                });
+        }
+
+        [Test]
+        public void ToonStandardTracksOwnUvSelectorWithoutMainSt()
+        {
+            WithShaderInformation(
+                new VRCSDKToonStandardShaderInformation(false),
+                material =>
+                {
+                    Assert.That(
+                        AtlasSourceOptimizationAnimationSafety
+                            .AffectsProofProperty(
+                                "material._EmissionUV",
+                                "_EmissionMap",
+                                includeSamplingControls: true,
+                                material),
+                        Is.True);
+                    Assert.That(
+                        AtlasSourceOptimizationAnimationSafety
+                            .AffectsProofProperty(
+                                "material._MainTex_ST.x",
+                                "_EmissionMap",
+                                includeSamplingControls: true,
+                                material),
+                        Is.False);
+                });
+        }
+
+        [Test]
+        public void BumpMapTracksMainTextureStAnimation()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._MainTex_ST.x",
+                    "_BumpMap",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
+        public void MainUvMaskTracksMainTextureStAnimation()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._MainTex_ST.x",
+                    "_EmissionBlendMask",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
+        public void Main2ndDecalAnimationInvalidatesUvRegionProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._Main2ndTexDecalAnimation.x",
+                    "_Main2ndTex",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
+        public void EmissionParallaxDepthInvalidatesUvRegionProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._EmissionParallaxDepth",
+                    "_EmissionMap",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
+        public void OtherEmissionMaskScrollChangesMaskUvMode()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._Emission2ndBlendMask_ScrollRotate.x",
+                    "_EmissionBlendMask",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
+        public void OutlineVectorUvModeInvalidatesCoverageProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._OutlineVectorUVMode",
+                    "_OutlineVectorTex",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
+        public void ShadowColorTypeInvalidatesCoverageProof()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._ShadowColorType",
+                    "_ShadowColorTex",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
+        public void IndependentEmissionMapIgnoresMainTextureStAnimation()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._MainTex_ST.x",
+                    "_EmissionMap",
+                    includeSamplingControls: true),
+                Is.False);
+        }
+
+        private static void WithShaderInformation(
+            ITTShaderTextureUsageInformation information,
+            Action<Material> test)
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            TTShaderTextureUsageInformationRegistry.s_information
+                .TryGetValue(shader, out var previousInformation);
+            TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                information;
+            try
+            {
+                test(material);
+            }
+            finally
+            {
+                if (previousInformation != null)
+                {
+                    TTShaderTextureUsageInformationRegistry.s_information[
+                        shader] = previousInformation;
+                }
+                else
+                {
+                    TTShaderTextureUsageInformationRegistry.s_information
+                        .Remove(shader);
+                }
+                Object.DestroyImmediate(material);
+            }
+        }
+    }
+}
