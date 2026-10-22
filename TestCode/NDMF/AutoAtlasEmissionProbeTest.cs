@@ -1138,6 +1138,80 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void UniformOutputRequiresIdenticalRgbaAcrossEverySource()
+        {
+            var shader = Shader.Find("Standard")
+                ?? Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+            var first = new Material(shader);
+            var second = new Material(shader);
+            var firstImage = new Texture2D(32, 32);
+            var secondImage = new Texture2D(16, 16);
+            try
+            {
+                var properties = new Dictionary<Material,
+                    IReadOnlyDictionary<string, Texture>>
+                {
+                    [first] = new Dictionary<string, Texture>
+                        { ["_MainTex"] = firstImage },
+                    [second] = new Dictionary<string, Texture>
+                        { ["_MainTex"] = secondImage },
+                };
+                var colors = new Dictionary<Texture, Color>
+                {
+                    [firstImage] = Color.red, [secondImage] = Color.red,
+                };
+                (bool success, Color color) Inspect(Texture t) =>
+                    (true, colors[t]);
+                var materials = new[] { first, second };
+                bool Try(Func<Material, string, Texture, bool> animated) =>
+                    AutoAtlasUniformTextureOptimizer.TryFindConstantOutput(
+                        materials, properties, new[] { "_MainTex" },
+                        Inspect, animated, out _, _ => true);
+
+                Assert.That(Try((_, _, _) => false), Is.True);
+                colors[secondImage] = Color.blue;
+                Assert.That(Try((_, _, _) => false), Is.False,
+                    "A single atlas property must not collapse differing materials.");
+                colors[secondImage] = Color.red;
+                Assert.That(Try((m, _, _) => m == first), Is.False,
+                    "An animated texture replacement must preserve the source.");
+                properties[second] = new Dictionary<string, Texture>();
+                Assert.That(Try((_, _, _) => false), Is.False,
+                    "A missing input would sample an atlas background instead.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(first);
+                UnityEngine.Object.DestroyImmediate(second);
+                UnityEngine.Object.DestroyImmediate(firstImage);
+                UnityEngine.Object.DestroyImmediate(secondImage);
+            }
+        }
+
+        [Test]
+        public void FeatureAnimationGuardIgnoresUnrelatedCurves()
+        {
+            var emissionRule = new AutoAtlasFeatureDisableRules.Rule(
+                "Emission2", "_UseEmission2nd", "test",
+                "_Emission2ndMap", "_Emission2ndBlendMask",
+                "_Emission2ndGradTex");
+
+            Assert.That(AutoAtlasFeatureAnimationSafety.IsUnsafeFloatBinding(
+                "material._Emission2ndBlendMask_ST.x", emissionRule), Is.True);
+            Assert.That(AutoAtlasFeatureAnimationSafety.IsUnsafeFloatBinding(
+                "material._MainTex_ST.z", emissionRule), Is.True);
+            Assert.That(AutoAtlasFeatureAnimationSafety.IsUnsafeFloatBinding(
+                "material._Emission2ndBlendMode", emissionRule), Is.True);
+            Assert.That(AutoAtlasFeatureAnimationSafety.IsUnsafeFloatBinding(
+                "material._Emission2ndMap_ST.x", emissionRule), Is.False);
+            Assert.That(AutoAtlasFeatureAnimationSafety.IsUnsafeFloatBinding(
+                "material._Emission2ndColor.r", emissionRule), Is.False);
+            Assert.That(AutoAtlasFeatureAnimationSafety.IsUnsafeFloatBinding(
+                "m_IsActive", emissionRule), Is.False);
+        }
+
+        [Test]
         public void ProbeReportUsesNoNestedScrollView()
         {
             var error = new AutoAtlasEmissionProbeError("sample\nsample 2");
