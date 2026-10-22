@@ -256,7 +256,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
             out long bytes)
         {
             bytes = 0;
-            var alphaCache = new Dictionary<Texture, bool>();
 
             foreach (var output in outputs)
             {
@@ -264,11 +263,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     is not TextureCompressionData compression)
                     return false;
 
-                if (!TryHasAlpha(
-                        output.Decision.Source,
-                        alphaCache,
-                        out var hasAlpha))
-                    return false;
+                // The generated texture is uniformly the proven constant color,
+                // so its alpha requirement is known exactly without consulting
+                // unrelated texels from the original source. Match the existing
+                // compression policy's approximately one-percent alpha tolerance.
+                var hasAlpha = output.Decision.Color.a < 1f - 0.01f;
 
                 var format = compression.UseOverride
                     ? compression.OverrideTextureFormat
