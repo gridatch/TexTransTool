@@ -3,6 +3,7 @@ using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace net.rs64.TexTransTool.NDMF.TestCode
 {
