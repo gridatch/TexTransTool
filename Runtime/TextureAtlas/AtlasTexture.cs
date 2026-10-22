@@ -90,8 +90,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 foreach (var group in MergeMaterialGroups)
                 {
                     sourceOptimizationExclusions.UnionWith(
-                        domain.OriginEqual.GetDomainsMaterialsHashSet(
-                            targetMaterials, group.Group));
+                        targetMaterials.Where(material =>
+                            group.Group.Any(groupMaterial =>
+                                domain.OriginEqual(
+                                    material, groupMaterial))));
                 }
             }
 
