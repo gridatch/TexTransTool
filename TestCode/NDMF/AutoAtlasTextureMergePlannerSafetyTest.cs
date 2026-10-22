@@ -213,6 +213,64 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void RemovedFeatureSourceIsRetainedOnlyForUnmodifiedConsumers()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+            var main = new Texture2D(8, 8);
+            var removedMask = new Texture2D(16, 16);
+            var target = new Material(shader);
+            var external = new Material(shader);
+            try
+            {
+                target.SetTexture("_MainTex", main);
+                target.SetTexture("_EmissionMap", removedMask);
+                external.SetTexture("_EmissionMap", removedMask);
+
+                var targetGroup = new HashSet<Material> { target };
+                var projected = new Dictionary<Material,
+                    IReadOnlyDictionary<string, Texture>>
+                {
+                    [target] = new Dictionary<string, Texture>
+                    {
+                        ["_MainTex"] = main,
+                    }
+                };
+                var sourceImages = new HashSet<Texture>
+                {
+                    main, removedMask
+                };
+                var removedProperties = new HashSet<(Material material, string property)>
+                {
+                    (target, "_EmissionMap")
+                };
+                var allMaterials = new HashSet<Material> { target, external };
+                var retained = AutoAtlasTextureProcessor.FindRetainedSourceTextures(
+                    allMaterials, targetGroup, projected, sourceImages,
+                    removedProperties);
+                Assert.That(retained, Is.EquivalentTo(
+                    new Texture[] { removedMask }));
+
+                external.SetTexture("_EmissionMap", null);
+                retained = AutoAtlasTextureProcessor.FindRetainedSourceTextures(
+                    allMaterials, targetGroup, projected, sourceImages,
+                    removedProperties);
+                Assert.That(retained, Is.Empty,
+                    "The generated target material clears this mask binding.");
+                Assert.That(target.GetTexture("_EmissionMap"),
+                    Is.SameAs(removedMask),
+                    "The source material must never be modified by projection.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(target);
+                Object.DestroyImmediate(external);
+                Object.DestroyImmediate(main);
+                Object.DestroyImmediate(removedMask);
+            }
+        }
+
+        [Test]
         public void RetainedSourceCostCanStillAllowStrictBenefit()
         {
             var original = Plan(new[]
