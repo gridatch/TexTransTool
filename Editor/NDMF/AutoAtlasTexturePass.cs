@@ -1047,6 +1047,147 @@ namespace net.rs64.TexTransTool.NDMF
                 completed.Add(block);
             }
 
+            if (optimizationOnlyMaterials.Count != 0)
+            {
+                var group = optimizationOnlyMaterials;
+                var originalSources =
+                    sourceOptimization.CollectOriginalTextures(group);
+                var removedBindings =
+                    sourceOptimization.RemovedBindings(group);
+                var retainedSources = FindRetainedSourceTextures(
+                    allReferencedMaterials,
+                    group,
+                    propertyTextures,
+                    originalSources,
+                    removedBindings);
+                var constantOutputs =
+                    AtlasSourceOptimizer.CreateConstantOutputs(
+                        engine,
+                        sourceOptimization,
+                        settings,
+                        null,
+                        group);
+
+                var originalPixels = originalSources.Sum(texture =>
+                    (long)texture.width * texture.height);
+                var finalPixels = constantOutputs
+                    .Select(output => output.RenderTexture)
+                    .Distinct()
+                    .Sum(texture => (long)texture.Width * texture.Hight)
+                    + retainedSources.Sum(texture =>
+                        (long)texture.width * texture.height);
+
+                var hasSourceMemory =
+                    AtlasTexture.TryCalculateSourceTextureMemory(
+                        domain,
+                        originalSources,
+                        out var sourceBytes);
+                var hasRetainedMemory =
+                    AtlasTexture.TryCalculateSourceTextureMemory(
+                        domain,
+                        retainedSources,
+                        out var retainedBytes);
+                var hasConstantMemory =
+                    AtlasTexture.TryCalculateConstantTextureMemory(
+                        constantOutputs,
+                        out var constantBytes);
+                var finalBytes = retainedBytes + constantBytes;
+
+                if (originalPixels > 0
+                    && finalPixels < originalPixels
+                    && hasSourceMemory
+                    && hasRetainedMemory
+                    && hasConstantMemory
+                    && finalBytes < sourceBytes)
+                {
+                    var optimizedMaps =
+                        AtlasTexture.GenerateAtlasedMaterialMaps(
+                            domain,
+                            group,
+                            settings,
+                            (new List<AtlasTexture.MaterialMergeGroup>(),
+                                null,
+                                null),
+                            new Dictionary<string, RenderTexture>(),
+                            new HashSet<Material>(),
+                            null);
+
+                    AtlasSourceOptimizer.ApplyToGeneratedMaterials(
+                        optimizedMaps.materialMap,
+                        constantOutputs,
+                        sourceOptimization.FeatureDisables,
+                        engine);
+
+                    var generatedMaterials =
+                        optimizedMaps.materialMap.Values
+                            .Concat(
+                                optimizedMaps
+                                    .domainsMaterial2ReplaceMaterial.Values)
+                            .Distinct()
+                            .ToArray();
+                    var generatedRetained =
+                        CollectRetainedSourceTextures(
+                            generatedMaterials,
+                            originalSources);
+
+                    if (!generatedRetained.Any(texture =>
+                            !retainedSources.Contains(texture)))
+                    {
+                        var routes =
+                            AtlasResolutionRouteReport
+                                .CollectWithOptimizations(
+                                    null,
+                                    null,
+                                    sourceOptimization,
+                                    constantOutputs,
+                                    group);
+                        var block = string.Format(
+                            materialBlock,
+                            string.Join(
+                                ", ",
+                                group.Select(OriginalMaterialName)
+                                    .Distinct()
+                                    .OrderBy(
+                                        name => name,
+                                        StringComparer.Ordinal)),
+                            1f,
+                            TTTLog.FormatLocalizedLines(
+                                AtlasResolutionRouteReport
+                                    .CreateLocalizedLogLines(routes)));
+                        block += "\n" + string.Format(
+                            "AtlasTexture:info:TargetTextureMemory"
+                                .GetLocalize(),
+                            AtlasTexture.FormatTextureMemory(sourceBytes),
+                            AtlasTexture.FormatTextureMemory(finalBytes));
+
+                        AtlasTexture.ApplyAtlasedMaterialMaps(
+                            domain,
+                            optimizedMaps.materialMap,
+                            optimizedMaps
+                                .domainsMaterial2ReplaceMaterial);
+
+                        foreach (var output in constantOutputs)
+                            domain.RegisterPostProcessingAndLazyGPUReadBack(
+                                output.RenderTexture,
+                                output.Descriptor);
+
+                        completed.Add(block);
+                    }
+                    else
+                    {
+                        DestroyUnappliedAtlasedMaterials(
+                            generatedMaterials);
+                        AtlasSourceOptimizer.DisposeConstantOutputs(
+                            constantOutputs);
+                    }
+                }
+                else
+                {
+                    AtlasSourceOptimizer.DisposeConstantOutputs(
+                        constantOutputs);
+                }
+            }
+
             processingTimer.Stop();
 
             if (twoDimensionalFallbackReasons.Count != 0)
