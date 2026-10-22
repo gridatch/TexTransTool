@@ -47,11 +47,9 @@ namespace net.rs64.TexTransTool.NDMF
                     atlas, context.AvatarRootObject))
                 .ToArray();
             var configuration = configurations[0];
-            var animationServices =
-                configuration.EnableAdditionalAtlasMerging
-                && configuration.ExcludeVisibilityAnimatedItemsFromTextureMerging
-                    ? context.Extension<AnimatorServicesContext>()
-                    : null;
+            // Feature-removal safety needs animation bindings even when the
+            // optional visibility-animated merge exclusion is disabled.
+            var animationServices = context.Extension<AnimatorServicesContext>();
             AutoAtlasTextureProcessor.Execute(
                 session.Domain,
                 configuration,
@@ -1684,6 +1682,125 @@ namespace net.rs64.TexTransTool.NDMF
     }
 
     /// <summary>
+    /// Minimal guard for NEW feature removal only. Ordinary atlasing keeps its
+    /// existing animation handling; animations unrelated to the candidate
+    /// do not block it.
+    /// </summary>
+    internal static class AutoAtlasFeatureAnimationSafety
+    {
+        internal static bool IsUnsafeFloatBinding(
+            string bindingProperty, AutoAtlasFeatureDisableRules.Rule rule)
+        {
+            const string prefix = "material.";
+            if (!bindingProperty.StartsWith(prefix, StringComparison.Ordinal))
+                return false;
+            var name = bindingProperty.Substring(prefix.Length);
+            bool Affects(string property) =>
+                name == property || name.StartsWith(property + ".",
+                    StringComparison.Ordinal);
+
+            // Any animated texture transform or material property on a
+            // removed texture may invalidate its current mask coverage.
+            if (rule.TextureProperties.Any(Affects))
+                return true;
+            if (Affects("_MainTex_ST") || Affects("_MainTex_ScrollRotate")
+                || Affects("_ShiftBackfaceUV"))
+                return true;
+
+            switch (rule.Name)
+            {
+                case "Main2nd":
+                    return Affects("_Main2ndTexAlphaMode")
+                        || Affects("_Main2ndDissolveParams");
+                case "Emission1":
+                    return Affects("_EmissionBlendMode")
+                        || Affects("_EmissionBlendMask_ScrollRotate");
+                case "Emission2":
+                    return Affects("_Emission2ndBlendMode")
+                        || Affects("_Emission2ndBlendMask_ScrollRotate");
+                default:
+                    return false;
+            }
+        }
+
+        internal static bool HasUnsafeFeatureAnimation(
+            AnimationIndex? index, ObjectPathRemapper? remapper,
+            Material material, AutoAtlasFeatureDisableRules.Rule rule,
+            IEnumerable<Renderer> renderers, Transform? avatarRoot)
+        {
+            if (index == null || remapper == null || avatarRoot == null)
+                return true; // not enough evidence to remove a feature
+
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null) continue;
+                remapper.GetVirtualPathForObject(renderer.transform);
+                var paths = remapper.GetAllPathsForObject(renderer.transform);
+                foreach (var path in paths.Distinct(StringComparer.Ordinal))
+                {
+                    foreach (var clip in index.GetClipsForObjectPath(path))
+                    {
+                        foreach (var binding in clip.GetFloatCurveBindings())
+                        {
+                            if (binding.path != path || binding.type == null
+                                || !typeof(Renderer).IsAssignableFrom(binding.type)
+                                || !binding.type.IsAssignableFrom(renderer.GetType()))
+                                continue;
+                            if (IsUnsafeFloatBinding(binding.propertyName, rule)
+                                && clip.GetFloatCurve(binding) != null
+                                && renderer.sharedMaterials.Contains(material))
+                                return true;
+                        }
+
+                        // Only reject a material swap when it introduces this
+                        // material into a previously untested submesh slot.
+                        foreach (var binding in clip.GetObjectCurveBindings())
+                        {
+                            if (binding.path != path || binding.type == null
+                                || !typeof(Renderer).IsAssignableFrom(binding.type)
+                                || !binding.type.IsAssignableFrom(renderer.GetType()))
+                                continue;
+                            if (binding.propertyName.StartsWith("material.",
+                                    StringComparison.Ordinal)
+                                && rule.TextureProperties.Any(property =>
+                                    binding.propertyName == "material." + property))
+                            {
+                                var curve = clip.GetObjectCurve(binding);
+                                if (renderer.sharedMaterials.Contains(material)
+                                    && curve != null
+                                    && curve.Any(key => key.value !=
+                                        material.GetTexture(
+                                            binding.propertyName.Substring(
+                                                "material.".Length))))
+                                    return true;
+                            }
+                            if (!binding.propertyName.StartsWith(
+                                    "m_Materials.Array.data[",
+                                    StringComparison.Ordinal))
+                                continue;
+                            var materialCurve = clip.GetObjectCurve(binding);
+                            if (materialCurve == null
+                                || !materialCurve.Any(key => key.value == material))
+                                continue;
+                            var start = "m_Materials.Array.data[".Length;
+                            var end = binding.propertyName.IndexOf(']', start);
+                            if (end <= start || !int.TryParse(
+                                    binding.propertyName.Substring(start, end - start),
+                                    out var slot))
+                                return true;
+                            var currentMaterials = renderer.sharedMaterials;
+                            if (slot >= currentMaterials.Length
+                                || currentMaterials[slot] != material)
+                                return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Detects visibility animation on renderers and their parent GameObjects.
     /// This only determines whether a property can take a value different from
     /// its current one; it does not infer runtime usage frequency or menu reachability.
@@ -2192,6 +2309,11 @@ namespace net.rs64.TexTransTool.NDMF
                 .SelectMany(group => group.Materials).ToHashSet();
             var hypotheses = emissionProbe.GetFeatureCandidates()
                 .Where(item => eligibleMaterials.Contains(item.material))
+                .Where(item => !AutoAtlasFeatureAnimationSafety
+                    .HasUnsafeFeatureAnimation(
+                        animationIndex, objectPathRemapper,
+                        item.material, item.rule,
+                        allRenderers, avatarRoot))
                 .GroupBy(item => (item.material, item.rule.SwitchProperty))
                 .Select(group => group.First())
                 .OrderBy(item => item.material.name, StringComparer.Ordinal)
