@@ -916,7 +916,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             var shader = Shader.Find("lilToon");
             if (shader == null) Assert.Ignore("lilToon shader not installed");
             var original = new Material(shader);
-            Material? generated = null;
+            Material generated = null;
             var mainMask = new Texture2D(4, 4);
             var matCapMask = new Texture2D(4, 4);
             try
