@@ -1,4 +1,6 @@
 using NUnit.Framework;
+using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.NDMF.TestCode
@@ -96,6 +98,10 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             Assert.That(shader, Is.Not.Null);
 
             var material = new Material(shader);
+            TTShaderTextureUsageInformationRegistry.s_information
+                .TryGetValue(shader, out var previousInformation);
+            TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                new StandardShaderInformation();
             try
             {
                 Assert.That(
@@ -108,6 +114,16 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             }
             finally
             {
+                if (previousInformation != null)
+                {
+                    TTShaderTextureUsageInformationRegistry.s_information[
+                        shader] = previousInformation;
+                }
+                else
+                {
+                    TTShaderTextureUsageInformationRegistry.s_information
+                        .Remove(shader);
+                }
                 Object.DestroyImmediate(material);
             }
         }
@@ -119,6 +135,10 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             Assert.That(shader, Is.Not.Null);
 
             var material = new Material(shader);
+            TTShaderTextureUsageInformationRegistry.s_information
+                .TryGetValue(shader, out var previousInformation);
+            TTShaderTextureUsageInformationRegistry.s_information[shader] =
+                new StandardShaderInformation();
             try
             {
                 Assert.That(
@@ -138,6 +158,16 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
             }
             finally
             {
+                if (previousInformation != null)
+                {
+                    TTShaderTextureUsageInformationRegistry.s_information[
+                        shader] = previousInformation;
+                }
+                else
+                {
+                    TTShaderTextureUsageInformationRegistry.s_information
+                        .Remove(shader);
+                }
                 Object.DestroyImmediate(material);
             }
         }
