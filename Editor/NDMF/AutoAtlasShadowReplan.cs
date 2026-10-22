@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.Utils;
 using UnityEngine;
 using Color = UnityEngine.Color;
 
