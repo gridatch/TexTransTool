@@ -595,9 +595,6 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 }
 
-                var originalPixels = execution.SourceTextures.Sum(texture =>
-                    (long)texture.width * texture.height);
-
                 IReadOnlyDictionary<Material, int>? mergeAtomicGroupByMaterial = null;
                 if (execution.MergeSelection is { } selectedMerge)
                 {
