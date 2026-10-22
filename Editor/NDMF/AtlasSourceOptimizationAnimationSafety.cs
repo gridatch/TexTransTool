@@ -157,7 +157,7 @@ namespace net.rs64.TexTransTool.NDMF
                 && binding.type.IsAssignableFrom(renderer.GetType());
         }
 
-        private static bool AffectsProofProperty(
+        internal static bool AffectsProofProperty(
             string bindingProperty,
             string property,
             bool includeSamplingControls)
