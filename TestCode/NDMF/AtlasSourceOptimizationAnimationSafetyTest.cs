@@ -89,6 +89,17 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void BumpMapTracksMainTextureStAnimation()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety.AffectsProofProperty(
+                    "material._MainTex_ST.x",
+                    "_BumpMap",
+                    includeSamplingControls: true),
+                Is.True);
+        }
+
+        [Test]
         public void MainUvMaskTracksMainTextureStAnimation()
         {
             Assert.That(
