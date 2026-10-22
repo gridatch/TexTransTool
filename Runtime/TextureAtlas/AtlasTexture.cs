@@ -335,6 +335,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 domain.RegisterPostProcessingAndLazyGPUReadBack(
                     output.RenderTexture,
                     output.Descriptor);
+
+            atlasContext?.Dispose();
         }
 
         internal (HashSet<Material> targetMaterials, Renderer[] targetRenderers) ResolveAtlasTargets(IDomain domain)
