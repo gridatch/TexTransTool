@@ -59,6 +59,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             Material = material;
             Rule = rule;
             SafetyProperties = safetyProperties
+                .Append(rule.SwitchProperty)
                 .Where(property => !string.IsNullOrWhiteSpace(property))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
