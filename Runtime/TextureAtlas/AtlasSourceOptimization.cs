@@ -749,6 +749,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var globalProperties =
                 properties.ToHashSet(StringComparer.Ordinal);
             var blocked = new HashSet<string>(StringComparer.Ordinal);
+            var referenceSources =
+                new HashSet<string>(StringComparer.Ordinal);
             foreach (var pair in holders)
             {
                 var remove = pair.Value.Find<RemoveData>();
@@ -764,6 +766,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     // pixels with another property. Its own constant source is
                     // therefore not the semantic output to optimize.
                     blocked.Add(pair.Key);
+                    referenceSources.Add(reference.CopySource!);
                 }
 
                 var merge = pair.Value.Find<MergeTextureData>();
@@ -778,7 +781,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             constants.RemoveAll(item => blocked.Contains(item.Property));
             featureDisables.RemoveAll(item =>
-                item.Rule.TextureProperties.Any(blocked.Contains));
+                item.Rule.TextureProperties.Any(property =>
+                    blocked.Contains(property)
+                    || referenceSources.Contains(property)));
         }
 
         internal static AtlasConstantTextureOutput[] CreateConstantOutputs(
