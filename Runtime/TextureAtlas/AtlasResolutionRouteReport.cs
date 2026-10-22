@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
+using net.rs64.TexTransTool.Utils;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas
@@ -140,6 +141,87 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             output.Key.Width, output.Key.Hight, 1),
                     }
                 ));
+            }
+
+            return AggregateRoutes(routeInstances);
+        }
+
+        internal static AtlasResolutionRoute[] CollectWithOptimizations(
+            AtlasContext? atlasContext,
+            TexFineTuningResult? fineTuningResult,
+            AtlasSourceOptimizationPlan optimizationPlan,
+            IEnumerable<AtlasConstantTextureOutput> constantOutputs,
+            IEnumerable<Material> materials)
+        {
+            var routeInstances = new List<AtlasResolutionRouteInstance>();
+
+            if (atlasContext != null && fineTuningResult != null)
+            {
+                foreach (var route in Collect(atlasContext, fineTuningResult))
+                {
+                    for (var occurrence = 0;
+                         occurrence < route.Occurrences;
+                         occurrence += 1)
+                    {
+                        routeInstances.Add(new AtlasResolutionRouteInstance(
+                            route.Inputs,
+                            route.Outputs));
+                    }
+                }
+            }
+
+            var selected = materials.ToHashSet();
+            foreach (var output in constantOutputs)
+            {
+                if (!selected.Contains(output.Decision.Material))
+                    continue;
+
+                routeInstances.Add(new AtlasResolutionRouteInstance(
+                    new[]
+                    {
+                        new AtlasTextureSizeCount(
+                            output.Decision.Source.width,
+                            output.Decision.Source.height,
+                            1),
+                    },
+                    new[]
+                    {
+                        new AtlasTextureSizeCount(
+                            output.RenderTexture.Width,
+                            output.RenderTexture.Hight,
+                            1),
+                    }));
+            }
+
+            foreach (var item in optimizationPlan.FeatureDisables)
+            {
+                if (!selected.Contains(item.Material)
+                    || !optimizationPlan.OriginalTextureUses.TryGetValue(
+                        item.Material, out var properties))
+                    continue;
+
+                foreach (var property in item.Rule.TextureProperties)
+                {
+                    Texture? source = null;
+                    properties.TryGetValue(property, out source);
+                    if (source == null
+                        && item.Material.HasShaderTextureProperty(property))
+                        source = item.Material.GetTexture(property);
+                    if (!(source is Texture2D)
+                        && !(source is RenderTexture))
+                        continue;
+
+                    routeInstances.Add(new AtlasResolutionRouteInstance(
+                        new[]
+                        {
+                            new AtlasTextureSizeCount(
+                                source.width, source.height, 1),
+                        },
+                        new[]
+                        {
+                            new AtlasTextureSizeCount(0, 0, 1),
+                        }));
+                }
             }
 
             return AggregateRoutes(routeInstances);

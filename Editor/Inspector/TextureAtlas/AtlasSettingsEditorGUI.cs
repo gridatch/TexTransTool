@@ -56,6 +56,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var forceSetTexture = atlasSetting.FindPropertyRelative(
                 nameof(AtlasSetting.ForceSetTexture)
             );
+            var optimizeConstantTextures = atlasSetting.FindPropertyRelative(
+                nameof(AtlasSetting.OptimizeConstantTextures)
+            );
+            var disableVisuallyUnusedShaderFeatures =
+                atlasSetting.FindPropertyRelative(
+                    nameof(AtlasSetting.DisableVisuallyUnusedShaderFeatures)
+                );
             var backgroundColor = atlasSetting.FindPropertyRelative(
                 nameof(AtlasSetting.BackGroundColor)
             );
@@ -141,6 +148,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             EditorGUILayout.PropertyField(
                 forceSetTexture,
                 "AtlasTexture:prop:ForceSetTexture".GlcV()
+            );
+            EditorGUILayout.PropertyField(
+                optimizeConstantTextures,
+                "AtlasTexture:prop:OptimizeConstantTextures".GlcV()
+            );
+            EditorGUILayout.PropertyField(
+                disableVisuallyUnusedShaderFeatures,
+                "AtlasTexture:prop:DisableVisuallyUnusedShaderFeatures".GlcV()
             );
             EditorGUILayout.PropertyField(
                 backgroundColor,

@@ -284,6 +284,18 @@ msgstr "テクスチャーを強制的にセット"
 msgid "AtlasTexture:prop:ForceSetTexture:tooltip"
 msgstr "アトラス化したテクスチャーをマテリアルに割り当てるとき、マテリアルにテクスチャーが存在しなくても割り当てを行う機能"
 
+msgid "AtlasTexture:prop:OptimizeConstantTextures"
+msgstr "単色テクスチャを極小化"
+
+msgid "AtlasTexture:prop:OptimizeConstantTextures:tooltip"
+msgstr "アトラス化で実際に参照されるUV領域が単一のRGBA色であるテクスチャプロパティを、極小の定数テクスチャへ置き換えます。"
+
+msgid "AtlasTexture:prop:DisableVisuallyUnusedShaderFeatures"
+msgstr "視覚的に無効なシェーダー機能を削減"
+
+msgid "AtlasTexture:prop:DisableVisuallyUnusedShaderFeatures:tooltip"
+msgstr "対応済みのシェーダー機能について、使用領域の入力から視覚的寄与がないと判定できる場合に機能を無効化します。"
+
 msgid "AtlasTexture:prop:BackGroundColor"
 msgstr "背景色"
 

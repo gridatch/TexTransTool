@@ -284,6 +284,18 @@ msgstr "ForceSetTexture"
 msgid "AtlasTexture:prop:ForceSetTexture:tooltip"
 msgstr "Assign an atlas texture to material even If the texture  not exist in material"
 
+msgid "AtlasTexture:prop:OptimizeConstantTextures"
+msgstr "Minimize constant texture regions"
+
+msgid "AtlasTexture:prop:OptimizeConstantTextures:tooltip"
+msgstr "Replace texture properties whose sampled atlas UV region is a single RGBA color with a minimal constant texture."
+
+msgid "AtlasTexture:prop:DisableVisuallyUnusedShaderFeatures"
+msgstr "Remove visually inactive shader features"
+
+msgid "AtlasTexture:prop:DisableVisuallyUnusedShaderFeatures:tooltip"
+msgstr "Disable supported shader features when their sampled inputs prove that the feature has no visual contribution."
+
 msgid "AtlasTexture:prop:BackGroundColor"
 msgstr "BackGroundColor"
 
