@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.TestCode
@@ -92,75 +93,179 @@ namespace net.rs64.TexTransTool.TestCode
         }
 
         [Test]
-        public void GpuCoverageFoldsClampAndRepeatAtUvOrigin()
+        public void GpuAnalyzerDetectsVariableFullCoverage()
         {
-            var mesh = new Mesh();
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            var mesh = CreateQuadMesh(
+                new Vector2(0f, 0f),
+                new Vector2(1f, 1f));
+            var source = CreateSource(
+                8,
+                8,
+                (x, _) => x < 4 ? Color.red : Color.blue);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuPending? pending = null;
             try
             {
-                mesh.vertices = new[]
-                {
-                    Vector3.zero,
-                    Vector3.right,
-                    Vector3.up,
-                };
-                mesh.uv = new[]
-                {
-                    Vector2.zero,
-                    Vector2.right,
-                    Vector2.up,
-                };
-                mesh.triangles = new[] { 0, 1, 2 };
-
-                // default(Matrix2x3) maps every UV vertex to (0, 0).
-                // The one-pixel filter footprint therefore extends below and
-                // left of the image. Production coverage conservatively folds
-                // those texels through both clamp and repeat addressing.
                 Assert.That(
-                    AtlasSourceCoverageGpu.TryRender(
+                    analyzer.TryBuildGeometry(
+                        new[] { (mesh, 0) },
+                        0,
+                        Matrix2x3.Identity,
+                        8,
+                        8,
+                        out geometry),
+                    Is.True);
+                Assert.That(geometry, Is.Not.Null);
+                Assert.That(
+                    analyzer.TryQueue(
+                        source,
+                        geometry!,
+                        out pending),
+                    Is.True);
+                Assert.That(pending, Is.Not.Null);
+                Assert.That(
+                    pending!.TryGetFlags(out var flags),
+                    Is.True);
+                Assert.That(flags.Known, Is.True);
+                Assert.That(flags.IsConstant, Is.False);
+            }
+            finally
+            {
+                pending?.Dispose();
+                geometry?.Dispose();
+                analyzer.Dispose();
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
+        public void GpuAnalyzerIgnoresUncoveredPixels()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            var mesh = CreateQuadMesh(
+                new Vector2(0f, 0f),
+                new Vector2(0.375f, 1f));
+            var source = CreateSource(
+                8,
+                8,
+                (x, _) => x < 4 ? Color.red : Color.blue);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuPending? pending = null;
+            try
+            {
+                Assert.That(
+                    analyzer.TryBuildGeometry(
+                        new[] { (mesh, 0) },
+                        0,
+                        Matrix2x3.Identity,
+                        8,
+                        8,
+                        out geometry),
+                    Is.True);
+                Assert.That(
+                    analyzer.TryQueue(
+                        source,
+                        geometry!,
+                        out pending),
+                    Is.True);
+                Assert.That(
+                    pending!.TryGetFlags(out var flags),
+                    Is.True);
+                Assert.That(flags.IsConstant, Is.True);
+            }
+            finally
+            {
+                pending?.Dispose();
+                geometry?.Dispose();
+                analyzer.Dispose();
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
+        public void GpuAnalyzerIncludesRepeatCandidateAcrossUvOrigin()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            // Collapse the drawable UVs to the origin. The one-pixel filter
+            // support extends outside the source image, so the conservative
+            // proof must inspect both clamp(0) and repeat(last) addresses.
+            var mesh = CreateQuadMesh(
+                Vector2.zero,
+                Vector2.one);
+            var source = CreateSource(
+                8,
+                8,
+                (x, y) => x == 7 && y == 7
+                    ? Color.blue
+                    : Color.red);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuPending? pending = null;
+            try
+            {
+                Assert.That(
+                    analyzer.TryBuildGeometry(
                         new[] { (mesh, 0) },
                         0,
                         default,
                         8,
                         8,
-                        out var coverage),
+                        out geometry),
                     Is.True);
-
-                Assert.That(coverage.IsCovered(0, 0), Is.True);
-                Assert.That(coverage.IsCovered(7, 0), Is.True);
-                Assert.That(coverage.IsCovered(0, 7), Is.True);
-                Assert.That(coverage.IsCovered(7, 7), Is.True);
+                Assert.That(
+                    analyzer.TryQueue(
+                        source,
+                        geometry!,
+                        out pending),
+                    Is.True);
+                Assert.That(
+                    pending!.TryGetFlags(out var flags),
+                    Is.True);
+                Assert.That(flags.IsConstant, Is.False);
             }
             finally
             {
+                pending?.Dispose();
+                geometry?.Dispose();
+                analyzer.Dispose();
                 Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
             }
-        }
-
-        [Test]
-        public void GpuCoverageOrientationMarkerDetectsBothDirections()
-        {
-            const int width = 4;
-            const int height = 4;
-
-            var bottom = new Color32[width * height];
-            for (var x = 0; x < width; x += 1)
-                bottom[x] = new Color32(0, 255, 0, 255);
-            Assert.That(
-                AtlasSourceCoverageGpu.TryResolveUvYOrientation(
-                    bottom, width, height, out var bottomFlip),
-                Is.True);
-            Assert.That(bottomFlip, Is.False);
-
-            var top = new Color32[width * height];
-            var topOffset = (height - 1) * width;
-            for (var x = 0; x < width; x += 1)
-                top[topOffset + x] =
-                    new Color32(0, 255, 0, 255);
-            Assert.That(
-                AtlasSourceCoverageGpu.TryResolveUvYOrientation(
-                    top, width, height, out var topFlip),
-                Is.True);
-            Assert.That(topFlip, Is.True);
         }
 
         [Test]
@@ -196,6 +301,74 @@ namespace net.rs64.TexTransTool.TestCode
                     1f),
                 Is.False);
         }
+        private static Mesh CreateQuadMesh(
+            Vector2 uvMin,
+            Vector2 uvMax)
+        {
+            var mesh = new Mesh();
+            mesh.vertices = new[]
+            {
+                Vector3.zero,
+                Vector3.right,
+                Vector3.one,
+                Vector3.up,
+            };
+            mesh.uv = new[]
+            {
+                new Vector2(uvMin.x, uvMin.y),
+                new Vector2(uvMax.x, uvMin.y),
+                new Vector2(uvMax.x, uvMax.y),
+                new Vector2(uvMin.x, uvMax.y),
+            };
+            mesh.triangles = new[]
+            {
+                0, 1, 2,
+                0, 2, 3,
+            };
+            return mesh;
+        }
+
+        private static RenderTexture CreateSource(
+            int width,
+            int height,
+            System.Func<int, int, Color> pixel)
+        {
+            var texture = new Texture2D(
+                width,
+                height,
+                TextureFormat.RGBAFloat,
+                false,
+                true);
+            try
+            {
+                var pixels = new Color[width * height];
+                for (var y = 0; y < height; y += 1)
+                for (var x = 0; x < width; x += 1)
+                    pixels[y * width + x] = pixel(x, y);
+                texture.SetPixels(pixels);
+                texture.Apply(false, false);
+
+                var renderTexture = new RenderTexture(
+                    width,
+                    height,
+                    0,
+                    RenderTextureFormat.ARGBFloat,
+                    RenderTextureReadWrite.Linear)
+                {
+                    filterMode = FilterMode.Point,
+                    useMipMap = false,
+                    autoGenerateMips = false,
+                };
+                renderTexture.Create();
+                Graphics.Blit(texture, renderTexture);
+                return renderTexture;
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
         private static bool TriangleOverlapsTexelFilterReference(
             Vector2 pixel,
             Vector2 a,
