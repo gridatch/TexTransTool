@@ -481,17 +481,17 @@
           },
           "zipSHA256": "5d4fad7a95cb4b21cf51948eed38c34bf335eff63ef4d743ee1a69c2643f83bb"
         },
-        "0.1.22+wdt.ttt.1.0.2.debug.1260.constant-color-tolerance.eb10d94": {
+        "0.1.22+wdt.ttt.1.0.2.debug.1261.constant-color-tolerance.cdc1fee": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.22+wdt.ttt.1.0.2.debug.1260.constant-color-tolerance.eb10d94",
+          "version": "0.1.22+wdt.ttt.1.0.2.debug.1261.constant-color-tolerance.cdc1fee",
           "unity": "2022.3",
-          "description": "Debug build 1260 for constant-color-tolerance from feat/constant-color-tolerance at eb10d94. Based on WDT 0.1.22+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 1261 for constant-color-tolerance from feat/constant-color-tolerance at cdc1fee. Based on WDT 0.1.22+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.22+wdt.ttt.1.0.2.debug.1260.constant-color-tolerance.eb10d94.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.22+wdt.ttt.1.0.2.debug.1261.constant-color-tolerance.cdc1fee.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -504,7 +504,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "24d452ebe790afaaafea6740d25370a26abbc089960fc4dc57deccae304eaade"
+          "zipSHA256": "7fe6b384153c4455b250f2d073e32059b7d316a63aecf7b2fd79cc07173f86a1"
         }
       }
     }
