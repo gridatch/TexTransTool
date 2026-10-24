@@ -841,6 +841,9 @@ msgstr "出力レイアウトが不適合: actual={0}×{1}, planned={2}×{3}, ou
 msgid "AutoAtlasTexture:fallback:PropertyResolutionMismatch"
 msgstr "プロパティ解像度が不適合: {0} actual={1}×{2}, planned={3}×{4}"
 
+msgid "AutoAtlasTexture:fallback:MaxTextureDimensionExceeded"
+msgstr "プロパティ解像度が自動アトラス化の上限を超過: {0} actual={1}×{2}, limit={3}"
+
 msgid "AutoAtlasTexture:fallback:AtlasExecutionFailed"
 msgstr "DoAtlasTextureが失敗（配置・サイズ判定の詳細未取得）"
 

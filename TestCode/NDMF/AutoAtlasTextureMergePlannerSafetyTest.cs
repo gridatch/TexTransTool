@@ -1169,6 +1169,61 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void CandidateAllowsPropertyDimensionAtAutoAtlasLimit()
+        {
+            var baseline = Plan(new[]
+            {
+                Entry(2048, 64, 1),
+                Entry(2048, 64, 1),
+            });
+            var merged = Plan(new[]
+            {
+                Entry(4096, 16, 1),
+            });
+            var candidate = new AutoAtlasTextureMergePlanner.Candidate(
+                new[] { 0, 1 },
+                baseline,
+                merged,
+                new Vector2Int(4096, 256),
+                new Dictionary<string, Vector2Int>
+                {
+                    ["_MainTex"] = new Vector2Int(4096, 16),
+                });
+
+            Assert.That(candidate.IsAdoptable, Is.True);
+        }
+
+        [Test]
+        public void CandidateRejectsPropertyDimensionAboveAutoAtlasLimit()
+        {
+            var baseline = Plan(new[]
+            {
+                Entry(4096, 64, 1),
+                Entry(4096, 64, 1),
+            });
+            var merged = Plan(new[]
+            {
+                Entry(8192, 8, 1),
+            });
+            var candidate = new AutoAtlasTextureMergePlanner.Candidate(
+                new[] { 0, 1 },
+                baseline,
+                merged,
+                new Vector2Int(4096, 256),
+                new Dictionary<string, Vector2Int>
+                {
+                    ["_MainTex"] = new Vector2Int(8192, 8),
+                });
+
+            Assert.That(candidate.IsAdoptable, Is.False);
+            Assert.That(
+                candidate.RejectionReason,
+                Is.EqualTo(
+                    AutoAtlasTextureMergePlanner
+                        .CandidateRejectionReason.MaxDimension));
+        }
+
+        [Test]
         public void MergeSelectionCarriesPredictedCostMetrics()
         {
             var baseline = Plan(new[]

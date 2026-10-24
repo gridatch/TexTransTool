@@ -888,6 +888,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal static readonly int[] AutoAtlasTextureSizeCandidates =
             { 64, 128, 256, 512, 1024, 2048, 4096 };
 
+        internal static int AutoAtlasTextureMaximumDimension =>
+            AutoAtlasTextureSizeCandidates[
+                AutoAtlasTextureSizeCandidates.Length - 1];
+
+        internal static bool IsWithinAutoAtlasTextureMaximumDimension(
+            Vector2Int size)
+        {
+            return size.x <= AutoAtlasTextureMaximumDimension
+                && size.y <= AutoAtlasTextureMaximumDimension;
+        }
+
         static Vector2Int GetAtlasTextureSize(AtlasSetting atlasSetting)
         {
             var atlasTargeSize = new Vector2Int(atlasSetting.AtlasTextureSize, atlasSetting.AtlasTextureSize);

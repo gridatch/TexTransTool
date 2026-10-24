@@ -847,6 +847,9 @@ msgstr "output layout mismatch: actual={0}×{1}, planned={2}×{3}, outputPixels=
 msgid "AutoAtlasTexture:fallback:PropertyResolutionMismatch"
 msgstr "property resolution mismatch: {0} actual={1}×{2}, planned={3}×{4}"
 
+msgid "AutoAtlasTexture:fallback:MaxTextureDimensionExceeded"
+msgstr "property resolution exceeds the AutoAtlas limit: {0} actual={1}×{2}, limit={3}"
+
 msgid "AutoAtlasTexture:fallback:AtlasExecutionFailed"
 msgstr "DoAtlasTexture failed without a detailed placement or size reason"
 

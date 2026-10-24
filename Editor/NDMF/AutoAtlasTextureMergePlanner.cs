@@ -484,6 +484,7 @@ namespace net.rs64.TexTransTool.NDMF
             None,
             AtomicGroupMapping,
             ReferenceCopySemantics,
+            MaxDimension,
             PixelCount,
             FullResidentMemory,
             Sampling,
@@ -526,7 +527,12 @@ namespace net.rs64.TexTransTool.NDMF
                         ? CandidateRejectionReason.AtomicGroupMapping
                         : !preservesReferenceCopySemantics
                             ? CandidateRejectionReason.ReferenceCopySemantics
-                            : merged.PixelCount >= baseline.PixelCount
+                            : propertySizes.Values.Any(size =>
+                                !AtlasTexture
+                                    .IsWithinAutoAtlasTextureMaximumDimension(
+                                        size))
+                                ? CandidateRejectionReason.MaxDimension
+                                : merged.PixelCount >= baseline.PixelCount
                                 ? CandidateRejectionReason.PixelCount
                                 : merged.FullResidentBytes >= baseline.FullResidentBytes
                                     ? CandidateRejectionReason.FullResidentMemory
@@ -885,6 +891,8 @@ namespace net.rs64.TexTransTool.NDMF
                     new[] { standaloneGeneratedCost, retainedSourceCost });
 
                 if (standaloneGeneratedCost.PixelCount > 0
+                    && metrics.PropertySizes.Values.All(
+                        AtlasTexture.IsWithinAutoAtlasTextureMaximumDimension)
                     && standaloneTotalCost.PixelCount
                         < group.NonAtlasCost.PixelCount
                     && standaloneTotalCost.FullResidentBytes

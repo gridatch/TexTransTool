@@ -766,6 +766,30 @@ namespace net.rs64.TexTransTool.NDMF
                         AcceptAtlasSize = (atlasContext, size, metrics) =>
                         {
                             executionMetrics = metrics;
+                            foreach (var propertySize in metrics.PropertySizes)
+                            {
+                                if (AtlasTexture
+                                    .IsWithinAutoAtlasTextureMaximumDimension(
+                                        propertySize.Value))
+                                {
+                                    continue;
+                                }
+
+                                if (execution.MergeSelection?.PackedRegions
+                                    != null)
+                                {
+                                    twoDimensionalSizeRejection =
+                                        FormatLocalized(
+                                            "AutoAtlasTexture:fallback:MaxTextureDimensionExceeded",
+                                            propertySize.Key,
+                                            propertySize.Value.x,
+                                            propertySize.Value.y,
+                                            AtlasTexture
+                                                .AutoAtlasTextureMaximumDimension);
+                                }
+                                return false;
+                            }
+
                             if (execution.MergeSelection is { } mergeSelection)
                             {
                                 // The planner reserves an independently valid
