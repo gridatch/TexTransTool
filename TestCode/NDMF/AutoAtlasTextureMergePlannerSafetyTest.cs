@@ -156,60 +156,356 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void SharedSourceOutsideAtlasGroupIsClassifiedAsRetained()
+        public void ActiveTextureConsumersIgnoreInactiveAndUndrawnMaterials()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var used = new Material(shader);
+            var emptySlot = new Material(shader);
+            var disabled = new Material(shader);
+            var inactive = new Material(shader);
+            var nonMesh = new Material(shader);
+            var mesh = new Mesh();
+            var disabledMesh = new Mesh();
+            var inactiveMesh = new Mesh();
+            var root = new GameObject("root");
+            var disabledObject = new GameObject("disabled");
+            var inactiveObject = new GameObject("inactive");
+            var lineObject = new GameObject("line");
+            try
+            {
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.subMeshCount = 2;
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                mesh.SetTriangles(System.Array.Empty<int>(), 1);
+
+                var filter = root.AddComponent<MeshFilter>();
+                filter.sharedMesh = mesh;
+                var renderer = root.AddComponent<MeshRenderer>();
+                renderer.sharedMaterials = new[] { used, emptySlot };
+
+                disabledMesh.vertices = mesh.vertices;
+                disabledMesh.triangles = new[] { 0, 1, 2 };
+                var disabledFilter =
+                    disabledObject.AddComponent<MeshFilter>();
+                disabledFilter.sharedMesh = disabledMesh;
+                var disabledRenderer =
+                    disabledObject.AddComponent<MeshRenderer>();
+                disabledRenderer.sharedMaterial = disabled;
+                disabledRenderer.enabled = false;
+
+                inactiveMesh.vertices = mesh.vertices;
+                inactiveMesh.triangles = new[] { 0, 1, 2 };
+                var inactiveFilter =
+                    inactiveObject.AddComponent<MeshFilter>();
+                inactiveFilter.sharedMesh = inactiveMesh;
+                var inactiveRenderer =
+                    inactiveObject.AddComponent<MeshRenderer>();
+                inactiveRenderer.sharedMaterial = inactive;
+                inactiveObject.SetActive(false);
+
+                var lineRenderer = lineObject.AddComponent<LineRenderer>();
+                lineRenderer.sharedMaterial = nonMesh;
+                lineRenderer.positionCount = 2;
+                lineRenderer.SetPosition(0, Vector3.zero);
+                lineRenderer.SetPosition(1, Vector3.right);
+
+                var consumers =
+                    AutoAtlasTextureProcessor.CollectActiveTextureConsumers(
+                        new RendererTargetingForTest(
+                            new Renderer[]
+                            {
+                                renderer,
+                                disabledRenderer,
+                                inactiveRenderer,
+                                lineRenderer,
+                            }));
+
+                Assert.That(consumers.Materials, Has.Member(used));
+                Assert.That(
+                    consumers.Materials,
+                    Has.No.Member(emptySlot),
+                    "A material assigned only to an empty submesh is not a texture-memory consumer.");
+                Assert.That(
+                    consumers.Materials,
+                    Has.No.Member(disabled),
+                    "Disabled renderers follow AutoAtlas's existing inactive-consumer contract.");
+                Assert.That(
+                    consumers.Materials,
+                    Has.No.Member(inactive),
+                    "Inactive GameObjects follow AutoAtlas's existing inactive-consumer contract.");
+                Assert.That(
+                    consumers.Materials,
+                    Has.Member(nonMesh),
+                    "An active non-mesh renderer is still a real texture consumer.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(disabledObject);
+                Object.DestroyImmediate(inactiveObject);
+                Object.DestroyImmediate(lineObject);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(disabledMesh);
+                Object.DestroyImmediate(inactiveMesh);
+                Object.DestroyImmediate(used);
+                Object.DestroyImmediate(emptySlot);
+                Object.DestroyImmediate(disabled);
+                Object.DestroyImmediate(inactive);
+                Object.DestroyImmediate(nonMesh);
+            }
+        }
+
+        [Test]
+        public void OnlyActiveDrawableExternalConsumersRetainSourceCost()
         {
             var shader = Shader.Find("Standard");
             Assert.That(shader, Is.Not.Null);
 
             var source = new Texture2D(4, 4);
             var target = new Material(shader);
-            var external = new Material(shader);
+            var activeExternal = new Material(shader);
+            var unusedReferenceOnly = new Material(shader);
+            var targetMesh = new Mesh();
+            var externalMesh = new Mesh();
+            var targetObject = new GameObject("target");
+            var externalObject = new GameObject("external");
             try
             {
                 target.SetTexture("_MainTex", source);
-                external.SetTexture("_MainTex", source);
+                activeExternal.SetTexture("_MainTex", source);
+                unusedReferenceOnly.SetTexture("_MainTex", source);
 
-                var group = new HashSet<Material> { target };
-                var propertyTextures =
-                    new Dictionary<
-                        Material,
-                        IReadOnlyDictionary<string, Texture>>
-                    {
-                        [target] = new Dictionary<string, Texture>
-                        {
-                            ["_MainTex"] = source,
-                        },
-                    };
-                var allMaterials = new HashSet<Material>
+                foreach (var mesh in new[] { targetMesh, externalMesh })
                 {
-                    target,
-                    external,
-                };
+                    mesh.vertices = new[]
+                    {
+                        Vector3.zero,
+                        Vector3.right,
+                        Vector3.up,
+                    };
+                    mesh.triangles = new[] { 0, 1, 2 };
+                }
+
+                var targetFilter =
+                    targetObject.AddComponent<MeshFilter>();
+                targetFilter.sharedMesh = targetMesh;
+                var targetRenderer =
+                    targetObject.AddComponent<MeshRenderer>();
+                targetRenderer.sharedMaterial = target;
+
+                var externalFilter =
+                    externalObject.AddComponent<MeshFilter>();
+                externalFilter.sharedMesh = externalMesh;
+                var externalRenderer =
+                    externalObject.AddComponent<MeshRenderer>();
+                externalRenderer.sharedMaterial = activeExternal;
+
+                var consumers =
+                    AutoAtlasTextureProcessor.CollectActiveTextureConsumers(
+                        new RendererTargetingForTest(
+                            new Renderer[]
+                            {
+                                targetRenderer,
+                                externalRenderer,
+                            }));
+
                 var retained =
-                    AutoAtlasTextureProcessor.FindRetainedSourceTextures(
-                        allMaterials,
-                        group,
-                        propertyTextures,
-                        new HashSet<Texture> { source });
+                    AutoAtlasTextureProcessor
+                        .FindExternallyRetainedSourceTextures(
+                            consumers,
+                            new HashSet<Material> { target },
+                            new HashSet<Texture> { source });
 
-                Assert.That(retained, Is.EquivalentTo(
-                    new Texture[] { source }));
+                Assert.That(
+                    retained,
+                    Is.EquivalentTo(new Texture[] { source }));
 
-                external.SetTexture("_MainTex", null);
+                externalRenderer.enabled = false;
+                consumers =
+                    AutoAtlasTextureProcessor.CollectActiveTextureConsumers(
+                        new RendererTargetingForTest(
+                            new Renderer[]
+                            {
+                                targetRenderer,
+                                externalRenderer,
+                            }));
                 retained =
-                    AutoAtlasTextureProcessor.FindRetainedSourceTextures(
-                        allMaterials,
-                        group,
-                        propertyTextures,
-                        new HashSet<Texture> { source });
-                Assert.That(retained, Is.Empty);
+                    AutoAtlasTextureProcessor
+                        .FindExternallyRetainedSourceTextures(
+                            consumers,
+                            new HashSet<Material> { target },
+                            new HashSet<Texture> { source });
+
+                Assert.That(
+                    retained,
+                    Is.Empty,
+                    "A material asset that merely references the texture must not become resident cost without an active drawable renderer consumer.");
+                Assert.That(
+                    unusedReferenceOnly.GetTexture("_MainTex"),
+                    Is.SameAs(source),
+                    "The regression keeps an unused material reference present while proving it has no cost effect.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(targetObject);
+                Object.DestroyImmediate(externalObject);
+                Object.DestroyImmediate(targetMesh);
+                Object.DestroyImmediate(externalMesh);
+                Object.DestroyImmediate(target);
+                Object.DestroyImmediate(activeExternal);
+                Object.DestroyImmediate(unusedReferenceOnly);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
+        public void RemovedTargetBindingAndUnusedMaterialReferenceDoNotRetainCost()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var source = new Texture2D(4, 4);
+            var target = new Material(shader);
+            var unusedReferenceOnly = new Material(shader);
+            var mesh = new Mesh();
+            var targetObject = new GameObject("target");
+            try
+            {
+                target.SetTexture("_MainTex", source);
+                unusedReferenceOnly.SetTexture("_MainTex", source);
+
+                mesh.vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                };
+                mesh.triangles = new[] { 0, 1, 2 };
+                var filter = targetObject.AddComponent<MeshFilter>();
+                filter.sharedMesh = mesh;
+                var renderer = targetObject.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = target;
+
+                var consumers =
+                    AutoAtlasTextureProcessor.CollectActiveTextureConsumers(
+                        new RendererTargetingForTest(
+                            new Renderer[] { renderer }));
+                var group = new HashSet<Material> { target };
+                var originalSources = new HashSet<Texture> { source };
+                var targetRetained =
+                    AutoAtlasTextureProcessor
+                        .FindTargetRetainedSourceTextures(
+                            group,
+                            new Dictionary<
+                                Material,
+                                IReadOnlyDictionary<string, Texture>>
+                            {
+                                [target] =
+                                    new Dictionary<string, Texture>(),
+                            },
+                            originalSources,
+                            new HashSet<(Material material, string property)>
+                            {
+                                (target, "_MainTex"),
+                            });
+                var externalRetained =
+                    AutoAtlasTextureProcessor
+                        .FindExternallyRetainedSourceTextures(
+                            consumers,
+                            group,
+                            originalSources);
+
+                Assert.That(targetRetained, Is.Empty);
+                Assert.That(externalRetained, Is.Empty);
+                Assert.That(
+                    unusedReferenceOnly.GetTexture("_MainTex"),
+                    Is.SameAs(source),
+                    "The unused reference remains present but is deliberately outside the cost-consumer set.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(targetObject);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(target);
+                Object.DestroyImmediate(unusedReferenceOnly);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
+        public void TargetLocalRetentionIsSeparatedFromExternalCostRetention()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var source = new Texture2D(4, 4);
+            var target = new Material(shader);
+            try
+            {
+                target.SetTexture("_MainTex", source);
+                target.SetTexture("_BumpMap", source);
+
+                var retained =
+                    AutoAtlasTextureProcessor
+                        .FindTargetRetainedSourceTextures(
+                            new HashSet<Material> { target },
+                            new Dictionary<
+                                Material,
+                                IReadOnlyDictionary<string, Texture>>
+                            {
+                                [target] =
+                                    new Dictionary<string, Texture>
+                                    {
+                                        ["_MainTex"] = source,
+                                    },
+                            },
+                            new HashSet<Texture> { source });
+
+                Assert.That(
+                    retained,
+                    Is.EquivalentTo(new Texture[] { source }),
+                    "A target-local property outside the rewrite is a generated-material expectation, independently of external consumer cost.");
             }
             finally
             {
                 Object.DestroyImmediate(target);
-                Object.DestroyImmediate(external);
                 Object.DestroyImmediate(source);
             }
+        }
+
+        [Test]
+        public void SourceOnlyBaselineRequiresStrictPixelAndMemoryBenefit()
+        {
+            var original = Plan(new[]
+            {
+                Entry(1024, 1024, 1),
+            });
+            var smaller = Plan(new[]
+            {
+                Entry(512, 512, 1),
+            });
+            var same = Plan(new[]
+            {
+                Entry(1024, 1024, 1),
+            });
+
+            Assert.That(
+                AutoAtlasTextureMergePlanner.SelectNonAtlasMode(
+                    original, smaller),
+                Is.EqualTo(
+                    AutoAtlasTextureMergePlanner.NonAtlasMode.SourceOnly));
+            Assert.That(
+                AutoAtlasTextureMergePlanner.SelectNonAtlasMode(
+                    original, same),
+                Is.EqualTo(
+                    AutoAtlasTextureMergePlanner.NonAtlasMode.Original));
         }
 
         [Test]
@@ -352,6 +648,44 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Object.DestroyImmediate(material);
                 Object.DestroyImmediate(source);
                 Object.DestroyImmediate(replacement);
+            }
+        }
+
+        [Test]
+        public void GeneratedSourceReferencesAreCheckedAgainstTargetExpectations()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var source = new Texture2D(4, 4);
+            var generated = new Material(shader);
+            try
+            {
+                generated.SetTexture("_MainTex", source);
+                var sources = new HashSet<Texture> { source };
+
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnexpectedGeneratedSourceReference(
+                            new[] { generated },
+                            sources,
+                            new HashSet<Texture>()),
+                    Is.True,
+                    "External cost-retention must not authorize a generated target material to keep an original source.");
+
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasUnexpectedGeneratedSourceReference(
+                            new[] { generated },
+                            sources,
+                            new HashSet<Texture> { source }),
+                    Is.False,
+                    "Only a target-local intentionally retained source may remain on the generated material.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(generated);
+                Object.DestroyImmediate(source);
             }
         }
 
@@ -1859,6 +2193,11 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     new Texture[] { textures[3], textures[4] }));
                 var standalone = queue.Dequeue();
                 Assert.That(standalone.MergeSelection, Is.Null);
+                Assert.That(
+                    standalone.Mode,
+                    Is.EqualTo(
+                        AutoAtlasTextureProcessor.ExecutionMode.Atlas));
+                Assert.That(standalone.AtomicGroup, Is.SameAs(groups[2]));
                 Assert.That(standalone.SourceTextures,
                     Is.SameAs(groups[2].SourceTextures));
                 Assert.That(queue.Count, Is.Zero);
@@ -1899,7 +2238,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     groups, new[] { failed, unaffected });
 
                 Assert.That(queue.Dequeue().MergeSelection, Is.SameAs(failed));
-                AutoAtlasTextureProcessor.EnqueueStandaloneFallback(
+                AutoAtlasTextureProcessor.EnqueueNonMergedFallback(
                     queue, failed, groups);
 
                 // Other selected merges and originally standalone groups stay
@@ -1914,6 +2253,16 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 var retry1 = queue.Dequeue();
                 Assert.That(retry0.MergeSelection, Is.Null);
                 Assert.That(retry1.MergeSelection, Is.Null);
+                Assert.That(
+                    retry0.Mode,
+                    Is.EqualTo(
+                        AutoAtlasTextureProcessor.ExecutionMode.Atlas));
+                Assert.That(
+                    retry1.Mode,
+                    Is.EqualTo(
+                        AutoAtlasTextureProcessor.ExecutionMode.Atlas));
+                Assert.That(retry0.AtomicGroup, Is.SameAs(groups[0]));
+                Assert.That(retry1.AtomicGroup, Is.SameAs(groups[1]));
                 Assert.That(retry0.SourceTextures, Is.SameAs(groups[0].SourceTextures));
                 Assert.That(retry1.SourceTextures, Is.SameAs(groups[1].SourceTextures));
                 Assert.That(queue.Count, Is.Zero);

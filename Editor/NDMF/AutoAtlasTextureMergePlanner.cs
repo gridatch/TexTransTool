@@ -32,6 +32,12 @@ namespace net.rs64.TexTransTool.NDMF
             { 256, 512, 1024, 2048, 4096 };
         private const double Epsilon = 1e-8;
 
+        internal enum NonAtlasMode
+        {
+            Original,
+            SourceOnly,
+        }
+
         internal sealed class PreparedGroup
         {
             internal int Id;
@@ -40,7 +46,14 @@ namespace net.rs64.TexTransTool.NDMF
             internal Renderer[] Renderers = Array.Empty<Renderer>();
             internal HashSet<Texture> SourceTextures = new();
             internal HashSet<Texture> OriginalSourceTextures = new();
+            // Sources still needed after this group's rewrite by active
+            // drawable consumers. Mere material/Animator/MA references are not
+            // resident-cost evidence.
             internal HashSet<Texture> RetainedSourceTextures = new();
+            // Sources intentionally kept by this group's target materials on
+            // bindings outside the rewrite. Used only for generated-material
+            // retention safety, not as a proxy for external references.
+            internal HashSet<Texture> ExpectedGeneratedSourceTextures = new();
             internal long OriginalPixels;
 
             internal AtlasTexture.AtlasExecutionMetrics? StandaloneMetrics;
@@ -50,6 +63,9 @@ namespace net.rs64.TexTransTool.NDMF
                 TwoDimensionalProfileHeights = new();
             internal readonly Dictionary<string, int> PropertyUseCount =
                 new(StringComparer.Ordinal);
+            internal TextureCostPlan NonAtlasCost = TextureCostPlan.Empty;
+            internal bool NonAtlasCostKnown;
+            internal NonAtlasMode NonAtlasMode = NonAtlasMode.Original;
             internal TextureCostPlan BaselineCost = TextureCostPlan.Empty;
             internal TextureCostPlan RetainedSourceCost = TextureCostPlan.Empty;
             internal bool BaselineCostKnown;
@@ -749,9 +765,43 @@ namespace net.rs64.TexTransTool.NDMF
             IDomain domain,
             AutoAtlasTexture configuration,
             AtlasSetting settings,
-            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
+                originalPropertyTextures,
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
+                propertyTextures,
             IReadOnlyList<PreparedGroup> groups)
         {
+            // Source optimization is a pre-atlas state. Establish the best
+            // non-atlas cost first, ignoring the tiny 4x4 constant outputs.
+            // This lets the existing merge planner compare every merge against
+            // the atomic group's real non-merged baseline.
+            foreach (var group in groups)
+            {
+                var originalCost = TryBuildSourceCost(
+                    domain,
+                    group,
+                    originalPropertyTextures,
+                    group.OriginalSourceTextures);
+                var sourceOnlyCost = TryBuildSourceCost(
+                    domain,
+                    group,
+                    propertyTextures,
+                    group.SourceTextures.Union(
+                        group.RetainedSourceTextures));
+
+                if (originalCost == null || sourceOnlyCost == null)
+                    continue;
+
+                group.NonAtlasMode = SelectNonAtlasMode(
+                    originalCost, sourceOnlyCost);
+                var sourceOnlyIsBetter =
+                    group.NonAtlasMode == NonAtlasMode.SourceOnly;
+                group.NonAtlasCost = sourceOnlyIsBetter
+                    ? sourceOnlyCost
+                    : originalCost;
+                group.NonAtlasCostKnown = true;
+            }
+
             if (!configuration.EnableAdditionalAtlasMerging
                 || groups.Count(group => !group.ExcludedFromTextureMerging) < 2)
             {
@@ -814,12 +864,13 @@ namespace net.rs64.TexTransTool.NDMF
                     group.PropertyUseCount[property] = 1;
                 }
 
-                var originalCost = TryBuildOriginalCost(
-                    domain, group, propertyTextures);
                 var retainedSourceCost = TryBuildTextureCost(
                     domain, group.RetainedSourceTextures);
-                if (originalCost == null || retainedSourceCost == null)
+                if (!group.NonAtlasCostKnown
+                    || retainedSourceCost == null)
+                {
                     continue;
+                }
 
                 group.RetainedSourceCost = retainedSourceCost;
 
@@ -834,17 +885,21 @@ namespace net.rs64.TexTransTool.NDMF
                     new[] { standaloneGeneratedCost, retainedSourceCost });
 
                 if (standaloneGeneratedCost.PixelCount > 0
-                    && standaloneTotalCost.PixelCount < originalCost.PixelCount
+                    && standaloneTotalCost.PixelCount
+                        < group.NonAtlasCost.PixelCount
                     && standaloneTotalCost.FullResidentBytes
-                        < originalCost.FullResidentBytes)
+                        < group.NonAtlasCost.FullResidentBytes)
                 {
                     group.BaselineCost = standaloneTotalCost;
                 }
                 else
                 {
-                    group.BaselineCost = originalCost;
+                    group.BaselineCost = group.NonAtlasCost;
                 }
 
+                // Merge planning requires both the non-atlas baseline and the
+                // retained-source cost to be known. Keep this false on any
+                // incomplete cost path so candidate generation fails closed.
                 group.BaselineCostKnown = true;
             }
 
@@ -862,6 +917,16 @@ namespace net.rs64.TexTransTool.NDMF
                 shadow2D.ProductionCandidates);
 
             return new PlanResult(selected);
+        }
+
+        internal static NonAtlasMode SelectNonAtlasMode(
+            TextureCostPlan original,
+            TextureCostPlan sourceOnly)
+        {
+            return sourceOnly.PixelCount < original.PixelCount
+                && sourceOnly.FullResidentBytes < original.FullResidentBytes
+                    ? NonAtlasMode.SourceOnly
+                    : NonAtlasMode.Original;
         }
 
         internal static List<MergeSelection> SelectTwoDimensionalMerges(
@@ -1782,21 +1847,17 @@ namespace net.rs64.TexTransTool.NDMF
             return new TextureCostPlan(entries);
         }
 
-        private static TextureCostPlan? TryBuildOriginalCost(
+        private static TextureCostPlan? TryBuildSourceCost(
             IDomain domain,
             PreparedGroup group,
-            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> propertyTextures)
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
+                textureUses,
+            IEnumerable<Texture> textures)
         {
             var entries = new List<TextureCostEntry>();
             var bytesPerTexel = new Dictionary<Texture, double>();
 
-            // A source removed from projected atlas bindings can still remain
-            // resident through another material/property. Such retained-only
-            // sources exist on both sides of the standalone/merge comparison,
-            // so include them in the original side as well. Union preserves
-            // the existing behavior for retained projected sources.
-            foreach (var texture in group.SourceTextures
-                         .Union(group.RetainedSourceTextures))
+            foreach (var texture in textures.Distinct())
             {
                 if (!AtlasTexture.TryGetOriginalTextureCostInfo(
                         domain,
@@ -1817,9 +1878,10 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             var propertySamplingCosts = group.Materials
-                .Where(propertyTextures.ContainsKey)
-                .SelectMany(material => propertyTextures[material])
-                .Where(pair => pair.Value != null)
+                .Where(textureUses.ContainsKey)
+                .SelectMany(material => textureUses[material])
+                .Where(pair => pair.Value != null
+                    && bytesPerTexel.ContainsKey(pair.Value))
                 .GroupBy(pair => pair.Key)
                 .Select(propertyGroup => propertyGroup
                     .Max(pair => bytesPerTexel[pair.Value]))

@@ -170,7 +170,68 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 }
             }
 
+            AppendSourceOptimizationRoutes(
+                routeInstances,
+                optimizationPlan,
+                constantOutputs,
+                materials.ToHashSet());
+
+            return AggregateRoutes(routeInstances);
+        }
+
+        internal static AtlasResolutionRoute[] CollectSourceOptimizationOnly(
+            AtlasSourceOptimizationPlan optimizationPlan,
+            IEnumerable<AtlasConstantTextureOutput> constantOutputs,
+            IEnumerable<Material> materials)
+        {
             var selected = materials.ToHashSet();
+            var outputs = constantOutputs.ToArray();
+            var overwrittenBindings = outputs
+                .Where(output => selected.Contains(output.Decision.Material))
+                .SelectMany(output => output.BoundProperties
+                    .Append(output.Decision.Property)
+                    .Distinct(StringComparer.Ordinal)
+                    .Select(property =>
+                        (output.Decision.Material, property)))
+                .ToHashSet();
+
+            var routeInstances = selected
+                .Where(optimizationPlan.ProjectedTextureUses.ContainsKey)
+                .SelectMany(material =>
+                    optimizationPlan.ProjectedTextureUses[material]
+                        .Where(pair => !overwrittenBindings.Contains(
+                            (material, pair.Key)))
+                        .Select(pair => pair.Value))
+                .Where(texture => texture != null)
+                .Distinct()
+                .Select(texture => new AtlasResolutionRouteInstance(
+                    new[]
+                    {
+                        new AtlasTextureSizeCount(
+                            texture.width, texture.height, 1),
+                    },
+                    new[]
+                    {
+                        new AtlasTextureSizeCount(
+                            texture.width, texture.height, 1),
+                    }))
+                .ToList();
+
+            AppendSourceOptimizationRoutes(
+                routeInstances,
+                optimizationPlan,
+                outputs,
+                selected);
+
+            return AggregateRoutes(routeInstances);
+        }
+
+        private static void AppendSourceOptimizationRoutes(
+            List<AtlasResolutionRouteInstance> routeInstances,
+            AtlasSourceOptimizationPlan optimizationPlan,
+            IEnumerable<AtlasConstantTextureOutput> constantOutputs,
+            HashSet<Material> selected)
+        {
             foreach (var output in constantOutputs)
             {
                 if (!selected.Contains(output.Decision.Material))
@@ -223,8 +284,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         }));
                 }
             }
-
-            return AggregateRoutes(routeInstances);
         }
 
         internal static AtlasResolutionRoute[] AggregateRoutes(

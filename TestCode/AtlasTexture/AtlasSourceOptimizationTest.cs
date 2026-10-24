@@ -1,5 +1,6 @@
 #nullable enable
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.AAOCode;
@@ -61,6 +62,93 @@ namespace net.rs64.TexTransTool.TestCode
                 Object.DestroyImmediate(source);
                 Object.DestroyImmediate(changed);
                 Object.DestroyImmediate(unchanged);
+            }
+        }
+
+        [Test]
+        public void SourceOptimizationOnlyReportIncludesRemainingSourceTextures()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var sources = new[]
+            {
+                new Texture2D(512, 512),
+                new Texture2D(512, 512),
+                new Texture2D(512, 512),
+                new Texture2D(512, 512),
+                new Texture2D(512, 512),
+            };
+
+            try
+            {
+                var original = new Dictionary<
+                    Material, IReadOnlyDictionary<string, Texture>>
+                {
+                    [material] = new Dictionary<string, Texture>
+                    {
+                        ["_MainTex"] = sources[0],
+                        ["_DetailAlbedoMap"] = sources[1],
+                        ["_EmissionMap"] = sources[2],
+                        ["_ParallaxMap"] = sources[3],
+                        ["_BumpMap"] = sources[4],
+                    },
+                };
+                var projected = new Dictionary<
+                    Material, IReadOnlyDictionary<string, Texture>>
+                {
+                    [material] = new Dictionary<string, Texture>
+                    {
+                        ["_MainTex"] = sources[0],
+                        ["_DetailAlbedoMap"] = sources[1],
+                        ["_EmissionMap"] = sources[2],
+                        ["_ParallaxMap"] = sources[3],
+                    },
+                };
+                var plan = new AtlasSourceOptimizationPlan(
+                    original,
+                    projected,
+                    System.Array.Empty<AtlasConstantTextureDecision>(),
+                    new[]
+                    {
+                        new AtlasFeatureDisableDecision(
+                            material,
+                            new AtlasFeatureDisableRule(
+                                "_UseBumpMap",
+                                "_BumpMap"),
+                            "_BumpMap"),
+                    });
+
+                var routes =
+                    AtlasResolutionRouteReport.CollectSourceOptimizationOnly(
+                        plan,
+                        System.Array.Empty<AtlasConstantTextureOutput>(),
+                        new[] { material });
+
+                var unchanged = routes.Single(route =>
+                    route.Inputs.Length == 1
+                    && route.Inputs[0].Width == 512
+                    && route.Inputs[0].Height == 512
+                    && route.Outputs.Length == 1
+                    && route.Outputs[0].Width == 512
+                    && route.Outputs[0].Height == 512);
+                Assert.That(unchanged.Occurrences, Is.EqualTo(4));
+
+                var removed = routes.Single(route =>
+                    route.Inputs.Length == 1
+                    && route.Inputs[0].Width == 512
+                    && route.Inputs[0].Height == 512
+                    && route.Outputs.Length == 1
+                    && route.Outputs[0].Width == 0
+                    && route.Outputs[0].Height == 0);
+                Assert.That(removed.Occurrences, Is.EqualTo(1));
+            }
+            finally
+            {
+                foreach (var source in sources)
+                    Object.DestroyImmediate(source);
+                Object.DestroyImmediate(material);
             }
         }
 
