@@ -16,7 +16,8 @@ Shader "Hidden/TexTransTool/AtlasSourceAnalysis"
 
         // Pass 0: rasterize the expanded UV support while evaluating the
         // canonical source texture. RGBA stores:
-        // R = differs from reference texel
+        // R = worst reference comparison state
+        //     (exact / within T / candidate envelope / rejected)
         // G = any non-zero RGB
         // B = any non-zero alpha
         // A = covered
@@ -33,6 +34,9 @@ Shader "Hidden/TexTransTool/AtlasSourceAnalysis"
             float4 _Source_TexelSize;
             float4 _SourceSize;
             float4 _ReferenceCoord;
+            float _Tolerance;
+            float _UseReferenceValue;
+            float4 _ReferenceValue;
 
             struct appdata
             {
@@ -71,8 +75,32 @@ Shader "Hidden/TexTransTool/AtlasSourceAnalysis"
                 inout float rgbNonZero,
                 inout float alphaNonZero)
             {
-                if (any(sampleValue != referenceValue))
+                if (_Tolerance <= 0.0)
+                {
+                    if (any(sampleValue != referenceValue))
+                        differs = 1.0;
+                }
+                else if (sampleValue.a != referenceValue.a)
+                {
                     differs = 1.0;
+                }
+                else
+                {
+                    float3 delta =
+                        abs(sampleValue.rgb - referenceValue.rgb);
+                    // The first reference is arbitrary. A valid tolerant
+                    // candidate can place it at one edge of the allowed tail
+                    // while another texel lies at the opposite edge, so the
+                    // prefilter must allow twice the final T+3 tail radius.
+                    float candidateEnvelope =
+                        2.0 * (_Tolerance + 3.0 / 255.0);
+                    if (any(delta > candidateEnvelope))
+                        differs = 1.0;
+                    else if (any(delta > _Tolerance))
+                        differs = max(differs, 0.5);
+                    else if (any(sampleValue.rgb != referenceValue.rgb))
+                        differs = max(differs, 0.25);
+                }
                 if (any(sampleValue.rgb != 0.0))
                     rgbNonZero = 1.0;
                 if (sampleValue.a != 0.0)
@@ -94,8 +122,11 @@ Shader "Hidden/TexTransTool/AtlasSourceAnalysis"
                     ((logical.x % size.x) + size.x) % size.x,
                     ((logical.y % size.y) + size.y) % size.y);
 
-                float4 referenceValue = SampleSourceTexel(
-                    int2(_ReferenceCoord.xy));
+                float4 referenceValue =
+                    _UseReferenceValue > 0.5
+                        ? _ReferenceValue
+                        : SampleSourceTexel(
+                            int2(_ReferenceCoord.xy));
                 float differs = 0.0;
                 float rgbNonZero = 0.0;
                 float alphaNonZero = 0.0;
@@ -184,6 +215,232 @@ Shader "Hidden/TexTransTool/AtlasSourceAnalysis"
                 }
 
                 return result;
+            }
+            ENDCG
+        }
+
+        // Pass 2: compact representative-color probe. The geometry is rendered
+        // into a fixed small target; RGB keeps the canonical source value while
+        // A marks covered probe samples.
+        Pass
+        {
+            CGPROGRAM
+            #pragma target 4.0
+            #pragma vertex vert
+            #pragma fragment fragProbe
+
+            #include "UnityCG.cginc"
+
+            sampler2D _Source;
+            float4 _Source_TexelSize;
+            float4 _SourceSize;
+
+            struct appdata
+            {
+                float4 vertex : POSITION;
+                float2 logical : TEXCOORD0;
+            };
+
+            struct v2f
+            {
+                float4 position : SV_POSITION;
+                float2 logical : TEXCOORD0;
+            };
+
+            v2f vert(appdata input)
+            {
+                v2f output;
+                output.position = float4(input.vertex.xy, 0.0, 1.0);
+                output.logical = input.logical;
+                return output;
+            }
+
+            float4 SampleSourceTexel(int2 coord)
+            {
+                float2 uv = (float2(coord) + 0.5) / _SourceSize.xy;
+                #if UNITY_UV_STARTS_AT_TOP
+                if (_Source_TexelSize.y < 0.0)
+                    uv.y = 1.0 - uv.y;
+                #endif
+                return tex2Dlod(_Source, float4(uv, 0.0, 0.0));
+            }
+
+            float4 fragProbe(v2f input) : SV_Target
+            {
+                int2 size = int2(_SourceSize.xy);
+                int2 logical =
+                    int2(floor(input.logical + 0.5));
+                if (logical.x < 0
+                    || logical.y < 0
+                    || logical.x >= size.x
+                    || logical.y >= size.y)
+                    return 0.0;
+
+                float4 sourceValue = SampleSourceTexel(logical);
+                return float4(sourceValue.rgb, 1.0);
+            }
+            ENDCG
+        }
+
+        // Pass 3: 4x4 sum reduction for tolerant-constant validation.
+        Pass
+        {
+            CGPROGRAM
+            #pragma target 4.0
+            #pragma vertex vert_img
+            #pragma fragment fragReduceSum
+
+            #include "UnityCG.cginc"
+
+            sampler2D _MainTex;
+            float4 _MainTex_TexelSize;
+
+            float4 fragReduceSum(v2f_img input) : SV_Target
+            {
+                int2 sourceSize = int2(_MainTex_TexelSize.zw);
+                int2 destinationPixel = int2(floor(input.pos.xy));
+                int2 sourceOrigin = destinationPixel * 4;
+                float4 result = 0.0;
+
+                [unroll]
+                for (int y = 0; y < 4; y++)
+                {
+                    [unroll]
+                    for (int x = 0; x < 4; x++)
+                    {
+                        int2 coord = sourceOrigin + int2(x, y);
+                        if (coord.x >= sourceSize.x
+                            || coord.y >= sourceSize.y)
+                            continue;
+
+                        float2 uv =
+                            (float2(coord) + 0.5) / sourceSize;
+                        result += tex2Dlod(
+                            _MainTex,
+                            float4(uv, 0.0, 0.0));
+                    }
+                }
+
+                return result;
+            }
+            ENDCG
+        }
+
+        // Pass 4: production tolerant-constant validation.
+        // R = covered source texels
+        // G = exact representative RGB
+        // B = RGB within T+1
+        // A = any T+3 / alpha violation for this raster position
+        Pass
+        {
+            CGPROGRAM
+            #pragma target 4.0
+            #pragma vertex vert
+            #pragma fragment fragToleranceValidation
+
+            #include "UnityCG.cginc"
+
+            sampler2D _Source;
+            float4 _Source_TexelSize;
+            float4 _SourceSize;
+            float4 _ReferenceValue;
+            float _PrimaryTolerance;
+            float _TailTolerance;
+
+            struct appdata
+            {
+                float4 vertex : POSITION;
+                float2 logical : TEXCOORD0;
+            };
+
+            struct v2f
+            {
+                float4 position : SV_POSITION;
+                float2 logical : TEXCOORD0;
+            };
+
+            v2f vert(appdata input)
+            {
+                v2f output;
+                output.position = float4(input.vertex.xy, 0.0, 1.0);
+                output.logical = input.logical;
+                return output;
+            }
+
+            float4 SampleSourceTexel(int2 coord)
+            {
+                float2 uv = (float2(coord) + 0.5) / _SourceSize.xy;
+                #if UNITY_UV_STARTS_AT_TOP
+                if (_Source_TexelSize.y < 0.0)
+                    uv.y = 1.0 - uv.y;
+                #endif
+                return tex2Dlod(_Source, float4(uv, 0.0, 0.0));
+            }
+
+            bool TailViolation(float4 sampleValue)
+            {
+                if (sampleValue.a != _ReferenceValue.a)
+                    return true;
+                float3 delta =
+                    abs(sampleValue.rgb - _ReferenceValue.rgb);
+                return any(delta > _TailTolerance);
+            }
+
+            float4 fragToleranceValidation(v2f input) : SV_Target
+            {
+                int2 size = int2(_SourceSize.xy);
+                int2 logical = int2(floor(input.logical + 0.5));
+                int2 clamped = clamp(logical, int2(0, 0), size - 1);
+                int2 repeated = int2(
+                    ((logical.x % size.x) + size.x) % size.x,
+                    ((logical.y % size.y) + size.y) % size.y);
+
+                float tailViolation =
+                    TailViolation(SampleSourceTexel(clamped))
+                        ? 1.0
+                        : 0.0;
+
+                if (repeated.x != clamped.x)
+                    tailViolation = max(
+                        tailViolation,
+                        TailViolation(SampleSourceTexel(
+                            int2(repeated.x, clamped.y)))
+                            ? 1.0
+                            : 0.0);
+                if (repeated.y != clamped.y)
+                    tailViolation = max(
+                        tailViolation,
+                        TailViolation(SampleSourceTexel(
+                            int2(clamped.x, repeated.y)))
+                            ? 1.0
+                            : 0.0);
+                if (repeated.x != clamped.x
+                    && repeated.y != clamped.y)
+                    tailViolation = max(
+                        tailViolation,
+                        TailViolation(SampleSourceTexel(repeated))
+                            ? 1.0
+                            : 0.0);
+
+                if (logical.x < 0
+                    || logical.y < 0
+                    || logical.x >= size.x
+                    || logical.y >= size.y)
+                    return float4(0.0, 0.0, 0.0, tailViolation);
+
+                float4 sourceValue = SampleSourceTexel(logical);
+                float3 delta =
+                    abs(sourceValue.rgb - _ReferenceValue.rgb);
+                float maxDelta =
+                    max(delta.r, max(delta.g, delta.b));
+
+                return float4(
+                    1.0,
+                    all(sourceValue.rgb == _ReferenceValue.rgb)
+                        ? 1.0
+                        : 0.0,
+                    maxDelta <= _PrimaryTolerance ? 1.0 : 0.0,
+                    tailViolation);
             }
             ENDCG
         }

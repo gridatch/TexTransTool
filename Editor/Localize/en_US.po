@@ -288,7 +288,13 @@ msgid "AtlasTexture:prop:OptimizeConstantTextures"
 msgstr "Minimize constant texture regions"
 
 msgid "AtlasTexture:prop:OptimizeConstantTextures:tooltip"
-msgstr "Replace texture properties whose sampled atlas UV region is a single RGBA color with a minimal constant texture."
+msgstr "Replace texture properties whose sampled atlas UV region is effectively a single color with a minimal constant texture. When tolerance is enabled, only tiny RGB deviations around a dominant color are accepted."
+
+msgid "AtlasTexture:prop:ConstantTextureColorTolerance"
+msgstr "Constant color tolerance"
+
+msgid "AtlasTexture:prop:ConstantTextureColorTolerance:tooltip"
+msgstr "Allowed tiny RGB deviation for constant-color detection. 0 requires an exact match. For 1–4, at least 90% of sampled RGB must exactly match the representative color, at least 99% must be within (value+1)/255 per channel, and all samples must be within (value+3)/255. Alpha must always match exactly."
 
 msgid "AtlasTexture:prop:DisableVisuallyUnusedShaderFeatures"
 msgstr "Remove visually inactive shader features"

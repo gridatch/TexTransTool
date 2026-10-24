@@ -288,7 +288,13 @@ msgid "AtlasTexture:prop:OptimizeConstantTextures"
 msgstr "単色テクスチャを極小化"
 
 msgid "AtlasTexture:prop:OptimizeConstantTextures:tooltip"
-msgstr "アトラス化で実際に参照されるUV領域が単一のRGBA色であるテクスチャプロパティを、極小の定数テクスチャへ置き換えます。"
+msgstr "アトラス化で実際に参照されるUV領域が単色であるテクスチャプロパティを、極小の定数テクスチャへ置き換えます。許容誤差を設定した場合は、ほぼ全域を占める代表色に対する微小なRGB差のみを許容します。"
+
+msgid "AtlasTexture:prop:ConstantTextureColorTolerance"
+msgstr "単色判定の許容誤差"
+
+msgid "AtlasTexture:prop:ConstantTextureColorTolerance:tooltip"
+msgstr "単色判定で許容する微小なRGB差です。0は完全一致です。1～4では、参照領域の90%以上が代表色とRGB完全一致、99%以上が各チャンネル(value+1)/255以内、全域が(value+3)/255以内の場合のみ許容します。Alphaは常に完全一致が必要です。"
 
 msgid "AtlasTexture:prop:DisableVisuallyUnusedShaderFeatures"
 msgstr "視覚的に無効なシェーダー機能を削減"

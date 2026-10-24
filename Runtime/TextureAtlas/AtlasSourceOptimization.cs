@@ -457,7 +457,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                         if (!analyzer.TryQueue(
                                                 sampledSource,
                                                 geometry,
-                                                out var queued)
+                                                out var queued,
+                                                atlasSetting
+                                                    .ConstantTextureColorTolerance)
                                             || queued == null)
                                             continue;
 
@@ -482,10 +484,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                 new List<(Candidate[] candidates,
                                     AtlasSourceGpuFlags flags,
                                     AsyncGPUReadbackRequest request)>();
+                            var tolerantRequests =
+                                new List<(Candidate[] candidates,
+                                    AtlasSourceGpuFlags flags,
+                                    AtlasSourceGpuPending sourcePending,
+                                    AsyncGPUReadbackRequest referenceRequest,
+                                    AtlasSourceGpuProbePending probe)>();
 
-                            // Every result request in this batch has already
-                            // been issued. Waiting here avoids a render->wait
-                            // round-trip for every material/property candidate.
+                            // Every first-pass request in this batch has already
+                            // been issued. Normal non-constant textures stop here;
+                            // only near-constant candidates enter the probe path.
                             foreach (var item in pending)
                             {
                                 if (!item.pending.TryGetFlags(out var flags)
@@ -494,8 +502,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                                 foreach (var candidate in item.candidates)
                                 {
-                                    // Zero proofs remain useful even if the
-                                    // optional constant-color readback fails.
+                                    // Zero proofs remain exact and independent
+                                    // from the optional constant-color tolerance.
                                     samples[(
                                         candidate.Material,
                                         candidate.Property)] =
@@ -507,20 +515,54 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                             default);
                                 }
 
-                                if (!flags.IsConstant)
+                                if (flags.IsConstant)
+                                {
+                                    try
+                                    {
+                                        constantRequests.Add((
+                                            item.candidates,
+                                            flags,
+                                            item.pending.RequestReferenceColor()));
+                                    }
+                                    catch
+                                    {
+                                        // Keep the zero proofs above; only 4x4
+                                        // constant replacement is unavailable.
+                                    }
+                                    continue;
+                                }
+
+                                if (!atlasSetting.OptimizeConstantTextures
+                                    || atlasSetting
+                                        .ConstantTextureColorTolerance <= 0
+                                    || !flags.ApproximateConstantCandidate)
                                     continue;
 
+                                AtlasSourceGpuProbePending? probe = null;
                                 try
                                 {
-                                    constantRequests.Add((
+                                    if (!analyzer.TryQueueRepresentativeProbe(
+                                            item.pending.Source,
+                                            item.pending.Geometry,
+                                            out probe)
+                                        || probe == null)
+                                        continue;
+
+                                    tolerantRequests.Add((
                                         item.candidates,
                                         flags,
-                                        item.pending.RequestReferenceColor()));
+                                        item.pending,
+                                        item.pending.RequestReferenceColor(),
+                                        probe));
+                                    probe = null;
                                 }
                                 catch
                                 {
-                                    // Keep the zero proofs above; only 4x4
-                                    // constant replacement is unavailable.
+                                    // Tolerant constant detection is optional.
+                                }
+                                finally
+                                {
+                                    probe?.Dispose();
                                 }
                             }
 
@@ -556,6 +598,91 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                 catch
                                 {
                                     // Keep the zero proof recorded above.
+                                }
+                            }
+
+                            var validationRequests =
+                                new List<(Candidate[] candidates,
+                                    AtlasSourceGpuFlags zeroFlags,
+                                    Color representative,
+                                    AtlasSourceGpuToleranceValidationPending
+                                        pending)>();
+                            foreach (var item in tolerantRequests)
+                            {
+                                try
+                                {
+                                    var referenceRequest =
+                                        item.referenceRequest;
+                                    referenceRequest.WaitForCompletion();
+                                    if (referenceRequest.hasError
+                                        || !item.probe.TryGetRepresentative(
+                                            out var representativeRgb))
+                                        continue;
+
+                                    var referenceData =
+                                        referenceRequest.GetData<Color>();
+                                    if (referenceData.Length != 1)
+                                        continue;
+
+                                    var reference = referenceData[0];
+                                    var representative = new Color(
+                                        representativeRgb.r,
+                                        representativeRgb.g,
+                                        representativeRgb.b,
+                                        reference.a);
+
+                                    if (!analyzer
+                                            .TryQueueToleranceValidation(
+                                                item.sourcePending.Source,
+                                                item.sourcePending.Geometry,
+                                                representative,
+                                                atlasSetting
+                                                    .ConstantTextureColorTolerance,
+                                                out var validation)
+                                        || validation == null)
+                                        continue;
+
+                                    validationRequests.Add((
+                                        item.candidates,
+                                        item.flags,
+                                        representative,
+                                        validation));
+                                }
+                                catch
+                                {
+                                    // Keep the zero proof recorded above.
+                                }
+                                finally
+                                {
+                                    item.probe.Dispose();
+                                }
+                            }
+
+                            foreach (var item in validationRequests)
+                            {
+                                try
+                                {
+                                    if (!item.pending.TryGetValidation(
+                                            out var validation)
+                                        || !validation.Accepted)
+                                        continue;
+
+                                    foreach (var candidate in item.candidates)
+                                    {
+                                        samples[(
+                                            candidate.Material,
+                                            candidate.Property)] =
+                                            new SampleResult(
+                                                true,
+                                                item.zeroFlags.RgbZero,
+                                                item.zeroFlags.AlphaZero,
+                                                true,
+                                                item.representative);
+                                    }
+                                }
+                                finally
+                                {
+                                    item.pending.Dispose();
                                 }
                             }
                         }

@@ -37,6 +37,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
         // Source-side reductions shared by manual AtlasTexture and AutoAtlasTexture.
         // Both are enabled by default and can be disabled independently.
         public bool OptimizeConstantTextures = true;
+        [Range(0, 4)] public int ConstantTextureColorTolerance = 2;
         public bool DisableVisuallyUnusedShaderFeatures = true;
 
 

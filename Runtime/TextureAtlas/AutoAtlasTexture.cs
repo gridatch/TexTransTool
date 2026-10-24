@@ -24,6 +24,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
         public bool ExcludeVisibilityAnimatedItemsFromTextureMerging = false;
 
         public bool OptimizeConstantTextures = true;
+        [Range(0, 4)] public int ConstantTextureColorTolerance = 2;
         public bool DisableVisuallyUnusedShaderFeatures = true;
 
         // Apply only to texture merging; standalone atlasing is unaffected.

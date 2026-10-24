@@ -59,6 +59,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var optimizeConstantTextures = atlasSetting.FindPropertyRelative(
                 nameof(AtlasSetting.OptimizeConstantTextures)
             );
+            var constantTextureColorTolerance = atlasSetting.FindPropertyRelative(
+                nameof(AtlasSetting.ConstantTextureColorTolerance)
+            );
             var disableVisuallyUnusedShaderFeatures =
                 atlasSetting.FindPropertyRelative(
                     nameof(AtlasSetting.DisableVisuallyUnusedShaderFeatures)
@@ -153,6 +156,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 optimizeConstantTextures,
                 "AtlasTexture:prop:OptimizeConstantTextures".GlcV()
             );
+            using (new EditorGUI.DisabledScope(
+                       !optimizeConstantTextures.boolValue))
+            using (new EditorGUI.IndentLevelScope())
+            {
+                EditorGUILayout.PropertyField(
+                    constantTextureColorTolerance,
+                    "AtlasTexture:prop:ConstantTextureColorTolerance".GlcV()
+                );
+            }
             EditorGUILayout.PropertyField(
                 disableVisuallyUnusedShaderFeatures,
                 "AtlasTexture:prop:DisableVisuallyUnusedShaderFeatures".GlcV()

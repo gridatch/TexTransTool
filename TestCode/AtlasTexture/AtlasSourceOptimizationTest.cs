@@ -483,6 +483,518 @@ namespace net.rs64.TexTransTool.TestCode
             }
         }
 
+        [Test]
+        public void GpuAnalyzerZeroToleranceKeepsExactComparison()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            var mesh = CreateQuadMesh(Vector2.zero, Vector2.one);
+            var baseColor = new Color(0.4f, 0.5f, 0.6f, 1f);
+            var source = CreateSource(
+                8,
+                8,
+                (x, y) => x == 7 && y == 7
+                    ? new Color(
+                        baseColor.r + 1f / 255f,
+                        baseColor.g,
+                        baseColor.b,
+                        baseColor.a)
+                    : baseColor);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuPending? pending = null;
+            try
+            {
+                Assert.That(
+                    analyzer.TryBuildGeometry(
+                        new[] { (mesh, 0) },
+                        0,
+                        Matrix2x3.Identity,
+                        8,
+                        8,
+                        out geometry),
+                    Is.True);
+                Assert.That(
+                    analyzer.TryQueue(
+                        source,
+                        geometry!,
+                        out pending,
+                        0),
+                    Is.True);
+                Assert.That(
+                    pending!.TryGetFlags(out var flags),
+                    Is.True);
+                Assert.That(flags.IsConstant, Is.False);
+                Assert.That(
+                    flags.ApproximateConstantCandidate,
+                    Is.False);
+            }
+            finally
+            {
+                pending?.Dispose();
+                geometry?.Dispose();
+                analyzer.Dispose();
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
+        public void GpuAnalyzerToleranceRejectsRgbOutsideCandidateEnvelope()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            var mesh = CreateQuadMesh(Vector2.zero, Vector2.one);
+            var baseColor = new Color(0.4f, 0.5f, 0.6f, 1f);
+            var source = CreateSource(
+                8,
+                8,
+                (x, y) => x == 7 && y == 7
+                    ? new Color(
+                        baseColor.r + 11f / 255f,
+                        baseColor.g,
+                        baseColor.b,
+                        baseColor.a)
+                    : baseColor);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuPending? pending = null;
+            try
+            {
+                Assert.That(
+                    analyzer.TryBuildGeometry(
+                        new[] { (mesh, 0) },
+                        0,
+                        Matrix2x3.Identity,
+                        8,
+                        8,
+                        out geometry),
+                    Is.True);
+                Assert.That(
+                    analyzer.TryQueue(
+                        source,
+                        geometry!,
+                        out pending,
+                        2),
+                    Is.True);
+                Assert.That(
+                    pending!.TryGetFlags(out var flags),
+                    Is.True);
+                Assert.That(
+                    flags.ApproximateConstantCandidate,
+                    Is.False);
+            }
+            finally
+            {
+                pending?.Dispose();
+                geometry?.Dispose();
+                analyzer.Dispose();
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
+        public void GpuAnalyzerToleranceAcceptsTinyRgbDeviation()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            var mesh = CreateQuadMesh(Vector2.zero, Vector2.one);
+            var baseColor = new Color(0.4f, 0.5f, 0.6f, 1f);
+            var source = CreateSource(
+                8,
+                8,
+                (x, y) => x == 7 && y == 7
+                    ? new Color(
+                        baseColor.r + 1f / 255f,
+                        baseColor.g,
+                        baseColor.b,
+                        baseColor.a)
+                    : baseColor);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuPending? pending = null;
+            try
+            {
+                Assert.That(
+                    analyzer.TryBuildGeometry(
+                        new[] { (mesh, 0) },
+                        0,
+                        Matrix2x3.Identity,
+                        8,
+                        8,
+                        out geometry),
+                    Is.True);
+                Assert.That(
+                    analyzer.TryQueue(
+                        source,
+                        geometry!,
+                        out pending,
+                        2),
+                    Is.True);
+                Assert.That(
+                    pending!.TryGetFlags(out var flags),
+                    Is.True);
+                Assert.That(flags.IsConstant, Is.False);
+                Assert.That(
+                    flags.ApproximateConstantCandidate,
+                    Is.True);
+            }
+            finally
+            {
+                pending?.Dispose();
+                geometry?.Dispose();
+                analyzer.Dispose();
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
+        public void GpuAnalyzerToleranceStillRequiresExactAlpha()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            var mesh = CreateQuadMesh(Vector2.zero, Vector2.one);
+            var baseColor = new Color(0.4f, 0.5f, 0.6f, 0.5f);
+            var source = CreateSource(
+                8,
+                8,
+                (x, y) => x == 7 && y == 7
+                    ? new Color(
+                        baseColor.r,
+                        baseColor.g,
+                        baseColor.b,
+                        baseColor.a + 1f / 255f)
+                    : baseColor);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuPending? pending = null;
+            try
+            {
+                Assert.That(
+                    analyzer.TryBuildGeometry(
+                        new[] { (mesh, 0) },
+                        0,
+                        Matrix2x3.Identity,
+                        8,
+                        8,
+                        out geometry),
+                    Is.True);
+                Assert.That(
+                    analyzer.TryQueue(
+                        source,
+                        geometry!,
+                        out pending,
+                        2),
+                    Is.True);
+                Assert.That(
+                    pending!.TryGetFlags(out var flags),
+                    Is.True);
+                Assert.That(
+                    flags.ApproximateConstantCandidate,
+                    Is.False);
+            }
+            finally
+            {
+                pending?.Dispose();
+                geometry?.Dispose();
+                analyzer.Dispose();
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
+        public void GpuToleranceValidationUsesAdoptedCoverageThresholds()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            var baseColor = new Color(0.4f, 0.5f, 0.6f, 1f);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            try
+            {
+                AssertToleranceValidation(
+                    analyzer,
+                    baseColor,
+                    index => index < 90
+                        ? baseColor
+                        : index < 99
+                            ? new Color(
+                                baseColor.r + 3f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a)
+                            : new Color(
+                                baseColor.r + 5f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a),
+                    true);
+
+                AssertToleranceValidation(
+                    analyzer,
+                    baseColor,
+                    index => index < 89
+                        ? baseColor
+                        : index < 99
+                            ? new Color(
+                                baseColor.r + 3f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a)
+                            : new Color(
+                                baseColor.r + 5f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a),
+                    false);
+
+                AssertToleranceValidation(
+                    analyzer,
+                    baseColor,
+                    index => index < 90
+                        ? baseColor
+                        : index < 98
+                            ? new Color(
+                                baseColor.r + 3f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a)
+                            : new Color(
+                                baseColor.r + 5f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a),
+                    false);
+
+                AssertToleranceValidation(
+                    analyzer,
+                    baseColor,
+                    index => index < 90
+                        ? baseColor
+                        : index < 99
+                            ? new Color(
+                                baseColor.r + 3f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a)
+                            : new Color(
+                                baseColor.r + 6f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a),
+                    false);
+
+                AssertToleranceValidation(
+                    analyzer,
+                    baseColor,
+                    index => index < 90
+                        ? baseColor
+                        : index < 99
+                            ? new Color(
+                                baseColor.r + 3f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a)
+                            : new Color(
+                                baseColor.r + 5f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a + 1f / 255f),
+                    false);
+
+                AssertToleranceValidation(
+                    analyzer,
+                    baseColor,
+                    index => index < 90
+                        ? baseColor
+                        : index < 99
+                            ? new Color(
+                                baseColor.r + 5f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a)
+                            : new Color(
+                                baseColor.r + 7f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a),
+                    true,
+                    4);
+
+                AssertToleranceValidation(
+                    analyzer,
+                    baseColor,
+                    index => (index & 1) == 0
+                        ? baseColor
+                        : new Color(
+                            baseColor.r + 1f / 255f,
+                            baseColor.g,
+                            baseColor.b,
+                            baseColor.a),
+                    false);
+            }
+            finally
+            {
+                analyzer.Dispose();
+            }
+        }
+
+        private static void AssertToleranceValidation(
+            AtlasSourceGpuAnalyzer analyzer,
+            Color representative,
+            System.Func<int, Color> pixel,
+            bool expected,
+            int tolerance = 2)
+        {
+            var mesh = CreateQuadMesh(Vector2.zero, Vector2.one);
+            var source = CreateSource(
+                10,
+                10,
+                (x, y) => pixel(y * 10 + x));
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuToleranceValidationPending? pending = null;
+            try
+            {
+                Assert.That(
+                    analyzer.TryBuildGeometry(
+                        new[] { (mesh, 0) },
+                        0,
+                        Matrix2x3.Identity,
+                        10,
+                        10,
+                        out geometry),
+                    Is.True);
+                Assert.That(
+                    analyzer.TryQueueToleranceValidation(
+                        source,
+                        geometry!,
+                        representative,
+                        tolerance,
+                        out pending),
+                    Is.True);
+                Assert.That(
+                    pending!.TryGetValidation(out var validation),
+                    Is.True);
+                Assert.That(validation.Accepted, Is.EqualTo(expected));
+            }
+            finally
+            {
+                pending?.Dispose();
+                geometry?.Dispose();
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
+        public void GpuRepresentativeProbeSelectsDominantExactRgb()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            var mesh = CreateQuadMesh(Vector2.zero, Vector2.one);
+            var baseColor = new Color(0.4f, 0.5f, 0.6f, 1f);
+            var source = CreateSource(
+                31,
+                29,
+                (x, y) => x == 30 && y == 28
+                    ? new Color(
+                        baseColor.r + 1f / 255f,
+                        baseColor.g,
+                        baseColor.b,
+                        baseColor.a)
+                    : baseColor);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuProbePending? probe = null;
+            try
+            {
+                Assert.That(
+                    analyzer.TryBuildGeometry(
+                        new[] { (mesh, 0) },
+                        0,
+                        Matrix2x3.Identity,
+                        31,
+                        29,
+                        out geometry),
+                    Is.True);
+                Assert.That(
+                    analyzer.TryQueueRepresentativeProbe(
+                        source,
+                        geometry!,
+                        out probe),
+                    Is.True);
+                Assert.That(
+                    probe!.TryGetRepresentative(
+                        out var representative),
+                    Is.True);
+                Assert.That(representative.r, Is.EqualTo(baseColor.r));
+                Assert.That(representative.g, Is.EqualTo(baseColor.g));
+                Assert.That(representative.b, Is.EqualTo(baseColor.b));
+            }
+            finally
+            {
+                probe?.Dispose();
+                geometry?.Dispose();
+                analyzer.Dispose();
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+            }
+        }
+
         private static Mesh CreateQuadMesh(
             Vector2 uvMin,
             Vector2 uvMax)

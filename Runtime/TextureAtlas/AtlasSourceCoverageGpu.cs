@@ -14,17 +14,20 @@ namespace net.rs64.TexTransTool.TextureAtlas
     {
         internal readonly bool Known;
         internal readonly bool IsConstant;
+        internal readonly bool ApproximateConstantCandidate;
         internal readonly bool RgbZero;
         internal readonly bool AlphaZero;
 
         internal AtlasSourceGpuFlags(
             bool known,
             bool isConstant,
+            bool approximateConstantCandidate,
             bool rgbZero,
             bool alphaZero)
         {
             Known = known;
             IsConstant = isConstant;
+            ApproximateConstantCandidate = approximateConstantCandidate;
             RgbZero = rgbZero;
             AlphaZero = alphaZero;
         }
@@ -55,17 +58,20 @@ namespace net.rs64.TexTransTool.TextureAtlas
     internal sealed class AtlasSourceGpuPending : IDisposable
     {
         internal readonly RenderTexture Source;
+        internal readonly AtlasSourceGpuGeometry Geometry;
         internal readonly Vector2Int ReferenceCoord;
         internal readonly RenderTexture Result;
         internal readonly AsyncGPUReadbackRequest Request;
 
         internal AtlasSourceGpuPending(
             RenderTexture source,
+            AtlasSourceGpuGeometry geometry,
             Vector2Int referenceCoord,
             RenderTexture result,
             AsyncGPUReadbackRequest request)
         {
             Source = source;
+            Geometry = geometry;
             ReferenceCoord = referenceCoord;
             Result = result;
             Request = request;
@@ -90,9 +96,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 if (pixel.a < 128)
                     return false;
 
+                // R stores the worst constant-color comparison state:
+                // 0 = exact, 1/4 = within configured T, 1/2 = inside the
+                // tolerant-candidate envelope, 1 = outside that envelope.
                 flags = new AtlasSourceGpuFlags(
                     true,
-                    pixel.r < 128,
+                    pixel.r < 32,
+                    pixel.r < 224,
                     pixel.g < 128,
                     pixel.b < 128);
                 return true;
@@ -124,22 +134,161 @@ namespace net.rs64.TexTransTool.TextureAtlas
         }
     }
 
+    internal sealed class AtlasSourceGpuProbePending : IDisposable
+    {
+        private readonly RenderTexture _result;
+        private readonly AsyncGPUReadbackRequest _request;
+
+        internal AtlasSourceGpuProbePending(
+            RenderTexture result,
+            AsyncGPUReadbackRequest request)
+        {
+            _result = result;
+            _request = request;
+        }
+
+        internal bool TryGetRepresentative(out Color representative)
+        {
+            representative = default;
+            try
+            {
+                var request = _request;
+                request.WaitForCompletion();
+                if (request.hasError)
+                    return false;
+
+                NativeArray<Color> data = request.GetData<Color>();
+                if (data.Length == 0)
+                    return false;
+
+                var counts =
+                    new Dictionary<(float r, float g, float b), int>();
+                (float r, float g, float b) best = default;
+                var bestCount = 0;
+                var covered = 0;
+
+                foreach (var pixel in data)
+                {
+                    if (pixel.a < 0.5f)
+                        continue;
+
+                    covered += 1;
+                    var key = (pixel.r, pixel.g, pixel.b);
+                    counts.TryGetValue(key, out var count);
+                    count += 1;
+                    counts[key] = count;
+                    if (count > bestCount)
+                    {
+                        bestCount = count;
+                        best = key;
+                    }
+                }
+
+                if (covered == 0)
+                    return false;
+
+                representative =
+                    new Color(best.r, best.g, best.b, 1f);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public void Dispose()
+        {
+            UnityEngine.Object.DestroyImmediate(_result);
+        }
+    }
+
+    internal readonly struct AtlasSourceGpuToleranceValidation
+    {
+        internal readonly int Covered;
+        internal readonly int ExactRgb;
+        internal readonly int WithinPrimary;
+        internal readonly int TailViolations;
+
+        internal AtlasSourceGpuToleranceValidation(
+            int covered,
+            int exactRgb,
+            int withinPrimary,
+            int tailViolations)
+        {
+            Covered = covered;
+            ExactRgb = exactRgb;
+            WithinPrimary = withinPrimary;
+            TailViolations = tailViolations;
+        }
+
+        internal bool Accepted =>
+            Covered > 0
+            && (long)ExactRgb * 10L >= (long)Covered * 9L
+            && (long)WithinPrimary * 100L >= (long)Covered * 99L
+            && TailViolations == 0;
+    }
+
+    internal sealed class AtlasSourceGpuToleranceValidationPending
+        : IDisposable
+    {
+        private readonly RenderTexture _result;
+        private readonly AsyncGPUReadbackRequest _request;
+
+        internal AtlasSourceGpuToleranceValidationPending(
+            RenderTexture result,
+            AsyncGPUReadbackRequest request)
+        {
+            _result = result;
+            _request = request;
+        }
+
+        internal bool TryGetValidation(
+            out AtlasSourceGpuToleranceValidation validation)
+        {
+            validation = default;
+            try
+            {
+                var request = _request;
+                request.WaitForCompletion();
+                if (request.hasError)
+                    return false;
+
+                var data = request.GetData<Color>();
+                if (data.Length != 1)
+                    return false;
+
+                var pixel = data[0];
+                validation = new AtlasSourceGpuToleranceValidation(
+                    Mathf.RoundToInt(pixel.r),
+                    Mathf.RoundToInt(pixel.g),
+                    Mathf.RoundToInt(pixel.b),
+                    Mathf.RoundToInt(pixel.a));
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public void Dispose()
+        {
+            UnityEngine.Object.DestroyImmediate(_result);
+        }
+    }
+
     /// <summary>
     /// GPU implementation of source-side Atlas texture inspection.
     ///
     /// CPU work is proportional to UV triangle count: it transforms triangles
     /// and expands them by the one-pixel linear-filter support. The expanded
     /// polygons are rasterized directly while the fragment shader evaluates the
-    /// canonical TTT source texture. A 4x4 max reduction collapses the result to
-    /// one RGBA32 pixel:
-    /// R = any covered texel differs from the reference texel
-    /// G = any covered texel has non-zero RGB
-    /// B = any covered texel has non-zero alpha
-    /// A = coverage exists
-    ///
-    /// Only that one pixel is read back for the proof. The actual constant color
-    /// is read separately from one canonical source texel after a constant proof
-    /// succeeds, preserving the existing RGBAFloat source representation.
+    /// canonical TTT source texture. A 4x4 max reduction collapses the first-pass
+    /// result to one RGBA32 pixel for exact/near-constant candidacy and exact
+    /// zero proofs. Tolerant candidates then use a compact representative probe
+    /// followed by a full-coverage GPU count that enforces the 90% exact,
+    /// 99% within T+1, 100% within T+3, and exact-alpha rules.
     /// </summary>
     internal sealed class AtlasSourceGpuAnalyzer : IDisposable
     {
@@ -150,6 +299,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
         // texel centers lying exactly on the expanded polygon edge are not
         // required coverage, so no additional epsilon is applied.
         private const float FilterRadius = 1f;
+        // Unequal prime dimensions reduce aliasing with common 2x2 / 4x4
+        // dither patterns while keeping the readback tiny.
+        private const int RepresentativeProbeWidth = 31;
+        private const int RepresentativeProbeHeight = 29;
 
         private sealed class SourceSlotData
         {
@@ -369,7 +522,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal bool TryQueue(
             RenderTexture source,
             AtlasSourceGpuGeometry geometry,
-            out AtlasSourceGpuPending? pending)
+            out AtlasSourceGpuPending? pending,
+            int rgbTolerance = 0,
+            Color? referenceValue = null)
         {
             pending = null;
             if (source == null
@@ -411,6 +566,15 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         geometry.ReferenceCoord.y,
                         0f,
                         0f));
+                properties.SetFloat(
+                    "_Tolerance",
+                    Mathf.Clamp(rgbTolerance, 0, 4) / 255f);
+                properties.SetFloat(
+                    "_UseReferenceValue",
+                    referenceValue.HasValue ? 1f : 0f);
+                properties.SetVector(
+                    "_ReferenceValue",
+                    referenceValue ?? default);
 
                 // NDMF invokes this outside a camera render callback.
                 // Submit the offscreen draw explicitly through a command buffer.
@@ -515,6 +679,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     null);
                 pending = new AtlasSourceGpuPending(
                     source,
+                    geometry,
                     geometry.ReferenceCoord,
                     result,
                     request);
@@ -538,6 +703,286 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                 if (result != null)
                     UnityEngine.Object.DestroyImmediate(result);
+            }
+        }
+
+        internal bool TryQueueRepresentativeProbe(
+            RenderTexture source,
+            AtlasSourceGpuGeometry geometry,
+            out AtlasSourceGpuProbePending? pending)
+        {
+            pending = null;
+            if (source == null
+                || source.width <= 0
+                || source.height <= 0
+                || !SystemInfo.SupportsRenderTextureFormat(
+                    RenderTextureFormat.ARGBFloat))
+                return false;
+
+            RenderTexture? result = null;
+            try
+            {
+                result = new RenderTexture(
+                    RepresentativeProbeWidth,
+                    RepresentativeProbeHeight,
+                    0,
+                    RenderTextureFormat.ARGBFloat,
+                    RenderTextureReadWrite.Linear)
+                {
+                    hideFlags = HideFlags.HideAndDontSave,
+                    filterMode = FilterMode.Point,
+                    antiAliasing = 1,
+                    useMipMap = false,
+                    autoGenerateMips = false,
+                };
+                result.Create();
+
+                var properties = new MaterialPropertyBlock();
+                properties.SetTexture("_Source", source);
+                properties.SetVector(
+                    "_SourceSize",
+                    new Vector4(
+                        source.width,
+                        source.height,
+                        1f / source.width,
+                        1f / source.height));
+
+                using (var command = new CommandBuffer
+                {
+                    name = "TTT Atlas Source Representative Probe",
+                })
+                {
+                    command.SetRenderTarget(result);
+                    command.ClearRenderTarget(false, true, Color.clear);
+                    command.DrawMesh(
+                        geometry.Mesh,
+                        Matrix4x4.identity,
+                        _material,
+                        0,
+                        2,
+                        properties);
+                    Graphics.ExecuteCommandBuffer(command);
+                }
+
+                var request = AsyncGPUReadback.Request(
+                    result,
+                    0,
+                    TextureFormat.RGBAFloat,
+                    null);
+                pending = new AtlasSourceGpuProbePending(
+                    result,
+                    request);
+                result = null;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (result != null)
+                    UnityEngine.Object.DestroyImmediate(result);
+            }
+        }
+
+        internal bool TryQueueToleranceValidation(
+            RenderTexture source,
+            AtlasSourceGpuGeometry geometry,
+            Color representative,
+            int rgbTolerance,
+            out AtlasSourceGpuToleranceValidationPending? pending)
+        {
+            pending = null;
+            var tolerance = Mathf.Clamp(rgbTolerance, 1, 4);
+            RenderTexture? result = null;
+            try
+            {
+                if (!TryQueueToleranceValidationPass(
+                        source,
+                        geometry,
+                        representative,
+                        4,
+                        out result,
+                        out var request,
+                        (tolerance + 1f) / 255f,
+                        (tolerance + 3f) / 255f)
+                    || result == null)
+                    return false;
+
+                pending =
+                    new AtlasSourceGpuToleranceValidationPending(
+                        result,
+                        request);
+                result = null;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (result != null)
+                    UnityEngine.Object.DestroyImmediate(result);
+            }
+        }
+
+        private bool TryQueueToleranceValidationPass(
+            RenderTexture source,
+            AtlasSourceGpuGeometry geometry,
+            Color representative,
+            int classificationPass,
+            out RenderTexture? result,
+            out AsyncGPUReadbackRequest request,
+            float primaryTolerance = 0f,
+            float tailTolerance = 0f)
+        {
+            result = null;
+            request = default;
+            RenderTexture? classification = null;
+            RenderTexture? current = null;
+            var currentIsTemporary = false;
+            RenderTexture? final = null;
+
+            try
+            {
+                classification = RenderTexture.GetTemporary(
+                    geometry.Bounds.width,
+                    geometry.Bounds.height,
+                    0,
+                    RenderTextureFormat.ARGB32,
+                    RenderTextureReadWrite.Linear,
+                    1);
+                classification.filterMode = FilterMode.Point;
+                classification.antiAliasing = 1;
+
+                var properties = new MaterialPropertyBlock();
+                properties.SetTexture("_Source", source);
+                properties.SetVector(
+                    "_SourceSize",
+                    new Vector4(
+                        source.width,
+                        source.height,
+                        1f / source.width,
+                        1f / source.height));
+                properties.SetVector(
+                    "_ReferenceValue",
+                    representative);
+                properties.SetFloat(
+                    "_PrimaryTolerance",
+                    primaryTolerance);
+                properties.SetFloat(
+                    "_TailTolerance",
+                    tailTolerance);
+
+                using (var command = new CommandBuffer
+                {
+                    name = "TTT Atlas Constant Tolerance Validation",
+                })
+                {
+                    command.SetRenderTarget(classification);
+                    command.ClearRenderTarget(false, true, Color.clear);
+                    command.DrawMesh(
+                        geometry.Mesh,
+                        Matrix4x4.identity,
+                        _material,
+                        0,
+                        classificationPass,
+                        properties);
+                    Graphics.ExecuteCommandBuffer(command);
+                }
+
+                final = new RenderTexture(
+                    1,
+                    1,
+                    0,
+                    RenderTextureFormat.ARGBFloat,
+                    RenderTextureReadWrite.Linear)
+                {
+                    hideFlags = HideFlags.HideAndDontSave,
+                    filterMode = FilterMode.Point,
+                    antiAliasing = 1,
+                    useMipMap = false,
+                    autoGenerateMips = false,
+                };
+                final.Create();
+
+                current = classification;
+                currentIsTemporary = true;
+                classification = null;
+
+                var currentWidth = geometry.Bounds.width;
+                var currentHeight = geometry.Bounds.height;
+                while (true)
+                {
+                    var nextWidth =
+                        Math.Max(1, (currentWidth + 3) / 4);
+                    var nextHeight =
+                        Math.Max(1, (currentHeight + 3) / 4);
+                    var useFinal =
+                        nextWidth == 1 && nextHeight == 1;
+
+                    RenderTexture next;
+                    var nextIsTemporary = !useFinal;
+                    if (useFinal)
+                    {
+                        next = final;
+                    }
+                    else
+                    {
+                        next = RenderTexture.GetTemporary(
+                            nextWidth,
+                            nextHeight,
+                            0,
+                            RenderTextureFormat.ARGBFloat,
+                            RenderTextureReadWrite.Linear,
+                            1);
+                        next.filterMode = FilterMode.Point;
+                        next.antiAliasing = 1;
+                    }
+
+                    Graphics.Blit(
+                        current!,
+                        next,
+                        _material,
+                        3);
+
+                    if (currentIsTemporary)
+                        RenderTexture.ReleaseTemporary(current!);
+
+                    current = next;
+                    currentIsTemporary = nextIsTemporary;
+                    currentWidth = nextWidth;
+                    currentHeight = nextHeight;
+
+                    if (useFinal)
+                        break;
+                }
+
+                request = AsyncGPUReadback.Request(
+                    final,
+                    0,
+                    TextureFormat.RGBAFloat,
+                    null);
+                result = final;
+                final = null;
+                current = null;
+                currentIsTemporary = false;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (classification != null)
+                    RenderTexture.ReleaseTemporary(classification);
+                if (current != null && currentIsTemporary)
+                    RenderTexture.ReleaseTemporary(current);
+                if (final != null)
+                    UnityEngine.Object.DestroyImmediate(final);
             }
         }
 

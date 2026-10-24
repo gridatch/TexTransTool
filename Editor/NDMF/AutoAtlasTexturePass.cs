@@ -411,6 +411,8 @@ namespace net.rs64.TexTransTool.NDMF
                 IslandPadding = Mathf.Clamp(configuration.IslandPadding, 0f, 0.05f),
                 OptimizeConstantTextures =
                     configuration.OptimizeConstantTextures,
+                ConstantTextureColorTolerance =
+                    configuration.ConstantTextureColorTolerance,
                 DisableVisuallyUnusedShaderFeatures =
                     configuration.DisableVisuallyUnusedShaderFeatures,
             };

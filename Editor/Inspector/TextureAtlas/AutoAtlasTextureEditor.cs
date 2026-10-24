@@ -12,6 +12,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private SerializedProperty _enableAdditionalAtlasMerging = null!;
         private SerializedProperty _excludeVisibilityAnimatedItemsFromTextureMerging = null!;
         private SerializedProperty _optimizeConstantTextures = null!;
+        private SerializedProperty _constantTextureColorTolerance = null!;
         private SerializedProperty _disableVisuallyUnusedShaderFeatures = null!;
         private SerializedProperty _textureMergingExcludedRenderers = null!;
         private SerializedProperty _textureMergingExcludedMaterials = null!;
@@ -25,6 +26,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _enableAdditionalAtlasMerging = serializedObject.FindProperty(nameof(AutoAtlasTexture.EnableAdditionalAtlasMerging));
             _excludeVisibilityAnimatedItemsFromTextureMerging = serializedObject.FindProperty(nameof(AutoAtlasTexture.ExcludeVisibilityAnimatedItemsFromTextureMerging));
             _optimizeConstantTextures = serializedObject.FindProperty(nameof(AutoAtlasTexture.OptimizeConstantTextures));
+            _constantTextureColorTolerance = serializedObject.FindProperty(nameof(AutoAtlasTexture.ConstantTextureColorTolerance));
             _disableVisuallyUnusedShaderFeatures = serializedObject.FindProperty(nameof(AutoAtlasTexture.DisableVisuallyUnusedShaderFeatures));
             _textureMergingExcludedRenderers = serializedObject.FindProperty(nameof(AutoAtlasTexture.TextureMergingExcludedRenderers));
             _textureMergingExcludedMaterials = serializedObject.FindProperty(nameof(AutoAtlasTexture.TextureMergingExcludedMaterials));
@@ -48,6 +50,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 EditorGUILayout.PropertyField(
                     _optimizeConstantTextures,
                     "AtlasTexture:prop:OptimizeConstantTextures".GlcV());
+                using (new EditorGUI.DisabledScope(
+                           !_optimizeConstantTextures.boolValue))
+                using (new EditorGUI.IndentLevelScope())
+                {
+                    EditorGUILayout.PropertyField(
+                        _constantTextureColorTolerance,
+                        "AtlasTexture:prop:ConstantTextureColorTolerance".GlcV());
+                }
                 EditorGUILayout.PropertyField(
                     _disableVisuallyUnusedShaderFeatures,
                     "AtlasTexture:prop:DisableVisuallyUnusedShaderFeatures".GlcV());
