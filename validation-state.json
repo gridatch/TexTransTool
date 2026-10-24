@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.22+wdt.ttt.1.0.2",
-  "lastDebugSerial": 1259,
-  "currentDebugVersion": "0.1.22+wdt.ttt.1.0.2.debug.1259.constant-color-tolerance.167f51f",
+  "lastDebugSerial": 1260,
+  "currentDebugVersion": "0.1.22+wdt.ttt.1.0.2.debug.1260.constant-color-tolerance.eb10d94",
   "currentDebugChange": "constant-color-tolerance",
   "currentDebugBranch": "feat/constant-color-tolerance",
-  "currentDebugCommit": "167f51f61fa544a590b861c1b50c00e5de0c6471",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.22+wdt.ttt.1.0.2.debug.1259.constant-color-tolerance.167f51f.zip"
+  "currentDebugCommit": "eb10d949c10e535f6bbed17e28edc7f5df022259",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.22+wdt.ttt.1.0.2.debug.1260.constant-color-tolerance.eb10d94.zip"
 }
