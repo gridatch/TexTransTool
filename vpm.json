@@ -506,17 +506,17 @@
           },
           "zipSHA256": "a21d322ae5b4715e9c6ba83c5e30edf4168553edb5553301dd122e93e8fd2ba7"
         },
-        "0.1.23+wdt.ttt.1.0.2.debug.1286.wdt-atlas-runtime-visibility.b79a8e5": {
+        "0.1.23+wdt.ttt.1.0.2.debug.1287.wdt-atlas-runtime-visibility.3e58d51": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.23+wdt.ttt.1.0.2.debug.1286.wdt-atlas-runtime-visibility.b79a8e5",
+          "version": "0.1.23+wdt.ttt.1.0.2.debug.1287.wdt-atlas-runtime-visibility.3e58d51",
           "unity": "2022.3",
-          "description": "Debug build 1286 for wdt-atlas-runtime-visibility from feat/wdt-atlas-runtime-visibility at b79a8e5. Based on WDT 0.1.23+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 1287 for wdt-atlas-runtime-visibility from feat/wdt-atlas-runtime-visibility at 3e58d51. Based on WDT 0.1.23+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1286.wdt-atlas-runtime-visibility.b79a8e5.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1287.wdt-atlas-runtime-visibility.3e58d51.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -529,7 +529,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "55b90e7a30ef5269e91e92b02eb257115caa8aed8ab1347a52c5d61fd025240d"
+          "zipSHA256": "91c0e62438fd60f2caedd8e5f2a183592a7cb4469995a3ed3d946b961065ebb7"
         }
       }
     }
