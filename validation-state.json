@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.23+wdt.ttt.1.0.2",
-  "lastDebugSerial": 1278,
-  "currentDebugVersion": "0.1.23+wdt.ttt.1.0.2.debug.1278.wdt-atlas-runtime-visibility.6803e0d",
+  "lastDebugSerial": 1279,
+  "currentDebugVersion": "0.1.23+wdt.ttt.1.0.2.debug.1279.wdt-atlas-runtime-visibility.328a28a",
   "currentDebugChange": "wdt-atlas-runtime-visibility",
   "currentDebugBranch": "feat/wdt-atlas-runtime-visibility",
-  "currentDebugCommit": "6803e0d332d86b00f1b20a600a601589c423f7d1",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1278.wdt-atlas-runtime-visibility.6803e0d.zip"
+  "currentDebugCommit": "328a28a5f420cbec1bab8b854e13470ba3d64184",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1279.wdt-atlas-runtime-visibility.328a28a.zip"
 }
