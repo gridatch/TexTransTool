@@ -4,6 +4,7 @@ using System.Linq;
 using NUnit.Framework;
 using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.AAOCode;
+using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.TestCode
@@ -62,6 +63,129 @@ namespace net.rs64.TexTransTool.TestCode
                 Object.DestroyImmediate(source);
                 Object.DestroyImmediate(changed);
                 Object.DestroyImmediate(unchanged);
+            }
+        }
+
+        [Test]
+        public void ExplicitReferenceCopyBindingsAreGenericPlannerBindings()
+        {
+            var atlasSetting = new AtlasSetting
+            {
+                TextureFineTuning = new List<ITextureFineTuning>
+                {
+                    new ReferenceCopy(
+                        new PropertyName("_Source"),
+                        new List<PropertyName>
+                        {
+                            new PropertyName("_AliasA"),
+                            new PropertyName("_AliasB"),
+                        }),
+                },
+            };
+
+            var bindings = AtlasSourceOptimizer.ResolveConstantBoundProperties(
+                "_Source",
+                atlasSetting,
+                experimentalOptions: null);
+
+            Assert.That(
+                bindings,
+                Is.EquivalentTo(new[]
+                {
+                    "_Source",
+                    "_AliasA",
+                    "_AliasB",
+                }));
+        }
+
+        [Test]
+        public void RemovedReferenceCopyTargetIsNotAConstantBinding()
+        {
+            var atlasSetting = new AtlasSetting
+            {
+                TextureFineTuning = new List<ITextureFineTuning>
+                {
+                    new ReferenceCopy(
+                        new PropertyName("_Source"),
+                        new List<PropertyName>
+                        {
+                            new PropertyName("_Alias"),
+                        }),
+                    new Remove(
+                        new List<PropertyName>
+                        {
+                            new PropertyName("_Alias"),
+                        },
+                        PropertySelect.Equal),
+                },
+            };
+
+            var bindings = AtlasSourceOptimizer.ResolveConstantBoundProperties(
+                "_Source",
+                atlasSetting,
+                experimentalOptions: null);
+
+            Assert.That(bindings, Is.EquivalentTo(new[] { "_Source" }));
+        }
+
+        [Test]
+        public void ConstantBindingsAreRemovedFromProjectedTextureUses()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var source = new Texture2D(512, 512);
+            var aliasSource = new Texture2D(512, 512);
+            var remaining = new Texture2D(512, 512);
+            try
+            {
+                var original = new Dictionary<
+                    Material, IReadOnlyDictionary<string, Texture>>
+                {
+                    [material] = new Dictionary<string, Texture>
+                    {
+                        ["_Source"] = source,
+                        ["_Alias"] = aliasSource,
+                        ["_Remaining"] = remaining,
+                    },
+                };
+                var decision = new AtlasConstantTextureDecision(
+                        material,
+                        "_Source",
+                        source,
+                        Color.white)
+                    .WithBoundProperties(new[] { "_Source", "_Alias" });
+
+                var projected =
+                    AtlasSourceOptimizer.BuildProjectedTextureUses(
+                        original,
+                        new[] { decision },
+                        System.Array.Empty<AtlasFeatureDisableDecision>());
+
+                Assert.That(
+                    projected[material].Keys,
+                    Is.EquivalentTo(new[] { "_Remaining" }));
+
+                var plan = new AtlasSourceOptimizationPlan(
+                    original,
+                    projected,
+                    new[] { decision },
+                    System.Array.Empty<AtlasFeatureDisableDecision>());
+                Assert.That(
+                    plan.RemovedBindings(new[] { material }),
+                    Is.EquivalentTo(new[]
+                    {
+                        (material, "_Source"),
+                        (material, "_Alias"),
+                    }));
+            }
+            finally
+            {
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(aliasSource);
+                Object.DestroyImmediate(remaining);
+                Object.DestroyImmediate(material);
             }
         }
 

@@ -453,6 +453,68 @@ namespace net.rs64.TexTransTool.TextureAtlas.FineTuning
             return true;
         }
 
+        internal static string[] ResolveReferenceCopyBoundProperties(
+            string sourceProperty,
+            Dictionary<string, TexFineTuningHolder> tuningHolders)
+        {
+            var renderTextureProperties =
+                new Dictionary<string, string?>(StringComparer.Ordinal);
+            foreach (var property in tuningHolders.Keys)
+            {
+                renderTextureProperties[property] =
+                    string.Equals(
+                        property,
+                        sourceProperty,
+                        StringComparison.Ordinal)
+                        ? sourceProperty
+                        : null;
+            }
+
+            // Mirror the ReferenceCopy processor for a constant output whose
+            // only initial render texture is sourceProperty. This deliberately
+            // does not run equivalent-output auto sharing; it models only
+            // configured ReferenceCopy semantics.
+            foreach (var tuning in tuningHolders)
+            {
+                var reference = tuning.Value.Find<ReferenceCopyData>();
+                if (reference == null
+                    || string.IsNullOrWhiteSpace(reference.CopySource)
+                    || !renderTextureProperties.TryGetValue(
+                        reference.CopySource!,
+                        out var copySource))
+                {
+                    continue;
+                }
+
+                if (string.Equals(
+                        renderTextureProperties[tuning.Key],
+                        copySource,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                renderTextureProperties[tuning.Key] = copySource;
+            }
+
+            // Remove runs after ReferenceCopy in the normal FineTuning
+            // processor order, so removed aliases are not effective bindings.
+            foreach (var tuning in tuningHolders)
+            {
+                if (tuning.Value.Find<RemoveData>()?.IsRemove == true)
+                    renderTextureProperties[tuning.Key] = null;
+            }
+
+            return renderTextureProperties
+                .Where(pair => string.Equals(
+                    pair.Value,
+                    sourceProperty,
+                    StringComparison.Ordinal))
+                .Select(pair => pair.Key)
+                .OrderBy(property => property, StringComparer.Ordinal)
+                .ToArray();
+        }
+
         public static TexFineTuningResult ProcessingTextureFineTuning(ITexTransToolForUnity engine, Dictionary<string, TexFineTuningHolder> tuningHolder, Dictionary<string, ITTRenderTexture> atlasedTextures)
         {
             var pressers = InterfaceUtility.CreateConcreteAssignableTypeInstances<ITuningProcessor>().ToArray();

@@ -33,6 +33,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
         internal readonly Texture Source;
         internal readonly Color Color;
         internal readonly AtlasSourceProofScope ProofScope;
+        internal readonly string[] BoundProperties;
 
         internal AtlasConstantTextureDecision(
             Material material, string property, Texture source, Color color)
@@ -51,12 +52,47 @@ namespace net.rs64.TexTransTool.TextureAtlas
             Texture source,
             Color color,
             AtlasSourceProofScope proofScope)
+            : this(
+                material,
+                property,
+                source,
+                color,
+                proofScope,
+                new[] { property })
+        {
+        }
+
+        private AtlasConstantTextureDecision(
+            Material material,
+            string property,
+            Texture source,
+            Color color,
+            AtlasSourceProofScope proofScope,
+            IEnumerable<string> boundProperties)
         {
             Material = material;
             Property = property;
             Source = source;
             Color = color;
             ProofScope = proofScope;
+            BoundProperties = boundProperties
+                .Append(property)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        internal AtlasConstantTextureDecision WithBoundProperties(
+            IEnumerable<string> boundProperties)
+        {
+            return new AtlasConstantTextureDecision(
+                Material,
+                Property,
+                Source,
+                Color,
+                ProofScope,
+                boundProperties);
         }
     }
 
@@ -200,7 +236,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var selected = materials.ToHashSet();
             var result = ConstantTextures
                 .Where(item => selected.Contains(item.Material))
-                .Select(item => (item.Material, item.Property))
+                .SelectMany(item => item.BoundProperties.Select(
+                    property => (item.Material, property)))
                 .ToHashSet();
             foreach (var item in FeatureDisables)
             {
@@ -932,27 +969,20 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 atlasSetting,
                 experimentalOptions);
 
-            var projected = original.ToDictionary(
-                pair => pair.Key,
-                pair => pair.Value.ToDictionary(
-                    property => property.Key,
-                    property => property.Value)
-                    as IReadOnlyDictionary<string, Texture>);
-
-            foreach (var item in constants)
+            for (var i = 0; i < constants.Count; i += 1)
             {
-                if (projected.TryGetValue(item.Material, out var readOnly))
-                    ((Dictionary<string, Texture>)readOnly).Remove(item.Property);
+                var decision = constants[i];
+                constants[i] = decision.WithBoundProperties(
+                    ResolveConstantBoundProperties(
+                        decision.Property,
+                        atlasSetting,
+                        experimentalOptions));
             }
 
-            foreach (var item in featureDisables)
-            {
-                if (!projected.TryGetValue(item.Material, out var readOnly))
-                    continue;
-                var properties = (Dictionary<string, Texture>)readOnly;
-                foreach (var property in item.Rule.TextureProperties)
-                    properties.Remove(property);
-            }
+            var projected = BuildProjectedTextureUses(
+                original,
+                constants,
+                featureDisables);
 
             var primaryDensitySizes = BuildPrimaryDensityOverrides(
                 original,
@@ -975,6 +1005,64 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 constants,
                 featureDisables,
                 primaryDensitySizes);
+        }
+
+        internal static string[] ResolveConstantBoundProperties(
+            string property,
+            AtlasSetting atlasSetting,
+            AtlasTextureExperimentalFeature? experimentalOptions)
+        {
+            var holders = TexFineTuningUtility.InitTexFineTuningHolders(
+                new[] { property });
+
+            foreach (var fineTuning in atlasSetting.TextureFineTuning)
+                fineTuning?.AddSetting(holders);
+            if (experimentalOptions != null)
+                AtlasTexture.IndividualTuningAddSettings(
+                    holders,
+                    experimentalOptions.TextureIndividualFineTuning);
+
+            return TexFineTuningUtility.ResolveReferenceCopyBoundProperties(
+                property,
+                holders);
+        }
+
+        internal static IReadOnlyDictionary<
+            Material, IReadOnlyDictionary<string, Texture>>
+            BuildProjectedTextureUses(
+                IReadOnlyDictionary<
+                    Material, IReadOnlyDictionary<string, Texture>> original,
+                IEnumerable<AtlasConstantTextureDecision> constants,
+                IEnumerable<AtlasFeatureDisableDecision> featureDisables)
+        {
+            var projected = original.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.ToDictionary(
+                    property => property.Key,
+                    property => property.Value)
+                    as IReadOnlyDictionary<string, Texture>);
+
+            foreach (var item in constants)
+            {
+                if (!projected.TryGetValue(item.Material, out var readOnly))
+                    continue;
+
+                var properties = (Dictionary<string, Texture>)readOnly;
+                foreach (var property in item.BoundProperties)
+                    properties.Remove(property);
+            }
+
+            foreach (var item in featureDisables)
+            {
+                if (!projected.TryGetValue(item.Material, out var readOnly))
+                    continue;
+
+                var properties = (Dictionary<string, Texture>)readOnly;
+                foreach (var property in item.Rule.TextureProperties)
+                    properties.Remove(property);
+            }
+
+            return projected;
         }
 
         // Source optimization can remove the texture that previously
@@ -1223,12 +1311,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     && !tuned.TextureDescriptors.ContainsKey(created))
                     created.Dispose();
 
-                var boundProperties = tuned.RenderTextures
-                    .Where(pair => ReferenceEquals(pair.Value, final))
-                    .Select(pair => pair.Key)
-                    .ToArray();
                 outputs.Add(new AtlasConstantTextureOutput(
-                    decision, final, descriptor, boundProperties));
+                    decision,
+                    final,
+                    descriptor,
+                    decision.BoundProperties));
             }
 
             return outputs.ToArray();
