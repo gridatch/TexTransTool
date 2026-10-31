@@ -48,14 +48,79 @@ namespace net.rs64.TexTransTool.TextureAtlas
             domain.LookAt(this);
 
             var atlasSetting = AtlasSetting;
+            Action<string> diagnosticLog = message =>
+                Debug.Log("[WDT Atlas root-cause diag] " + message);
 
-            if (AtlasTargetMaterials.Where(i => i != null).Any() is false) { TTLog.Info("AtlasTexture:info:TargetNotSet"); return; }
+            diagnosticLog(
+                "Apply begin componentGO='" + gameObject.name + "'"
+                + " configuredMaterials=["
+                + string.Join(
+                    ", ",
+                    AtlasTargetMaterials
+                        .Where(material => material != null)
+                        .Select(material =>
+                            "'" + material!.name + "'#"
+                            + material.GetInstanceID()))
+                + "]"
+                + " autoSize=" + atlasSetting.AutoAtlasTextureSize
+                + " atlasSize=" + atlasSetting.AtlasTextureSize
+                + " customAspect=" + atlasSetting.CustomAspect
+                + " atlasHeight=" + atlasSetting.AtlasTextureHeightSize
+                + " uv=" + atlasSetting.AtlasTargetUVChannel
+                + " padding=" + atlasSetting.IslandPadding
+                + " pixelNormalize=" + atlasSetting.PixelNormalize
+                + " primaryMaximum=" + atlasSetting.UsePrimaryMaximumTexture
+                + " primaryProperty=" + atlasSetting.PrimaryTextureProperty);
+
+            if (AtlasTargetMaterials.Where(i => i != null).Any() is false)
+            {
+                diagnosticLog("Apply stop: no configured target materials");
+                TTLog.Info("AtlasTexture:info:TargetNotSet");
+                return;
+            }
 
             pf.Split("targeting");
 
             var (targetMaterials, targetRenderers) = ResolveAtlasTargets(domain);
 
-            if (targetMaterials.Any() is false || targetRenderers.Any() is false) { TTLog.Info("AtlasTexture:info:TargetNotFound"); return; }
+            diagnosticLog(
+                "resolved targetMaterials=["
+                + string.Join(
+                    ", ",
+                    targetMaterials.Select(material =>
+                        "'" + material.name + "'#" + material.GetInstanceID()))
+                + "] targetRenderers=["
+                + string.Join(
+                    "; ",
+                    targetRenderers.Select(renderer =>
+                    {
+                        var mesh = domain.GetMesh(renderer);
+                        var materials = domain.GetMaterials(renderer);
+                        return "'" + renderer.name + "'"
+                            + " mesh='" + (mesh == null ? "<null>" : mesh.name) + "'"
+                            + " vertices=" + (mesh == null ? 0 : mesh.vertexCount)
+                            + " subMeshes=" + (mesh == null ? 0 : mesh.subMeshCount)
+                            + " materials=["
+                            + string.Join(
+                                ", ",
+                                materials.Select(material =>
+                                    material == null
+                                        ? "<null>"
+                                        : "'" + material.name + "'#"
+                                          + material.GetInstanceID()))
+                            + "]";
+                    }))
+                + "]");
+
+            if (targetMaterials.Any() is false || targetRenderers.Any() is false)
+            {
+                diagnosticLog(
+                    "Apply stop: target not found"
+                    + " materialCount=" + targetMaterials.Count
+                    + " rendererCount=" + targetRenderers.Length);
+                TTLog.Info("AtlasTexture:info:TargetNotFound");
+                return;
+            }
 
             pf.Split("looking");
 
@@ -97,7 +162,29 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 atlasSetting.AtlasTargetUVChannel,
                 atlasSetting,
                 experimentalOptions,
-                sourceOptimizationExclusions);
+                sourceOptimizationExclusions,
+                diagnosticLog);
+
+            diagnosticLog(
+                "source-opt result hasChanges=" + sourceOptimization.HasChanges
+                + " constants=["
+                + string.Join(
+                    ", ",
+                    sourceOptimization.ConstantTextures.Select(item =>
+                        item.Material.name + ":" + item.Property))
+                + "] projected=["
+                + string.Join(
+                    "; ",
+                    sourceOptimization.ProjectedTextureUses.Select(pair =>
+                        pair.Key.name + "=>["
+                        + string.Join(
+                            ", ",
+                            pair.Value.Select(texture =>
+                                texture.Key + "=" + texture.Value.name
+                                + " " + texture.Value.width + "x"
+                                + texture.Value.height))
+                        + "]"))
+                + "]");
 
             var atlasMaterials = sourceOptimization.HasChanges
                 ? sourceOptimization.GetAtlasMaterials(targetMaterials)
@@ -141,9 +228,24 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         ReportProgressInfo = false,
                         PrecomputedTextureUses =
                             sourceOptimization.ProjectedTextureUses,
+                        DiagnosticLog = diagnosticLog,
                     });
                 if (atlasResult.IsSuccess is false)
+                {
+                    diagnosticLog("DoAtlasTexture failed");
                     return;
+                }
+                diagnosticLog(
+                    "DoAtlasTexture success compiled=["
+                    + string.Join(
+                        ", ",
+                        atlasResult.CompiledAtlasTextures!
+                            .Select(pair =>
+                                pair.Key + "="
+                                + engine.GetReferenceRenderTexture(pair.Value).width
+                                + "x"
+                                + engine.GetReferenceRenderTexture(pair.Value).height))
+                    + "]");
 
                 atlasContext = atlasResult.AtlasContext!;
                 atlasedMeshes = atlasResult.AtlasedMeshes!;
@@ -166,6 +268,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     atlasSetting,
                     compiledAtlasTextures,
                     experimentalOptions);
+                diagnosticLog(
+                    "fine-tuning final textures=["
+                    + string.Join(
+                        ", ",
+                        tunedAtlasTextures.RenderTextures.Select(pair =>
+                            pair.Key + "="
+                            + engine.GetReferenceRenderTexture(pair.Value).width
+                            + "x"
+                            + engine.GetReferenceRenderTexture(pair.Value).height))
+                    + "]");
             }
 
             var constantOutputs = sourceOptimization.HasChanges
@@ -176,6 +288,20 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     experimentalOptions,
                     targetMaterials)
                 : Array.Empty<AtlasConstantTextureOutput>();
+
+            diagnosticLog(
+                "constant outputs=["
+                + string.Join(
+                    ", ",
+                    constantOutputs.Select(output =>
+                    {
+                        var texture =
+                            engine.GetReferenceRenderTexture(output.RenderTexture);
+                        return output.Decision.Material.name + ":"
+                            + output.Decision.Property + "="
+                            + texture.width + "x" + texture.height;
+                    }))
+                + "]");
 
             var effectiveMetrics = relocationMetrics
                 ?? (sourceOptimization.HasChanges
@@ -937,6 +1063,14 @@ namespace net.rs64.TexTransTool.TextureAtlas
             AtlasExecutionOptions? executionOptions,
             IIslandRelocator? islandRelocatorOverride)
         {
+            var diagnosticLog = executionOptions?.DiagnosticLog;
+            diagnosticLog?.Invoke(
+                "size-selection begin"
+                + " auto=" + atlasSetting.AutoAtlasTextureSize
+                + " sourceIslands=" + atlasContext.SourceVirtualIslands.Length
+                + " padding=" + atlasSetting.IslandPadding
+                + " forceSizePriority=" + atlasSetting.ForceSizePriority);
+
             if (atlasSetting.AutoAtlasTextureSize is false)
             {
                 var manualSize = GetAtlasTextureSize(atlasSetting);
@@ -983,6 +1117,38 @@ namespace net.rs64.TexTransTool.TextureAtlas
             bool Probe(int size, bool keepFailure)
             {
                 var candidateSize = new Vector2Int(size, size);
+
+                if (diagnosticLog != null)
+                {
+                    var scaled = atlasContext.SourceVirtualIslands
+                        .Select(island => island.Clone())
+                        .ToArray();
+                    atlasContext.PrimaryTextureSizeScaling(
+                        scaled, candidateSize);
+                    var totalRectArea = scaled.Sum(island =>
+                        (double)island.Size.X * island.Size.Y);
+                    var maxWidth = scaled.Length == 0
+                        ? 0d
+                        : scaled.Max(island => (double)island.Size.X);
+                    var maxHeight = scaled.Length == 0
+                        ? 0d
+                        : scaled.Max(island => (double)island.Size.Y);
+                    var islandSizes = string.Join(
+                        ", ",
+                        scaled
+                            .OrderByDescending(island =>
+                                (double)island.Size.X * island.Size.Y)
+                            .Take(32)
+                            .Select(island =>
+                                island.Size.X + "x" + island.Size.Y));
+                    diagnosticLog(
+                        "size probe=" + size
+                        + " pre-pack totalRectArea=" + totalRectArea
+                        + " maxRect=" + maxWidth + "x" + maxHeight
+                        + " islandSizes=[" + islandSizes + "]"
+                        + " padding=" + atlasSetting.IslandPadding);
+                }
+
                 var (candidateIslands, candidateResult) = IslandProcessing(
                     domain,
                     atlasSetting,
@@ -995,6 +1161,46 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                 totalRelocationTime += candidateTime;
                 var isLossless = IsLosslessRelocation(candidateResult);
+
+                diagnosticLog?.Invoke(
+                    "size probe=" + size
+                    + " packSuccess="
+                    + (candidateResult.IslandRelocationResult?.IsSuccess == true)
+                    + " lossless=" + isLossless
+                    + " priorityScale=" + candidateResult.PriorityDownScale
+                    + " overallScale=" + candidateResult.OverallDownScale
+                    + " relocateCount=" + candidateResult.TotalRelocateCount
+                    + " elapsedMs=" + candidateTime);
+
+                if (isLossless && diagnosticLog != null)
+                {
+                    var height =
+                        IslandRelocationManager.CalculateIslandsMaxHeight(
+                            candidateIslands)
+                        + atlasSetting.IslandPadding;
+                    var outputHeight = Mathf.Max(
+                        GetNormalizedMinHeightSize(
+                            candidateSize.y, height),
+                        4);
+                    var layout =
+                        new Vector2Int(candidateSize.x, outputHeight);
+                    var plan = AtlasTextureResolutionPlan.Create(
+                        atlasContext,
+                        atlasSetting,
+                        layout);
+                    diagnosticLog(
+                        "size probe=" + size
+                        + " lossless layout=" + layout.x + "x" + layout.y
+                        + " usedHeight=" + height
+                        + " propertySizes=["
+                        + string.Join(
+                            ", ",
+                            plan.PropertySizes.Select(pair =>
+                                pair.Key + "="
+                                + pair.Value.x + "x" + pair.Value.y))
+                        + "] totalPixels=" + plan.TotalPixelCount);
+                }
+
                 if (isLossless || keepFailure)
                 {
                     selectedSize = candidateSize;
@@ -1036,6 +1242,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             Debug.Assert(selectedIslands is not null);
             Debug.Assert(selectedResult is not null);
+
+            diagnosticLog?.Invoke(
+                "size-selection selected=" + selectedSize.x
+                + "x" + selectedSize.y
+                + " lossless=" + IsLosslessRelocation(selectedResult!)
+                + " priorityScale=" + selectedResult!.PriorityDownScale
+                + " overallScale=" + selectedResult.OverallDownScale);
 
             if (executionOptions?.RequireLossless != true &&
                 IsLosslessRelocation(selectedResult!) is false)
