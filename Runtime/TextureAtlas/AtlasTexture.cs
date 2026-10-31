@@ -969,6 +969,44 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             IslandTransform[]? selectedIslands = null;
             IslandRelocationManager.RelocateResult? selectedResult = null;
+
+            var stickMaskedDiag = atlasContext.MaterialGroupingCtx
+                .GroupMaterials
+                .SelectMany(group => group)
+                .Any(material => string.Equals(
+                    material.name,
+                    "stick_masked",
+                    StringComparison.OrdinalIgnoreCase));
+            if (stickMaskedDiag)
+            {
+                var sourceArea = atlasContext.SourceVirtualIslands.Sum(
+                    island => (double)island.Size.X * island.Size.Y);
+                var maxSourceWidth = atlasContext.SourceVirtualIslands.Length == 0
+                    ? 0d
+                    : atlasContext.SourceVirtualIslands.Max(
+                        island => (double)island.Size.X);
+                var maxSourceHeight = atlasContext.SourceVirtualIslands.Length == 0
+                    ? 0d
+                    : atlasContext.SourceVirtualIslands.Max(
+                        island => (double)island.Size.Y);
+                var primarySummary = string.Join(
+                    ", ",
+                    atlasContext.SourceVirtualIslands2PrimaryTexture
+                        .Values
+                        .Where(texture => texture != null)
+                        .GroupBy(texture =>
+                            texture!.name + " "
+                            + texture.width + "x" + texture.height)
+                        .Select(group => group.Key + " x" + group.Count()));
+                Debug.Log(
+                    "[WDT stick_masked diag] atlas size search"
+                    + " islands=" + atlasContext.SourceVirtualIslands.Length
+                    + " sourceRectArea=" + sourceArea
+                    + " maxSourceIsland=" + maxSourceWidth + "x" + maxSourceHeight
+                    + " padding=" + atlasSetting.IslandPadding
+                    + " primary=[" + primarySummary + "]");
+            }
+
             var maxCandidateSize =
                 AutoAtlasTextureSizeCandidates[
                     AutoAtlasTextureSizeCandidates.Length - 1];
@@ -995,6 +1033,25 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                 totalRelocationTime += candidateTime;
                 var isLossless = IsLosslessRelocation(candidateResult);
+                if (stickMaskedDiag)
+                {
+                    var usedHeight =
+                        IslandRelocationManager.CalculateIslandsMaxHeight(
+                            candidateIslands)
+                        + atlasSetting.IslandPadding;
+                    var packedArea = candidateIslands.Sum(
+                        island => (double)island.Size.X * island.Size.Y);
+                    Debug.Log(
+                        "[WDT stick_masked diag] size=" + size
+                        + " success="
+                        + (candidateResult.IslandRelocationResult?.IsSuccess == true)
+                        + " lossless=" + isLossless
+                        + " priorityScale=" + candidateResult.PriorityDownScale
+                        + " overallScale=" + candidateResult.OverallDownScale
+                        + " relocateCount=" + candidateResult.TotalRelocateCount
+                        + " usedHeight=" + usedHeight
+                        + " packedRectArea=" + packedArea);
+                }
                 if (isLossless || keepFailure)
                 {
                     selectedSize = candidateSize;
@@ -1036,6 +1093,14 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             Debug.Assert(selectedIslands is not null);
             Debug.Assert(selectedResult is not null);
+
+            if (stickMaskedDiag)
+            {
+                Debug.Log(
+                    "[WDT stick_masked diag] selected atlas width="
+                    + selectedSize.x
+                    + " lossless=" + IsLosslessRelocation(selectedResult!));
+            }
 
             if (executionOptions?.RequireLossless != true &&
                 IsLosslessRelocation(selectedResult!) is false)
