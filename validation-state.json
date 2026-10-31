@@ -1,10 +1,5 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
-  "baseVersion": "0.1.23+wdt.ttt.1.0.2",
-  "lastDebugSerial": 1340,
-  "currentDebugVersion": "0.1.23+wdt.ttt.1.0.2.debug.1340.atlas-manual-target-material-log.3e35c47",
-  "currentDebugChange": "atlas-manual-target-material-log",
-  "currentDebugBranch": "feat/atlas-manual-target-material-log",
-  "currentDebugCommit": "3e35c47c3b81888dcd71ed702e45dfb8b0294312",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1340.atlas-manual-target-material-log.3e35c47.zip"
+  "baseVersion": "0.1.24+wdt.ttt.1.0.2",
+  "lastDebugSerial": 1340
 }
