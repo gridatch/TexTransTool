@@ -251,15 +251,61 @@ namespace net.rs64.TexTransTool.TextureAtlas
             UVChannel atlasTargetUvChannel,
             AtlasSetting atlasSetting,
             AtlasTextureExperimentalFeature? experimentalOptions = null,
-            IReadOnlyCollection<Material>? excludedMaterials = null)
+            IReadOnlyCollection<Material>? excludedMaterials = null,
+            Action<string>? diagnosticLog = null)
         {
             var original =
                 MaterialGroupingContext.BuildContainsTextureDictionaries(
                     targetMaterials, atlasTargetUvChannel);
 
+            void Diag(string message) => diagnosticLog?.Invoke(message);
+            Diag(
+                "source-opt begin"
+                + " materials=" + targetMaterials.Count
+                + " renderers=" + targetRenderers.Length
+                + " uv=" + atlasTargetUvChannel
+                + " optimizeConstant=" + atlasSetting.OptimizeConstantTextures
+                + " tolerance=" + atlasSetting.ConstantTextureColorTolerance
+                + " disableUnused=" + atlasSetting.DisableVisuallyUnusedShaderFeatures);
+
+            foreach (var material in targetMaterials)
+            {
+                var allTextureProperties = material.GetTexturePropertyNames()
+                    .OrderBy(name => name, StringComparer.Ordinal)
+                    .Select(name =>
+                    {
+                        var texture = material.GetTexture(name);
+                        return name + "="
+                            + (texture == null
+                                ? "<null>"
+                                : texture.name + " "
+                                  + texture.width + "x" + texture.height
+                                  + " " + texture.dimension);
+                    });
+                var atlasUses = original.TryGetValue(material, out var usages)
+                    ? string.Join(
+                        ", ",
+                        usages.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                            .Select(pair =>
+                                pair.Key + "=" + pair.Value.name
+                                + " " + pair.Value.width + "x" + pair.Value.height))
+                    : "<none>";
+
+                Diag(
+                    "material name='" + material.name + "'"
+                    + " shader='" + (material.shader == null
+                        ? "<null>"
+                        : material.shader.name) + "'"
+                    + " instanceId=" + material.GetInstanceID()
+                    + " atlasUses=[" + atlasUses + "]"
+                    + " allTextureProperties=["
+                    + string.Join(", ", allTextureProperties) + "]");
+            }
+
             if (!atlasSetting.OptimizeConstantTextures
                 && !atlasSetting.DisableVisuallyUnusedShaderFeatures)
             {
+                Diag("source-opt skipped: both source optimizations disabled");
                 return new AtlasSourceOptimizationPlan(
                     original, original,
                     Array.Empty<AtlasConstantTextureDecision>(),
@@ -274,11 +320,22 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             foreach (var material in targetMaterials)
             {
-                if (excluded.Contains(material)
-                    || !original.TryGetValue(material, out var properties)
-                    || !slots.TryGetValue(material, out var materialSlots)
-                    || materialSlots.Count == 0)
+                if (excluded.Contains(material))
+                {
+                    Diag("material excluded before source analysis: " + material.name);
                     continue;
+                }
+                if (!original.TryGetValue(material, out var properties))
+                {
+                    Diag("material has no atlas texture usage dictionary: " + material.name);
+                    continue;
+                }
+                if (!slots.TryGetValue(material, out var materialSlots)
+                    || materialSlots.Count == 0)
+                {
+                    Diag("material has no drawable target slots: " + material.name);
+                    continue;
+                }
 
                 IReadOnlyDictionary<string, TextureUVUsage> usages;
                 try
@@ -286,31 +343,72 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     usages = TTShaderTextureUsageInformationUtil
                         .GetContainsUVTransformUsage(material);
                 }
-                catch
+                catch (Exception exception)
                 {
+                    Diag(
+                        "shader usage analysis failed material='" + material.name
+                        + "' exception=" + exception.GetType().Name
+                        + ": " + exception.Message);
                     continue;
                 }
 
                 foreach (var pair in properties)
                 {
-                    if (pair.Value == null
-                        || pair.Value.dimension != TextureDimension.Tex2D
-                        || !usages.TryGetValue(pair.Key, out var usage)
-                        || ((int)usage.UVChannel - 1) != (int)atlasTargetUvChannel
-                        || usage.UVMatrix is not { } matrix)
-                        continue;
+                    var reasons = new List<string>();
+                    if (pair.Value == null)
+                        reasons.Add("texture-null");
+                    else if (pair.Value.dimension != TextureDimension.Tex2D)
+                        reasons.Add("dimension=" + pair.Value.dimension);
 
+                    if (!usages.TryGetValue(pair.Key, out var usage))
+                    {
+                        reasons.Add("usage-unknown");
+                    }
+                    else
+                    {
+                        var normalizedChannel = ((int)usage.UVChannel - 1);
+                        if (normalizedChannel != (int)atlasTargetUvChannel)
+                            reasons.Add(
+                                "uv-channel=" + usage.UVChannel
+                                + " target=" + atlasTargetUvChannel);
+                        if (usage.UVMatrix is null)
+                            reasons.Add("uv-matrix-unknown");
+                    }
+
+                    if (reasons.Count != 0)
+                    {
+                        Diag(
+                            "constant candidate rejected material='" + material.name
+                            + "' property=" + pair.Key
+                            + " texture='" + pair.Value?.name + "' reasons=["
+                            + string.Join(", ", reasons) + "]");
+                        continue;
+                    }
+
+                    var matrix = usage.UVMatrix!.Value;
                     candidates.Add(new Candidate(
                         material, pair.Key, pair.Value, matrix, materialSlots));
+                    Diag(
+                        "constant candidate accepted material='" + material.name
+                        + "' property=" + pair.Key
+                        + " texture='" + pair.Value.name + "'"
+                        + " slots=" + materialSlots.Count);
                 }
             }
+
+            Diag("constant candidate count=" + candidates.Count);
 
             var samples =
                 new Dictionary<(Material material, string property), SampleResult>();
             var engine = domain.GetTexTransCoreEngineForUnity();
-            var analyzer = CanUseUnityGpuSourceAnalyzer(engine)
+            var canUseGpuAnalyzer = CanUseUnityGpuSourceAnalyzer(engine);
+            var analyzer = canUseGpuAnalyzer
                 ? AtlasSourceGpuAnalyzer.TryCreate()
                 : null;
+            Diag(
+                "gpu analyzer canUse=" + canUseGpuAnalyzer
+                + " created=" + (analyzer != null)
+                + " engine=" + engine.GetType().FullName);
             if (analyzer != null)
             {
                 var geometryCache = new Dictionary<
@@ -357,6 +455,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                     || importedHeight <= 0
                                     || importedPixels > MaxSourcePixels)
                                 {
+                                    Diag(
+                                        "gpu source rejected texture='" + source.name
+                                        + "' imported=" + importedWidth + "x" + importedHeight
+                                        + " pixels=" + importedPixels
+                                        + " max=" + MaxSourcePixels);
                                     groupIndex += 1;
                                     continue;
                                 }
@@ -383,7 +486,17 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                     if (width <= 0
                                         || height <= 0
                                         || sourcePixels > MaxSourcePixels)
+                                    {
+                                        Diag(
+                                            "gpu canonical source rejected texture='" + source.name
+                                            + "' fullScale=" + width + "x" + height
+                                            + " pixels=" + sourcePixels);
                                         continue;
+                                    }
+                                    Diag(
+                                        "gpu canonical source texture='" + source.name
+                                        + "' imported=" + importedWidth + "x" + importedHeight
+                                        + " fullScale=" + width + "x" + height);
 
                                     if (loadedSources.Count != 0
                                         && batchPixels + sourcePixels
@@ -446,7 +559,18 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                                     height,
                                                     out var builtGeometry)
                                                 || builtGeometry == null)
+                                            {
+                                                Diag(
+                                                    "gpu geometry build failed material='"
+                                                    + representative.Material.name
+                                                    + "' properties=["
+                                                    + string.Join(
+                                                        ", ",
+                                                        groupedCandidates.Select(x => x.Property))
+                                                    + "] texture='"
+                                                    + representative.Texture.name + "'");
                                                 continue;
+                                            }
 
                                             geometry = builtGeometry;
                                             geometryCache.Add(
@@ -461,15 +585,41 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                                 atlasSetting
                                                     .ConstantTextureColorTolerance)
                                             || queued == null)
+                                        {
+                                            Diag(
+                                                "gpu first-pass queue failed material='"
+                                                + representative.Material.name
+                                                + "' properties=["
+                                                + string.Join(
+                                                    ", ",
+                                                    groupedCandidates.Select(x => x.Property))
+                                                + "] texture='"
+                                                + representative.Texture.name + "'");
                                             continue;
+                                        }
+
+                                        Diag(
+                                            "gpu first-pass queued material='"
+                                            + representative.Material.name
+                                            + "' properties=["
+                                            + string.Join(
+                                                ", ",
+                                                groupedCandidates.Select(x => x.Property))
+                                            + "] texture='"
+                                            + representative.Texture.name + "'");
 
                                         pending.Add((
                                             groupedCandidates,
                                             queued));
                                     }
                                 }
-                                catch
+                                catch (Exception exception)
                                 {
+                                    Diag(
+                                        "gpu source processing exception texture='"
+                                        + source.name + "' "
+                                        + exception.GetType().Name + ": "
+                                        + exception.Message);
                                     // Source optimization is optional. A source
                                     // that cannot enter the canonical GPU path is
                                     // left to the existing Atlas implementation.
@@ -496,8 +646,32 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             // only near-constant candidates enter the probe path.
                             foreach (var item in pending)
                             {
-                                if (!item.pending.TryGetFlags(out var flags)
-                                    || !flags.Known)
+                                if (!item.pending.TryGetFlags(out var flags))
+                                {
+                                    Diag(
+                                        "gpu first-pass readback failed properties=["
+                                        + string.Join(
+                                            ", ",
+                                            item.candidates.Select(x =>
+                                                x.Material.name + ":" + x.Property))
+                                        + "]");
+                                    continue;
+                                }
+
+                                Diag(
+                                    "gpu first-pass flags properties=["
+                                    + string.Join(
+                                        ", ",
+                                        item.candidates.Select(x =>
+                                            x.Material.name + ":" + x.Property))
+                                    + "] known=" + flags.Known
+                                    + " exactConstant=" + flags.IsConstant
+                                    + " approxCandidate="
+                                    + flags.ApproximateConstantCandidate
+                                    + " rgbZero=" + flags.RgbZero
+                                    + " alphaZero=" + flags.AlphaZero);
+
+                                if (!flags.Known)
                                     continue;
 
                                 foreach (var candidate in item.candidates)
@@ -524,8 +698,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                             flags,
                                             item.pending.RequestReferenceColor()));
                                     }
-                                    catch
+                                    catch (Exception exception)
                                     {
+                                        Diag(
+                                            "exact constant reference-color request failed properties=["
+                                            + string.Join(
+                                                ", ",
+                                                item.candidates.Select(x =>
+                                                    x.Material.name + ":" + x.Property))
+                                            + "] " + exception.GetType().Name
+                                            + ": " + exception.Message);
                                         // Keep the zero proofs above; only 4x4
                                         // constant replacement is unavailable.
                                     }
@@ -576,11 +758,30 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                     var request = item.request;
                                     request.WaitForCompletion();
                                     if (request.hasError)
+                                    {
+                                        Diag(
+                                            "exact constant reference-color readback error properties=["
+                                            + string.Join(
+                                                ", ",
+                                                item.candidates.Select(x =>
+                                                    x.Material.name + ":" + x.Property))
+                                            + "]");
                                         continue;
+                                    }
 
                                     var data = request.GetData<Color>();
                                     if (data.Length != 1)
+                                    {
+                                        Diag(
+                                            "exact constant reference-color invalid length="
+                                            + data.Length + " properties=["
+                                            + string.Join(
+                                                ", ",
+                                                item.candidates.Select(x =>
+                                                    x.Material.name + ":" + x.Property))
+                                            + "]");
                                         continue;
+                                    }
 
                                     foreach (var candidate in item.candidates)
                                     {
@@ -713,28 +914,71 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 {
                     if (!samples.TryGetValue(
                             (candidate.Material, candidate.Property),
-                            out var sample)
-                        || !sample.Known
-                        || !sample.IsConstant)
+                            out var sample))
+                    {
+                        Diag(
+                            "constant decision rejected material='"
+                            + candidate.Material.name + "' property="
+                            + candidate.Property + " reason=no-sample");
                         continue;
+                    }
+                    if (!sample.Known)
+                    {
+                        Diag(
+                            "constant decision rejected material='"
+                            + candidate.Material.name + "' property="
+                            + candidate.Property + " reason=sample-unknown");
+                        continue;
+                    }
+                    if (!sample.IsConstant)
+                    {
+                        Diag(
+                            "constant decision rejected material='"
+                            + candidate.Material.name + "' property="
+                            + candidate.Property
+                            + " reason=not-constant"
+                            + " rgbZero=" + sample.RgbZero
+                            + " alphaZero=" + sample.AlphaZero);
+                        continue;
+                    }
 
                     if ((long)candidate.Texture.width
                             * candidate.Texture.height <= 16)
+                    {
+                        Diag(
+                            "constant decision skipped material='"
+                            + candidate.Material.name + "' property="
+                            + candidate.Property + " reason=already<=4x4");
                         continue;
+                    }
 
-                    if (animationSafety?.HasUnsafeConstantTextureAnimation(
+                    var unsafeAnimation =
+                        animationSafety?.HasUnsafeConstantTextureAnimation(
                             domain,
                             candidate.Material,
                             candidate.Property,
                             candidate.Texture,
-                            targetRenderers) == true)
+                            targetRenderers) == true;
+                    if (unsafeAnimation)
+                    {
+                        Diag(
+                            "constant decision rejected material='"
+                            + candidate.Material.name + "' property="
+                            + candidate.Property
+                            + " reason=unsafe-animation");
                         continue;
+                    }
 
                     constants.Add(new AtlasConstantTextureDecision(
                         candidate.Material,
                         candidate.Property,
                         candidate.Texture,
                         sample.ConstantColor));
+                    Diag(
+                        "constant decision accepted material='"
+                        + candidate.Material.name + "' property="
+                        + candidate.Property
+                        + " color=" + sample.ConstantColor);
                 }
             }
 
@@ -752,19 +996,46 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     .ToList()
                 : new List<AtlasFeatureDisableDecision>();
 
+            var beforeUnsetConstants = constants
+                .Select(item => item.Material.name + ":" + item.Property)
+                .ToHashSet(StringComparer.Ordinal);
             FilterUnsetTextureConflicts(
                 domain,
                 constants,
                 featureDisables,
                 targetMaterials,
                 experimentalOptions);
+            var afterUnsetConstants = constants
+                .Select(item => item.Material.name + ":" + item.Property)
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var removed in beforeUnsetConstants.Except(afterUnsetConstants))
+                Diag("constant decision removed by UnsetTextures conflict: " + removed);
 
+            var beforeFineConstants = afterUnsetConstants;
             FilterFineTuningConflicts(
                 constants,
                 featureDisables,
                 original,
                 atlasSetting,
                 experimentalOptions);
+            var afterFineConstants = constants
+                .Select(item => item.Material.name + ":" + item.Property)
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var removed in beforeFineConstants.Except(afterFineConstants))
+                Diag("constant decision removed by FineTuning conflict: " + removed);
+
+            Diag(
+                "source-opt final constants=["
+                + string.Join(
+                    ", ",
+                    constants.Select(item =>
+                        item.Material.name + ":" + item.Property))
+                + "] featureDisables=["
+                + string.Join(
+                    ", ",
+                    featureDisables.Select(item =>
+                        item.Material.name + ":" + item.Rule.SwitchProperty))
+                + "]");
 
             var projected = original.ToDictionary(
                 pair => pair.Key,
