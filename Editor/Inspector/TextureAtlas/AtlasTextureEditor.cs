@@ -21,12 +21,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private SerializedProperty sAtlasTargetMaterials;
         private SerializedProperty sBakeName;
         private SerializedProperty sBakeExcludedRenderers;
+        private SerializedProperty sBakeIncludedInactiveRenderers;
 
         private SerializedProperty sIslandSizePriorityTuner;
         private SerializedProperty sMergeMaterialGroups, sAllMaterialMergeReference;
         private SerializedProperty sAtlasSetting;
 
         private SerializedProperty sAtlasTargetUVChannel;
+
+        private bool _inactiveMaterialsExpanded;
+        private bool _inactiveBakeRenderersExpanded;
 
         public void OnEnable()
         {
@@ -38,6 +42,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             sAtlasTargetMaterials = thisSObject.FindProperty(nameof(AtlasTexture.AtlasTargetMaterials));
             sBakeName = thisSObject.FindProperty(nameof(AtlasTexture.BakeName));
             sBakeExcludedRenderers = thisSObject.FindProperty(nameof(AtlasTexture.BakeExcludedRenderers));
+            sBakeIncludedInactiveRenderers = thisSObject.FindProperty(
+                nameof(AtlasTexture.BakeIncludedInactiveRenderers));
             sAtlasTargetUVChannel = sAtlasSetting.FindPropertyRelative(
                 nameof(AtlasSetting.AtlasTargetUVChannel)
             );
@@ -74,6 +80,30 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (_displayMaterial is not null)
                     using (new PFScope("MaterialSelectEditor"))
                         MaterialSelectEditor(sAtlasTargetMaterials, _displayMaterial);
+
+                if (_inactiveDisplayMaterial is { Count: > 0 })
+                {
+                    var foldoutRect = EditorGUILayout.GetControlRect();
+                    using (new EditorGUI.IndentLevelScope(2))
+                    {
+                        _inactiveMaterialsExpanded = EditorGUI.Foldout(
+                            foldoutRect,
+                            _inactiveMaterialsExpanded,
+                            "AtlasTexture:label:InactiveRendererMaterials".GlcV(),
+                            true
+                        );
+                    }
+
+                    if (_inactiveMaterialsExpanded)
+                    {
+                        using var inactiveScope =
+                            new PFScope("InactiveMaterialSelectEditor");
+                        MaterialSelectEditor(
+                            sAtlasTargetMaterials,
+                            _inactiveDisplayMaterial
+                        );
+                    }
+                }
             }
 
 
@@ -155,16 +185,36 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var domainRoot = DomainMarkerFinder.FindMarker(thisTarget.gameObject);
             if (domainRoot == null) { return; }
 
-            var domainRenderers = domainRoot.GetComponentsInChildren<Renderer>(true);
+            var domainRenderers =
+                domainRoot.GetComponentsInChildren<Renderer>(true);
             using var domain = new NotWorkDomain(domainRenderers, null);
-            var candidateRenderers = AtlasTextureBakeTargetResolver.GetCandidateRenderers(
-                thisTarget,
-                domain
-            );
 
-            var includedCount = candidateRenderers.Count(renderer =>
-                FindRendererReferenceIndex(sBakeExcludedRenderers, renderer) < 0
-            );
+            if (AtlasTextureBakeTargetResolver.EnsureSelectionMigrated(
+                    thisTarget, domain))
+            {
+                serializedObject.Update();
+            }
+
+            var candidateRenderers =
+                AtlasTextureBakeTargetResolver.GetCandidateRenderers(
+                    thisTarget,
+                    domain
+                );
+            var activeRenderers = candidateRenderers
+                .Where(renderer =>
+                    AtlasTextureBakeTargetResolver.IsCurrentlyActive(
+                        domain, renderer))
+                .ToArray();
+            var inactiveRenderers = candidateRenderers
+                .Where(renderer =>
+                    !AtlasTextureBakeTargetResolver.IsCurrentlyActive(
+                        domain, renderer))
+                .ToArray();
+
+            var includedCount = activeRenderers.Count(renderer =>
+                    IsBakeRendererIncluded(renderer, isActive: true))
+                + inactiveRenderers.Count(renderer =>
+                    IsBakeRendererIncluded(renderer, isActive: false));
 
             EditorGUILayout.LabelField(
                 string.Format(
@@ -185,35 +235,87 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             using var indent = new EditorGUI.IndentLevelScope(1);
-            foreach (var renderer in candidateRenderers)
+            foreach (var renderer in activeRenderers)
             {
-                var excludedIndex = FindRendererReferenceIndex(sBakeExcludedRenderers, renderer);
-                var isIncluded = excludedIndex < 0;
-
-                var rendererPath = AnimationUtility.CalculateTransformPath(
-                    renderer.transform,
-                    domainRoot.transform
+                DrawBakeRendererToggle(
+                    renderer,
+                    domainRoot,
+                    isActive: true
                 );
-                if (string.IsNullOrEmpty(rendererPath))
-                {
-                    rendererPath = renderer.gameObject.name;
-                }
-
-                var label = new GUIContent(
-                    rendererPath,
-                    renderer.GetType().Name + "\n" + rendererPath
-                );
-
-                var nextIncluded = EditorGUILayout.ToggleLeft(label, isIncluded);
-                if (nextIncluded != isIncluded)
-                {
-                    SetRendererIncluded(
-                        sBakeExcludedRenderers,
-                        renderer,
-                        nextIncluded
-                    );
-                }
             }
+
+            if (inactiveRenderers.Length == 0)
+                return;
+
+            _inactiveBakeRenderersExpanded = EditorGUILayout.Foldout(
+                _inactiveBakeRenderersExpanded,
+                "AtlasTexture:label:InactiveBakeRenderers".Glc(),
+                true
+            );
+            if (!_inactiveBakeRenderersExpanded)
+                return;
+
+            using var inactiveIndent =
+                new EditorGUI.IndentLevelScope(1);
+            foreach (var renderer in inactiveRenderers)
+            {
+                DrawBakeRendererToggle(
+                    renderer,
+                    domainRoot,
+                    isActive: false
+                );
+            }
+        }
+
+        private void DrawBakeRendererToggle(
+            Renderer renderer,
+            GameObject domainRoot,
+            bool isActive)
+        {
+            var isIncluded = IsBakeRendererIncluded(
+                renderer, isActive);
+
+            var rendererPath = AnimationUtility.CalculateTransformPath(
+                renderer.transform,
+                domainRoot.transform
+            );
+            if (string.IsNullOrEmpty(rendererPath))
+            {
+                rendererPath = renderer.gameObject.name;
+            }
+
+            var label = new GUIContent(
+                rendererPath,
+                renderer.GetType().Name + "\n" + rendererPath
+            );
+
+            var nextIncluded = EditorGUILayout.ToggleLeft(
+                label, isIncluded);
+            if (nextIncluded == isIncluded)
+                return;
+
+            SetRendererIncluded(
+                sBakeExcludedRenderers,
+                sBakeIncludedInactiveRenderers,
+                renderer,
+                isActive,
+                nextIncluded
+            );
+        }
+
+        private bool IsBakeRendererIncluded(
+            Renderer renderer,
+            bool isActive)
+        {
+            if (FindRendererReferenceIndex(
+                    sBakeExcludedRenderers, renderer) >= 0)
+                return false;
+
+            if (isActive)
+                return true;
+
+            return FindRendererReferenceIndex(
+                sBakeIncludedInactiveRenderers, renderer) >= 0;
         }
 
         private static int FindRendererReferenceIndex(
@@ -235,28 +337,58 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private static void SetRendererIncluded(
             SerializedProperty excludedRenderers,
+            SerializedProperty includedInactiveRenderers,
             Renderer renderer,
+            bool isActive,
             bool included)
         {
-            if (excludedRenderers == null) { return; }
-
-            var existingIndex = FindRendererReferenceIndex(excludedRenderers, renderer);
+            if (excludedRenderers == null
+                || includedInactiveRenderers == null)
+                return;
 
             if (included)
             {
-                if (existingIndex < 0) { return; }
-
-                var element = excludedRenderers.GetArrayElementAtIndex(existingIndex);
-                element.objectReferenceValue = null;
-                excludedRenderers.DeleteArrayElementAtIndex(existingIndex);
+                RemoveRendererReference(excludedRenderers, renderer);
+                if (!isActive)
+                {
+                    AddRendererReference(
+                        includedInactiveRenderers, renderer);
+                }
                 return;
             }
 
-            if (existingIndex >= 0) { return; }
+            AddRendererReference(excludedRenderers, renderer);
+            RemoveRendererReference(
+                includedInactiveRenderers, renderer);
+        }
 
-            var newIndex = excludedRenderers.arraySize;
-            excludedRenderers.arraySize += 1;
-            excludedRenderers.GetArrayElementAtIndex(newIndex).objectReferenceValue = renderer;
+        private static void AddRendererReference(
+            SerializedProperty rendererArray,
+            Renderer renderer)
+        {
+            if (FindRendererReferenceIndex(
+                    rendererArray, renderer) >= 0)
+                return;
+
+            var newIndex = rendererArray.arraySize;
+            rendererArray.arraySize += 1;
+            rendererArray
+                .GetArrayElementAtIndex(newIndex)
+                .objectReferenceValue = renderer;
+        }
+
+        private static void RemoveRendererReference(
+            SerializedProperty rendererArray,
+            Renderer renderer)
+        {
+            var index = FindRendererReferenceIndex(
+                rendererArray, renderer);
+            if (index < 0)
+                return;
+
+            var element = rendererArray.GetArrayElementAtIndex(index);
+            element.objectReferenceValue = null;
+            rendererArray.DeleteArrayElementAtIndex(index);
         }
 
         private void DrawIslandSizePriorityTunerWithAdvanced(
@@ -295,26 +427,39 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
 
         List<List<Material>> _displayMaterial;
+        List<List<Material>> _inactiveDisplayMaterial;
 
         void RefreshMaterials()
         {
             var domainFindPoint = target as AtlasTexture;
-            var includeDisabledRenderer = thisTarget.AtlasSetting.IncludeDisabledRenderer;
-            var uvChannel = (UVChannel)sAtlasTargetUVChannel.enumValueIndex;
+            var uvChannel =
+                (UVChannel)sAtlasTargetUVChannel.enumValueIndex;
 
             _displayMaterial = null;
+            _inactiveDisplayMaterial = null;
 
-            var domainRoot = DomainMarkerFinder.FindMarker(domainFindPoint.gameObject);
+            var domainRoot =
+                DomainMarkerFinder.FindMarker(domainFindPoint.gameObject);
             if (domainRoot == null) { return; }
 
-            var nwDomain = new NotWorkDomain(Array.Empty<Renderer>(), null);
-            var domainRenderers = domainRoot.GetComponentsInChildren<Renderer>(true)
-                .Where(AtlasTexture.IsAtlasAllowedRenderer)
-                .Where(r => AtlasTexture.CheckRendererActive(nwDomain, r, domainFindPoint.AtlasSetting.IncludeDisabledRenderer));
+            var candidates =
+                AtlasTextureMaterialCandidateResolver.Resolve(domainRoot);
 
-            List<Material> filteredMaterials = RendererUtility.GetMaterials(domainRenderers).Distinct().Where(m => m != null).ToList();
+            _displayMaterial = new MaterialGroupingContext(
+                    candidates.ActiveMaterials,
+                    uvChannel,
+                    null)
+                .GroupMaterials
+                .Select(group => new List<Material>(group))
+                .ToList();
 
-            _displayMaterial = new MaterialGroupingContext(filteredMaterials.ToHashSet(), uvChannel, null).GroupMaterials.Select(i => new List<Material>(i)).ToList();
+            _inactiveDisplayMaterial = new MaterialGroupingContext(
+                    candidates.InactiveMaterials,
+                    uvChannel,
+                    null)
+                .GroupMaterials
+                .Select(group => new List<Material>(group))
+                .ToList();
         }
 
         public static void MaterialSelectEditor(SerializedProperty targetMaterials, List<List<Material>> tempMaterialGroupAll)

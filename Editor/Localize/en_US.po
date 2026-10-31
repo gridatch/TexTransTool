@@ -212,6 +212,12 @@ msgstr "Bake Target Renderers ({0}/{1})"
 msgid "AtlasTexture:info:NoBakeTargetRenderers"
 msgstr "No bake target renderers match the currently selected materials and Atlas settings."
 
+msgid "AtlasTexture:label:InactiveBakeRenderers"
+msgstr "Inactive Renderers"
+
+msgid "AtlasTexture:label:InactiveRendererMaterials"
+msgstr "Materials on Inactive Renderers"
+
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "RefreshMaterials"
 
@@ -838,8 +844,8 @@ msgstr "SelectTexturePreview"
 msgid "AutoAtlasTexture:fallback:RendererSetChanged"
 msgstr "the AtlasTexture target renderer set changed between planning and execution"
 
-msgid "AutoAtlasTexture:fallback:ActiveUntransformedConsumer"
-msgstr "a currently active material consumer cannot receive the corresponding atlas mesh/UV rewrite"
+msgid "AutoAtlasTexture:fallback:RuntimeRelevantUntransformedConsumer"
+msgstr "a runtime-relevant material consumer cannot receive the corresponding atlas mesh/UV rewrite"
 
 msgid "AutoAtlasTexture:fallback:LayoutMismatch"
 msgstr "output layout mismatch: actual={0}×{1}, planned={2}×{3}, outputPixels={4}"
