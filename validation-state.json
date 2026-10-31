@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.23+wdt.ttt.1.0.2",
-  "lastDebugSerial": 1309,
-  "currentDebugVersion": "0.1.23+wdt.ttt.1.0.2.debug.1309.diag-atlas-root-cause.1d17737",
+  "lastDebugSerial": 1310,
+  "currentDebugVersion": "0.1.23+wdt.ttt.1.0.2.debug.1310.diag-atlas-root-cause.f50e391",
   "currentDebugChange": "diag-atlas-root-cause",
   "currentDebugBranch": "feat/diag-atlas-root-cause",
-  "currentDebugCommit": "1d1773729b1c14b4317fe9029e9741c704473f7b",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1309.diag-atlas-root-cause.1d17737.zip"
+  "currentDebugCommit": "f50e39135dbd3e52f0d2be04785e41cd68d3b445",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1310.diag-atlas-root-cause.f50e391.zip"
 }
