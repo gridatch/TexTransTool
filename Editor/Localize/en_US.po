@@ -138,10 +138,10 @@ msgid "AtlasTexture:info:RelocateResult"
 msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x \nOverall shrink: {2}x \nTotal relocate count: {3} \nTime taken relocate: {4}ms"
 
 msgid "AtlasTexture:info:RelocateResultWithResolution"
-msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOverall shrink: {2}x\n{3}\nTotal relocate count: {4}\nTime taken relocate: {5}ms"
+msgstr "Atlas Relocate Result\nTarget materials: {0}\nTop free space: {1}\nPriority shrink: {2}x\nOverall shrink: {3}x\n{4}\nTotal relocate count: {5}\nTime taken relocate: {6}ms"
 
 msgid "AtlasTexture:info:RelocateResultWithResolutionAndMemory"
-msgstr "Atlas Relocate Result\nTop free space: {0}\nPriority shrink: {1}x\nOverall shrink: {2}x\n{3}\nTarget texture memory: {4} → {5}\nTotal relocate count: {6}\nTime taken relocate: {7}ms"
+msgstr "Atlas Relocate Result\nTarget materials: {0}\nTop free space: {1}\nPriority shrink: {2}x\nOverall shrink: {3}x\n{4}\nTarget texture memory: {5} → {6}\nTotal relocate count: {7}\nTime taken relocate: {8}ms"
 
 msgid "AutoAtlasTexture:info:TwoDimensionalFallback"
 msgstr "2D texture merging could not complete; individual atlas processing was retried.\n{0}"
