@@ -82,6 +82,21 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
+        public void WholeTextureProofIgnoresSamplingControls()
+        {
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety
+                    .IncludesSamplingControls(
+                        AtlasSourceProofScope.UsedRegion),
+                Is.True);
+            Assert.That(
+                AtlasSourceOptimizationAnimationSafety
+                    .IncludesSamplingControls(
+                        AtlasSourceProofScope.WholeTexture),
+                Is.False);
+        }
+
+        [Test]
         public void TextureOwnStAnimationInvalidatesUvRegionProof()
         {
             Assert.That(

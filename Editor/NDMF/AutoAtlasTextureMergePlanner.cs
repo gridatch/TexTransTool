@@ -775,6 +775,8 @@ namespace net.rs64.TexTransTool.NDMF
                 originalPropertyTextures,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
                 propertyTextures,
+            IReadOnlyDictionary<Material, Vector2Int?>
+                primaryDensitySizes,
             IReadOnlyList<PreparedGroup> groups)
         {
             // Source optimization is a pre-atlas state. Establish the best
@@ -839,7 +841,8 @@ namespace net.rs64.TexTransTool.NDMF
                         .ToHashSet();
                     requirements = BuildPredictedPropertyRequirements(
                         materials,
-                        propertyTextures);
+                        propertyTextures,
+                        primaryDensitySizes);
                     propertyRequirementCache[key] = requirements;
                 }
 
@@ -854,7 +857,11 @@ namespace net.rs64.TexTransTool.NDMF
             foreach (var group in mergeGroups)
             {
                 group.StandaloneMetrics = AnalyzeAtlas(
-                    domain, settings, group, propertyTextures);
+                    domain,
+                    settings,
+                    group,
+                    propertyTextures,
+                    primaryDensitySizes);
             }
 
             foreach (var group in mergeGroups)
@@ -1671,12 +1678,15 @@ namespace net.rs64.TexTransTool.NDMF
                 IReadOnlyDictionary<
                     Material,
                     IReadOnlyDictionary<string, Texture>>
-                    propertyTextures)
+                    propertyTextures,
+                IReadOnlyDictionary<Material, Vector2Int?>
+                    primaryDensitySizes)
         {
             var grouping = new MaterialGroupingContext(
                 materials,
                 propertyTextures,
-                null);
+                null,
+                primaryDensitySizes);
             var properties = grouping.GroupMaterials
                 .SelectMany(group => group.GroupedTexture.Keys)
                 .Distinct()
@@ -1699,12 +1709,10 @@ namespace net.rs64.TexTransTool.NDMF
                         continue;
                     }
 
-                    var primary = group.GetPrimaryTexture(null);
-                    primarySizes.Add(primary == null
-                        ? null
-                        : new Vector2Int(
-                            primary.width,
-                            primary.height));
+                    var groupId =
+                        grouping.GetMaterialGroupID(group);
+                    primarySizes.Add(
+                        grouping.GetPrimaryDensitySize(groupId));
                     sourceSizes.Add(
                         new Vector2Int(
                             source.width,
@@ -1745,7 +1753,9 @@ namespace net.rs64.TexTransTool.NDMF
             AtlasSetting settings,
             PreparedGroup group,
             IReadOnlyDictionary<
-                Material, IReadOnlyDictionary<string, Texture>> propertyTextures)
+                Material, IReadOnlyDictionary<string, Texture>> propertyTextures,
+            IReadOnlyDictionary<Material, Vector2Int?>
+                primaryDensitySizes)
         {
             group.TwoDimensionalProfileHeights.Clear();
 
@@ -1754,7 +1764,8 @@ namespace net.rs64.TexTransTool.NDMF
                 group.Materials,
                 group.Renderers,
                 settings,
-                propertyTextures);
+                propertyTextures,
+                primaryDensitySizes);
             if (prepared is null)
                 return null;
 

@@ -100,6 +100,7 @@ namespace net.rs64.TexTransTool.NDMF
             Material material,
             string property,
             Texture source,
+            AtlasSourceProofScope proofScope,
             IEnumerable<Renderer> renderers)
         {
             return IsProofPropertyAnimated(
@@ -108,7 +109,14 @@ namespace net.rs64.TexTransTool.NDMF
                 property,
                 source,
                 renderers,
-                includeSamplingControls: true);
+                includeSamplingControls:
+                    IncludesSamplingControls(proofScope));
+        }
+
+        internal static bool IncludesSamplingControls(
+            AtlasSourceProofScope proofScope)
+        {
+            return proofScope == AtlasSourceProofScope.UsedRegion;
         }
 
         public bool HasUnsafeFeatureDisableAnimation(

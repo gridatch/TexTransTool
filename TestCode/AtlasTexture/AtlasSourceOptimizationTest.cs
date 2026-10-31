@@ -972,6 +972,276 @@ namespace net.rs64.TexTransTool.TestCode
             }
         }
 
+        [Test]
+        public void WholeTextureProofHandlesOutOfRangeUvFallback()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            var mesh = CreateQuadMesh(
+                new Vector2(0f, 0f),
+                new Vector2(2f, 2f));
+            var source = CreateSource(
+                8,
+                8,
+                (_, _) => Color.red);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? usedGeometry = null;
+            AtlasSourceGpuGeometry? wholeGeometry = null;
+            AtlasSourceGpuPending? pending = null;
+            try
+            {
+                Assert.That(
+                    analyzer.TryBuildGeometry(
+                        new[] { (mesh, 0) },
+                        0,
+                        Matrix2x3.Identity,
+                        8,
+                        8,
+                        out usedGeometry),
+                    Is.False);
+                Assert.That(
+                    AtlasSourceGpuAnalyzer.TryBuildWholeTextureGeometry(
+                        8,
+                        8,
+                        out wholeGeometry),
+                    Is.True);
+                Assert.That(wholeGeometry, Is.Not.Null);
+                Assert.That(
+                    analyzer.TryQueue(
+                        source,
+                        wholeGeometry!,
+                        out pending),
+                    Is.True);
+                Assert.That(
+                    pending!.TryGetFlags(out var flags),
+                    Is.True);
+                Assert.That(flags.IsConstant, Is.True);
+            }
+            finally
+            {
+                pending?.Dispose();
+                usedGeometry?.Dispose();
+                wholeGeometry?.Dispose();
+                analyzer.Dispose();
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
+        public void WholeTextureGeometryCoversPartialEdgeBlocks()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            var source = CreateSource(
+                7,
+                5,
+                (x, y) => x == 6 && y == 4
+                    ? Color.blue
+                    : Color.red);
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuPending? pending = null;
+            try
+            {
+                Assert.That(
+                    AtlasSourceGpuAnalyzer.TryBuildWholeTextureGeometry(
+                        7,
+                        5,
+                        out geometry),
+                    Is.True);
+                Assert.That(
+                    analyzer.TryQueue(
+                        source,
+                        geometry!,
+                        out pending,
+                        0),
+                    Is.True);
+                Assert.That(
+                    pending!.TryGetFlags(out var flags),
+                    Is.True);
+                Assert.That(flags.IsConstant, Is.False);
+            }
+            finally
+            {
+                pending?.Dispose();
+                geometry?.Dispose();
+                analyzer.Dispose();
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
+        public void WholeTextureToleranceUsesAdoptedCoverageThresholds()
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback)
+                Assert.Ignore("Async GPU readback is unavailable.");
+
+            var baseColor = new Color(0.4f, 0.5f, 0.6f, 1f);
+            var source = CreateSource(
+                10,
+                10,
+                (x, y) =>
+                {
+                    var index = y * 10 + x;
+                    return index < 90
+                        ? baseColor
+                        : index < 99
+                            ? new Color(
+                                baseColor.r + 3f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a)
+                            : new Color(
+                                baseColor.r + 5f / 255f,
+                                baseColor.g,
+                                baseColor.b,
+                                baseColor.a);
+                });
+            var analyzer = AtlasSourceGpuAnalyzer.TryCreate();
+            if (analyzer == null)
+            {
+                Object.DestroyImmediate(source);
+                Assert.Ignore("GPU source analyzer is unavailable.");
+                return;
+            }
+
+            AtlasSourceGpuGeometry? geometry = null;
+            AtlasSourceGpuToleranceValidationPending? pending = null;
+            try
+            {
+                Assert.That(
+                    AtlasSourceGpuAnalyzer.TryBuildWholeTextureGeometry(
+                        10,
+                        10,
+                        out geometry),
+                    Is.True);
+                Assert.That(
+                    analyzer.TryQueueToleranceValidation(
+                        source,
+                        geometry!,
+                        baseColor,
+                        2,
+                        out pending),
+                    Is.True);
+                Assert.That(
+                    pending!.TryGetValidation(out var validation),
+                    Is.True);
+                Assert.That(validation.Accepted, Is.True);
+            }
+            finally
+            {
+                pending?.Dispose();
+                geometry?.Dispose();
+                analyzer.Dispose();
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
+        public void PreservedPrimaryDensitySurvivesPrimaryTextureRemoval()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var secondary = new Texture2D(512, 512);
+            try
+            {
+                var projected = new Dictionary<
+                    Material, IReadOnlyDictionary<string, Texture>>
+                {
+                    [material] = new Dictionary<string, Texture>
+                    {
+                        ["_DetailAlbedoMap"] = secondary,
+                    },
+                };
+                var density = new Dictionary<Material, Vector2Int?>
+                {
+                    [material] = new Vector2Int(1024, 512),
+                };
+                var grouping = new MaterialGroupingContext(
+                    new HashSet<Material> { material },
+                    projected,
+                    "_MainTex",
+                    density);
+
+                Assert.That(grouping.GetPrimaryTexture(0), Is.Null);
+                Assert.That(
+                    grouping.GetPrimaryDensitySize(0),
+                    Is.EqualTo(new Vector2Int(1024, 512)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(secondary);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void PreservedPrimaryDensityUsesComponentMaximumAfterGrouping()
+        {
+            var shader = Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+
+            var first = new Material(shader);
+            var second = new Material(shader);
+            var shared = new Texture2D(512, 512);
+            try
+            {
+                var projected = new Dictionary<
+                    Material, IReadOnlyDictionary<string, Texture>>
+                {
+                    [first] = new Dictionary<string, Texture>
+                    {
+                        ["_DetailAlbedoMap"] = shared,
+                    },
+                    [second] = new Dictionary<string, Texture>
+                    {
+                        ["_DetailAlbedoMap"] = shared,
+                    },
+                };
+                var density = new Dictionary<Material, Vector2Int?>
+                {
+                    [first] = new Vector2Int(1024, 256),
+                    [second] = new Vector2Int(256, 1024),
+                };
+                var grouping = new MaterialGroupingContext(
+                    new HashSet<Material> { first, second },
+                    projected,
+                    "_MainTex",
+                    density);
+
+                Assert.That(grouping.GroupMaterials.Length, Is.EqualTo(1));
+                Assert.That(
+                    grouping.GetPrimaryDensitySize(0),
+                    Is.EqualTo(new Vector2Int(1024, 1024)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(shared);
+                Object.DestroyImmediate(first);
+                Object.DestroyImmediate(second);
+            }
+        }
+
         private static void AssertToleranceValidation(
             AtlasSourceGpuAnalyzer analyzer,
             Color representative,

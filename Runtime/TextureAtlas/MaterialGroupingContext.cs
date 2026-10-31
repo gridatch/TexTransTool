@@ -14,6 +14,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
         public readonly IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>> ContainsTextureDictionaries;
 
         public readonly string? PrimaryTexturePropertyOrMaximum;
+        private readonly IReadOnlyDictionary<Material, Vector2Int?>?
+            _primaryDensitySizesByMaterial;
+
         public MaterialGroupingContext(
             HashSet<Material> targetMaterials,
             UVChannel atlasingTargetUVChannel,
@@ -22,7 +25,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 BuildContainsTextureDictionaries(
                     targetMaterials,
                     atlasingTargetUVChannel),
-                primaryTexturePropertyOrMaximum)
+                primaryTexturePropertyOrMaximum,
+                null)
         {
         }
 
@@ -32,7 +36,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 Material,
                 IReadOnlyDictionary<string, Texture>>
                 precomputedContainsTextureDictionaries,
-            string? primaryTexturePropertyOrMaximum)
+            string? primaryTexturePropertyOrMaximum,
+            IReadOnlyDictionary<Material, Vector2Int?>?
+                primaryDensitySizesByMaterial = null)
             : this(
                 targetMaterials.ToDictionary(
                     material => material,
@@ -42,7 +48,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             ? textures
                             : (IReadOnlyDictionary<string, Texture>)
                                 new Dictionary<string, Texture>()),
-                primaryTexturePropertyOrMaximum)
+                primaryTexturePropertyOrMaximum,
+                primaryDensitySizesByMaterial)
         {
         }
 
@@ -51,12 +58,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 Material,
                 IReadOnlyDictionary<string, Texture>>
                 containsTextureDictionaries,
-            string? primaryTexturePropertyOrMaximum)
+            string? primaryTexturePropertyOrMaximum,
+            IReadOnlyDictionary<Material, Vector2Int?>?
+                primaryDensitySizesByMaterial)
         {
             ContainsTextureDictionaries = containsTextureDictionaries;
             GroupMaterials = BuildGroups(containsTextureDictionaries);
             PrimaryTexturePropertyOrMaximum =
                 primaryTexturePropertyOrMaximum;
+            _primaryDensitySizesByMaterial =
+                primaryDensitySizesByMaterial;
         }
 
         internal static IReadOnlyDictionary<
@@ -146,8 +157,41 @@ namespace net.rs64.TexTransTool.TextureAtlas
         }
         public Texture? GetPrimaryTexture(int groupID)
         {
-            return GroupMaterials[groupID].GetPrimaryTexture(PrimaryTexturePropertyOrMaximum);
+            return GroupMaterials[groupID].GetPrimaryTexture(
+                PrimaryTexturePropertyOrMaximum);
         }
+
+        internal Vector2Int? GetPrimaryDensitySize(int groupID)
+        {
+            var primary = GetPrimaryTexture(groupID);
+            Vector2Int? result = primary == null
+                ? null
+                : new Vector2Int(primary.width, primary.height);
+
+            if (_primaryDensitySizesByMaterial == null)
+                return result;
+
+            foreach (var material in GroupMaterials[groupID])
+            {
+                if (!_primaryDensitySizesByMaterial.TryGetValue(
+                        material, out var preserved)
+                    || !preserved.HasValue)
+                    continue;
+
+                if (!result.HasValue)
+                {
+                    result = preserved;
+                    continue;
+                }
+
+                result = new Vector2Int(
+                    Mathf.Max(result.Value.x, preserved.Value.x),
+                    Mathf.Max(result.Value.y, preserved.Value.y));
+            }
+
+            return result;
+        }
+
         public HashSet<string> GetContainsAllProperties()
         {
             return GroupMaterials.SelectMany(i => i.GroupedTexture.Keys).ToHashSet();
