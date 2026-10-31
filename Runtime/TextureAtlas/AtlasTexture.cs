@@ -57,6 +57,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
             if (targetMaterials.Any() is false || targetRenderers.Any() is false) { TTLog.Info("AtlasTexture:info:TargetNotFound"); return; }
 
+            var targetMaterialNames = string.Join(
+                ", ",
+                AtlasTargetMaterials
+                    .UOfType<Material>()
+                    .Where(selected => targetMaterials.Any(material =>
+                        domain.OriginEqual(selected, material)))
+                    .Select(material => material.name)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(name => name, StringComparer.Ordinal));
+
             pf.Split("looking");
 
             foreach (var mmg in MergeMaterialGroups) { if (mmg.Reference != null) { domain.LookAt(mmg.Reference); } }
@@ -220,6 +230,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 {
                     TTLog.Info(
                         "AtlasTexture:info:RelocateResultWithResolutionAndMemory",
+                        targetMaterialNames,
                         metrics.TopFreeFraction,
                         metrics.PriorityDownScale,
                         metrics.OverallDownScale,
@@ -235,6 +246,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 {
                     TTLog.Info(
                         "AtlasTexture:info:RelocateResultWithResolution",
+                        targetMaterialNames,
                         metrics.TopFreeFraction,
                         metrics.PriorityDownScale,
                         metrics.OverallDownScale,
