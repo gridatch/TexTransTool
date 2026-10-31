@@ -6,6 +6,7 @@
 [assembly: InternalsVisibleTo("net.rs64.tex-trans-tool.test-code")]
 
 [assembly: InternalsVisibleTo("net.rs64.tex-trans-tool.ndmf")]
+[assembly: InternalsVisibleTo("net.rs64.tex-trans-tool.ndmf-test-code")]
 
 [assembly: InternalsVisibleTo("net.rs64.ttt-world-extension")]
 

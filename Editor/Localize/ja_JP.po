@@ -212,6 +212,12 @@ msgstr "ベイク対象レンダラー ({0}/{1})"
 msgid "AtlasTexture:info:NoBakeTargetRenderers"
 msgstr "現在選択されているマテリアルとAtlas設定に一致するベイク対象レンダラーはありません。"
 
+msgid "AtlasTexture:label:InactiveBakeRenderers"
+msgstr "非アクティブなレンダラー"
+
+msgid "AtlasTexture:label:InactiveRendererMaterials"
+msgstr "非アクティブなレンダラーのマテリアル"
+
 msgid "AtlasTexture:button:RefreshMaterials"
 msgstr "リフレッシュマテリアル"
 
@@ -832,8 +838,8 @@ msgstr "選択テクスチャーのプレビュー"
 msgid "AutoAtlasTexture:fallback:RendererSetChanged"
 msgstr "実行時のAtlasTexture対象レンダラー集合が計画時と一致しない"
 
-msgid "AutoAtlasTexture:fallback:ActiveUntransformedConsumer"
-msgstr "現在アクティブなMaterial共有先の一部へ対応するAtlas Mesh/UV変換を適用できない"
+msgid "AutoAtlasTexture:fallback:RuntimeRelevantUntransformedConsumer"
+msgstr "実行時に表示され得るMaterial共有先の一部へ対応するAtlas Mesh/UV変換を適用できない"
 
 msgid "AutoAtlasTexture:fallback:LayoutMismatch"
 msgstr "出力レイアウトが不適合: actual={0}×{1}, planned={2}×{3}, outputPixels={4}"

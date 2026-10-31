@@ -34,6 +34,8 @@ namespace net.rs64.TexTransTool.NDMF
         private readonly AdditionalMaterialsProvider _additionalMaterialsProvider;
         private readonly AtlasSourceOptimizationAnimationSafety
             _atlasSourceOptimizationAnimationSafety;
+        private readonly AtlasRendererVisibilityAnalyzer
+            _atlasRendererVisibilityAnalyzer;
 
         public NDMFDomain(BuildContext b)
             : base(b.AvatarRootObject, new NDMFAssetSaver(b))
@@ -41,6 +43,8 @@ namespace net.rs64.TexTransTool.NDMF
             _additionalMaterialsProvider = new AdditionalMaterialsProvider(b);
             _atlasSourceOptimizationAnimationSafety =
                 new AtlasSourceOptimizationAnimationSafety(b);
+            _atlasRendererVisibilityAnalyzer =
+                new AtlasRendererVisibilityAnalyzer(b);
         }
 
         public NDMFDomain(
@@ -56,6 +60,8 @@ namespace net.rs64.TexTransTool.NDMF
             _additionalMaterialsProvider = new AdditionalMaterialsProvider(b);
             _atlasSourceOptimizationAnimationSafety =
                 new AtlasSourceOptimizationAnimationSafety(b);
+            _atlasRendererVisibilityAnalyzer =
+                new AtlasRendererVisibilityAnalyzer(b);
         }
 
         public HashSet<Material> GetAllMaterials()
@@ -84,6 +90,8 @@ namespace net.rs64.TexTransTool.NDMF
 
         protected override T? GetCustomContext<T>() where T : class
         {
+            if (_atlasRendererVisibilityAnalyzer is T visibility)
+                return visibility;
             if (_atlasSourceOptimizationAnimationSafety is T safety)
                 return safety;
             return base.GetCustomContext<T>();

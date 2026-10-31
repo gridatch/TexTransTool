@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using nadena.dev.ndmf;
-using nadena.dev.ndmf.animator;
 using net.rs64.TexTransCore;
 using net.rs64.TexTransCore.UVIsland;
 using net.rs64.TexTransTool.TextureAtlas;
@@ -41,148 +40,10 @@ namespace net.rs64.TexTransTool.NDMF
                     atlas, context.AvatarRootObject))
                 .ToArray();
             var configuration = configurations[0];
-            var animationServices =
-                configuration.EnableAdditionalAtlasMerging
-                && configuration.ExcludeVisibilityAnimatedItemsFromTextureMerging
-                    ? context.Extension<AnimatorServicesContext>()
-                    : null;
             AutoAtlasTextureProcessor.Execute(
                 session.Domain,
                 configuration,
-                manualAtlases,
-                animationServices?.AnimationIndex,
-                animationServices?.ObjectPathRemapper,
-                context.AvatarRootTransform);
-        }
-    }
-
-    /// <summary>
-    /// Detects visibility animation on renderers and their parent GameObjects.
-    /// This only determines whether a property can take a value different from
-    /// its current one; it does not infer runtime usage frequency or menu reachability.
-    /// </summary>
-    internal static class AutoAtlasTextureVisibilityAnimationDetector
-    {
-        internal static HashSet<Renderer> Detect(
-            AnimationIndex animationIndex,
-            ObjectPathRemapper pathRemapper,
-            Transform avatarRoot,
-            IEnumerable<Renderer> renderers)
-        {
-            return Detect(
-                animationIndex,
-                avatarRoot,
-                renderers,
-                transform =>
-                {
-                    // An NDMF ReplaceObject can map multiple historical animation
-                    // paths to the same current object. Inspect every alias.
-                    // Register new objects first, just as the original lookup did.
-                    pathRemapper.GetVirtualPathForObject(transform);
-                    return pathRemapper.GetAllPathsForObject(transform);
-                });
-        }
-
-        // Allows tests to supply deterministic object paths without requiring
-        // a live NDMF BuildContext.
-        internal static HashSet<Renderer> Detect(
-            AnimationIndex animationIndex,
-            Transform avatarRoot,
-            IEnumerable<Renderer> renderers,
-            Func<Transform, IEnumerable<string>> pathsForObject)
-        {
-            var animatedRenderers = new HashSet<Renderer>();
-            var gameObjectVisibility = new Dictionary<Transform, bool>();
-
-            foreach (var renderer in renderers)
-            {
-                if (renderer == null) continue;
-
-                var transform = renderer.transform;
-                var cursor = transform;
-                var insideAvatar = false;
-                while (cursor != null)
-                {
-                    if (cursor == avatarRoot)
-                    {
-                        insideAvatar = true;
-                        break;
-                    }
-                    cursor = cursor.parent;
-                }
-                if (!insideAvatar) continue;
-
-                if (HasAnimatedVisibility(
-                        animationIndex, pathsForObject(transform),
-                        renderer.GetType(), "m_Enabled", renderer.enabled))
-                {
-                    animatedRenderers.Add(renderer);
-                    continue;
-                }
-
-                for (cursor = transform; cursor != null; cursor = cursor.parent)
-                {
-                    if (!gameObjectVisibility.TryGetValue(cursor, out var animated))
-                    {
-                        animated = HasAnimatedVisibility(
-                            animationIndex, pathsForObject(cursor),
-                            typeof(GameObject), "m_IsActive",
-                            cursor.gameObject.activeSelf);
-                        gameObjectVisibility.Add(cursor, animated);
-                    }
-
-                    if (animated)
-                    {
-                        animatedRenderers.Add(renderer);
-                        break;
-                    }
-
-                    if (cursor == avatarRoot) break;
-                }
-            }
-
-            return animatedRenderers;
-        }
-
-        private static bool HasAnimatedVisibility(
-            AnimationIndex index, IEnumerable<string> paths,
-            Type componentType, string propertyName, bool currentValue)
-        {
-            foreach (var path in paths.Distinct(StringComparer.Ordinal))
-            {
-                foreach (var clip in index.GetClipsForObjectPath(path))
-                {
-                    foreach (var binding in clip.GetFloatCurveBindings())
-                    {
-                        if (binding.path != path
-                            || binding.propertyName != propertyName
-                            || binding.type == null
-                            || !binding.type.IsAssignableFrom(componentType)
-                            || (propertyName == "m_IsActive"
-                                ? binding.type != typeof(GameObject)
-                                : !typeof(Renderer).IsAssignableFrom(binding.type)))
-                            continue;
-
-                        if (CurveChangesVisibility(
-                                clip.GetFloatCurve(binding), currentValue))
-                            return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        internal static bool CurveChangesVisibility(
-            AnimationCurve? curve, bool currentValue)
-        {
-            if (curve == null) return false;
-            // Boolean animation properties are encoded as float 0 or 1.
-            // Curves that keep the current state must not exclude an item.
-            return curve.keys.Any(key =>
-                !float.IsNaN(key.value)
-                && !float.IsInfinity(key.value)
-                && (key.value >= 0.5f) != currentValue);
+                manualAtlases);
         }
     }
 
@@ -200,7 +61,7 @@ namespace net.rs64.TexTransTool.NDMF
             internal readonly Renderer[] Renderers;
             internal readonly HashSet<Texture> SourceTextures;
             internal readonly HashSet<Texture> OriginalSourceTextures;
-            // Original sources that remain physically needed by active drawable
+            // Original sources that remain physically needed by runtime-relevant drawable
             // consumers after this execution. This is a cost concept only.
             internal readonly HashSet<Texture> RetainedSourceTextures;
             // Original sources that target materials intentionally keep on
@@ -333,19 +194,23 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         internal static List<Renderer> GetAutoAtlasAllowedRenderers(
-            IRendererTargeting domain, AutoAtlasTexture configuration)
+            IRendererTargeting domain,
+            AutoAtlasTexture configuration,
+            IReadOnlyDictionary<
+                Renderer, AtlasRendererVisibilityState>? visibilityStates = null)
         {
-            // AutoAtlasTexture adds automatic material selection and lossless
-            // sizing on top of AtlasTexture. Renderer eligibility must therefore
-            // follow AtlasTexture's normal default target resolution instead of
-            // inventing a broader "include disabled" rule.
+            // AutoAtlasTexture follows AtlasTexture's normal
+            // IncludeDisabledRenderer=false semantics. In NDMF builds this
+            // includes renderers that are initially hidden but can become
+            // visible at runtime.
             var excludedRenderers = domain
                 .GetDomainsRenderers(configuration.ExcludedRenderers)
                 .ToHashSet();
             return AtlasTexture.GetAtlasAllowedRenderers(
                     domain,
                     domain.EnumerateRenderer(),
-                    includeDisabledRenderer: false)
+                    includeDisabledRenderer: false,
+                    visibilityStates)
                 .Where(renderer => !excludedRenderers.Contains(renderer))
                 .ToList();
         }
@@ -353,10 +218,13 @@ namespace net.rs64.TexTransTool.NDMF
         internal static Renderer[] ResolveAutoAtlasTargetRenderers(
             IRendererTargeting domain,
             AutoAtlasTexture configuration,
-            HashSet<Material> targetMaterials)
+            HashSet<Material> targetMaterials,
+            IReadOnlyDictionary<
+                Renderer, AtlasRendererVisibilityState>? visibilityStates = null)
         {
             var allowedRenderers =
-                GetAutoAtlasAllowedRenderers(domain, configuration);
+                GetAutoAtlasAllowedRenderers(
+                    domain, configuration, visibilityStates);
             var targetRenderers = AtlasTexture.FilterTargetRenderers(
                 domain, allowedRenderers, targetMaterials);
             return AtlasTexture.FilterExistUVChannel(
@@ -364,9 +232,16 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         internal static Renderer[] GetAAONegotiationRenderers(
-            IRendererTargeting domain, AutoAtlasTexture configuration)
+            IRendererTargeting domain,
+            AutoAtlasTexture configuration,
+            IReadOnlyDictionary<
+                Renderer, AtlasRendererVisibilityState>? visibilityStates = null)
         {
-            return GetAutoAtlasAllowedRenderers(domain, configuration)
+            var renderers = domain.EnumerateRenderer().ToArray();
+            visibilityStates ??=
+                AtlasTexture.AnalyzeRendererVisibility(domain, renderers);
+            return GetAutoAtlasAllowedRenderers(
+                    domain, configuration, visibilityStates)
                 .ToArray();
         }
 
@@ -385,10 +260,7 @@ namespace net.rs64.TexTransTool.NDMF
         internal static void Execute(
             IDomain domain,
             AutoAtlasTexture configuration,
-            IReadOnlyCollection<AtlasTexture> manualAtlases,
-            AnimationIndex? animationIndex = null,
-            ObjectPathRemapper? objectPathRemapper = null,
-            Transform? avatarRoot = null)
+            IReadOnlyCollection<AtlasTexture> manualAtlases)
         {
             var processingTimer = System.Diagnostics.Stopwatch.StartNew();
 
@@ -400,23 +272,27 @@ namespace net.rs64.TexTransTool.NDMF
             var allRenderers = domain.EnumerateRenderer()
                 .Where(renderer => renderer != null)
                 .ToArray();
+            var visibilityStates =
+                AtlasTexture.AnalyzeRendererVisibility(
+                    domain, allRenderers);
 
-            // Auto-select materials from the same renderer population that a
-            // normal AtlasTexture with its default IncludeDisabledRenderer=false
-            // would use. Retained-source cost is derived only from active,
-            // drawable renderer consumers; arbitrary material, Animator, and
+            // Auto-select materials from the same runtime-relevant renderer
+            // population as normal AtlasTexture with
+            // IncludeDisabledRenderer=false. Arbitrary material, Animator, and
             // MA references must not become texture-memory cost.
             var excludedRenderers = domain
                 .GetDomainsRenderers(configuration.ExcludedRenderers)
                 .ToHashSet();
             var atlasAllowedRenderers =
-                GetAutoAtlasAllowedRenderers(domain, configuration);
+                GetAutoAtlasAllowedRenderers(
+                    domain, configuration, visibilityStates);
             var candidateMaterials = atlasAllowedRenderers
                 .SelectMany(domain.GetMaterials)
                 .UOfType<Material>()
                 .ToHashSet();
-            var activeTextureConsumers =
-                CollectActiveTextureConsumers(domain);
+            var runtimeRelevantTextureConsumers =
+                CollectRuntimeRelevantTextureConsumers(
+                    domain, visibilityStates);
             if (candidateMaterials.Count == 0)
             {
                 processingTimer.Stop();
@@ -434,23 +310,15 @@ namespace net.rs64.TexTransTool.NDMF
                 .ToHashSet();
             var mergingExcludedMaterials = domain.GetDomainsMaterialsHashSet(
                 configuration.TextureMergingExcludedMaterials);
-            var animatedVisibilityRenderers =
-                configuration.EnableAdditionalAtlasMerging
-                && configuration.ExcludeVisibilityAnimatedItemsFromTextureMerging
-                && animationIndex != null
-                && objectPathRemapper != null
-                && avatarRoot != null
-                    ? AutoAtlasTextureVisibilityAnimationDetector.Detect(
-                        animationIndex, objectPathRemapper, avatarRoot,
-                        allRenderers)
-                    : new HashSet<Renderer>();
-
             // Resolve manual AtlasTexture targets through TTT's existing lookup
             // rather than rescanning hierarchy and comparing raw user selections.
             var manuallySelectedMaterials = manualAtlases
                 .SelectMany(atlas => atlas.GetTargetMaterials(domain,
-                    AtlasTexture.GetAtlasAllowedRenderers(domain,
-                        domain.EnumerateRenderer(), atlas.AtlasSetting.IncludeDisabledRenderer)))
+                    AtlasTexture.GetAtlasAllowedRenderers(
+                        domain,
+                        allRenderers,
+                        atlas.AtlasSetting.IncludeDisabledRenderer,
+                        visibilityStates)))
                 .ToHashSet();
 
             var settings = new AtlasSetting
@@ -469,7 +337,7 @@ namespace net.rs64.TexTransTool.NDMF
             };
 
             // Source optimization is evaluated against the same renderer
-            // population that AutoAtlas may rewrite. Materials with any active
+            // population that AutoAtlas may rewrite. Materials with any runtime-relevant
             // consumer outside that population are left untouched so the
             // domain-wide material replacement cannot affect an excluded mesh.
             var optimizationExcludedMaterials =
@@ -482,10 +350,10 @@ namespace net.rs64.TexTransTool.NDMF
                     continue;
                 var one = new HashSet<Material> { material };
                 var materialRenderers = ResolveAutoAtlasTargetRenderers(
-                    domain, configuration, one);
+                    domain, configuration, one, visibilityStates);
                 if (materialRenderers.Length == 0
-                    || HasActiveUntransformedMaterialConsumer(
-                        domain, one, materialRenderers))
+                    || HasRuntimeRelevantUntransformedMaterialConsumer(
+                        domain, one, materialRenderers, visibilityStates))
                 {
                     optimizationExcludedMaterials.Add(material);
                 }
@@ -538,21 +406,22 @@ namespace net.rs64.TexTransTool.NDMF
                 // Resolve renderers through the same AtlasTexture-equivalent
                 // path that execution revalidation uses.
                 var atlasRenderers = ResolveAutoAtlasTargetRenderers(
-                    domain, configuration, group);
+                    domain, configuration, group, visibilityStates);
                 if (atlasRenderers.Length == 0)
                 {
                     continue;
                 }
 
-                // Material replacement is domain-wide. A currently
-                // active consumer that cannot receive the corresponding UV
+                // Material replacement is domain-wide. A runtime-relevant
+                // consumer that cannot receive the corresponding UV
                 // rewrite would otherwise get an atlased material on its
-                // original mesh. Disabled/inactive consumers remain outside
-                // this check to preserve AtlasTexture's default targeting.
-                if (HasActiveUntransformedMaterialConsumer(
+                // original mesh. Permanently hidden consumers remain outside this check; initially
+                // hidden renderers that can become visible are included.
+                if (HasRuntimeRelevantUntransformedMaterialConsumer(
                         domain,
                         group,
-                        atlasRenderers))
+                        atlasRenderers,
+                        visibilityStates))
                 {
                     continue;
                 }
@@ -579,7 +448,7 @@ namespace net.rs64.TexTransTool.NDMF
                 var retainedSourceTextures =
                     expectedGeneratedSourceTextures
                         .Union(FindExternallyRetainedSourceTextures(
-                            activeTextureConsumers,
+                            runtimeRelevantTextureConsumers,
                             group,
                             originalSourceTextures))
                         .ToHashSet();
@@ -599,7 +468,12 @@ namespace net.rs64.TexTransTool.NDMF
                     ExcludedFromTextureMerging = IsExcludedFromTextureMerging(
                         group, atlasRenderers, mergingExcludedMaterials,
                         mergingExcludedRenderers)
-                        || atlasRenderers.Any(animatedVisibilityRenderers.Contains),
+                        || (configuration.ExcludeVisibilityAnimatedItemsFromTextureMerging
+                            && atlasRenderers.Any(renderer =>
+                                visibilityStates != null
+                                && visibilityStates.TryGetValue(
+                                    renderer, out var state)
+                                && state.CanToggleVisibility)),
                 });
             }
 
@@ -631,7 +505,7 @@ namespace net.rs64.TexTransTool.NDMF
                         removedBindings);
                 var retainedSources = expectedGeneratedSources
                     .Union(FindExternallyRetainedSourceTextures(
-                        activeTextureConsumers,
+                        runtimeRelevantTextureConsumers,
                         group,
                         originalSources))
                     .ToHashSet();
@@ -639,7 +513,7 @@ namespace net.rs64.TexTransTool.NDMF
                 executionGroups.Enqueue(new ExecutionGroup(
                     group,
                     ResolveAutoAtlasTargetRenderers(
-                        domain, configuration, group),
+                        domain, configuration, group, visibilityStates),
                     new HashSet<Texture>(),
                     originalSources,
                     retainedSources,
@@ -668,7 +542,8 @@ namespace net.rs64.TexTransTool.NDMF
                         settings,
                         sourceOptimization,
                         execution,
-                        sourceOptimizationBlock);
+                        sourceOptimizationBlock,
+                        visibilityStates);
                     if (sourceOnlyBlock != null)
                         completed.Add(sourceOnlyBlock);
                     continue;
@@ -679,26 +554,27 @@ namespace net.rs64.TexTransTool.NDMF
                 // domain-wide material consumer; AutoAtlas is required to
                 // preserve AtlasTexture's normal target semantics.
                 var atlasRenderers = ResolveAutoAtlasTargetRenderers(
-                    domain, configuration, group);
+                    domain, configuration, group, visibilityStates);
                 var plannedRenderers = execution.Renderers
                     .Where(renderer => renderer != null)
                     .Distinct()
                     .ToHashSet();
 
-                var hasActiveUntransformedConsumer =
-                    HasActiveUntransformedMaterialConsumer(
+                var hasRuntimeRelevantUntransformedConsumer =
+                    HasRuntimeRelevantUntransformedMaterialConsumer(
                         domain,
                         group,
-                        atlasRenderers);
+                        atlasRenderers,
+                        visibilityStates);
                 if (atlasRenderers.Length == 0
                     || !plannedRenderers.SetEquals(atlasRenderers)
-                    || hasActiveUntransformedConsumer)
+                    || hasRuntimeRelevantUntransformedConsumer)
                 {
                     if (execution.MergeSelection is { } invalidMerge)
                     {
-                        var reason = hasActiveUntransformedConsumer
+                        var reason = hasRuntimeRelevantUntransformedConsumer
                             ? FormatLocalized(
-                                "AutoAtlasTexture:fallback:ActiveUntransformedConsumer")
+                                "AutoAtlasTexture:fallback:RuntimeRelevantUntransformedConsumer")
                             : FormatLocalized(
                                 "AutoAtlasTexture:fallback:RendererSetChanged");
                         twoDimensionalFallbackReasons.Add(
@@ -1122,7 +998,7 @@ namespace net.rs64.TexTransTool.NDMF
                         .Distinct()
                         .ToArray();
 
-                // External active consumers affect cost only. They must not
+                // External runtime-relevant consumers affect cost only. They must not
                 // authorize a generated target material to retain an original
                 // source. Only target-local bindings intentionally outside the
                 // rewrite are valid generated-material source references.
@@ -1312,10 +1188,12 @@ namespace net.rs64.TexTransTool.NDMF
             }
         }
 
-        internal static bool HasActiveUntransformedMaterialConsumer(
+        internal static bool HasRuntimeRelevantUntransformedMaterialConsumer(
             IRendererTargeting domain,
             IReadOnlyCollection<Material> materials,
-            IReadOnlyCollection<Renderer> transformedRenderers)
+            IReadOnlyCollection<Renderer> transformedRenderers,
+            IReadOnlyDictionary<
+                Renderer, AtlasRendererVisibilityState>? visibilityStates = null)
         {
             var transformed = transformedRenderers.ToHashSet();
 
@@ -1324,8 +1202,8 @@ namespace net.rs64.TexTransTool.NDMF
                 if (renderer == null || renderer.tag == "EditorOnly")
                     continue;
 
-                if (!domain.IsEnable(renderer)
-                    || !domain.IsActive(renderer.gameObject))
+                if (!IsRuntimeRelevant(
+                        domain, renderer, visibilityStates))
                 {
                     continue;
                 }
@@ -1342,6 +1220,21 @@ namespace net.rs64.TexTransTool.NDMF
             }
 
             return false;
+        }
+
+        private static bool IsRuntimeRelevant(
+            IRendererTargeting domain,
+            Renderer renderer,
+            IReadOnlyDictionary<
+                Renderer, AtlasRendererVisibilityState>? visibilityStates)
+        {
+            if (domain.IsEnable(renderer)
+                && domain.IsActive(renderer.gameObject))
+                return true;
+
+            return visibilityStates != null
+                && visibilityStates.TryGetValue(renderer, out var state)
+                && state.CanBecomeVisible;
         }
 
         internal static bool HasStrictMergePixelBenefit(
@@ -1373,18 +1266,20 @@ namespace net.rs64.TexTransTool.NDMF
                 || renderers.Any(excludedRenderers.Contains);
         }
 
-        internal sealed class ActiveTextureConsumerSet
+        internal sealed class RuntimeRelevantTextureConsumerSet
         {
             internal readonly HashSet<Material> Materials;
 
-            internal ActiveTextureConsumerSet(HashSet<Material> materials)
+            internal RuntimeRelevantTextureConsumerSet(HashSet<Material> materials)
             {
                 Materials = materials;
             }
         }
 
-        internal static ActiveTextureConsumerSet CollectActiveTextureConsumers(
-            IRendererTargeting domain)
+        internal static RuntimeRelevantTextureConsumerSet CollectRuntimeRelevantTextureConsumers(
+            IRendererTargeting domain,
+            IReadOnlyDictionary<
+                Renderer, AtlasRendererVisibilityState>? visibilityStates = null)
         {
             var materials = new HashSet<Material>();
 
@@ -1392,8 +1287,8 @@ namespace net.rs64.TexTransTool.NDMF
             {
                 if (renderer == null
                     || renderer.tag == "EditorOnly"
-                    || !domain.IsEnable(renderer)
-                    || !domain.IsActive(renderer.gameObject))
+                    || !IsRuntimeRelevant(
+                        domain, renderer, visibilityStates))
                 {
                     continue;
                 }
@@ -1403,7 +1298,7 @@ namespace net.rs64.TexTransTool.NDMF
                 if (mesh == null)
                 {
                     // Particle/line and other non-mesh renderers can still be
-                    // real active texture consumers even though AutoAtlas
+                    // real runtime-relevant texture consumers even though AutoAtlas
                     // itself cannot rewrite their UVs.
                     materials.UnionWith(
                         rendererMaterials.UOfType<Material>());
@@ -1429,7 +1324,7 @@ namespace net.rs64.TexTransTool.NDMF
                 }
             }
 
-            return new ActiveTextureConsumerSet(materials);
+            return new RuntimeRelevantTextureConsumerSet(materials);
         }
 
         internal static HashSet<Texture> FindTargetRetainedSourceTextures(
@@ -1469,12 +1364,12 @@ namespace net.rs64.TexTransTool.NDMF
         }
 
         internal static HashSet<Texture> FindExternallyRetainedSourceTextures(
-            ActiveTextureConsumerSet activeConsumers,
+            RuntimeRelevantTextureConsumerSet runtimeRelevantConsumers,
             HashSet<Material> group,
             HashSet<Texture> replacedTextures)
         {
             var retained = new HashSet<Texture>();
-            foreach (var material in activeConsumers.Materials)
+            foreach (var material in runtimeRelevantConsumers.Materials)
             {
                 if (group.Contains(material))
                     continue;
@@ -1496,7 +1391,9 @@ namespace net.rs64.TexTransTool.NDMF
             AtlasSetting settings,
             AtlasSourceOptimizationPlan sourceOptimization,
             ExecutionGroup execution,
-            string materialBlock)
+            string materialBlock,
+            IReadOnlyDictionary<
+                Renderer, AtlasRendererVisibilityState>? visibilityStates)
         {
             var changedMaterials = sourceOptimization.ConstantTextures
                 .Select(item => item.Material)
@@ -1510,10 +1407,10 @@ namespace net.rs64.TexTransTool.NDMF
                 return null;
 
             var targetRenderers = ResolveAutoAtlasTargetRenderers(
-                domain, configuration, targets);
+                domain, configuration, targets, visibilityStates);
             if (targetRenderers.Length == 0
-                || HasActiveUntransformedMaterialConsumer(
-                    domain, targets, targetRenderers))
+                || HasRuntimeRelevantUntransformedMaterialConsumer(
+                    domain, targets, targetRenderers, visibilityStates))
             {
                 return null;
             }
