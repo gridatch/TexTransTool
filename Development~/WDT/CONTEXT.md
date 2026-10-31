@@ -1423,7 +1423,7 @@ This is not a debugging diary. It maps every substantive commit in the current W
 - `cdcc4500` — preserve source optimization as a `SourceOnly` non-Atlas baseline and align retained-source cost/planner/execution behavior.
 - `55966497` — enforce the per-property 4096 AutoAtlas dimension cap without changing normal Atlas behavior.
 - `04d9add9` / PR #35 — shared runtime-visibility analysis: initially hidden renderers that can become visible participate in normal Atlas/AutoAtlas/AAO targeting and runtime-relevance safety; permanently hidden renderers remain excluded; texture-merging visibility exclusion uses effective toggleability.
-- PR #36 (validated, pending `wdt` merge at the time of this context update):
+- PR #36 merged to `wdt` as merge commit `817f30620954680ef807bc506426e4bda7a7efd7`:
   - `e2d2ab6f` — WholeTexture constant-proof fallback, preserved primary-density basis, animation-scope refinement, and directly related regression tests;
   - `3e17170c` — explicit/configured ReferenceCopy bindings are represented in source-plan projection so alias properties do not generate redundant Atlas outputs or hide SourceOnly benefit.
 
