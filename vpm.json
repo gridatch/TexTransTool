@@ -506,17 +506,17 @@
           },
           "zipSHA256": "a21d322ae5b4715e9c6ba83c5e30edf4168553edb5553301dd122e93e8fd2ba7"
         },
-        "0.1.23+wdt.ttt.1.0.2.debug.1316.atlas-whole-texture-constant-proof.543954b": {
+        "0.1.23+wdt.ttt.1.0.2.debug.1317.atlas-whole-texture-constant-proof.aeaebc1": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.23+wdt.ttt.1.0.2.debug.1316.atlas-whole-texture-constant-proof.543954b",
+          "version": "0.1.23+wdt.ttt.1.0.2.debug.1317.atlas-whole-texture-constant-proof.aeaebc1",
           "unity": "2022.3",
-          "description": "Debug build 1316 for atlas-whole-texture-constant-proof from feat/atlas-whole-texture-constant-proof at 543954b. Based on WDT 0.1.23+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 1317 for atlas-whole-texture-constant-proof from feat/atlas-whole-texture-constant-proof at aeaebc1. Based on WDT 0.1.23+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1316.atlas-whole-texture-constant-proof.543954b.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1317.atlas-whole-texture-constant-proof.aeaebc1.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -529,7 +529,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "de1048aed05ffe7c2784ec5ad159215a507d77571b36d99339d97bd7f7569557"
+          "zipSHA256": "0b098e9a8f7306b25711055f16b9665c9d6f5d7d248ae647cb52e1990bfa7df3"
         }
       }
     }
