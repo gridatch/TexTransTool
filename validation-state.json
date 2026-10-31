@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.23+wdt.ttt.1.0.2",
-  "lastDebugSerial": 1306,
-  "currentDebugVersion": "0.1.23+wdt.ttt.1.0.2.debug.1306.diag-stick-masked-atlas.c3e5eb1",
+  "lastDebugSerial": 1307,
+  "currentDebugVersion": "0.1.23+wdt.ttt.1.0.2.debug.1307.diag-stick-masked-atlas.c9b05ec",
   "currentDebugChange": "diag-stick-masked-atlas",
   "currentDebugBranch": "feat/diag-stick-masked-atlas",
-  "currentDebugCommit": "c3e5eb1fc7b43a0d9de54773e44572ea887aee72",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1306.diag-stick-masked-atlas.c3e5eb1.zip"
+  "currentDebugCommit": "c9b05ecd3196ac306f64a46a8d688dd341bc66a4",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1307.diag-stick-masked-atlas.c9b05ec.zip"
 }
