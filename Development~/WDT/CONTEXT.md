@@ -1111,7 +1111,12 @@ Temporary long-form candidate/search diagnostics are not production requirements
 
 Normal AtlasTexture and AutoAtlas result logs intentionally report concrete before/after resolution routes rather than a percentage-only "optimization score".
 
-AutoAtlas reports original material names through NDMF object identity where possible so build-stage material suffixes do not obscure user-facing diagnostics.
+Both normal AtlasTexture and AutoAtlas result summaries include the target material names so manual/automatic results can be compared directly.
+
+- Normal/manual AtlasTexture reports the original selected `AtlasTargetMaterials` names corresponding to the effective `targetMaterials` through the existing `domain.OriginEqual` relationship. Do not re-scan renderers or introduce NDMF object-identity lookup for this path.
+- AutoAtlas reports original material names through NDMF object identity where possible because its materials are selected automatically and there is no `AtlasTargetMaterials` source list to reuse.
+
+The normal Atlas target-material line belongs only to the final `RelocateResultWithResolution` / `RelocateResultWithResolutionAndMemory` summaries. The lower-level `DoAtlasTexture` progress log remains a separate shared execution diagnostic and should not be expanded merely to mirror the final summary.
 
 The total AutoAtlas processing-time line is production-required.
 
@@ -1423,6 +1428,7 @@ This is not a debugging diary. It maps every substantive commit in the current W
 - `cdcc4500` — preserve source optimization as a `SourceOnly` non-Atlas baseline and align retained-source cost/planner/execution behavior.
 - `55966497` — enforce the per-property 4096 AutoAtlas dimension cap without changing normal Atlas behavior.
 - `04d9add9` / PR #35 — shared runtime-visibility analysis: initially hidden renderers that can become visible participate in normal Atlas/AutoAtlas/AAO targeting and runtime-relevance safety; permanently hidden renderers remain excluded; texture-merging visibility exclusion uses effective toggleability.
+- `3e35c47c` (feature branch, validated pending merge at the time of this context update) — manual Atlas result summaries now include target material names using the existing selected-material / `OriginEqual` mapping; no Atlas targeting or execution behavior changes.
 - PR #36 merged to `wdt` as merge commit `817f30620954680ef807bc506426e4bda7a7efd7`:
   - `e2d2ab6f` — WholeTexture constant-proof fallback, preserved primary-density basis, animation-scope refinement, and directly related regression tests;
   - `3e17170c` — explicit/configured ReferenceCopy bindings are represented in source-plan projection so alias properties do not generate redundant Atlas outputs or hide SourceOnly benefit.
@@ -1441,6 +1447,7 @@ This is not a debugging diary. It maps every substantive commit in the current W
   - AutoAtlas `stick_masked`: SourceOnly remained 512x512 for the nonconstant source plus 4x4 for the constant source, with 512.0 KiB -> 341.4 KiB;
   - representative comparisons were run on `Seiran_SailorCupid`, `Seiran_Koiboshi`, `Seiran_FrillNyantic`, and `Seiran_SugaryBouquet`; no regression attributable to the WholeTexture/ReferenceCopy feature was found;
   - the `Hair_CustomBlue` behavior difference was reproduced on current `wdt` without PR #36 and therefore is not a PR #36 regression.
+- Manual target-material log validation: the user confirmed `stick_masked` and a two-material `jewel_7_fade,wing` manual Atlas both display the new target-material line while preserving the established resolution/memory results; AutoAtlas output remained unchanged.
 
 ## Non-adopted CI proposals
 
