@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.23+wdt.ttt.1.0.2",
-  "lastDebugSerial": 1312,
-  "currentDebugVersion": "0.1.23+wdt.ttt.1.0.2.debug.1312.atlas-whole-texture-constant-proof.6e10807",
+  "lastDebugSerial": 1313,
+  "currentDebugVersion": "0.1.23+wdt.ttt.1.0.2.debug.1313.atlas-whole-texture-constant-proof.5f04a80",
   "currentDebugChange": "atlas-whole-texture-constant-proof",
   "currentDebugBranch": "feat/atlas-whole-texture-constant-proof",
-  "currentDebugCommit": "6e10807c51cd9bcd62aec45112cf4bb97f461b26",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1312.atlas-whole-texture-constant-proof.6e10807.zip"
+  "currentDebugCommit": "5f04a80d48d1187f12dffe912b5347afde64530c",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1313.atlas-whole-texture-constant-proof.5f04a80.zip"
 }
