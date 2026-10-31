@@ -141,6 +141,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         ReportProgressInfo = false,
                         PrecomputedTextureUses =
                             sourceOptimization.ProjectedTextureUses,
+                        PrecomputedPrimaryDensitySizes =
+                            sourceOptimization.PrimaryDensitySizes,
                     });
                 if (atlasResult.IsSuccess is false)
                     return;
@@ -391,7 +393,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
             AtlasSetting atlasSetting,
             IReadOnlyDictionary<
                 Material, IReadOnlyDictionary<string, Texture>>?
-                precomputedTextureUses = null)
+                precomputedTextureUses = null,
+            IReadOnlyDictionary<Material, Vector2Int?>?
+                precomputedPrimaryDensitySizes = null)
         {
             var preserveBump2ndMaterials =
                 GetBump2ndOriginalUVPreserveMaterials(
@@ -427,7 +431,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             : atlasSetting.PrimaryTextureProperty,
                     AtlasIslandContextOption = new(),
                 },
-                precomputedTextureUses);
+                precomputedTextureUses,
+                precomputedPrimaryDensitySizes);
 
             if (atlasSetting.PixelNormalize)
                 atlasContext.SourceVirtualIslandNormalize();
@@ -515,7 +520,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 targetMaterials,
                 targetRenderers,
                 atlasSetting,
-                executionOptions?.PrecomputedTextureUses);
+                executionOptions?.PrecomputedTextureUses,
+                executionOptions?.PrecomputedPrimaryDensitySizes);
 
             if (prepared is null)
             {

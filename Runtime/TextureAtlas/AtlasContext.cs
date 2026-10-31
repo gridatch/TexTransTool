@@ -57,6 +57,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
         public Dictionary<IslandTransform, List<Island>> ReverseSourceVirtualIsland2OriginIslands;
         public Dictionary<IslandTransform, IslandReferences> SourceVirtualIsland2OriginRefaces;
         public Dictionary<IslandTransform, Texture?> SourceVirtualIslands2PrimaryTexture;
+        public Dictionary<IslandTransform, Vector2Int?>
+            SourceVirtualIslands2PrimaryDensitySize;
         public class AtlasContextOption
         {
             public string? PrimaryTexturePropertyOrMaximum = "_MainTex";
@@ -77,6 +79,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             , IReadOnlyDictionary<Material,
                 IReadOnlyDictionary<string, Texture>>?
                 precomputedTextureUses = null
+            , IReadOnlyDictionary<Material, Vector2Int?>?
+                primaryDensitySizesByMaterial = null
             )
         {
             using var pf = new PFScope("MaterialGroupingCtx ctr");
@@ -88,7 +92,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 : new MaterialGroupingContext(
                     targetMaterials,
                     precomputedTextureUses,
-                    atlasContextOption.PrimaryTexturePropertyOrMaximum);
+                    atlasContextOption.PrimaryTexturePropertyOrMaximum,
+                    primaryDensitySizesByMaterial);
             pf.Split("NormalizedMeshCtx ctr");
             NormalizedMeshCtx = new(targeting, targetRenderers, atlasContextOption.AtlasTargetUVChannel);
             pf.Split("AtlasSubMeshIndexSetCtx ctr");
@@ -126,14 +131,21 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 }
             );
 
-            SourceVirtualIslands2PrimaryTexture = new Dictionary<IslandTransform, Texture?>();
+            SourceVirtualIslands2PrimaryTexture =
+                new Dictionary<IslandTransform, Texture?>();
+            SourceVirtualIslands2PrimaryDensitySize =
+                new Dictionary<IslandTransform, Vector2Int?>();
             foreach (var virtualIslands in SourceVirtualIslands)
             {
-                var sourceMaterialID = ReverseSourceVirtualIsland2OriginIslands[virtualIslands]
-                    .Select(i => AtlasIslandCtx.ReverseOriginDict[i])
-                    .First();
-                var primaryTex = MaterialGroupingCtx.GetPrimaryTexture(sourceMaterialID.MaterialGroupID);
-                SourceVirtualIslands2PrimaryTexture[virtualIslands] = primaryTex;
+                var sourceMaterialID =
+                    ReverseSourceVirtualIsland2OriginIslands[virtualIslands]
+                        .Select(i => AtlasIslandCtx.ReverseOriginDict[i])
+                        .First();
+                var groupId = sourceMaterialID.MaterialGroupID;
+                SourceVirtualIslands2PrimaryTexture[virtualIslands] =
+                    MaterialGroupingCtx.GetPrimaryTexture(groupId);
+                SourceVirtualIslands2PrimaryDensitySize[virtualIslands] =
+                    MaterialGroupingCtx.GetPrimaryDensitySize(groupId);
             }
         }
         public void SourceVirtualIslandNormalize()
@@ -141,9 +153,13 @@ namespace net.rs64.TexTransTool.TextureAtlas
             for (var i = 0; SourceVirtualIslands.Length > i; i += 1)
             {
                 var vIsland = SourceVirtualIslands[i];
-                var primaryTex = SourceVirtualIslands2PrimaryTexture[vIsland];
-                if (primaryTex == null) { continue; }
-                NormalizeIsland(vIsland, primaryTex.width, primaryTex.height);
+                var primarySize =
+                    SourceVirtualIslands2PrimaryDensitySize[vIsland];
+                if (!primarySize.HasValue) { continue; }
+                NormalizeIsland(
+                    vIsland,
+                    primarySize.Value.x,
+                    primarySize.Value.y);
             }
             static void NormalizeIsland(IslandTransform island, int width, int height)
             {
@@ -185,15 +201,19 @@ namespace net.rs64.TexTransTool.TextureAtlas
         {
             for (var i = 0; virtualIslandArray.Length > i; i += 1)
             {
-                var refTex = SourceVirtualIslands2PrimaryTexture[SourceVirtualIslands[i]];
-                if (refTex != null)
+                var refSize =
+                    SourceVirtualIslands2PrimaryDensitySize[
+                        SourceVirtualIslands[i]];
+                if (refSize.HasValue)
                 {
-                    var scaling = (float)refTex.width / atlasTargeSize.x;
+                    var scaling =
+                        (float)refSize.Value.x / atlasTargeSize.x;
                     virtualIslandArray[i].Size *= scaling;
 
-                    if (refTex.width != refTex.height)
+                    if (refSize.Value.x != refSize.Value.y)
                     {
-                        var aspect = refTex.height / (float)refTex.width;
+                        var aspect =
+                            refSize.Value.y / (float)refSize.Value.x;
                         virtualIslandArray[i].Size.Y *= aspect;
                     }
                 }

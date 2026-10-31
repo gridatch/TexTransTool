@@ -56,11 +56,9 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         continue;
                     }
 
-                    var primaryTexture =
-                        atlasContext.MaterialGroupingCtx.GetPrimaryTexture(groupId);
-                    primarySizes.Add(primaryTexture == null
-                        ? null
-                        : new Vector2Int(primaryTexture.width, primaryTexture.height));
+                    primarySizes.Add(
+                        atlasContext.MaterialGroupingCtx
+                            .GetPrimaryDensitySize(groupId));
                     sourceSizes.Add(new Vector2Int(
                         sourceTexture.width,
                         sourceTexture.height

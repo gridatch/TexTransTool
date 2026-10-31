@@ -519,6 +519,53 @@ namespace net.rs64.TexTransTool.TextureAtlas
             return true;
         }
 
+        /// <summary>
+        /// Builds a one-to-one logical texel domain for the canonical source.
+        /// This lets whole-texture fallback reuse the exact same first-pass,
+        /// representative, tolerance-validation, and reduction pipeline as
+        /// used-region proof without depending on mesh UV geometry.
+        /// </summary>
+        internal static bool TryBuildWholeTextureGeometry(
+            int sourceWidth,
+            int sourceHeight,
+            out AtlasSourceGpuGeometry? geometry)
+        {
+            geometry = null;
+            if (sourceWidth <= 0
+                || sourceHeight <= 0
+                || sourceWidth > SystemInfo.maxTextureSize
+                || sourceHeight > SystemInfo.maxTextureSize)
+                return false;
+
+            var logicalVertices = new[]
+            {
+                new Vector2(-0.5f, -0.5f),
+                new Vector2(sourceWidth - 0.5f, -0.5f),
+                new Vector2(sourceWidth - 0.5f, sourceHeight - 0.5f),
+                new Vector2(-0.5f, sourceHeight - 0.5f),
+            };
+            var vertices = new[]
+            {
+                new Vector3(-1f, -1f, 0f),
+                new Vector3(1f, -1f, 0f),
+                new Vector3(1f, 1f, 0f),
+                new Vector3(-1f, 1f, 0f),
+            };
+            var mesh = new Mesh
+            {
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+            mesh.vertices = vertices;
+            mesh.SetUVs(0, logicalVertices);
+            mesh.SetTriangles(new[] { 0, 1, 2, 0, 2, 3 }, 0, true);
+
+            geometry = new AtlasSourceGpuGeometry(
+                mesh,
+                new RectInt(0, 0, sourceWidth, sourceHeight),
+                Vector2Int.zero);
+            return true;
+        }
+
         internal bool TryQueue(
             RenderTexture source,
             AtlasSourceGpuGeometry geometry,

@@ -51,6 +51,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal IReadOnlyDictionary<
                 Material, IReadOnlyDictionary<string, Texture>>?
                 PrecomputedTextureUses;
+            internal IReadOnlyDictionary<Material, Vector2Int?>?
+                PrecomputedPrimaryDensitySizes;
         }
 
         internal readonly struct AtlasRelocationMetrics

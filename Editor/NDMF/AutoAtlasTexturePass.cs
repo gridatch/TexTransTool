@@ -483,6 +483,7 @@ namespace net.rs64.TexTransTool.NDMF
                 settings,
                 sourceOptimization.OriginalTextureUses,
                 propertyTextures,
+                sourceOptimization.PrimaryDensitySizes,
                 preparedGroups);
 
             var executionGroups = CreateExecutionGroups(
@@ -616,6 +617,8 @@ namespace net.rs64.TexTransTool.NDMF
                         RequireLossless = true,
                         ReportProgressInfo = false,
                         PrecomputedTextureUses = propertyTextures,
+                        PrecomputedPrimaryDensitySizes =
+                            sourceOptimization.PrimaryDensitySizes,
                         IslandRelocatorFactory = mergeAtomicGroupByMaterial != null
                             ? atlasContext =>
                             {

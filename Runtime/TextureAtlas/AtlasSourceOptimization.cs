@@ -13,20 +13,86 @@ using Color = UnityEngine.Color;
 
 namespace net.rs64.TexTransTool.TextureAtlas
 {
+    internal enum AtlasSourceProofScope
+    {
+        UsedRegion,
+        WholeTexture,
+    }
+
+    internal enum AtlasSourceConstantProofState
+    {
+        Unknown,
+        Rejected,
+        Accepted,
+    }
+
     internal readonly struct AtlasConstantTextureDecision
     {
         internal readonly Material Material;
         internal readonly string Property;
         internal readonly Texture Source;
         internal readonly Color Color;
+        internal readonly AtlasSourceProofScope ProofScope;
+        internal readonly string[] BoundProperties;
 
         internal AtlasConstantTextureDecision(
             Material material, string property, Texture source, Color color)
+            : this(
+                material,
+                property,
+                source,
+                color,
+                AtlasSourceProofScope.UsedRegion)
+        {
+        }
+
+        internal AtlasConstantTextureDecision(
+            Material material,
+            string property,
+            Texture source,
+            Color color,
+            AtlasSourceProofScope proofScope)
+            : this(
+                material,
+                property,
+                source,
+                color,
+                proofScope,
+                new[] { property })
+        {
+        }
+
+        private AtlasConstantTextureDecision(
+            Material material,
+            string property,
+            Texture source,
+            Color color,
+            AtlasSourceProofScope proofScope,
+            IEnumerable<string> boundProperties)
         {
             Material = material;
             Property = property;
             Source = source;
             Color = color;
+            ProofScope = proofScope;
+            BoundProperties = boundProperties
+                .Append(property)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        internal AtlasConstantTextureDecision WithBoundProperties(
+            IEnumerable<string> boundProperties)
+        {
+            return new AtlasConstantTextureDecision(
+                Material,
+                Property,
+                Source,
+                Color,
+                ProofScope,
+                boundProperties);
         }
     }
 
@@ -72,6 +138,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
             Material material,
             string property,
             Texture source,
+            AtlasSourceProofScope proofScope,
             IEnumerable<Renderer> renderers);
 
         bool HasUnsafeFeatureDisableAnimation(
@@ -88,6 +155,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             Material, IReadOnlyDictionary<string, Texture>> ProjectedTextureUses;
         internal readonly AtlasConstantTextureDecision[] ConstantTextures;
         internal readonly AtlasFeatureDisableDecision[] FeatureDisables;
+        internal readonly IReadOnlyDictionary<Material, Vector2Int?>
+            PrimaryDensitySizes;
 
         internal AtlasSourceOptimizationPlan(
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
@@ -95,12 +164,16 @@ namespace net.rs64.TexTransTool.TextureAtlas
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
                 projectedTextureUses,
             IEnumerable<AtlasConstantTextureDecision> constantTextures,
-            IEnumerable<AtlasFeatureDisableDecision> featureDisables)
+            IEnumerable<AtlasFeatureDisableDecision> featureDisables,
+            IReadOnlyDictionary<Material, Vector2Int?>? primaryDensitySizes =
+                null)
         {
             OriginalTextureUses = originalTextureUses;
             ProjectedTextureUses = projectedTextureUses;
             ConstantTextures = constantTextures.ToArray();
             FeatureDisables = featureDisables.ToArray();
+            PrimaryDensitySizes = primaryDensitySizes
+                ?? new Dictionary<Material, Vector2Int?>();
         }
 
         internal bool HasChanges =>
@@ -163,7 +236,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
             var selected = materials.ToHashSet();
             var result = ConstantTextures
                 .Where(item => selected.Contains(item.Material))
-                .Select(item => (item.Material, item.Property))
+                .SelectMany(item => item.BoundProperties.Select(
+                    property => (item.Material, property)))
                 .ToHashSet();
             foreach (var item in FeatureDisables)
             {
@@ -209,18 +283,15 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal readonly bool Known;
             internal readonly bool RgbZero;
             internal readonly bool AlphaZero;
-            internal readonly bool IsConstant;
-            internal readonly Color ConstantColor;
 
             internal SampleResult(
-                bool known, bool rgbZero, bool alphaZero,
-                bool isConstant, Color constantColor)
+                bool known,
+                bool rgbZero,
+                bool alphaZero)
             {
                 Known = known;
                 RgbZero = rgbZero;
                 AlphaZero = alphaZero;
-                IsConstant = isConstant;
-                ConstantColor = constantColor;
             }
         }
 
@@ -229,18 +300,35 @@ namespace net.rs64.TexTransTool.TextureAtlas
             internal readonly Material Material;
             internal readonly string Property;
             internal readonly Texture Texture;
-            internal readonly Matrix2x3 Matrix;
+            internal readonly Matrix2x3? Matrix;
             internal readonly HashSet<(Mesh mesh, int subMesh)> Slots;
 
             internal Candidate(
                 Material material, string property, Texture texture,
-                Matrix2x3 matrix, HashSet<(Mesh mesh, int subMesh)> slots)
+                Matrix2x3? matrix, HashSet<(Mesh mesh, int subMesh)> slots)
             {
                 Material = material;
                 Property = property;
                 Texture = texture;
                 Matrix = matrix;
                 Slots = slots;
+            }
+        }
+
+        private readonly struct ConstantProofResult
+        {
+            internal readonly AtlasSourceConstantProofState State;
+            internal readonly AtlasSourceProofScope Scope;
+            internal readonly Color Color;
+
+            internal ConstantProofResult(
+                AtlasSourceConstantProofState state,
+                AtlasSourceProofScope scope,
+                Color color)
+            {
+                State = state;
+                Scope = scope;
+                Color = color;
             }
         }
 
@@ -261,7 +349,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 && !atlasSetting.DisableVisuallyUnusedShaderFeatures)
             {
                 return new AtlasSourceOptimizationPlan(
-                    original, original,
+                    original,
+                    original,
                     Array.Empty<AtlasConstantTextureDecision>(),
                     Array.Empty<AtlasFeatureDisableDecision>());
             }
@@ -296,17 +385,28 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     if (pair.Value == null
                         || pair.Value.dimension != TextureDimension.Tex2D
                         || !usages.TryGetValue(pair.Key, out var usage)
-                        || ((int)usage.UVChannel - 1) != (int)atlasTargetUvChannel
-                        || usage.UVMatrix is not { } matrix)
+                        || ((int)usage.UVChannel - 1)
+                            != (int)atlasTargetUvChannel)
                         continue;
 
                     candidates.Add(new Candidate(
-                        material, pair.Key, pair.Value, matrix, materialSlots));
+                        material,
+                        pair.Key,
+                        pair.Value,
+                        usage.UVMatrix,
+                        materialSlots));
                 }
             }
 
             var samples =
                 new Dictionary<(Material material, string property), SampleResult>();
+            var constantProofs = candidates.ToDictionary(
+                candidate =>
+                    (candidate.Material, candidate.Property),
+                _ => new ConstantProofResult(
+                    AtlasSourceConstantProofState.Unknown,
+                    AtlasSourceProofScope.UsedRegion,
+                    default));
             var engine = domain.GetTexTransCoreEngineForUnity();
             var analyzer = CanUseUnityGpuSourceAnalyzer(engine)
                 ? AtlasSourceGpuAnalyzer.TryCreate()
@@ -324,6 +424,222 @@ namespace net.rs64.TexTransTool.TextureAtlas
                      float m11,
                      float m12),
                     AtlasSourceGpuGeometry>();
+                var wholeGeometryCache =
+                    new Dictionary<(int width, int height),
+                        AtlasSourceGpuGeometry>();
+
+                void SetConstantProof(
+                    IEnumerable<Candidate> targetCandidates,
+                    AtlasSourceConstantProofState state,
+                    AtlasSourceProofScope scope,
+                    Color color = default)
+                {
+                    foreach (var candidate in targetCandidates)
+                    {
+                        constantProofs[
+                            (candidate.Material, candidate.Property)] =
+                            new ConstantProofResult(state, scope, color);
+                    }
+                }
+
+                void ProcessPendingBatch(
+                    List<(Candidate[] candidates,
+                        AtlasSourceGpuPending pending)> pending,
+                    AtlasSourceProofScope scope,
+                    bool recordZeroProof)
+                {
+                    var constantRequests =
+                        new List<(Candidate[] candidates,
+                            AtlasSourceGpuFlags flags,
+                            AsyncGPUReadbackRequest request)>();
+                    var tolerantRequests =
+                        new List<(Candidate[] candidates,
+                            AtlasSourceGpuFlags flags,
+                            AtlasSourceGpuPending sourcePending,
+                            AsyncGPUReadbackRequest referenceRequest,
+                            AtlasSourceGpuProbePending probe)>();
+
+                    foreach (var item in pending)
+                    {
+                        if (!item.pending.TryGetFlags(out var flags)
+                            || !flags.Known)
+                            continue;
+
+                        if (recordZeroProof)
+                        {
+                            foreach (var candidate in item.candidates)
+                            {
+                                samples[(
+                                    candidate.Material,
+                                    candidate.Property)] =
+                                    new SampleResult(
+                                        true,
+                                        flags.RgbZero,
+                                        flags.AlphaZero);
+                            }
+                        }
+
+                        if (!atlasSetting.OptimizeConstantTextures)
+                            continue;
+
+                        if (flags.IsConstant)
+                        {
+                            try
+                            {
+                                constantRequests.Add((
+                                    item.candidates,
+                                    flags,
+                                    item.pending.RequestReferenceColor()));
+                            }
+                            catch
+                            {
+                                // Constant proof remains unknown and may enter
+                                // whole-texture fallback when this is a
+                                // used-region proof.
+                            }
+                            continue;
+                        }
+
+                        if (atlasSetting.ConstantTextureColorTolerance <= 0
+                            || !flags.ApproximateConstantCandidate)
+                        {
+                            SetConstantProof(
+                                item.candidates,
+                                AtlasSourceConstantProofState.Rejected,
+                                scope);
+                            continue;
+                        }
+
+                        AtlasSourceGpuProbePending? probe = null;
+                        try
+                        {
+                            if (!analyzer.TryQueueRepresentativeProbe(
+                                    item.pending.Source,
+                                    item.pending.Geometry,
+                                    out probe)
+                                || probe == null)
+                                continue;
+
+                            tolerantRequests.Add((
+                                item.candidates,
+                                flags,
+                                item.pending,
+                                item.pending.RequestReferenceColor(),
+                                probe));
+                            probe = null;
+                        }
+                        catch
+                        {
+                            // Constant proof remains unknown.
+                        }
+                        finally
+                        {
+                            probe?.Dispose();
+                        }
+                    }
+
+                    foreach (var item in constantRequests)
+                    {
+                        try
+                        {
+                            var request = item.request;
+                            request.WaitForCompletion();
+                            if (request.hasError)
+                                continue;
+
+                            var data = request.GetData<Color>();
+                            if (data.Length != 1)
+                                continue;
+
+                            SetConstantProof(
+                                item.candidates,
+                                AtlasSourceConstantProofState.Accepted,
+                                scope,
+                                data[0]);
+                        }
+                        catch
+                        {
+                            // Constant proof remains unknown.
+                        }
+                    }
+
+                    var validationRequests =
+                        new List<(Candidate[] candidates,
+                            Color representative,
+                            AtlasSourceGpuToleranceValidationPending pending)>();
+                    foreach (var item in tolerantRequests)
+                    {
+                        try
+                        {
+                            var referenceRequest =
+                                item.referenceRequest;
+                            referenceRequest.WaitForCompletion();
+                            if (referenceRequest.hasError
+                                || !item.probe.TryGetRepresentative(
+                                    out var representativeRgb))
+                                continue;
+
+                            var referenceData =
+                                referenceRequest.GetData<Color>();
+                            if (referenceData.Length != 1)
+                                continue;
+
+                            var reference = referenceData[0];
+                            var representative = new Color(
+                                representativeRgb.r,
+                                representativeRgb.g,
+                                representativeRgb.b,
+                                reference.a);
+
+                            if (!analyzer.TryQueueToleranceValidation(
+                                    item.sourcePending.Source,
+                                    item.sourcePending.Geometry,
+                                    representative,
+                                    atlasSetting
+                                        .ConstantTextureColorTolerance,
+                                    out var validation)
+                                || validation == null)
+                                continue;
+
+                            validationRequests.Add((
+                                item.candidates,
+                                representative,
+                                validation));
+                        }
+                        catch
+                        {
+                            // Constant proof remains unknown.
+                        }
+                        finally
+                        {
+                            item.probe.Dispose();
+                        }
+                    }
+
+                    foreach (var item in validationRequests)
+                    {
+                        try
+                        {
+                            if (!item.pending.TryGetValidation(
+                                    out var validation))
+                                continue;
+
+                            SetConstantProof(
+                                item.candidates,
+                                validation.Accepted
+                                    ? AtlasSourceConstantProofState.Accepted
+                                    : AtlasSourceConstantProofState.Rejected,
+                                scope,
+                                validation.Accepted
+                                    ? item.representative
+                                    : default);
+                        }
+                        finally
+                        {
+                            item.pending.Dispose();
+                        }
+                    }
+                }
 
                 try
                 {
@@ -336,6 +652,12 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     {
                         var loadedSources =
                             new List<ITTRenderTexture>();
+                        var loadedForWhole =
+                            new List<(Texture source,
+                                Candidate[] candidates,
+                                RenderTexture sampledSource,
+                                int width,
+                                int height)>();
                         var pending =
                             new List<(Candidate[] candidates,
                                 AtlasSourceGpuPending pending)>();
@@ -365,11 +687,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                 ITTRenderTexture? loadedSource = null;
                                 try
                                 {
-                                    // Use the same canonical full-scale source
-                                    // loading path as AtlasContext. Importer Max
-                                    // Size can make Texture.width/height smaller
-                                    // than this source, so build proof geometry
-                                    // against the actual canonical dimensions.
                                     loadedSource =
                                         engine.WrappingOrUploadToLoadFullScale(
                                             source);
@@ -389,8 +706,6 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                         && batchPixels + sourcePixels
                                             > MaxGpuBatchSourcePixels)
                                     {
-                                        // Retry this source as the first item
-                                        // of the next batch.
                                         groupIndex -= 1;
                                         break;
                                     }
@@ -400,10 +715,22 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                     loadedSource = null;
                                     batchPixels += sourcePixels;
 
-                                    var analysisGroups = textureGroup
+                                    var textureCandidates =
+                                        textureGroup.ToArray();
+                                    loadedForWhole.Add((
+                                        source,
+                                        textureCandidates,
+                                        sampledSource,
+                                        width,
+                                        height));
+
+                                    var analysisGroups = textureCandidates
+                                        .Where(candidate =>
+                                            candidate.Matrix.HasValue)
                                         .GroupBy(candidate =>
                                         {
-                                            var matrix = candidate.Matrix;
+                                            var matrix =
+                                                candidate.Matrix!.Value;
                                             return (
                                                 candidate.Material,
                                                 width,
@@ -422,7 +749,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                             analysisGroup.ToArray();
                                         var representative =
                                             groupedCandidates[0];
-                                        var matrix = representative.Matrix;
+                                        var matrix =
+                                            representative.Matrix!.Value;
                                         var geometryKey = (
                                             representative.Material,
                                             width,
@@ -480,209 +808,81 @@ namespace net.rs64.TexTransTool.TextureAtlas
                                 }
                             }
 
-                            var constantRequests =
-                                new List<(Candidate[] candidates,
-                                    AtlasSourceGpuFlags flags,
-                                    AsyncGPUReadbackRequest request)>();
-                            var tolerantRequests =
-                                new List<(Candidate[] candidates,
-                                    AtlasSourceGpuFlags flags,
-                                    AtlasSourceGpuPending sourcePending,
-                                    AsyncGPUReadbackRequest referenceRequest,
-                                    AtlasSourceGpuProbePending probe)>();
+                            ProcessPendingBatch(
+                                pending,
+                                AtlasSourceProofScope.UsedRegion,
+                                recordZeroProof: true);
 
-                            // Every first-pass request in this batch has already
-                            // been issued. Normal non-constant textures stop here;
-                            // only near-constant candidates enter the probe path.
-                            foreach (var item in pending)
+                            if (atlasSetting.OptimizeConstantTextures)
                             {
-                                if (!item.pending.TryGetFlags(out var flags)
-                                    || !flags.Known)
-                                    continue;
-
-                                foreach (var candidate in item.candidates)
-                                {
-                                    // Zero proofs remain exact and independent
-                                    // from the optional constant-color tolerance.
-                                    samples[(
-                                        candidate.Material,
-                                        candidate.Property)] =
-                                        new SampleResult(
-                                            true,
-                                            flags.RgbZero,
-                                            flags.AlphaZero,
-                                            false,
-                                            default);
-                                }
-
-                                if (flags.IsConstant)
-                                {
-                                    try
-                                    {
-                                        constantRequests.Add((
-                                            item.candidates,
-                                            flags,
-                                            item.pending.RequestReferenceColor()));
-                                    }
-                                    catch
-                                    {
-                                        // Keep the zero proofs above; only 4x4
-                                        // constant replacement is unavailable.
-                                    }
-                                    continue;
-                                }
-
-                                if (!atlasSetting.OptimizeConstantTextures
-                                    || atlasSetting
-                                        .ConstantTextureColorTolerance <= 0
-                                    || !flags.ApproximateConstantCandidate)
-                                    continue;
-
-                                AtlasSourceGpuProbePending? probe = null;
+                                var wholePending =
+                                    new List<(Candidate[] candidates,
+                                        AtlasSourceGpuPending pending)>();
                                 try
                                 {
-                                    if (!analyzer.TryQueueRepresentativeProbe(
-                                            item.pending.Source,
-                                            item.pending.Geometry,
-                                            out probe)
-                                        || probe == null)
-                                        continue;
-
-                                    tolerantRequests.Add((
-                                        item.candidates,
-                                        flags,
-                                        item.pending,
-                                        item.pending.RequestReferenceColor(),
-                                        probe));
-                                    probe = null;
-                                }
-                                catch
-                                {
-                                    // Tolerant constant detection is optional.
-                                }
-                                finally
-                                {
-                                    probe?.Dispose();
-                                }
-                            }
-
-                            // Issue every 1x1 color request before waiting for
-                            // any of them. This preserves the exact canonical
-                            // RGBAFloat value from the canonical source.
-                            foreach (var item in constantRequests)
-                            {
-                                try
-                                {
-                                    var request = item.request;
-                                    request.WaitForCompletion();
-                                    if (request.hasError)
-                                        continue;
-
-                                    var data = request.GetData<Color>();
-                                    if (data.Length != 1)
-                                        continue;
-
-                                    foreach (var candidate in item.candidates)
+                                    foreach (var loaded in loadedForWhole)
                                     {
-                                        samples[(
-                                            candidate.Material,
-                                            candidate.Property)] =
-                                            new SampleResult(
-                                                true,
-                                                item.flags.RgbZero,
-                                                item.flags.AlphaZero,
-                                                true,
-                                                data[0]);
-                                    }
-                                }
-                                catch
-                                {
-                                    // Keep the zero proof recorded above.
-                                }
-                            }
+                                        // Whole-texture proof is a fallback
+                                        // only for technically unknown
+                                        // used-region proofs. A successfully
+                                        // rejected used region must never be
+                                        // overridden by broader statistics.
+                                        var unknownCandidates = loaded.candidates
+                                            .Where(candidate =>
+                                                constantProofs[(
+                                                        candidate.Material,
+                                                        candidate.Property)]
+                                                    .State
+                                                == AtlasSourceConstantProofState
+                                                    .Unknown)
+                                            .ToArray();
+                                        if (unknownCandidates.Length == 0)
+                                            continue;
 
-                            var validationRequests =
-                                new List<(Candidate[] candidates,
-                                    AtlasSourceGpuFlags zeroFlags,
-                                    Color representative,
-                                    AtlasSourceGpuToleranceValidationPending
-                                        pending)>();
-                            foreach (var item in tolerantRequests)
-                            {
-                                try
-                                {
-                                    var referenceRequest =
-                                        item.referenceRequest;
-                                    referenceRequest.WaitForCompletion();
-                                    if (referenceRequest.hasError
-                                        || !item.probe.TryGetRepresentative(
-                                            out var representativeRgb))
-                                        continue;
+                                        var key = (
+                                            loaded.width,
+                                            loaded.height);
+                                        if (!wholeGeometryCache.TryGetValue(
+                                                key,
+                                                out var wholeGeometry))
+                                        {
+                                            if (!AtlasSourceGpuAnalyzer
+                                                    .TryBuildWholeTextureGeometry(
+                                                        loaded.width,
+                                                        loaded.height,
+                                                        out var builtWhole)
+                                                || builtWhole == null)
+                                                continue;
 
-                                    var referenceData =
-                                        referenceRequest.GetData<Color>();
-                                    if (referenceData.Length != 1)
-                                        continue;
+                                            wholeGeometry = builtWhole;
+                                            wholeGeometryCache.Add(
+                                                key,
+                                                wholeGeometry);
+                                        }
 
-                                    var reference = referenceData[0];
-                                    var representative = new Color(
-                                        representativeRgb.r,
-                                        representativeRgb.g,
-                                        representativeRgb.b,
-                                        reference.a);
-
-                                    if (!analyzer
-                                            .TryQueueToleranceValidation(
-                                                item.sourcePending.Source,
-                                                item.sourcePending.Geometry,
-                                                representative,
+                                        if (!analyzer.TryQueue(
+                                                loaded.sampledSource,
+                                                wholeGeometry,
+                                                out var queued,
                                                 atlasSetting
-                                                    .ConstantTextureColorTolerance,
-                                                out var validation)
-                                        || validation == null)
-                                        continue;
+                                                    .ConstantTextureColorTolerance)
+                                            || queued == null)
+                                            continue;
 
-                                    validationRequests.Add((
-                                        item.candidates,
-                                        item.flags,
-                                        representative,
-                                        validation));
-                                }
-                                catch
-                                {
-                                    // Keep the zero proof recorded above.
-                                }
-                                finally
-                                {
-                                    item.probe.Dispose();
-                                }
-                            }
-
-                            foreach (var item in validationRequests)
-                            {
-                                try
-                                {
-                                    if (!item.pending.TryGetValidation(
-                                            out var validation)
-                                        || !validation.Accepted)
-                                        continue;
-
-                                    foreach (var candidate in item.candidates)
-                                    {
-                                        samples[(
-                                            candidate.Material,
-                                            candidate.Property)] =
-                                            new SampleResult(
-                                                true,
-                                                item.zeroFlags.RgbZero,
-                                                item.zeroFlags.AlphaZero,
-                                                true,
-                                                item.representative);
+                                        wholePending.Add((
+                                            unknownCandidates,
+                                            queued));
                                     }
+
+                                    ProcessPendingBatch(
+                                        wholePending,
+                                        AtlasSourceProofScope.WholeTexture,
+                                        recordZeroProof: false);
                                 }
                                 finally
                                 {
-                                    item.pending.Dispose();
+                                    foreach (var item in wholePending)
+                                        item.pending.Dispose();
                                 }
                             }
                         }
@@ -699,6 +899,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 {
                     foreach (var geometry in geometryCache.Values)
                         geometry.Dispose();
+                    foreach (var geometry in wholeGeometryCache.Values)
+                        geometry.Dispose();
                     analyzer.Dispose();
                 }
             }
@@ -711,11 +913,10 @@ namespace net.rs64.TexTransTool.TextureAtlas
             {
                 foreach (var candidate in candidates)
                 {
-                    if (!samples.TryGetValue(
-                            (candidate.Material, candidate.Property),
-                            out var sample)
-                        || !sample.Known
-                        || !sample.IsConstant)
+                    var proof = constantProofs[
+                        (candidate.Material, candidate.Property)];
+                    if (proof.State
+                        != AtlasSourceConstantProofState.Accepted)
                         continue;
 
                     if ((long)candidate.Texture.width
@@ -727,6 +928,7 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             candidate.Material,
                             candidate.Property,
                             candidate.Texture,
+                            proof.Scope,
                             targetRenderers) == true)
                         continue;
 
@@ -734,7 +936,8 @@ namespace net.rs64.TexTransTool.TextureAtlas
                         candidate.Material,
                         candidate.Property,
                         candidate.Texture,
-                        sample.ConstantColor));
+                        proof.Color,
+                        proof.Scope));
                 }
             }
 
@@ -766,27 +969,26 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 atlasSetting,
                 experimentalOptions);
 
-            var projected = original.ToDictionary(
-                pair => pair.Key,
-                pair => pair.Value.ToDictionary(
-                    property => property.Key,
-                    property => property.Value)
-                    as IReadOnlyDictionary<string, Texture>);
-
-            foreach (var item in constants)
+            for (var i = 0; i < constants.Count; i += 1)
             {
-                if (projected.TryGetValue(item.Material, out var readOnly))
-                    ((Dictionary<string, Texture>)readOnly).Remove(item.Property);
+                var decision = constants[i];
+                constants[i] = decision.WithBoundProperties(
+                    ResolveConstantBoundProperties(
+                        decision.Property,
+                        atlasSetting,
+                        experimentalOptions));
             }
 
-            foreach (var item in featureDisables)
-            {
-                if (!projected.TryGetValue(item.Material, out var readOnly))
-                    continue;
-                var properties = (Dictionary<string, Texture>)readOnly;
-                foreach (var property in item.Rule.TextureProperties)
-                    properties.Remove(property);
-            }
+            var projected = BuildProjectedTextureUses(
+                original,
+                constants,
+                featureDisables);
+
+            var primaryDensitySizes = BuildPrimaryDensityOverrides(
+                original,
+                projected,
+                targetMaterials,
+                atlasSetting);
 
             // A disabled feature supersedes any constant replacement belonging
             // to that feature; no 4x4 texture needs to be generated for it.
@@ -798,7 +1000,145 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 disabledBindings.Contains((item.Material, item.Property)));
 
             return new AtlasSourceOptimizationPlan(
-                original, projected, constants, featureDisables);
+                original,
+                projected,
+                constants,
+                featureDisables,
+                primaryDensitySizes);
+        }
+
+        internal static string[] ResolveConstantBoundProperties(
+            string property,
+            AtlasSetting atlasSetting,
+            AtlasTextureExperimentalFeature? experimentalOptions)
+        {
+            var holders = TexFineTuningUtility.InitTexFineTuningHolders(
+                new[] { property });
+
+            foreach (var fineTuning in atlasSetting.TextureFineTuning)
+                fineTuning?.AddSetting(holders);
+            if (experimentalOptions != null)
+                AtlasTexture.IndividualTuningAddSettings(
+                    holders,
+                    experimentalOptions.TextureIndividualFineTuning);
+
+            return TexFineTuningUtility.ResolveReferenceCopyBoundProperties(
+                property,
+                holders);
+        }
+
+        internal static IReadOnlyDictionary<
+            Material, IReadOnlyDictionary<string, Texture>>
+            BuildProjectedTextureUses(
+                IReadOnlyDictionary<
+                    Material, IReadOnlyDictionary<string, Texture>> original,
+                IEnumerable<AtlasConstantTextureDecision> constants,
+                IEnumerable<AtlasFeatureDisableDecision> featureDisables)
+        {
+            var projected = original.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.ToDictionary(
+                    property => property.Key,
+                    property => property.Value)
+                    as IReadOnlyDictionary<string, Texture>);
+
+            foreach (var item in constants)
+            {
+                if (!projected.TryGetValue(item.Material, out var readOnly))
+                    continue;
+
+                var properties = (Dictionary<string, Texture>)readOnly;
+                foreach (var property in item.BoundProperties)
+                    properties.Remove(property);
+            }
+
+            foreach (var item in featureDisables)
+            {
+                if (!projected.TryGetValue(item.Material, out var readOnly))
+                    continue;
+
+                var properties = (Dictionary<string, Texture>)readOnly;
+                foreach (var property in item.Rule.TextureProperties)
+                    properties.Remove(property);
+            }
+
+            return projected;
+        }
+
+        // Source optimization can remove the texture that previously
+        // defined island density (notably an explicit _MainTex). Preserve only
+        // materials whose projected primary basis actually changed; ordinary
+        // groups keep the existing MaterialGroupingContext behavior.
+        private static IReadOnlyDictionary<Material, Vector2Int?>
+            BuildPrimaryDensityOverrides(
+                IReadOnlyDictionary<
+                    Material, IReadOnlyDictionary<string, Texture>> original,
+                IReadOnlyDictionary<
+                    Material, IReadOnlyDictionary<string, Texture>> projected,
+                IEnumerable<Material> materials,
+                AtlasSetting atlasSetting)
+        {
+            var result = new Dictionary<Material, Vector2Int?>();
+            string? primaryProperty =
+                atlasSetting.UsePrimaryMaximumTexture
+                    ? null
+                    : atlasSetting.PrimaryTextureProperty;
+
+            foreach (var material in materials)
+            {
+                original.TryGetValue(material, out var originalTextures);
+                projected.TryGetValue(material, out var projectedTextures);
+
+                var originalSize = GetPrimarySize(
+                    originalTextures,
+                    primaryProperty);
+                if (!originalSize.HasValue)
+                    continue;
+
+                var projectedSize = GetPrimarySize(
+                    projectedTextures,
+                    primaryProperty);
+                if (projectedSize == originalSize)
+                    continue;
+
+                result[material] = originalSize;
+            }
+
+            return result;
+
+            static Vector2Int? GetPrimarySize(
+                IReadOnlyDictionary<string, Texture>? textures,
+                string? primaryProperty)
+            {
+                if (textures == null || textures.Count == 0)
+                    return null;
+
+                if (primaryProperty != null)
+                {
+                    return textures.TryGetValue(
+                               primaryProperty, out var primary)
+                           && primary != null
+                        ? new Vector2Int(primary.width, primary.height)
+                        : null;
+                }
+
+                Texture? maximum = null;
+                long maximumArea = -1;
+                foreach (var texture in textures.Values)
+                {
+                    if (texture == null)
+                        continue;
+                    var area = (long)texture.width * texture.height;
+                    if (maximum != null && area <= maximumArea)
+                        continue;
+                    maximum = texture;
+                    maximumArea = area;
+                }
+
+                return maximum == null
+                    ? null
+                    : new Vector2Int(maximum.width, maximum.height);
+            }
         }
 
         private static void FilterUnsetTextureConflicts(
@@ -971,12 +1311,11 @@ namespace net.rs64.TexTransTool.TextureAtlas
                     && !tuned.TextureDescriptors.ContainsKey(created))
                     created.Dispose();
 
-                var boundProperties = tuned.RenderTextures
-                    .Where(pair => ReferenceEquals(pair.Value, final))
-                    .Select(pair => pair.Key)
-                    .ToArray();
                 outputs.Add(new AtlasConstantTextureOutput(
-                    decision, final, descriptor, boundProperties));
+                    decision,
+                    final,
+                    descriptor,
+                    decision.BoundProperties));
             }
 
             return outputs.ToArray();
