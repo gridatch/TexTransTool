@@ -5,6 +5,7 @@ using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using net.rs64.TexTransTool.TextureAtlas.FineTuning;
 using net.rs64.TexTransTool.TextureAtlas.IslandRelocator;
+using net.rs64.TexTransTool.TextureAtlas.Editor;
 using net.rs64.TexTransTool.Utils;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
@@ -156,7 +157,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void ActiveTextureConsumersIgnoreInactiveAndUndrawnMaterials()
+        public void RuntimeRelevantTextureConsumersIgnoreHiddenWithoutVisibilityEvidence()
         {
             var shader = Shader.Find("Standard");
             Assert.That(shader, Is.Not.Null);
@@ -217,7 +218,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 lineRenderer.SetPosition(1, Vector3.right);
 
                 var consumers =
-                    AutoAtlasTextureProcessor.CollectActiveTextureConsumers(
+                    AutoAtlasTextureProcessor.CollectRuntimeRelevantTextureConsumers(
                         new RendererTargetingForTest(
                             new Renderer[]
                             {
@@ -235,15 +236,45 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Assert.That(
                     consumers.Materials,
                     Has.No.Member(disabled),
-                    "Disabled renderers follow AutoAtlas's existing inactive-consumer contract.");
+                    "A hidden renderer without visibility evidence is not a runtime texture consumer.");
                 Assert.That(
                     consumers.Materials,
                     Has.No.Member(inactive),
-                    "Inactive GameObjects follow AutoAtlas's existing inactive-consumer contract.");
+                    "An inactive GameObject without visibility evidence is not a runtime texture consumer.");
                 Assert.That(
                     consumers.Materials,
                     Has.Member(nonMesh),
                     "An active non-mesh renderer is still a real texture consumer.");
+
+                var visibilityStates = new Dictionary<
+                    Renderer, AtlasRendererVisibilityState>
+                {
+                    [disabledRenderer] =
+                        new AtlasRendererVisibilityState(true, true),
+                    [inactiveRenderer] =
+                        new AtlasRendererVisibilityState(true, true),
+                };
+                consumers =
+                    AutoAtlasTextureProcessor
+                        .CollectRuntimeRelevantTextureConsumers(
+                            new RendererTargetingForTest(
+                                new Renderer[]
+                                {
+                                    renderer,
+                                    disabledRenderer,
+                                    inactiveRenderer,
+                                    lineRenderer,
+                                }),
+                            visibilityStates);
+
+                Assert.That(
+                    consumers.Materials,
+                    Has.Member(disabled),
+                    "An initially disabled renderer that can become visible is a runtime texture consumer.");
+                Assert.That(
+                    consumers.Materials,
+                    Has.Member(inactive),
+                    "An initially inactive renderer that can become visible is a runtime texture consumer.");
             }
             finally
             {
@@ -263,7 +294,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void OnlyActiveDrawableExternalConsumersRetainSourceCost()
+        public void RuntimeRelevantDrawableExternalConsumersRetainSourceCost()
         {
             var shader = Shader.Find("Standard");
             Assert.That(shader, Is.Not.Null);
@@ -308,7 +339,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 externalRenderer.sharedMaterial = activeExternal;
 
                 var consumers =
-                    AutoAtlasTextureProcessor.CollectActiveTextureConsumers(
+                    AutoAtlasTextureProcessor.CollectRuntimeRelevantTextureConsumers(
                         new RendererTargetingForTest(
                             new Renderer[]
                             {
@@ -329,7 +360,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 
                 externalRenderer.enabled = false;
                 consumers =
-                    AutoAtlasTextureProcessor.CollectActiveTextureConsumers(
+                    AutoAtlasTextureProcessor.CollectRuntimeRelevantTextureConsumers(
                         new RendererTargetingForTest(
                             new Renderer[]
                             {
@@ -346,7 +377,34 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Assert.That(
                     retained,
                     Is.Empty,
-                    "A material asset that merely references the texture must not become resident cost without an active drawable renderer consumer.");
+                    "A material asset that merely references the texture must not become resident cost without a runtime-relevant drawable renderer consumer.");
+
+                consumers =
+                    AutoAtlasTextureProcessor
+                        .CollectRuntimeRelevantTextureConsumers(
+                            new RendererTargetingForTest(
+                                new Renderer[]
+                                {
+                                    targetRenderer,
+                                    externalRenderer,
+                                }),
+                            new Dictionary<
+                                Renderer, AtlasRendererVisibilityState>
+                            {
+                                [externalRenderer] =
+                                    new AtlasRendererVisibilityState(
+                                        true, true),
+                            });
+                retained =
+                    AutoAtlasTextureProcessor
+                        .FindExternallyRetainedSourceTextures(
+                            consumers,
+                            new HashSet<Material> { target },
+                            new HashSet<Texture> { source });
+                Assert.That(
+                    retained,
+                    Is.EquivalentTo(new Texture[] { source }),
+                    "An initially hidden external renderer that can become visible must retain the source cost.");
                 Assert.That(
                     unusedReferenceOnly.GetTexture("_MainTex"),
                     Is.SameAs(source),
@@ -394,7 +452,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 renderer.sharedMaterial = target;
 
                 var consumers =
-                    AutoAtlasTextureProcessor.CollectActiveTextureConsumers(
+                    AutoAtlasTextureProcessor.CollectRuntimeRelevantTextureConsumers(
                         new RendererTargetingForTest(
                             new Renderer[] { renderer }));
                 var group = new HashSet<Material> { target };
@@ -1400,7 +1458,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void AutoAtlasRendererEligibilityMatchesManualAtlasDefault()
+        public void AutoAtlasRendererEligibilityMatchesRuntimeAwareManualDefault()
         {
             var shader = Shader.Find("Hidden/InternalErrorShader");
             Assert.That(shader, Is.Not.Null);
@@ -1436,10 +1494,14 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 }
 
                 var active = AddRenderer("active");
-                var disabled = AddRenderer("disabled");
-                disabled.enabled = false;
-                var inactive = AddRenderer("inactive");
-                inactive.gameObject.SetActive(false);
+                var disabledRuntimeVisible = AddRenderer(
+                    "disabledRuntimeVisible");
+                disabledRuntimeVisible.enabled = false;
+                var inactiveRuntimeVisible = AddRenderer(
+                    "inactiveRuntimeVisible");
+                inactiveRuntimeVisible.gameObject.SetActive(false);
+                var permanentlyHidden = AddRenderer("permanentlyHidden");
+                permanentlyHidden.enabled = false;
                 var explicitlyExcluded = AddRenderer("explicitlyExcluded");
 
                 var configuration =
@@ -1449,40 +1511,75 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 var targeting = new RendererTargetingForTest(new Renderer[]
                 {
                     active,
-                    disabled,
-                    inactive,
+                    disabledRuntimeVisible,
+                    inactiveRuntimeVisible,
+                    permanentlyHidden,
                     explicitlyExcluded,
                 });
+                var visibilityStates = new Dictionary<
+                    Renderer, AtlasRendererVisibilityState>
+                {
+                    [disabledRuntimeVisible] =
+                        new AtlasRendererVisibilityState(true, true),
+                    [inactiveRuntimeVisible] =
+                        new AtlasRendererVisibilityState(true, true),
+                    [permanentlyHidden] =
+                        new AtlasRendererVisibilityState(false, true),
+                    [explicitlyExcluded] =
+                        new AtlasRendererVisibilityState(true, true),
+                };
 
                 var manualDefault = TextureAtlas.AtlasTexture
                     .GetAtlasAllowedRenderers(
                         targeting,
                         targeting.EnumerateRenderer(),
-                        includeDisabledRenderer: false)
+                        includeDisabledRenderer: false,
+                        visibilityStates)
                     .Where(renderer =>
                         renderer != explicitlyExcluded)
                     .ToHashSet();
 
                 var auto = AutoAtlasTextureProcessor
-                    .GetAutoAtlasAllowedRenderers(targeting, configuration)
+                    .GetAutoAtlasAllowedRenderers(
+                        targeting,
+                        configuration,
+                        visibilityStates)
                     .ToHashSet();
 
                 Assert.That(auto.SetEquals(manualDefault), Is.True);
                 Assert.That(auto.Contains(active), Is.True);
-                Assert.That(auto.Contains(disabled), Is.False);
-                Assert.That(auto.Contains(inactive), Is.False);
+                Assert.That(
+                    auto.Contains(disabledRuntimeVisible), Is.True);
+                Assert.That(
+                    auto.Contains(inactiveRuntimeVisible), Is.True);
+                Assert.That(auto.Contains(permanentlyHidden), Is.False);
                 Assert.That(auto.Contains(explicitlyExcluded), Is.False);
+
+                var manualIncludeDisabled = TextureAtlas.AtlasTexture
+                    .GetAtlasAllowedRenderers(
+                        targeting,
+                        targeting.EnumerateRenderer(),
+                        includeDisabledRenderer: true,
+                        visibilityStates)
+                    .ToHashSet();
+                Assert.That(
+                    manualIncludeDisabled.Contains(permanentlyHidden),
+                    Is.True);
 
                 var resolved = AutoAtlasTextureProcessor
                     .ResolveAutoAtlasTargetRenderers(
                         targeting,
                         configuration,
-                        new HashSet<Material> { material })
+                        new HashSet<Material> { material },
+                        visibilityStates)
                     .ToHashSet();
                 Assert.That(resolved.SetEquals(auto), Is.True);
 
                 var aao = AutoAtlasTextureProcessor
-                    .GetAAONegotiationRenderers(targeting, configuration)
+                    .GetAAONegotiationRenderers(
+                        targeting,
+                        configuration,
+                        visibilityStates)
                     .ToHashSet();
                 Assert.That(aao.SetEquals(auto), Is.True);
             }
@@ -1495,7 +1592,270 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void ActiveUntransformedMaterialConsumerFailsClosed()
+        public void MaterialCandidateResolverSeparatesInactiveWithoutDuplicates()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var activeMaterial = new Material(shader);
+            var inactiveMaterial = new Material(shader);
+            var editorOnlyMaterial = new Material(shader);
+            var mesh = CreateDrawableTriangleMesh();
+            var root = new GameObject("root");
+            try
+            {
+                var active = AddTestRenderer(
+                    root, "active", mesh, activeMaterial);
+                var inactive = AddTestRenderer(
+                    root, "inactive", mesh, inactiveMaterial);
+                inactive.sharedMaterials =
+                    new[] { activeMaterial, inactiveMaterial };
+                inactive.gameObject.SetActive(false);
+
+                var editorOnly = AddTestRenderer(
+                    root, "editor-only", mesh, editorOnlyMaterial);
+                editorOnly.gameObject.tag = "EditorOnly";
+
+                var candidates =
+                    AtlasTextureMaterialCandidateResolver.Resolve(root);
+
+                Assert.That(
+                    candidates.ActiveMaterials,
+                    Is.EquivalentTo(new[] { activeMaterial }));
+                Assert.That(
+                    candidates.InactiveMaterials,
+                    Is.EquivalentTo(new[] { inactiveMaterial }));
+                Assert.That(
+                    candidates.InactiveMaterials,
+                    Has.No.Member(activeMaterial),
+                    "A material already visible in the active section must not be duplicated in the inactive foldout.");
+                Assert.That(
+                    candidates.InactiveMaterials,
+                    Has.No.Member(editorOnlyMaterial));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(activeMaterial);
+                Object.DestroyImmediate(inactiveMaterial);
+                Object.DestroyImmediate(editorOnlyMaterial);
+            }
+        }
+
+        [Test]
+        public void BakeCandidatesIncludeInactiveRenderersUsingSelectedMaterial()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var targetMaterial = new Material(shader);
+            var otherMaterial = new Material(shader);
+            var mesh = CreateDrawableTriangleMesh();
+            var root = new GameObject("root");
+            try
+            {
+                var atlas = root.AddComponent<AtlasTexture>();
+                atlas.AtlasTargetMaterials.Add(targetMaterial);
+                atlas.BakeRendererSelectionVersion =
+                    AtlasTexture.CurrentBakeRendererSelectionVersion;
+
+                var active = AddTestRenderer(
+                    root, "active", mesh, targetMaterial);
+                var inactive = AddTestRenderer(
+                    root, "inactive", mesh, targetMaterial);
+                inactive.gameObject.SetActive(false);
+                var other = AddTestRenderer(
+                    root, "other", mesh, otherMaterial);
+                other.gameObject.SetActive(false);
+
+                var renderers = root
+                    .GetComponentsInChildren<Renderer>(true);
+                using var domain =
+                    new NotWorkDomain(renderers, null);
+
+                var candidates =
+                    AtlasTextureBakeTargetResolver.GetCandidateRenderers(
+                        atlas, domain);
+
+                Assert.That(candidates, Has.Member(active));
+                Assert.That(candidates, Has.Member(inactive));
+                Assert.That(candidates, Has.No.Member(other));
+                Assert.That(
+                    AtlasTextureBakeTargetResolver.IsRendererIncluded(
+                        atlas, domain, active),
+                    Is.True);
+                Assert.That(
+                    AtlasTextureBakeTargetResolver.IsRendererIncluded(
+                        atlas, domain, inactive),
+                    Is.False);
+
+                atlas.BakeIncludedInactiveRenderers.Add(inactive);
+                Assert.That(
+                    AtlasTextureBakeTargetResolver.IsRendererIncluded(
+                        atlas, domain, inactive),
+                    Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(targetMaterial);
+                Object.DestroyImmediate(otherMaterial);
+            }
+        }
+
+        [Test]
+        public void BakeSelectionMigrationPreservesLegacyInactiveInclusion()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var mesh = CreateDrawableTriangleMesh();
+            var root = new GameObject("root");
+            try
+            {
+                var atlas = root.AddComponent<AtlasTexture>();
+                atlas.AtlasTargetMaterials.Add(material);
+                atlas.AtlasSetting.IncludeDisabledRenderer = true;
+
+                var inactive = AddTestRenderer(
+                    root, "inactive", mesh, material);
+                inactive.gameObject.SetActive(false);
+
+                var renderers = root
+                    .GetComponentsInChildren<Renderer>(true);
+                using var domain =
+                    new NotWorkDomain(renderers, null);
+
+                Assert.That(
+                    atlas.BakeRendererSelectionVersion,
+                    Is.EqualTo(0));
+                Assert.That(
+                    AtlasTextureBakeTargetResolver.EnsureSelectionMigrated(
+                        atlas, domain),
+                    Is.True);
+                Assert.That(
+                    atlas.BakeRendererSelectionVersion,
+                    Is.EqualTo(
+                        AtlasTexture.CurrentBakeRendererSelectionVersion));
+                Assert.That(
+                    atlas.BakeIncludedInactiveRenderers,
+                    Has.Member(inactive));
+                Assert.That(
+                    AtlasTextureBakeTargetResolver.IsRendererIncluded(
+                        atlas, domain, inactive),
+                    Is.True);
+
+                Assert.That(
+                    AtlasTextureBakeTargetResolver.EnsureSelectionMigrated(
+                        atlas, domain),
+                    Is.False,
+                    "The migration must be idempotent after the version is updated.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void BakeSelectionMigrationPreservesLegacyInactiveExclusion()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var mesh = CreateDrawableTriangleMesh();
+            var root = new GameObject("root");
+            try
+            {
+                var atlas = root.AddComponent<AtlasTexture>();
+                atlas.AtlasTargetMaterials.Add(material);
+                atlas.AtlasSetting.IncludeDisabledRenderer = true;
+
+                var inactive = AddTestRenderer(
+                    root, "inactive", mesh, material);
+                inactive.gameObject.SetActive(false);
+                atlas.BakeExcludedRenderers.Add(inactive);
+
+                var renderers = root
+                    .GetComponentsInChildren<Renderer>(true);
+                using var domain =
+                    new NotWorkDomain(renderers, null);
+
+                AtlasTextureBakeTargetResolver.EnsureSelectionMigrated(
+                    atlas, domain);
+
+                Assert.That(
+                    atlas.BakeIncludedInactiveRenderers,
+                    Has.No.Member(inactive));
+                Assert.That(
+                    AtlasTextureBakeTargetResolver.IsRendererIncluded(
+                        atlas, domain, inactive),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void BakeSelectionMigrationDoesNotOptInNewInactiveTargetsByDefault()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var material = new Material(shader);
+            var mesh = CreateDrawableTriangleMesh();
+            var root = new GameObject("root");
+            try
+            {
+                var atlas = root.AddComponent<AtlasTexture>();
+                atlas.AtlasTargetMaterials.Add(material);
+                atlas.AtlasSetting.IncludeDisabledRenderer = false;
+
+                var inactive = AddTestRenderer(
+                    root, "inactive", mesh, material);
+                inactive.gameObject.SetActive(false);
+
+                var renderers = root
+                    .GetComponentsInChildren<Renderer>(true);
+                using var domain =
+                    new NotWorkDomain(renderers, null);
+
+                AtlasTextureBakeTargetResolver.EnsureSelectionMigrated(
+                    atlas, domain);
+
+                Assert.That(
+                    atlas.BakeIncludedInactiveRenderers,
+                    Has.No.Member(inactive));
+                Assert.That(
+                    AtlasTextureBakeTargetResolver.GetCandidateRenderers(
+                        atlas, domain),
+                    Has.Member(inactive),
+                    "The renderer is visible as a bake candidate even though legacy selection did not include it.");
+                Assert.That(
+                    AtlasTextureBakeTargetResolver.IsRendererIncluded(
+                        atlas, domain, inactive),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void RuntimeRelevantUntransformedMaterialConsumerFailsClosed()
         {
             var shader = Shader.Find("Hidden/InternalErrorShader");
             Assert.That(shader, Is.Not.Null);
@@ -1529,7 +1889,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 
                 Assert.That(
                     AutoAtlasTextureProcessor
-                        .HasActiveUntransformedMaterialConsumer(
+                        .HasRuntimeRelevantUntransformedMaterialConsumer(
                             targeting,
                             group,
                             new Renderer[] { transformed }),
@@ -1538,17 +1898,32 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 unsupported.enabled = false;
                 Assert.That(
                     AutoAtlasTextureProcessor
-                        .HasActiveUntransformedMaterialConsumer(
+                        .HasRuntimeRelevantUntransformedMaterialConsumer(
                             targeting,
                             group,
                             new Renderer[] { transformed }),
                     Is.False);
+                Assert.That(
+                    AutoAtlasTextureProcessor
+                        .HasRuntimeRelevantUntransformedMaterialConsumer(
+                            targeting,
+                            group,
+                            new Renderer[] { transformed },
+                            new Dictionary<
+                                Renderer, AtlasRendererVisibilityState>
+                            {
+                                [unsupported] =
+                                    new AtlasRendererVisibilityState(
+                                        true, true),
+                            }),
+                    Is.True,
+                    "An initially hidden untransformed consumer that can become visible must still block global replacement.");
 
                 unsupported.enabled = true;
                 unsupported.gameObject.SetActive(false);
                 Assert.That(
                     AutoAtlasTextureProcessor
-                        .HasActiveUntransformedMaterialConsumer(
+                        .HasRuntimeRelevantUntransformedMaterialConsumer(
                             targeting,
                             group,
                             new Renderer[] { transformed }),
@@ -1559,6 +1934,42 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Object.DestroyImmediate(root);
                 Object.DestroyImmediate(material);
             }
+        }
+
+        private static Mesh CreateDrawableTriangleMesh()
+        {
+            var mesh = new Mesh
+            {
+                vertices = new[]
+                {
+                    Vector3.zero,
+                    Vector3.right,
+                    Vector3.up,
+                },
+                uv = new[]
+                {
+                    Vector2.zero,
+                    Vector2.right,
+                    Vector2.up,
+                },
+            };
+            mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+            return mesh;
+        }
+
+        private static MeshRenderer AddTestRenderer(
+            GameObject root,
+            string name,
+            Mesh mesh,
+            Material material)
+        {
+            var gameObject = new GameObject(name);
+            gameObject.transform.SetParent(root.transform, false);
+            var filter = gameObject.AddComponent<MeshFilter>();
+            filter.sharedMesh = mesh;
+            var renderer = gameObject.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            return renderer;
         }
 
         private sealed class RendererTargetingForTest : IRendererTargeting
@@ -2330,7 +2741,7 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void VisibilityAnimationDetectorFindsParentActiveToggleAndRendererToggle()
+        public void VisibilityAnalyzerFindsEffectiveToggleability()
         {
             var root = new GameObject("Avatar");
             var outfit = new GameObject("Outfit");
@@ -2369,13 +2780,31 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                     [staticItem.transform] = "Static",
                 };
 
-                var detected = AutoAtlasTextureVisibilityAnimationDetector.Detect(
-                    index, root.transform,
-                    new Renderer[] { outfitRenderer, accessoryRenderer, staticRenderer },
+                var states = AtlasRendererVisibilityAnalyzer.Analyze(
+                    index,
+                    root.transform,
+                    new Renderer[]
+                    {
+                        outfitRenderer,
+                        accessoryRenderer,
+                        staticRenderer,
+                    },
                     transform => new[] { paths[transform] });
 
-                Assert.That(detected, Is.EquivalentTo(
-                    new Renderer[] { outfitRenderer, accessoryRenderer }));
+                Assert.That(
+                    states[outfitRenderer].CanBecomeVisible, Is.True);
+                Assert.That(
+                    states[outfitRenderer].CanBecomeHidden, Is.True);
+                Assert.That(
+                    states[outfitRenderer].CanToggleVisibility, Is.True);
+                Assert.That(
+                    states[accessoryRenderer].CanToggleVisibility, Is.True);
+                Assert.That(
+                    states[staticRenderer].CanBecomeVisible, Is.True);
+                Assert.That(
+                    states[staticRenderer].CanBecomeHidden, Is.False);
+                Assert.That(
+                    states[staticRenderer].CanToggleVisibility, Is.False);
             }
             finally
             {
@@ -2384,60 +2813,215 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void VisibilityAnimationDetectorChecksAllMappedAliases()
+        public void VisibilityAnalyzerRejectsChildToggleUnderPermanentOffParent()
+        {
+            var root = new GameObject("Avatar");
+            var parent = new GameObject("Parent");
+            var child = new GameObject("Child");
+            try
+            {
+                parent.transform.SetParent(root.transform);
+                child.transform.SetParent(parent.transform);
+                parent.SetActive(false);
+                child.SetActive(false);
+                var renderer = child.AddComponent<MeshRenderer>();
+
+                var clip = nadena.dev.ndmf.animator.VirtualClip.Create(
+                    "child-only-toggle");
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Parent/Child",
+                        typeof(GameObject),
+                        "m_IsActive"),
+                    AnimationCurve.Constant(0f, 1f, 1f));
+                var index = new nadena.dev.ndmf.animator.AnimationIndex(
+                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
+
+                var states = AtlasRendererVisibilityAnalyzer.Analyze(
+                    index,
+                    root.transform,
+                    new Renderer[] { renderer },
+                    transform =>
+                    {
+                        if (transform == root.transform)
+                            return new[] { "" };
+                        if (transform == parent.transform)
+                            return new[] { "Parent" };
+                        return new[] { "Parent/Child" };
+                    });
+
+                Assert.That(
+                    states[renderer].CanBecomeVisible, Is.False);
+                Assert.That(
+                    states[renderer].CanBecomeHidden, Is.True);
+                Assert.That(
+                    states[renderer].CanToggleVisibility, Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void VisibilityAnalyzerHonorsActiveInheritanceBreaker()
+        {
+            var root = new GameObject("Avatar");
+            var parent = new GameObject("Parent");
+            var child = new GameObject("Child");
+            try
+            {
+                parent.transform.SetParent(root.transform);
+                child.transform.SetParent(parent.transform);
+                parent.SetActive(false);
+                child.AddComponent<IsActiveInheritBreaker>();
+                var renderer = child.AddComponent<MeshRenderer>();
+                renderer.enabled = false;
+
+                var clip = nadena.dev.ndmf.animator.VirtualClip.Create(
+                    "renderer-enable");
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Parent/Child",
+                        typeof(MeshRenderer),
+                        "m_Enabled"),
+                    AnimationCurve.Constant(0f, 1f, 1f));
+                var index = new nadena.dev.ndmf.animator.AnimationIndex(
+                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
+
+                var states = AtlasRendererVisibilityAnalyzer.Analyze(
+                    index,
+                    root.transform,
+                    new Renderer[] { renderer },
+                    transform =>
+                    {
+                        if (transform == root.transform)
+                            return new[] { "" };
+                        if (transform == parent.transform)
+                            return new[] { "Parent" };
+                        return new[] { "Parent/Child" };
+                    });
+
+                Assert.That(
+                    states[renderer].CanBecomeVisible, Is.True);
+                Assert.That(
+                    states[renderer].CanToggleVisibility, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void VisibilityAnalyzerAcceptsWhenEveryFalseGateCanBecomeTrue()
+        {
+            var root = new GameObject("Avatar");
+            var parent = new GameObject("Parent");
+            var child = new GameObject("Child");
+            try
+            {
+                parent.transform.SetParent(root.transform);
+                child.transform.SetParent(parent.transform);
+                parent.SetActive(false);
+                child.SetActive(false);
+                var renderer = child.AddComponent<MeshRenderer>();
+                renderer.enabled = false;
+
+                var clip = nadena.dev.ndmf.animator.VirtualClip.Create(
+                    "all-gates");
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Parent", typeof(GameObject), "m_IsActive"),
+                    AnimationCurve.Constant(0f, 1f, 1f));
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Parent/Child",
+                        typeof(GameObject),
+                        "m_IsActive"),
+                    AnimationCurve.Constant(0f, 1f, 1f));
+                clip.SetFloatCurve(
+                    UnityEditor.EditorCurveBinding.FloatCurve(
+                        "Parent/Child",
+                        typeof(MeshRenderer),
+                        "m_Enabled"),
+                    AnimationCurve.Constant(0f, 1f, 1f));
+                var index = new nadena.dev.ndmf.animator.AnimationIndex(
+                    new nadena.dev.ndmf.animator.VirtualNode[] { clip });
+
+                var states = AtlasRendererVisibilityAnalyzer.Analyze(
+                    index,
+                    root.transform,
+                    new Renderer[] { renderer },
+                    transform =>
+                    {
+                        if (transform == root.transform)
+                            return new[] { "" };
+                        if (transform == parent.transform)
+                            return new[] { "Parent" };
+                        return new[] { "Parent/Child" };
+                    });
+
+                Assert.That(
+                    states[renderer].CanBecomeVisible, Is.True);
+                Assert.That(
+                    states[renderer].CanBecomeHidden, Is.True);
+                Assert.That(
+                    states[renderer].CanToggleVisibility, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void VisibilityAnalyzerChecksAllMappedAliases()
         {
             var root = new GameObject("Avatar");
             var clothing = new GameObject("NewClothing");
             var clothingPart = new GameObject("Part");
-            var accessory = new GameObject("NewAccessory");
-            var untouched = new GameObject("Untouched");
             try
             {
                 clothing.transform.SetParent(root.transform);
                 clothingPart.transform.SetParent(clothing.transform);
-                accessory.transform.SetParent(root.transform);
-                untouched.transform.SetParent(root.transform);
+                clothing.SetActive(false);
+                var renderer = clothingPart.AddComponent<MeshRenderer>();
 
-                var clothingRenderer = clothingPart.AddComponent<MeshRenderer>();
-                var accessoryRenderer = accessory.AddComponent<MeshRenderer>();
-                var untouchedRenderer = untouched.AddComponent<MeshRenderer>();
-
-                // The old virtual aliases remain in the AnimationIndex after
-                // NDMF replaces objects whose current paths differ.
-                var clip = nadena.dev.ndmf.animator.VirtualClip.Create("old-aliases");
+                var clip = nadena.dev.ndmf.animator.VirtualClip.Create(
+                    "old-alias");
                 clip.SetFloatCurve(
                     UnityEditor.EditorCurveBinding.FloatCurve(
-                        "OldClothing", typeof(GameObject), "m_IsActive"),
-                    AnimationCurve.Constant(0f, 1f, 0f));
-                clip.SetFloatCurve(
-                    UnityEditor.EditorCurveBinding.FloatCurve(
-                        "OldAccessory", typeof(MeshRenderer), "m_Enabled"),
-                    AnimationCurve.Constant(0f, 1f, 0f));
+                        "OldClothing",
+                        typeof(GameObject),
+                        "m_IsActive"),
+                    AnimationCurve.Constant(0f, 1f, 1f));
                 var index = new nadena.dev.ndmf.animator.AnimationIndex(
                     new nadena.dev.ndmf.animator.VirtualNode[] { clip });
                 var paths = new Dictionary<Transform, string[]>
                 {
                     [root.transform] = new[] { "" },
-                    [clothing.transform] = new[] { "NewClothing", "OldClothing" },
-                    [clothingPart.transform] = new[] { "NewClothing/Part" },
-                    [accessory.transform] = new[] { "NewAccessory", "OldAccessory" },
-                    [untouched.transform] = new[] { "Untouched" },
+                    [clothing.transform] =
+                        new[] { "NewClothing", "OldClothing" },
+                    [clothingPart.transform] =
+                        new[] { "NewClothing/Part" },
                 };
 
-                var renderers = new Renderer[]
-                {
-                    clothingRenderer, accessoryRenderer, untouchedRenderer,
-                };
-                var firstPathsOnly = AutoAtlasTextureVisibilityAnimationDetector
-                    .Detect(index, root.transform, renderers,
-                        transform => paths[transform].Take(1));
-                Assert.That(firstPathsOnly, Is.Empty);
+                var firstPathOnly = AtlasRendererVisibilityAnalyzer.Analyze(
+                    index,
+                    root.transform,
+                    new Renderer[] { renderer },
+                    transform => paths[transform].Take(1));
+                Assert.That(
+                    firstPathOnly[renderer].CanBecomeVisible, Is.False);
 
-                var withAliases = AutoAtlasTextureVisibilityAnimationDetector
-                    .Detect(index, root.transform, renderers,
-                        transform => paths[transform]);
-                Assert.That(withAliases, Is.EquivalentTo(
-                    new Renderer[] { clothingRenderer, accessoryRenderer }));
+                var withAliases = AtlasRendererVisibilityAnalyzer.Analyze(
+                    index,
+                    root.transform,
+                    new Renderer[] { renderer },
+                    transform => paths[transform]);
+                Assert.That(
+                    withAliases[renderer].CanBecomeVisible, Is.True);
             }
             finally
             {
@@ -2446,9 +3030,9 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
         }
 
         [Test]
-        public void VisibilityAnimationDetectorIgnoresConstantCurrentState()
+        public void VisibilityAnalyzerConstantCurrentStateDoesNotCreateToggle()
         {
-            var clip = nadena.dev.ndmf.animator.VirtualClip.Create("always-on");
+            var clip = nadena.dev.ndmf.animator.VirtualClip.Create("constant");
             clip.SetFloatCurve(
                 UnityEditor.EditorCurveBinding.FloatCurve(
                     "Accessory", typeof(MeshRenderer), "m_Enabled"),
@@ -2463,41 +3047,35 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 var index = new nadena.dev.ndmf.animator.AnimationIndex(
                     new nadena.dev.ndmf.animator.VirtualNode[] { clip });
 
-                var detected = AutoAtlasTextureVisibilityAnimationDetector.Detect(
-                    index, root.transform,
-                    new Renderer[] { renderer },
-                    transform => transform == root.transform
-                        ? new[] { "" }
-                        : new[] { "Accessory" });
+                var visibleStates =
+                    AtlasRendererVisibilityAnalyzer.Analyze(
+                        index,
+                        root.transform,
+                        new Renderer[] { renderer },
+                        transform => transform == root.transform
+                            ? new[] { "" }
+                            : new[] { "Accessory" });
+                Assert.That(
+                    visibleStates[renderer].CanToggleVisibility, Is.False);
 
-                Assert.That(detected, Is.Empty);
                 renderer.enabled = false;
-                detected = AutoAtlasTextureVisibilityAnimationDetector.Detect(
-                    index, root.transform,
-                    new Renderer[] { renderer },
-                    transform => transform == root.transform
-                        ? new[] { "" }
-                        : new[] { "Accessory" });
-                Assert.That(detected, Is.EquivalentTo(new Renderer[] { renderer }));
+                var hiddenStates =
+                    AtlasRendererVisibilityAnalyzer.Analyze(
+                        index,
+                        root.transform,
+                        new Renderer[] { renderer },
+                        transform => transform == root.transform
+                            ? new[] { "" }
+                            : new[] { "Accessory" });
+                Assert.That(
+                    hiddenStates[renderer].CanBecomeVisible, Is.True);
+                Assert.That(
+                    hiddenStates[renderer].CanToggleVisibility, Is.True);
             }
             finally
             {
                 Object.DestroyImmediate(root);
             }
-        }
-
-        [Test]
-        public void VisibilityAnimationDetectorCurveThreshold()
-        {
-            Assert.That(
-                AutoAtlasTextureVisibilityAnimationDetector.CurveChangesVisibility(
-                    AnimationCurve.Constant(0f, 1f, 1f), true), Is.False);
-            Assert.That(
-                AutoAtlasTextureVisibilityAnimationDetector.CurveChangesVisibility(
-                    AnimationCurve.Constant(0f, 1f, 0f), true), Is.True);
-            Assert.That(
-                AutoAtlasTextureVisibilityAnimationDetector.CurveChangesVisibility(
-                    AnimationCurve.Constant(0f, 1f, 0f), false), Is.False);
         }
 
         [Test]
