@@ -506,17 +506,17 @@
           },
           "zipSHA256": "a21d322ae5b4715e9c6ba83c5e30edf4168553edb5553301dd122e93e8fd2ba7"
         },
-        "0.1.23+wdt.ttt.1.0.2.debug.1335.wdt-baseline-validation.bebb66a": {
+        "0.1.23+wdt.ttt.1.0.2.debug.1336.atlas-whole-texture-constant-proof.b307b13": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.23+wdt.ttt.1.0.2.debug.1335.wdt-baseline-validation.bebb66a",
+          "version": "0.1.23+wdt.ttt.1.0.2.debug.1336.atlas-whole-texture-constant-proof.b307b13",
           "unity": "2022.3",
-          "description": "Debug build 1335 for wdt-baseline-validation from feat/wdt-baseline-validation at bebb66a. Based on WDT 0.1.23+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 1336 for atlas-whole-texture-constant-proof from feat/atlas-whole-texture-constant-proof at b307b13. Based on WDT 0.1.23+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1335.wdt-baseline-validation.bebb66a.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.23+wdt.ttt.1.0.2.debug.1336.atlas-whole-texture-constant-proof.b307b13.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -529,7 +529,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "0feba708feceedddc3c62b11f0450ba90c575108f09bae3bee36d8fb15d05201"
+          "zipSHA256": "eecd8a255ef96e4cc450714c641f26cf2e2988a6ed5bce91556814392bd7cbfb"
         }
       }
     }
