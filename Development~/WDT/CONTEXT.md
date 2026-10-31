@@ -684,17 +684,22 @@ In NDMF Optimizing it runs after explicitly configured normal AtlasTexture proce
 
 ## 6.4 Renderer selection must match normal AtlasTexture defaults
 
-This is a critical invariant restored by PR #26.
+This remains a critical invariant, with the runtime-visibility refinement merged in PR #35.
 
-AutoAtlas candidate renderer eligibility follows normal AtlasTexture's default targeting semantics, including default `IncludeDisabledRenderer=false`.
+AutoAtlas candidate renderer eligibility follows normal AtlasTexture's default `IncludeDisabledRenderer=false` semantics:
 
-Do not broaden AutoAtlas to disabled/inactive renderers merely because a domain-wide material reference exists.
+- renderers that are currently visible are eligible;
+- renderers that are initially disabled/inactive but can become visible at runtime are also eligible during NDMF builds;
+- permanently hidden renderers remain outside AutoAtlas targeting/cost calculations;
+- explicit `ExcludedRenderers` are removed from that population.
 
-General `ExcludedRenderers` are then removed from that normal-default population.
+Runtime visibility is evaluated from effective gates: Renderer `m_Enabled` plus GameObject `m_IsActive` on the renderer/ancestor chain, including NDMF-remapped path aliases and `IsActiveInheritBreaker` semantics.
 
-Target renderers are resolved through the shared Atlas filters and must possess the required UV0 channel.
+Target renderers are still resolved through the shared Atlas filters and must possess the required UV0 channel. AAO negotiation uses the same AutoAtlas-allowed renderer population when exactly one Auto configuration exists.
 
-AAO negotiation uses the same AutoAtlas-allowed renderer population when exactly one Auto configuration exists.
+Do not revert to either extreme:
+- "currently inactive means irrelevant" is incorrect for runtime-visible avatar parts;
+- "all inactive renderers are included" is also incorrect because permanently hidden renderers remain excluded.
 
 ## 6.5 Automatic material/group selection
 
@@ -706,19 +711,19 @@ Materials explicitly selected by an active normal AtlasTexture are excluded from
 
 AutoAtlas groups materials by connected source textures. These texture-connected sets are the **atomic standalone groups** used as the baseline for optional texture merging.
 
-## 6.6 Active untransformed material consumers
+## 6.6 Runtime-relevant untransformed material consumers
 
-`HasActiveUntransformedMaterialConsumer()` is a real correctness guard and must remain.
+The untransformed-consumer guard is a real correctness guard and must remain.
 
 Reason:
 
 - generated material replacement is domain-wide;
-- if an active renderer shares the target material but cannot receive the matching atlas mesh/UV rewrite, it would receive an atlased material on unchanged UVs;
+- if a runtime-relevant renderer shares the target material but cannot receive the matching atlas mesh/UV rewrite, it would receive an atlased material on unchanged UVs;
 - that causes visible corruption outside the intended target.
 
-Disabled/inactive consumers are intentionally ignored here to preserve normal AtlasTexture default targeting semantics.
+"Runtime-relevant" means currently visible **or** initially hidden but proven capable of becoming visible through the shared visibility analysis. Permanently hidden renderers are intentionally ignored.
 
-This is not the rejected "include all disabled renderers" strategy.
+This is separate from cost accounting: a renderer being runtime-relevant determines whether a material rewrite is safe; retained-source accounting determines whether an original texture remains resident.
 
 ## 6.7 Retained/shared source texture accounting
 
@@ -744,7 +749,34 @@ The post-FineTuning check is authoritative because FineTuning can remove/merge/c
 
 No standalone AutoAtlas shader-semantic proof is performed beyond normal AtlasTexture behavior.
 
-## 6.9 Required generated mesh resolution
+## 6.9 Source-side constant optimization and SourceOnly baseline
+
+Source optimization runs before Atlas generation and is shared by normal AtlasTexture and AutoAtlasTexture.
+
+Accepted behavior:
+
+- constant-color source textures may be replaced by 4x4 outputs;
+- visually neutral shader features may be disabled only through the established shader/property-specific exact-zero rules;
+- tolerant RGB constant proof never weakens exact-zero / feature-disable proof, and alpha remains exact;
+- AutoAtlas compares the original non-Atlas state with the source-optimized `SourceOnly` state before deciding whether standalone Atlas or a merge is worthwhile;
+- tiny 4x4 constant outputs are intentionally ignored in the adoption comparison, while final reporting includes their actual cost;
+- if Atlas/merge is rejected but SourceOnly is strictly cheaper, SourceOnly is preserved rather than discarding the source optimization.
+
+Whole-texture fallback adds one narrow recovery path:
+
+- UsedRegion proof remains preferred;
+- WholeTexture proof is attempted only when UsedRegion is technically `Unknown`, never when UsedRegion semantically `Rejected`;
+- the same GPU exact/tolerance validation pipeline is reused over a one-to-one whole-texture domain;
+- WholeTexture proof may replace a constant texture but does **not** produce exact-zero / shader-feature-disable decisions;
+- sampling-control animation does not invalidate a WholeTexture constant proof because every sampled texel is proven equivalent, but direct animation of the texture property still blocks replacement.
+
+When source optimization removes the texture that supplied primary texel-density information, the original primary density is preserved and propagated through normal Atlas and AutoAtlas planning/execution. Material groups use the component-wise maximum preserved density.
+
+Configured/explicit FineTuning `ReferenceCopy` is part of source-planner semantics: if a constant output is the copy source, its effective copy targets are treated as overwritten bindings and are removed from projected source uses. This is generic and property-name independent.
+
+Do **not** move normal Atlas's automatic equivalent-output ReferenceCopy discovery into pre-Atlas source planning. Automatic equivalent sharing depends on actual post-layout output sizes and proven output equivalence and remains a normal Atlas post-layout optimization.
+
+## 6.10 Required generated mesh resolution
 
 Before domain mutation, AutoAtlas verifies that every target renderer with drawable target-material geometry can resolve a generated atlas mesh.
 
@@ -752,7 +784,7 @@ A missing mesh result is harmless only where no drawable target geometry actuall
 
 This guard exists because material replacement is domain-wide and `ReplaceMesh` itself can otherwise skip a renderer silently.
 
-## 6.10 Total processing-time log
+## 6.11 Total processing-time log
 
 The user-facing total AutoAtlas processing time is a required production feature.
 
@@ -892,14 +924,16 @@ Unrelated work remains untouched.
 
 `ExcludeVisibilityAnimatedItemsFromTextureMerging` is optional and default false.
 
-When enabled, it detects actual changes to:
+When enabled, texture merging excludes an atomic group when any target renderer can **toggle effective visibility** according to the same shared visibility analysis used for runtime relevance. This includes:
 
 - Renderer `m_Enabled`;
-- GameObject `m_IsActive` on the renderer or ancestors.
+- GameObject `m_IsActive` on the renderer or ancestors;
+- all NDMF-remapped path aliases;
+- inherited active-state gating, with `IsActiveInheritBreaker` respected.
 
-It checks all NDMF-remapped path aliases and ignores curves that remain at the current boolean state.
+The decision is based on whether the effective renderer can become both visible and hidden, not merely whether a visibility curve exists.
 
-This affects **texture merging only**, not standalone AutoAtlas.
+This affects **texture merging only**, not standalone AutoAtlas. A default-off avatar part that can be enabled at runtime may therefore be atlased independently while remaining excluded from cross-item texture merging.
 
 Do not broaden this into general material-property animation exclusion.
 
@@ -1385,6 +1419,13 @@ This is not a debugging diary. It maps every substantive commit in the current W
 - `415780f`, `47a5fa6`, `42d386a`, `0f7b3ed` — independent per-axis sizing, generalized height crop, sub-256 standalone search and its bounded-probe performance optimization.
 - `4215f0b` — source-derived output Mipmap defaults, mirrored in Atlas execution and merge cost projection.
 - `8e29bf1`, `afa6569`, `7b6b27d` — retained-source cost model, execution revalidation, and focused regression coverage; `ca2c3c2` adds broader efficiency-boundary tests.
+- `398f2e32` — tolerant constant-color source optimization using the shared GPU proof pipeline; exact-zero feature removal remains separate.
+- `cdcc4500` — preserve source optimization as a `SourceOnly` non-Atlas baseline and align retained-source cost/planner/execution behavior.
+- `55966497` — enforce the per-property 4096 AutoAtlas dimension cap without changing normal Atlas behavior.
+- `04d9add9` / PR #35 — shared runtime-visibility analysis: initially hidden renderers that can become visible participate in normal Atlas/AutoAtlas/AAO targeting and runtime-relevance safety; permanently hidden renderers remain excluded; texture-merging visibility exclusion uses effective toggleability.
+- PR #36 (validated, pending `wdt` merge at the time of this context update):
+  - `e2d2ab6f` — WholeTexture constant-proof fallback, preserved primary-density basis, animation-scope refinement, and directly related regression tests;
+  - `3e17170c` — explicit/configured ReferenceCopy bindings are represented in source-plan projection so alias properties do not generate redundant Atlas outputs or hide SourceOnly benefit.
 
 ### Real-project validation of lossless efficiency work
 
@@ -1394,6 +1435,12 @@ This is not a debugging diary. It maps every substantive commit in the current W
 - `Seiran_SailorCupid` and `Seiran_Test_Atlas`: expected existing output behavior was preserved in debug.947 validation.
 - The X/Y-independent result, old 1/32 crop removal, and retained-source adoption are covered by test code, but no independent real-project trigger was captured for those specific cases.
 - On 2026-10-21, the user confirmed a representative Unity smoke test of debug.949 without problems. GitHub package publication is not Unity Test Runner execution.
+- PR #35 changed the relevant renderer population for initially inactive runtime-visible avatar parts. In `Seiran_FrillNyantic`, `Hair_CustomBlue` is on a default-off object; current `wdt` intentionally keeps it out of cross-item texture merging when its effective visibility can toggle. Older `Hair_CustomBlue` sizing logs remain evidence for the sub-256 sizing algorithm but are not an exact current-project baseline after runtime-visibility targeting changed.
+- PR #36 validation on the user-tested final tree:
+  - manual `stick_masked`: redundant ReferenceCopy alias outputs were removed; the prior three 1024 outputs collapsed to one ordinary 1024 output plus one 4x4 constant output;
+  - AutoAtlas `stick_masked`: SourceOnly remained 512x512 for the nonconstant source plus 4x4 for the constant source, with 512.0 KiB -> 341.4 KiB;
+  - representative comparisons were run on `Seiran_SailorCupid`, `Seiran_Koiboshi`, `Seiran_FrillNyantic`, and `Seiran_SugaryBouquet`; no regression attributable to the WholeTexture/ReferenceCopy feature was found;
+  - the `Hair_CustomBlue` behavior difference was reproduced on current `wdt` without PR #36 and therefore is not a PR #36 regression.
 
 ## Non-adopted CI proposals
 
