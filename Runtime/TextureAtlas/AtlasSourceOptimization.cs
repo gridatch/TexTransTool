@@ -257,6 +257,38 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 MaterialGroupingContext.BuildContainsTextureDictionaries(
                     targetMaterials, atlasTargetUvChannel);
 
+            static bool IsStickMasked(Material material) =>
+                string.Equals(
+                    material.name,
+                    "stick_masked",
+                    StringComparison.OrdinalIgnoreCase);
+
+            static void StickDiag(string message) =>
+                Debug.Log("[WDT stick_masked diag] " + message);
+
+            foreach (var material in targetMaterials.Where(IsStickMasked))
+            {
+                var props = original.TryGetValue(material, out var foundProps)
+                    ? string.Join(
+                        ", ",
+                        foundProps.Select(pair =>
+                            pair.Key + "="
+                            + (pair.Value == null
+                                ? "<null>"
+                                : pair.Value.name + " "
+                                  + pair.Value.width + "x" + pair.Value.height)))
+                    : "<no original texture usage>";
+                StickDiag(
+                    "source optimizer start"
+                    + " material=" + material.name
+                    + " optimizeConstant=" + atlasSetting.OptimizeConstantTextures
+                    + " tolerance=" + atlasSetting.ConstantTextureColorTolerance
+                    + " disableUnused=" + atlasSetting.DisableVisuallyUnusedShaderFeatures
+                    + " excluded="
+                    + (excludedMaterials?.Contains(material) == true)
+                    + " properties=[" + props + "]");
+            }
+
             if (!atlasSetting.OptimizeConstantTextures
                 && !atlasSetting.DisableVisuallyUnusedShaderFeatures)
             {
@@ -293,11 +325,41 @@ namespace net.rs64.TexTransTool.TextureAtlas
 
                 foreach (var pair in properties)
                 {
+                    var hasUsage = usages.TryGetValue(
+                        pair.Key, out var diagnosticUsage);
+                    var channelMatches = hasUsage
+                        && ((int)diagnosticUsage.UVChannel - 1)
+                            == (int)atlasTargetUvChannel;
+                    var hasMatrix =
+                        hasUsage && diagnosticUsage.UVMatrix.HasValue;
+
+                    if (IsStickMasked(material))
+                    {
+                        StickDiag(
+                            "candidate property=" + pair.Key
+                            + " texture="
+                            + (pair.Value == null
+                                ? "<null>"
+                                : pair.Value.name + " "
+                                  + pair.Value.width + "x" + pair.Value.height)
+                            + " dimension="
+                            + (pair.Value == null
+                                ? "<null>"
+                                : pair.Value.dimension.ToString())
+                            + " usageKnown=" + hasUsage
+                            + " uvChannel="
+                            + (hasUsage
+                                ? diagnosticUsage.UVChannel.ToString()
+                                : "<unknown>")
+                            + " channelMatches=" + channelMatches
+                            + " matrixKnown=" + hasMatrix);
+                    }
+
                     if (pair.Value == null
                         || pair.Value.dimension != TextureDimension.Tex2D
-                        || !usages.TryGetValue(pair.Key, out var usage)
-                        || ((int)usage.UVChannel - 1) != (int)atlasTargetUvChannel
-                        || usage.UVMatrix is not { } matrix)
+                        || !hasUsage
+                        || !channelMatches
+                        || diagnosticUsage.UVMatrix is not { } matrix)
                         continue;
 
                     candidates.Add(new Candidate(
@@ -711,9 +773,22 @@ namespace net.rs64.TexTransTool.TextureAtlas
             {
                 foreach (var candidate in candidates)
                 {
-                    if (!samples.TryGetValue(
-                            (candidate.Material, candidate.Property),
-                            out var sample)
+                    var hasSample = samples.TryGetValue(
+                        (candidate.Material, candidate.Property),
+                        out var sample);
+
+                    if (IsStickMasked(candidate.Material))
+                    {
+                        StickDiag(
+                            "sample property=" + candidate.Property
+                            + " texture=" + candidate.Texture.name
+                            + " known=" + (hasSample && sample.Known)
+                            + " constant=" + (hasSample && sample.IsConstant)
+                            + " rgbZero=" + (hasSample && sample.RgbZero)
+                            + " alphaZero=" + (hasSample && sample.AlphaZero));
+                    }
+
+                    if (!hasSample
                         || !sample.Known
                         || !sample.IsConstant)
                         continue;
@@ -722,12 +797,21 @@ namespace net.rs64.TexTransTool.TextureAtlas
                             * candidate.Texture.height <= 16)
                         continue;
 
-                    if (animationSafety?.HasUnsafeConstantTextureAnimation(
+                    var unsafeAnimation =
+                        animationSafety?.HasUnsafeConstantTextureAnimation(
                             domain,
                             candidate.Material,
                             candidate.Property,
                             candidate.Texture,
-                            targetRenderers) == true)
+                            targetRenderers) == true;
+                    if (IsStickMasked(candidate.Material))
+                    {
+                        StickDiag(
+                            "constant proof property=" + candidate.Property
+                            + " unsafeAnimation=" + unsafeAnimation
+                            + " color=" + sample.ConstantColor);
+                    }
+                    if (unsafeAnimation)
                         continue;
 
                     constants.Add(new AtlasConstantTextureDecision(
@@ -765,6 +849,27 @@ namespace net.rs64.TexTransTool.TextureAtlas
                 original,
                 atlasSetting,
                 experimentalOptions);
+
+            foreach (var material in targetMaterials.Where(IsStickMasked))
+            {
+                StickDiag(
+                    "final source optimization decisions constants=["
+                    + string.Join(
+                        ", ",
+                        constants
+                            .Where(item => item.Material == material)
+                            .Select(item => item.Property))
+                    + "] featureDisables=["
+                    + string.Join(
+                        ", ",
+                        featureDisables
+                            .Where(item => item.Material == material)
+                            .Select(item => item.Rule.SwitchProperty))
+                    + "] experimentalAutoReferenceCopy="
+                    + (experimentalOptions?.AutoReferenceCopySetting == true)
+                    + " experimentalAutoMerge="
+                    + (experimentalOptions?.AutoMergeTextureSetting == true));
+            }
 
             var projected = original.ToDictionary(
                 pair => pair.Key,
