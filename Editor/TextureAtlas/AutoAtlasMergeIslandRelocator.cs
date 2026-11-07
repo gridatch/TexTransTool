@@ -7,7 +7,7 @@ using net.rs64.TexTransTool.TextureAtlas;
 using net.rs64.TexTransTool.TextureAtlas.IslandRelocator;
 using UnityEngine;
 
-namespace net.rs64.TexTransTool.NDMF
+namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
     /// <summary>
     /// Executes the rectangle placements selected by the 2D texture

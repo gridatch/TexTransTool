@@ -11,7 +11,7 @@ using net.rs64.TexTransTool.Utils;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 
-namespace net.rs64.TexTransTool.NDMF
+namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
     /// <summary>
     /// Plans optional second-stage AutoAtlas merges without mutating the domain.
@@ -770,6 +770,28 @@ namespace net.rs64.TexTransTool.NDMF
         internal static PlanResult Plan(
             IDomain domain,
             AutoAtlasTexture configuration,
+            AtlasSetting settings,
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
+                originalPropertyTextures,
+            IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
+                propertyTextures,
+            IReadOnlyDictionary<Material, Vector2Int?>
+                primaryDensitySizes,
+            IReadOnlyList<PreparedGroup> groups)
+        {
+            return Plan(
+                domain,
+                AutoAtlasTextureExecutionSettings.FromComponent(configuration),
+                settings,
+                originalPropertyTextures,
+                propertyTextures,
+                primaryDensitySizes,
+                groups);
+        }
+
+        internal static PlanResult Plan(
+            IDomain domain,
+            AutoAtlasTextureExecutionSettings configuration,
             AtlasSetting settings,
             IReadOnlyDictionary<Material, IReadOnlyDictionary<string, Texture>>
                 originalPropertyTextures,
