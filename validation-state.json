@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.24+wdt.ttt.1.0.2",
-  "lastDebugSerial": 1342,
-  "currentDebugVersion": "0.1.24+wdt.ttt.1.0.2.debug.1342.part-auto-atlas.f50516d",
+  "lastDebugSerial": 1343,
+  "currentDebugVersion": "0.1.24+wdt.ttt.1.0.2.debug.1343.part-auto-atlas.85b1b0b",
   "currentDebugChange": "part-auto-atlas",
   "currentDebugBranch": "feat/part-auto-atlas",
-  "currentDebugCommit": "f50516df82508eaf239fd42073ae36caa06a8126",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1342.part-auto-atlas.f50516d.zip"
+  "currentDebugCommit": "85b1b0befea07539602109492a30b57274ec31e0",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1343.part-auto-atlas.85b1b0b.zip"
 }
