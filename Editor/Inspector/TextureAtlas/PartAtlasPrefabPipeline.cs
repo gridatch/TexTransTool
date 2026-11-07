@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using net.rs64.TexTransCore;
 using net.rs64.TexTransTool.Utils;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -19,7 +18,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal readonly List<string> ExtractionTargetPaths = new();
         internal readonly HashSet<string> KeepRendererKeys = new(StringComparer.Ordinal);
         internal MatsukawaOptions ExtractionOptions = new();
-        internal PartAtlasPrefabSettings AtlasSettings = null!;
+        internal PartAutoAtlasSettings AutoAtlasSettings = null!;
         internal string OutputName = "";
     }
 
@@ -346,11 +345,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return Fail(result, "入力にはProject上のPrefab Assetを指定してください。");
             }
 
-            if (request.AtlasSettings == null)
-                return Fail(result, "AtlasTexture設定が指定されていません。");
+            if (request.AutoAtlasSettings == null)
+                return Fail(result, "AutoAtlas設定が指定されていません。");
 
-            var atlasRequested = request.AtlasSettings.AtlasTargetMaterials
-                .Any(material => material != null);
+            var autoAtlasRequested = request.AutoAtlasSettings.Enabled;
 
             var normalizedTargetPaths = NormalizeExtractionTargetPaths(
                 request.ExtractionTargetPaths
@@ -472,16 +470,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     })
                     .ToList();
 
-                if (atlasRequested)
-                {
-                    var atlasSettingsError = ValidateAtlasSettingsReferences(
-                        request.AtlasSettings,
-                        instantiatedRoot
-                    );
-                    if (!string.IsNullOrEmpty(atlasSettingsError))
-                        return Fail(result, atlasSettingsError);
-                }
-
                 var entries = matsukawa.CollectRenderers(instantiatedRoot).ToList();
                 foreach (var entry in entries)
                 {
@@ -514,54 +502,15 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
                 }
 
-                // Atlas-specific preflight is required only when at least one Material was
-                // explicitly selected for atlasing. Extraction itself remains independent.
-                var retainedAtlasRenderers = Array.Empty<Renderer>();
-                if (atlasRequested)
-                {
-                    // Atlas and animation validation must use the original source hierarchy before
-                    // extraction targets are staged under the temporary WDT container.
-                    var (preflightMaterials, preflightRenderers) = ResolveAtlasTargets(
-                        request.AtlasSettings,
+                // Paths can change during HCE staging, so collect object-reference
+                // animation bindings on the original hierarchy. AutoAtlas later filters
+                // this snapshot against only the assets it actually replaced.
+                var autoAtlasAnimationReferences = autoAtlasRequested
+                    ? AtlasTextureBaker.CollectAnimationObjectReferences(
                         instantiatedRoot,
-                        request.KeepRendererKeys
-                    );
-
-                    if (preflightMaterials.Count == 0 || preflightRenderers.Length == 0)
-                    {
-                        return Fail(
-                            result,
-                            "選択したMaterialを使用する抽出対象レンダラーに、アトラス化可能なレンダラーがありません。"
-                        );
-                    }
-
-                    retainedAtlasRenderers = preflightRenderers.ToArray();
-                    var preflightMeshes = preflightRenderers
-                        .Select(renderer => renderer.GetMesh())
-                        .Where(mesh => mesh != null)
-                        .Cast<Mesh>()
-                        .ToHashSet();
-                    var preflightTextures = AtlasTextureBaker.GetAtlasSourceTextures(
-                        preflightMaterials,
-                        request.AtlasSettings.AtlasSetting.AtlasTargetUVChannel
-                    );
-
-                    if (AtlasTextureBaker.ValidateAnimationObjectReferences(
-                            instantiatedRoot,
-                            preflightRenderers,
-                            preflightMaterials,
-                            preflightMeshes,
-                            preflightTextures,
-                            displayDialog: false
-                        ) is false)
-                    {
-                        return Fail(
-                            result,
-                            "抽出前のMesh / Material / Textureを直接参照するAnimationClipがあるため中断しました。"
-                            + "該当Clip / bindingはConsoleに出力しています。"
-                        );
-                    }
-                }
+                        instantiatedRoot.GetComponentsInChildren<Renderer>(true))
+                    : Array.Empty<
+                        AtlasTextureBaker.AnimationObjectReferenceHit>();
 
                 // HCE derives the output folder and Prefab name from the working root name.
                 instantiatedRoot.name = outputName;
@@ -787,43 +736,35 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (!string.IsNullOrEmpty(finalReferenceError))
                     return Fail(result, finalReferenceError);
 
-                if (atlasRequested)
+                if (autoAtlasRequested)
                 {
-                    var (targetMaterials, targetRenderers) = ResolveRetainedAtlasTargets(
-                        request.AtlasSettings,
+                    var autoAtlasResult = PartAutoAtlasSession.Execute(
                         extractionRoot,
-                        retainedAtlasRenderers
-                    );
+                        request.AutoAtlasSettings,
+                        result.AtlasOutputFolder,
+                        autoAtlasAnimationReferences);
 
-                    if (targetMaterials.Count == 0 || targetRenderers.Length == 0)
+                    if (autoAtlasResult.HasChanges)
                     {
-                        return Fail(
-                            result,
-                            "抽出結果の中に、現在のAtlasTexture設定と一致するアトラス化対象がありません。"
-                        );
+                        RemoveSupersededTrimMeshes(matsukawa, extraction);
+                        matsukawa.AddReportNote(
+                            extraction,
+                            "AutoAtlas Asset: "
+                            + result.AtlasOutputFolder
+                            + " (Texture "
+                            + autoAtlasResult.TextureCount
+                            + ", Material "
+                            + autoAtlasResult.MaterialCount
+                            + ", Mesh "
+                            + autoAtlasResult.MeshCount
+                            + ")");
                     }
-
-                    if (AtlasTextureBaker.BakeResolved(
-                            request.AtlasSettings.ToBakeSettings(),
-                            extractionRoot,
-                            targetMaterials,
-                            targetRenderers,
-                            requestedOutputName,
-                            result.AtlasOutputFolder,
-                            promptOverwrite: false,
-                            pingOutputFolder: false,
-                            recordUndo: false
-                        ) is false)
+                    else
                     {
-                        return Fail(result, "TTT Atlas処理に失敗したため、Prefab化を中断しました。");
+                        matsukawa.AddReportNote(
+                            extraction,
+                            "AutoAtlas: 利益のある変換対象がなかったため変更なし。");
                     }
-
-                    RemoveSupersededTrimMeshes(matsukawa, extraction);
-
-                    matsukawa.AddReportNote(
-                        extraction,
-                        "Atlas Asset: " + result.AtlasOutputFolder
-                    );
                 }
 
                 var prefabPath = matsukawa.SavePrefab(extraction);
@@ -1141,81 +1082,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return copy;
         }
 
-        internal static Renderer[] GetAtlasCandidateRenderers(
-            PartAtlasPrefabSettings atlasSettings,
-            GameObject root)
-        {
-            var renderers = root.GetComponentsInChildren<Renderer>(true);
-            using var domain = new NotWorkDomain(renderers, null);
-
-            var allowed = domain
-                .EnumerateRenderer()
-                .Where(AtlasTexture.IsAtlasAllowedRenderer)
-                .ToList();
-            var targetMaterials = ResolveSelectedMaterials(
-                domain,
-                allowed,
-                atlasSettings.AtlasTargetMaterials
-            );
-            var targetRenderers = AtlasTexture.FilterTargetRenderers(domain, allowed, targetMaterials);
-            return AtlasTexture.FilterExistUVChannel(
-                domain,
-                targetRenderers,
-                atlasSettings.AtlasSetting.AtlasTargetUVChannel
-            );
-        }
-
-        private static HashSet<Material> ResolveSelectedMaterials(
-            IDomain domain,
-            IEnumerable<Renderer> renderers,
-            IEnumerable<Material?> selectedMaterials)
-        {
-            var selected = selectedMaterials
-                .Where(material => material != null)
-                .Cast<Material>()
-                .ToArray();
-
-            if (selected.Length == 0) return new HashSet<Material>();
-
-            var presentMaterials = renderers
-                .SelectMany(renderer => domain.GetMaterials(renderer))
-                .Where(material => material != null)
-                .Cast<Material>()
-                .ToHashSet();
-
-            return presentMaterials
-                .Where(material => selected.Any(selectedMaterial =>
-                    domain.OriginEqual(selectedMaterial, material)
-                ))
-                .ToHashSet();
-        }
-
         internal static string GetRendererKey(GameObject root, Renderer renderer)
         {
             return HierarchyIdentityUtility.GetRendererKey(root, renderer);
-        }
-
-        private static (HashSet<Material> targetMaterials, Renderer[] targetRenderers) ResolveAtlasTargets(
-            PartAtlasPrefabSettings atlasSettings,
-            GameObject root,
-            IReadOnlyCollection<string> keepRendererKeys)
-        {
-            var renderers = root.GetComponentsInChildren<Renderer>(true);
-            using var domain = new NotWorkDomain(renderers, null);
-
-            var targetRenderers = GetAtlasCandidateRenderers(atlasSettings, root)
-                .Where(renderer =>
-                    keepRendererKeys.Contains(GetRendererKey(root, renderer))
-                )
-                .ToArray();
-
-            var targetMaterials = ResolveSelectedMaterials(
-                domain,
-                targetRenderers,
-                atlasSettings.AtlasTargetMaterials
-            );
-
-            return (targetMaterials, targetRenderers);
         }
 
         private static string ValidateTrimResults(
@@ -1280,40 +1149,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             return "";
-        }
-
-        private static (HashSet<Material> targetMaterials, Renderer[] targetRenderers)
-            ResolveRetainedAtlasTargets(
-                PartAtlasPrefabSettings atlasSettings,
-                GameObject root,
-                IReadOnlyCollection<Renderer> retainedRenderers)
-        {
-            var currentRenderers = root.GetComponentsInChildren<Renderer>(true).ToHashSet();
-            var missing = retainedRenderers
-                .Where(renderer => renderer == null || currentRenderers.Contains(renderer) is false)
-                .ToArray();
-
-            if (missing.Length > 0)
-            {
-                throw new InvalidOperationException(
-                    "抽出処理後にアトラス化対象レンダラーを確認できませんでした。"
-                    + "抽出対象とアトラス対象の組み合わせを確認してください。"
-                );
-            }
-
-            var renderers = retainedRenderers.ToArray();
-            using var domain = new NotWorkDomain(
-                root.GetComponentsInChildren<Renderer>(true),
-                null
-            );
-
-            var targetMaterials = ResolveSelectedMaterials(
-                domain,
-                renderers,
-                atlasSettings.AtlasTargetMaterials
-            );
-
-            return (targetMaterials, renderers);
         }
 
         private static bool TransientMeshStillReferenced(
@@ -1795,60 +1630,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var referencePathProperty = serialized.FindProperty(prefix + "referencePath");
             return referencePathProperty?.propertyType == SerializedPropertyType.String
                 && string.IsNullOrEmpty(referencePathProperty.stringValue) is false;
-        }
-
-        private static string ValidateAtlasSettingsReferences(
-            PartAtlasPrefabSettings atlasSettings,
-            GameObject extractionRoot)
-        {
-            var problems = new List<string>();
-            var serialized = new SerializedObject(atlasSettings);
-            var iterator = serialized.GetIterator();
-            var enterChildren = true;
-            var guard = 0;
-
-            while (iterator.NextVisible(enterChildren))
-            {
-                if (++guard > SerializedPropertyScanLimit)
-                {
-                    problems.Add(
-                        atlasSettings.GetType().Name
-                        + " のSerializedProperty数が検査上限 "
-                        + SerializedPropertyScanLimit
-                        + " を超えました。"
-                    );
-                    break;
-                }
-
-                enterChildren = true;
-                if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
-                if (iterator.propertyPath == "m_Script") continue;
-
-                var referenced = iterator.objectReferenceValue;
-                if (referenced == null) continue;
-                if (EditorUtility.IsPersistent(referenced)) continue;
-
-                var transform = ToTransform(referenced);
-                if (transform != null && transform.IsChildOf(extractionRoot.transform)) continue;
-
-                problems.Add(
-                    atlasSettings.GetType().Name
-                    + "."
-                    + iterator.propertyPath
-                    + " -> "
-                    + referenced.name
-                );
-            }
-
-            if (problems.Count == 0) return "";
-
-            var detail = string.Join("\n", problems.Take(20));
-            if (problems.Count > 20) detail += "\n... and " + (problems.Count - 20) + " more";
-
-            return
-                "Atlas設定に、出力Prefab内で解決できないScene Object参照が含まれるため、処理を中断しました。"
-                + "\n\n"
-                + detail;
         }
 
         private static Transform? ToTransform(UnityEngine.Object? value)

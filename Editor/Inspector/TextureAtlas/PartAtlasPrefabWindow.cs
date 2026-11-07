@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using net.rs64.TexTransTool.TextureAtlas.IslandSizePriorityTuner;
 using net.rs64.TexTransTool.Utils;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
@@ -25,7 +24,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
         }
 
-        private PartAtlasPrefabSettings? _atlasSettings;
+        private PartAutoAtlasSettings? _atlasSettings;
         private SerializedObject? _atlasSettingsObject;
         private MatsukawaAdapter? _matsukawa;
         private string _adapterError = "";
@@ -37,8 +36,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private int _analysisScaffoldCount;
 
         private List<MatsukawaRendererEntry> _entries = new();
-        private readonly List<Material> _materialCandidates = new();
-        private readonly List<List<Material>> _materialGroups = new();
         private MatsukawaOptions _options = new();
         private MatsukawaAnalysis? _analysis;
 
@@ -128,7 +125,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             DestroyAtlasSettings();
 
-            _atlasSettings = ScriptableObject.CreateInstance<PartAtlasPrefabSettings>();
+            _atlasSettings = ScriptableObject.CreateInstance<PartAutoAtlasSettings>();
             // HideAndDontSave contains HideFlags.NotEditable, which makes SerializedProperty
             // controls read-only. DontSave keeps this transient without disabling editing.
             _atlasSettings.hideFlags = HideFlags.DontSave;
@@ -754,8 +751,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             DrawMajorSectionHeader("アトラス化");
 
             using var content = new InspectorIndentScope(contentWidth);
-            DrawAtlasMaterialSection(content.ContentWidth);
-            DrawAtlasSettings(content.ContentWidth);
+            DrawAutoAtlasSettings(content.ContentWidth);
         }
 
         private void DrawExecutionSection(float contentWidth)
@@ -987,7 +983,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             entry.Keep = EditorGUI.Toggle(toggleRect, entry.Keep);
             if (EditorGUI.EndChangeCheck())
             {
-                RefreshMaterialCandidates(preserveSelection: true);
                 InvalidateAnalysis();
                 Refresh3DPreview();
             }
@@ -1080,103 +1075,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             };
         }
 
-        private void DrawAtlasMaterialSection(float contentWidth)
-        {
-            if (_extractionTargetPaths.Count == 0
-                || _atlasSettings == null
-                || _atlasSettingsObject == null)
-            {
-                return;
-            }
-
-            _atlasSettingsObject.Update();
-            var targetMaterials = _atlasSettingsObject.FindProperty(
-                nameof(PartAtlasPrefabSettings.AtlasTargetMaterials)
-            );
-
-            EditorGUILayout.LabelField(
-                $"アトラス化するMaterial（{_atlasSettings.AtlasTargetMaterials.Count(material => material != null)}/{_materialCandidates.Count}）",
-                MediumSectionLabelStyle
-            );
-
-            using (var content = new InspectorIndentScope(contentWidth))
-            {
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    var buttonLayout = new[]
-                    {
-                        GUILayout.MaxWidth(64f + 18f),
-                        GUILayout.MinWidth(18f),
-                        GUILayout.Height(18f),
-                    };
-
-                    using (new EditorGUI.DisabledScope(_materialCandidates.Count == 0))
-                    {
-                        if (GUILayout.Button(
-                                "AtlasTexture:button:SelectAll".GlcV(),
-                                buttonLayout))
-                        {
-                            _atlasSettingsObject.ApplyModifiedProperties();
-                            SetSelectedMaterials(_materialCandidates);
-                            _atlasSettingsObject.Update();
-                        }
-
-                        if (GUILayout.Button(
-                                "AtlasTexture:button:Invert".GlcV(),
-                                buttonLayout))
-                        {
-                            _atlasSettingsObject.ApplyModifiedProperties();
-                            var selected = _atlasSettings.AtlasTargetMaterials
-                                .Where(material => material != null)
-                                .Cast<Material>()
-                                .ToHashSet();
-
-                            SetSelectedMaterials(
-                                _materialCandidates.Where(material =>
-                                    selected.Contains(material) is false)
-                            );
-                            _atlasSettingsObject.Update();
-                        }
-                    }
-
-                    if (GUILayout.Button(
-                            "AtlasTexture:button:RefreshMaterials".GetLocalize()))
-                    {
-                        _atlasSettingsObject.ApplyModifiedProperties();
-                        RefreshMaterialCandidates(preserveSelection: true);
-                        _atlasSettingsObject.Update();
-                    }
-                }
-
-                if (_materialGroups.Count > 0)
-                {
-                    AtlasTextureEditor.MaterialSelectEditor(
-                        targetMaterials,
-                        _materialGroups,
-                        content.ContentWidth,
-                        256f
-                    );
-                }
-                else
-                {
-                    EditorGUILayout.HelpBox(
-                        "現在の抽出対象レンダラーにはMaterialがありません。",
-                        MessageType.Info
-                    );
-                }
-            }
-
-            if (_atlasSettingsObject.ApplyModifiedProperties())
-            {
-                SanitizeIslandSizePriorityMaterials();
-                EditorUtility.SetDirty(_atlasSettings);
-                _atlasSettingsObject.UpdateIfRequiredOrScript();
-            }
-
-            EditorGUILayout.Space(4f);
-        }
-
-        private void DrawAtlasSettings(float contentWidth)
+        private void DrawAutoAtlasSettings(float contentWidth)
         {
             if (_atlasSettings == null || _atlasSettingsObject == null)
                 return;
@@ -1185,83 +1084,58 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 _atlasSettingsObject.Update();
 
-                var atlasSetting = _atlasSettingsObject.FindProperty(
-                    nameof(PartAtlasPrefabSettings.AtlasSetting)
-                );
-                var islandSizePriority = _atlasSettingsObject.FindProperty(
-                    nameof(PartAtlasPrefabSettings.MaterialSizePriorityTuners)
-                );
-                var mergeMaterialGroups = _atlasSettingsObject.FindProperty(
-                    nameof(PartAtlasPrefabSettings.MergeMaterialGroups)
-                );
-                var allMaterialMergeReference = _atlasSettingsObject.FindProperty(
-                    nameof(PartAtlasPrefabSettings.AllMaterialMergeReference)
-                );
+                var enabled = _atlasSettingsObject.FindProperty(
+                    nameof(PartAutoAtlasSettings.Enabled));
+                EditorGUILayout.PropertyField(
+                    enabled,
+                    new GUIContent(
+                        "自動アトラス化",
+                        "抽出後のPrefabに対して、利益のある場合だけAutoAtlasを適用します。"));
 
-                EditorGUILayout.LabelField(
-                    "AtlasTexture:label:IslandSizePriority".Glc(),
-                    MediumSectionLabelStyle
-                );
-                using (var content = new InspectorIndentScope(contentWidth))
+                if (enabled.boolValue)
                 {
-                    islandSizePriority.isExpanded = EditorGUILayout.Foldout(
-                        islandSizePriority.isExpanded,
-                        "AtlasTexture:prop:IslandSizePriorityTuner".Glc(),
-                        true
-                    );
-
-                    if (islandSizePriority.isExpanded)
+                    using (new InspectorIndentScope(contentWidth))
                     {
-                        var targetMaterials = _atlasSettings.AtlasTargetMaterials
-                            .Where(material => material != null)
-                            .Cast<Material>()
-                            .ToArray();
+                        EditorGUILayout.PropertyField(
+                            _atlasSettingsObject.FindProperty(
+                                nameof(PartAutoAtlasSettings.IslandPadding)),
+                            new GUIContent("Island Padding"));
 
-                        AtlasSettingsEditorGUI.DrawStandaloneMaterialSizePriorityTuners(
-                            islandSizePriority,
-                            targetMaterials,
-                            content.ContentWidth
-                        );
+                        EditorGUILayout.PropertyField(
+                            _atlasSettingsObject.FindProperty(
+                                nameof(PartAutoAtlasSettings.EnableAdditionalAtlasMerging)),
+                            new GUIContent(
+                                "テクスチャ統合",
+                                "独立したAutoAtlasグループを、利益がある場合だけ追加で統合します。"));
+
+                        var optimizeConstant = _atlasSettingsObject.FindProperty(
+                            nameof(PartAutoAtlasSettings.OptimizeConstantTextures));
+                        EditorGUILayout.PropertyField(
+                            optimizeConstant,
+                            new GUIContent("単色テクスチャを最適化"));
+
+                        if (optimizeConstant.boolValue)
+                        {
+                            using (new EditorGUI.IndentLevelScope())
+                            {
+                                EditorGUILayout.PropertyField(
+                                    _atlasSettingsObject.FindProperty(
+                                        nameof(PartAutoAtlasSettings.ConstantTextureColorTolerance)),
+                                    new GUIContent("許容誤差"));
+                            }
+                        }
+
+                        EditorGUILayout.PropertyField(
+                            _atlasSettingsObject.FindProperty(
+                                nameof(PartAutoAtlasSettings.DisableVisuallyUnusedShaderFeatures)),
+                            new GUIContent(
+                                "未使用Shader機能を無効化",
+                                "見た目に寄与していないことを証明できたShader機能だけを無効化します。"));
                     }
-                }
-
-                EditorGUILayout.LabelField(
-                    "AtlasTexture:label:MaterialSettings".Glc(),
-                    MediumSectionLabelStyle
-                );
-                using (new InspectorIndentScope(contentWidth))
-                {
-                    var targetMaterials = _atlasSettings.AtlasTargetMaterials
-                        .Where(material => material != null)
-                        .Cast<Material>()
-                        .ToHashSet();
-
-                    AtlasSettingsEditorGUI.DrawMaterialSettingFields(
-                        mergeMaterialGroups,
-                        allMaterialMergeReference,
-                        targetMaterials,
-                        useAtlasTextureMergeGroupEditor: false
-                    );
-                }
-
-                EditorGUILayout.LabelField(
-                    "AtlasTexture:label:AtlasSettings".Glc(),
-                    MediumSectionLabelStyle
-                );
-                using (new InspectorIndentScope(contentWidth))
-                {
-                    var changes = AtlasSettingsEditorGUI.DrawAtlasSettingFields(
-                        atlasSetting,
-                        includeDisabledRenderer: false
-                    );
-
-                    if ((changes & AtlasSettingDrawChange.TargetUVChannel) != 0)
-                        RefreshMaterialGroups();
                 }
 
                 if (_atlasSettingsObject.ApplyModifiedProperties())
                 {
-                    SanitizeIslandSizePriorityMaterials();
                     EditorUtility.SetDirty(_atlasSettings);
                     _atlasSettingsObject.UpdateIfRequiredOrScript();
                 }
@@ -1595,27 +1469,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             EditorGUILayout.Space(8f);
-            var atlasRequested = _atlasSettings != null
-                && _atlasSettings.AtlasTargetMaterials.Any(material => material != null);
-            var automaticTargets = GetAutomaticAtlasRenderers();
+            var autoAtlasRequested =
+                _atlasSettings != null && _atlasSettings.Enabled;
 
             using (new EditorGUI.DisabledScope(
-                       _entries.All(entry => entry.Keep is false)
-                       || (atlasRequested && automaticTargets.Length == 0)))
+                       _entries.All(entry => entry.Keep is false)))
             {
-                var executeLabel = atlasRequested
-                    ? "抽出 → Atlas → Prefab保存"
+                var executeLabel = autoAtlasRequested
+                    ? "抽出 → 自動Atlas → Prefab保存"
                     : "抽出 → Prefab保存";
                 if (GUILayout.Button(executeLabel, GUILayout.Height(32f)))
                     Execute();
-            }
-
-            if (atlasRequested && automaticTargets.Length == 0)
-            {
-                EditorGUILayout.HelpBox(
-                    "選択したMaterialを使用する抽出対象レンダラーに、アトラス化可能なレンダラーがありません。",
-                    MessageType.Warning
-                );
             }
         }
 
@@ -1641,21 +1505,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 entry.Keep is false
                 && entry.Category == "Unknown"
             );
-            var atlasRequested = _atlasSettings.AtlasTargetMaterials
-                .Any(material => material != null);
-            var atlasCount = GetAutomaticAtlasRenderers().Length;
+            var autoAtlasRequested = _atlasSettings.Enabled;
 
             var confirm =
                 "抽出対象 "
                 + _extractionTargetPaths.Count
                 + " 件をPrefab化します。";
-            if (atlasRequested)
-            {
-                confirm +=
-                    "\nアトラス化するレンダラー: "
-                    + atlasCount
-                    + " 件";
-            }
+            if (autoAtlasRequested)
+                confirm += "\n自動アトラス化: 有効";
             confirm += "\n\n名前: " + sanitizedOutputName;
 
             if (unknownUnchecked > 0)
@@ -1680,7 +1537,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 SourcePrefabAsset = _sourcePrefab,
                 ExtractionOptions = _options,
-                AtlasSettings = _atlasSettings,
+                AutoAtlasSettings = _atlasSettings,
                 OutputName = sanitizedOutputName,
             };
 
@@ -1766,7 +1623,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _outputName = "";
             _lastSuggestedOutputName = "";
             _outputNameCustomized = false;
-            RefreshMaterialCandidates(preserveSelection: false);
             InvalidateAnalysis();
         }
 
@@ -1866,8 +1722,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 || _extractionTargetPaths.Count == 0)
             {
                 _entries.Clear();
-                RefreshMaterialCandidates(preserveSelection: false);
-                Refresh3DPreview();
+                    Refresh3DPreview();
                 return;
             }
 
@@ -1879,8 +1734,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (targets.Count == 0)
             {
                 _entries.Clear();
-                RefreshMaterialCandidates(preserveSelection: false);
-                Refresh3DPreview();
+                    Refresh3DPreview();
                 return;
             }
 
@@ -1918,7 +1772,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             _lastSuggestedOutputName = suggestedOutputName;
 
-            RefreshMaterialCandidates(preserveSelection: true);
             Refresh3DPreview();
         }
 
@@ -1930,129 +1783,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             Repaint();
         }
 
-        private void RefreshMaterialCandidates(bool preserveSelection)
-        {
-            if (_atlasSettings == null)
-            {
-                _materialCandidates.Clear();
-                _materialGroups.Clear();
-                return;
-            }
-
-            var previousSelection = preserveSelection
-                ? _atlasSettings.AtlasTargetMaterials
-                    .Where(material => material != null)
-                    .Cast<Material>()
-                    .ToHashSet()
-                : new HashSet<Material>();
-
-            _materialCandidates.Clear();
-
-            if (_extractionTargetPaths.Count > 0)
-            {
-                _materialCandidates.AddRange(
-                    _entries
-                        .Where(entry => entry.Keep && entry.Renderer != null)
-                        .SelectMany(entry => entry.Renderer.sharedMaterials)
-                        .Where(material => material != null)
-                        .Cast<Material>()
-                        .Distinct()
-                        .OrderBy(material => material.name, StringComparer.Ordinal)
-                        .ThenBy(material => AssetDatabase.GetAssetPath(material), StringComparer.Ordinal)
-                );
-            }
-
-            _atlasSettings.AtlasTargetMaterials = _materialCandidates
-                .Where(previousSelection.Contains)
-                .Cast<Material?>()
-                .ToList();
-
-            SanitizeIslandSizePriorityMaterials();
-            RefreshMaterialGroups();
-
-            EditorUtility.SetDirty(_atlasSettings);
-            _atlasSettingsObject?.UpdateIfRequiredOrScript();
-        }
-
-        private void RefreshMaterialGroups()
-        {
-            _materialGroups.Clear();
-            if (_atlasSettings == null || _materialCandidates.Count == 0)
-                return;
-
-            _materialGroups.AddRange(
-                new MaterialGroupingContext(
-                    _materialCandidates.ToHashSet(),
-                    _atlasSettings.AtlasSetting.AtlasTargetUVChannel,
-                    null
-                )
-                .GroupMaterials
-                .Select(group => new List<Material>(group))
-            );
-        }
-
-        private void SetSelectedMaterials(IEnumerable<Material> materials)
-        {
-            if (_atlasSettings == null) return;
-
-            var candidateSet = _materialCandidates.ToHashSet();
-            var selectedSet = materials
-                .Where(material => material != null && candidateSet.Contains(material))
-                .ToHashSet();
-
-            _atlasSettings.AtlasTargetMaterials = _materialCandidates
-                .Where(selectedSet.Contains)
-                .Cast<Material?>()
-                .ToList();
-
-            SanitizeIslandSizePriorityMaterials();
-            EditorUtility.SetDirty(_atlasSettings);
-            _atlasSettingsObject?.UpdateIfRequiredOrScript();
-        }
-
-        private void SanitizeIslandSizePriorityMaterials()
-        {
-            if (_atlasSettings == null) return;
-
-            var selected = _atlasSettings.AtlasTargetMaterials
-                .Where(material => material != null)
-                .Cast<Material>()
-                .ToHashSet();
-
-            foreach (var tuner in _atlasSettings.MaterialSizePriorityTuners)
-            {
-                if (tuner?.Materials == null) continue;
-
-                tuner.Materials = tuner.Materials
-                    .Where(material => material != null && selected.Contains(material))
-                    .Distinct()
-                    .ToList();
-            }
-        }
-
-        private Renderer[] GetAutomaticAtlasRenderers()
-        {
-            if (_loadedPrefabRoot == null
-                || _extractionTargetPaths.Count == 0
-                || _atlasSettings == null)
-            {
-                return Array.Empty<Renderer>();
-            }
-
-            var keptRenderers = _entries
-                .Where(entry => entry.Keep && entry.Renderer != null)
-                .Select(entry => entry.Renderer)
-                .ToHashSet();
-
-            if (keptRenderers.Count == 0)
-                return Array.Empty<Renderer>();
-
-            return PartAtlasPrefabPipeline
-                .GetAtlasCandidateRenderers(_atlasSettings, _loadedPrefabRoot)
-                .Where(keptRenderers.Contains)
-                .ToArray();
-        }
-
         private void UnloadSourcePrefab()
         {
             // Release baked meshes before PrefabUtility destroys their source hierarchy.
@@ -2060,8 +1790,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _preview?.ResetView();
             InvalidateAnalysis();
             _entries.Clear();
-            _materialCandidates.Clear();
-            _materialGroups.Clear();
             _outputName = "";
             _lastSuggestedOutputName = "";
             _outputNameCustomized = false;
@@ -2073,14 +1801,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             _hierarchyView?.SetRoot(null);
             _readOnlyInspector?.SetSourcePrefab(null);
-
-            if (_atlasSettings != null)
-            {
-                _atlasSettings.AtlasTargetMaterials.Clear();
-                _atlasSettings.MaterialSizePriorityTuners.Clear();
-                EditorUtility.SetDirty(_atlasSettings);
-                _atlasSettingsObject?.UpdateIfRequiredOrScript();
-            }
 
             if (_loadedPrefabRoot != null)
             {

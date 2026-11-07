@@ -14,6 +14,34 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
 {
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
+        [Test]
+        public void PartAutoAtlasDefaultsIncludeRetainedDisabledRenderers()
+        {
+            var settings =
+                ScriptableObject.CreateInstance<PartAutoAtlasSettings>();
+            try
+            {
+                Assert.That(settings.Enabled, Is.True);
+                var execution = settings.ToExecutionSettings();
+                Assert.That(execution.IncludeDisabledRenderer, Is.True);
+                Assert.That(execution.EnableAdditionalAtlasMerging, Is.True);
+                Assert.That(execution.OptimizeConstantTextures, Is.True);
+                Assert.That(
+                    execution.ConstantTextureColorTolerance,
+                    Is.EqualTo(2));
+                Assert.That(
+                    execution.DisableVisuallyUnusedShaderFeatures,
+                    Is.True);
+                Assert.That(
+                    execution.ExcludeVisibilityAnimatedItemsFromTextureMerging,
+                    Is.False);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(settings);
+            }
+        }
+
         private sealed class LiltoonTextureUvProbe
             : IMaterialInformationCallbackAbstractionInterface
         {
@@ -1565,6 +1593,26 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
                 Assert.That(
                     manualIncludeDisabled.Contains(permanentlyHidden),
                     Is.True);
+
+                var standaloneSettings =
+                    AutoAtlasTextureExecutionSettings.FromComponent(
+                        configuration);
+                standaloneSettings.IncludeDisabledRenderer = true;
+                var standalone = AutoAtlasTextureProcessor
+                    .GetAutoAtlasAllowedRenderers(
+                        targeting,
+                        standaloneSettings,
+                        visibilityStates)
+                    .ToHashSet();
+                Assert.That(standalone.Contains(active), Is.True);
+                Assert.That(
+                    standalone.Contains(disabledRuntimeVisible), Is.True);
+                Assert.That(
+                    standalone.Contains(inactiveRuntimeVisible), Is.True);
+                Assert.That(
+                    standalone.Contains(permanentlyHidden), Is.True);
+                Assert.That(
+                    standalone.Contains(explicitlyExcluded), Is.False);
 
                 var resolved = AutoAtlasTextureProcessor
                     .ResolveAutoAtlasTargetRenderers(
