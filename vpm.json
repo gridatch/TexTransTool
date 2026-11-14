@@ -531,17 +531,17 @@
           },
           "zipSHA256": "6c65aa48b7ff9ebed9596c3c1b29511c7c58c9536c8dc1cce37d1cfecddf3622"
         },
-        "0.1.24+wdt.ttt.1.0.2.debug.1383.part-auto-atlas.48fed77": {
+        "0.1.24+wdt.ttt.1.0.2.debug.1384.part-auto-atlas.0c00a03": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.24+wdt.ttt.1.0.2.debug.1383.part-auto-atlas.48fed77",
+          "version": "0.1.24+wdt.ttt.1.0.2.debug.1384.part-auto-atlas.0c00a03",
           "unity": "2022.3",
-          "description": "Debug build 1383 for part-auto-atlas from feat/part-auto-atlas at 48fed77. Based on WDT 0.1.24+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 1384 for part-auto-atlas from feat/part-auto-atlas at 0c00a03. Based on WDT 0.1.24+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1383.part-auto-atlas.48fed77.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1384.part-auto-atlas.0c00a03.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -554,7 +554,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "49090eecaa2db71d18b478670f46cc0af370f197a7b547467cc24437cf6f8b8e"
+          "zipSHA256": "75fc672a02df0a80a6aac6ba26b678d149f5c56bfd7652ff9fe1870c84573f9d"
         }
       }
     }
