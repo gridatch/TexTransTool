@@ -86,6 +86,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     internal sealed class PartAutoAtlasDomain : RenderersDomain
     {
         private readonly PartAutoAtlasAssetStore _assetStore;
+        private readonly Dictionary<Material, HashSet<Material>>
+            _materialOrigins = new();
         private bool _disposed;
 
         internal PartAutoAtlasDomain(
@@ -103,8 +105,87 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         public override void ReplaceMaterials(
             Dictionary<Material, Material> mapping)
         {
+            var incoming = mapping
+                .Where(pair =>
+                    pair.Key != null
+                    && pair.Value != null
+                    && pair.Key != pair.Value)
+                .GroupBy(pair => pair.Value)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group
+                        .Select(pair => pair.Key)
+                        .Distinct()
+                        .ToArray());
+
+            HashSet<Material> ResolveOrigins(
+                Material material,
+                HashSet<Material> visiting)
+            {
+                if (!visiting.Add(material))
+                    return new HashSet<Material> { material };
+
+                var resolved = new HashSet<Material>();
+                if (_materialOrigins.TryGetValue(
+                        material, out var knownOrigins))
+                {
+                    resolved.UnionWith(knownOrigins);
+                }
+
+                if (incoming.TryGetValue(
+                        material, out var sourceMaterials))
+                {
+                    foreach (var source in sourceMaterials)
+                    {
+                        resolved.UnionWith(
+                            ResolveOrigins(
+                                source,
+                                new HashSet<Material>(visiting)));
+                    }
+                }
+
+                if (resolved.Count == 0)
+                    resolved.Add(material);
+
+                return resolved;
+            }
+
+            foreach (var pair in mapping)
+            {
+                if (pair.Key == null || pair.Value == null)
+                    continue;
+
+                if (!_materialOrigins.TryGetValue(
+                        pair.Value, out var destinationOrigins))
+                {
+                    destinationOrigins = new HashSet<Material>();
+                    _materialOrigins[pair.Value] = destinationOrigins;
+                }
+
+                destinationOrigins.UnionWith(
+                    ResolveOrigins(
+                        pair.Key,
+                        new HashSet<Material>()));
+            }
+
             _assetStore.TrackGeneratedMaterials(mapping.Values);
             base.ReplaceMaterials(mapping);
+        }
+
+        internal IReadOnlyCollection<Material> GetOriginMaterials(
+            Material material)
+        {
+            if (material != null
+                && _materialOrigins.TryGetValue(
+                    material, out var origins)
+                && origins.Count != 0)
+            {
+                return origins;
+            }
+
+            return material == null
+                ? Array.Empty<Material>()
+                : new[] { material };
         }
 
         public override void Dispose()

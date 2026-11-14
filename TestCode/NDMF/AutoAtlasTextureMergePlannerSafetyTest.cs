@@ -15,6 +15,71 @@ namespace net.rs64.TexTransTool.NDMF.TestCode
     internal class AutoAtlasTextureMergePlannerSafetyTest
     {
         [Test]
+        public void PartAutoAtlasMaterialProvenanceSurvivesMergeAndChainedReplacement()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(shader, Is.Not.Null);
+
+            var root = new GameObject("root");
+            var renderer = root.AddComponent<MeshRenderer>();
+            var sourceA = new Material(shader);
+            var sourceB = new Material(shader);
+            var merged = new Material(shader);
+            var intermediate = new Material(shader);
+            var final = new Material(shader);
+            renderer.sharedMaterials =
+                new[] { sourceA, sourceB };
+
+            try
+            {
+                using (var store = new PartAutoAtlasAssetStore())
+                using (var domain =
+                       new PartAutoAtlasDomain(root, store))
+                {
+                    domain.ReplaceMaterials(
+                        new Dictionary<Material, Material>
+                        {
+                            [sourceA] = merged,
+                            [sourceB] = merged,
+                        });
+
+                    var mergedOrigins =
+                        domain.GetOriginMaterials(merged).ToHashSet();
+                    Assert.That(
+                        mergedOrigins.SetEquals(
+                            new[] { sourceA, sourceB }),
+                        Is.True);
+
+                    domain.ReplaceMaterials(
+                        new Dictionary<Material, Material>
+                        {
+                            [merged] = intermediate,
+                            [intermediate] = final,
+                        });
+
+                    var finalOrigins =
+                        domain.GetOriginMaterials(final).ToHashSet();
+                    Assert.That(
+                        finalOrigins.SetEquals(
+                            new[] { sourceA, sourceB }),
+                        Is.True);
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                UnityEngine.Object.DestroyImmediate(sourceA);
+                UnityEngine.Object.DestroyImmediate(sourceB);
+                if (merged != null)
+                    UnityEngine.Object.DestroyImmediate(merged);
+                if (intermediate != null)
+                    UnityEngine.Object.DestroyImmediate(intermediate);
+                if (final != null)
+                    UnityEngine.Object.DestroyImmediate(final);
+            }
+        }
+
+        [Test]
         public void PartAutoAtlasDefaultsIncludeRetainedDisabledRenderers()
         {
             var settings =

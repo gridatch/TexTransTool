@@ -102,6 +102,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var writeResult = PartAutoAtlasAssetWriter.Write(
                     root,
                     assetStore,
+                    domain,
                     descriptors,
                     outputAssetPath);
 
@@ -239,6 +240,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal static PartAutoAtlasAssetWriteResult Write(
             GameObject root,
             PartAutoAtlasAssetStore store,
+            PartAutoAtlasDomain domain,
             IReadOnlyDictionary<
                 Texture2D, TexTransToolTextureDescriptor> textureDescriptors,
             string outputAssetPath)
@@ -323,6 +325,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     .Select(usage => usage.Material)
                     .Distinct()
                     .ToArray();
+                var sourceMaterials = usageMaterials
+                    .SelectMany(domain.GetOriginMaterials)
+                    .Where(material => material != null)
+                    .Distinct()
+                    .ToArray();
 
                 var materialPrefix =
                     BuildMaterialPrefix(usageMaterials);
@@ -339,7 +346,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var persistent = AtlasTextureBaker.SaveTextureAsset(
                     texture,
                     descriptor,
-                    usageMaterials,
+                    sourceMaterials,
                     properties,
                     assetPath);
 
