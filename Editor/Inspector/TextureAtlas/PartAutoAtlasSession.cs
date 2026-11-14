@@ -12,8 +12,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
     internal sealed class PartAutoAtlasExecutionResult
     {
+        internal bool Executed;
         internal bool HasChanges;
         internal int AppliedGroupCount;
+        internal long ProcessingMilliseconds;
+        internal IReadOnlyList<AutoAtlasTextureReportMessage> ReportMessages =
+            Array.Empty<AutoAtlasTextureReportMessage>();
         internal int TextureCount;
         internal int MaterialCount;
         internal int MeshCount;
@@ -29,7 +33,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 AtlasTextureBaker.AnimationObjectReferenceHit>
                 sourceAnimationReferences)
         {
-            var result = new PartAutoAtlasExecutionResult();
+            var result = new PartAutoAtlasExecutionResult
+            {
+                Executed = settings.Enabled,
+            };
             if (!settings.Enabled)
                 return result;
 
@@ -68,6 +75,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 result.HasChanges = execution.HasChanges;
                 result.AppliedGroupCount = execution.AppliedGroupCount;
+                result.ProcessingMilliseconds =
+                    execution.ProcessingMilliseconds;
+                result.ReportMessages = execution.ReportMessages;
                 if (!execution.HasChanges)
                     return result;
 

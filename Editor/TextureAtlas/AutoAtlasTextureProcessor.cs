@@ -260,15 +260,56 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     context,
                     () => TTTLog.Info(code, args));
 
-            void ReportInfo(string code, params object[] args)
-                => infoReporter(reportingObject, code, args);
-
             var processingTimer = System.Diagnostics.Stopwatch.StartNew();
 
             // Collect one summary block per adopted execution group.
             var completed = new List<string>();
 
             var twoDimensionalFallbackReasons = new List<string>();
+
+            AutoAtlasTextureExecutionResult CompleteExecution(
+                bool hasChanges,
+                int appliedGroupCount)
+            {
+                processingTimer.Stop();
+
+                var messages =
+                    new List<AutoAtlasTextureReportMessage>();
+                if (twoDimensionalFallbackReasons.Count != 0)
+                {
+                    messages.Add(new AutoAtlasTextureReportMessage(
+                        "AutoAtlasTexture:info:TwoDimensionalFallback",
+                        string.Join("\n", twoDimensionalFallbackReasons)));
+                }
+
+                if (hasChanges)
+                {
+                    messages.Add(new AutoAtlasTextureReportMessage(
+                        "AutoAtlasTexture:info:RelocateResult",
+                        string.Join("\n\n", completed),
+                        processingTimer.ElapsedMilliseconds));
+                }
+                else
+                {
+                    messages.Add(new AutoAtlasTextureReportMessage(
+                        "AutoAtlasTexture:info:TargetNotFound",
+                        processingTimer.ElapsedMilliseconds));
+                }
+
+                foreach (var message in messages)
+                {
+                    infoReporter(
+                        reportingObject,
+                        message.LocalizationKey,
+                        message.Arguments);
+                }
+
+                return new AutoAtlasTextureExecutionResult(
+                    hasChanges,
+                    appliedGroupCount,
+                    processingTimer.ElapsedMilliseconds,
+                    messages.ToArray());
+            }
 
             var allRenderers = domain.EnumerateRenderer()
                 .Where(renderer => renderer != null)
@@ -299,12 +340,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     configuration.IncludeDisabledRenderer);
             if (candidateMaterials.Count == 0)
             {
-                processingTimer.Stop();
-                ReportInfo(
-                    "AutoAtlasTexture:info:TargetNotFound",
-                    processingTimer.ElapsedMilliseconds);
-                return new AutoAtlasTextureExecutionResult(
-                    false, 0, processingTimer.ElapsedMilliseconds);
+                return CompleteExecution(false, 0);
             }
 
             var excludedMaterials = domain.GetDomainsMaterialsHashSet(
@@ -1104,30 +1140,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 completed.Add(block);
             }
 
-            processingTimer.Stop();
-
-            if (twoDimensionalFallbackReasons.Count != 0)
-            {
-                ReportInfo(
-                    "AutoAtlasTexture:info:TwoDimensionalFallback",
-                    string.Join("\n", twoDimensionalFallbackReasons));
-            }
-
-            if (completed.Count == 0)
-            {
-                ReportInfo(
-                    "AutoAtlasTexture:info:TargetNotFound",
-                    processingTimer.ElapsedMilliseconds);
-                return new AutoAtlasTextureExecutionResult(
-                    false, 0, processingTimer.ElapsedMilliseconds);
-            }
-
-            ReportInfo(
-                "AutoAtlasTexture:info:RelocateResult",
-                string.Join("\n\n", completed),
-                processingTimer.ElapsedMilliseconds);
-            return new AutoAtlasTextureExecutionResult(
-                true, completed.Count, processingTimer.ElapsedMilliseconds);
+            return completed.Count == 0
+                ? CompleteExecution(false, 0)
+                : CompleteExecution(true, completed.Count);
         }
 
         internal static bool RendererRequiresAtlasMesh(
