@@ -260,6 +260,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal string AtlasOutputFolder = "";
         internal string PrefabPath = "";
         internal string ReportText = "";
+        internal PartAtlasPrefabExecutionSummary? Summary;
     }
 
     /// <summary>
@@ -411,6 +412,19 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 ) as GameObject;
                 if (instantiatedRoot == null)
                     return Fail(result, "入力Prefabを一時Sceneへ展開できませんでした。");
+
+                // Capture the actual input Prefab before extraction staging adds temporary objects.
+                var inputGameObjectCount =
+                    instantiatedRoot.GetComponentsInChildren<Transform>(true).Length;
+                var inputRendererCount =
+                    instantiatedRoot.GetComponentsInChildren<Renderer>(true).Length;
+                var inputBoneArrays = instantiatedRoot
+                    .GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                    .ToDictionary(
+                        renderer => renderer,
+                        renderer => (
+                            Path: RelativePath(instantiatedRoot.transform, renderer.transform),
+                            Length: renderer.bones?.Length ?? 0));
 
                 UnpackPrefabInstancesForStaging(instantiatedRoot);
 
@@ -736,47 +750,67 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 if (!string.IsNullOrEmpty(finalReferenceError))
                     return Fail(result, finalReferenceError);
 
+                PartAutoAtlasExecutionResult? autoAtlasResult = null;
                 if (autoAtlasRequested)
                 {
-                    var autoAtlasResult = PartAutoAtlasSession.Execute(
+                    autoAtlasResult = PartAutoAtlasSession.Execute(
                         extractionRoot,
                         request.AutoAtlasSettings,
                         result.AtlasOutputFolder,
                         autoAtlasAnimationReferences);
 
                     if (autoAtlasResult.HasChanges)
-                    {
                         RemoveSupersededTrimMeshes(matsukawa, extraction);
-                        matsukawa.AddReportNote(
-                            extraction,
-                            "AutoAtlas Asset: "
-                            + result.AtlasOutputFolder
-                            + " (Texture "
-                            + autoAtlasResult.TextureCount
-                            + ", Material "
-                            + autoAtlasResult.MaterialCount
-                            + ", Mesh "
-                            + autoAtlasResult.MeshCount
-                            + ")");
-                    }
-                    else
-                    {
-                        matsukawa.AddReportNote(
-                            extraction,
-                            "AutoAtlas: 利益のある変換対象がなかったため変更なし。");
-                    }
                 }
+
+                // Measure the finalized hierarchy, not HCE's temporary extraction scaffold.
+                var outputRenderers =
+                    extractionRoot.GetComponentsInChildren<Renderer>(true);
+                var outputGameObjectCount =
+                    extractionRoot.GetComponentsInChildren<Transform>(true).Length;
+                var remainingSkinnedRenderers = outputRenderers
+                    .OfType<SkinnedMeshRenderer>()
+                    .ToHashSet();
+                var boneArrayChanges = analysis.TrimTargets
+                    .Where(renderer => renderer != null
+                        && remainingSkinnedRenderers.Contains(renderer)
+                        && inputBoneArrays.ContainsKey(renderer))
+                    .Select(renderer =>
+                    {
+                        var original = inputBoneArrays[renderer];
+                        return new PartAtlasBoneArrayChange(
+                            original.Path,
+                            original.Length,
+                            renderer.bones?.Length ?? 0);
+                    })
+                    .Where(change => change.Before > change.After)
+                    .OrderBy(change => change.RendererPath, StringComparer.Ordinal)
+                    .ToArray();
 
                 var prefabPath = matsukawa.SavePrefab(extraction);
                 if (prefabPath == null || prefabPath.Length == 0)
                     return Fail(result, "Prefabを保存できませんでした。");
 
-                var reportText = matsukawa.BuildReportText(extraction);
+                var summary = new PartAtlasPrefabExecutionSummary
+                {
+                    CompletedAt = DateTime.Now,
+                    Extraction = matsukawa.CreateReportSummary(extraction),
+                    AutoAtlas = autoAtlasResult,
+                    AtlasOutputFolder = result.AtlasOutputFolder,
+                    InputGameObjectCount = inputGameObjectCount,
+                    OutputGameObjectCount = outputGameObjectCount,
+                    InputRendererCount = inputRendererCount,
+                    OutputRendererCount = outputRenderers.Length,
+                    BoneArrayChanges = boneArrayChanges,
+                };
+                var reportText =
+                    PartAtlasPrefabReportFormatter.Format(summary);
                 matsukawa.SetReportText(extraction, reportText);
                 RewriteReport(extraction.OutputFolder, reportText);
 
                 result.PrefabPath = prefabPath;
                 result.ReportText = reportText;
+                result.Summary = summary;
                 result.Success = true;
 
                 committed = true;

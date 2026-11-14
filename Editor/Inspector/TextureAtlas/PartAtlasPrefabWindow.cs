@@ -1445,16 +1445,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             EditorGUILayout.Space(8f);
-            var autoAtlasRequested =
-                _atlasSettings != null && _atlasSettings.Enabled;
-
             using (new EditorGUI.DisabledScope(
                        _entries.All(entry => entry.Keep is false)))
             {
-                var executeLabel = autoAtlasRequested
-                    ? "抽出 → 自動アトラス化 → Prefab保存"
-                    : "抽出 → Prefab保存";
-                if (GUILayout.Button(executeLabel, GUILayout.Height(32f)))
+                if (GUILayout.Button("Prefab抽出", GUILayout.Height(32f)))
                     Execute();
             }
         }
@@ -1474,38 +1468,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (string.IsNullOrWhiteSpace(sanitizedOutputName))
             {
                 EditorUtility.DisplayDialog("TTT Prefab化", "名前を入力してください。", "OK");
-                return;
-            }
-
-            var unknownUnchecked = _entries.Count(entry =>
-                entry.Keep is false
-                && entry.Category == "Unknown"
-            );
-            var autoAtlasRequested = _atlasSettings.Enabled;
-
-            var confirm =
-                "抽出対象 "
-                + _extractionTargetPaths.Count
-                + " 件をPrefab化します。";
-            if (autoAtlasRequested)
-                confirm += "\n自動アトラス化: 有効";
-            confirm += "\n\n名前: " + sanitizedOutputName;
-
-            if (unknownUnchecked > 0)
-            {
-                confirm +=
-                    "\n\n⚠ 用途が「不明」でチェックの入っていないレンダラーが "
-                    + unknownUnchecked
-                    + " 件あります。残すべきものが混じっていないか確認してください。";
-            }
-
-            if (EditorUtility.DisplayDialog(
-                    "TTT Prefab化",
-                    confirm + "\n\n実行しますか？",
-                    "実行",
-                    "キャンセル"
-                ) is false)
-            {
                 return;
             }
 
@@ -1552,11 +1514,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 EditorGUIUtility.PingObject(prefab);
             }
 
-            EditorUtility.DisplayDialog(
-                "TTT Prefab化",
-                "Prefab化が完了しました。\n\n" + pipelineResult.PrefabPath,
-                "OK"
-            );
+            if (pipelineResult.Summary != null)
+                PartAtlasPrefabResultWindow.ShowResult(
+                    pipelineResult.Summary);
         }
 
         private void SetSourcePrefab(GameObject? source)

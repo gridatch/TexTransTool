@@ -4,7 +4,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Text;
 using UnityEngine;
 
 namespace net.rs64.TexTransTool.TextureAtlas.Editor
@@ -188,95 +187,54 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return value is int count ? count : 0;
         }
 
-        internal string BuildReportText(MatsukawaExecutionResult result)
+        internal MatsukawaReportSummary CreateReportSummary(
+            MatsukawaExecutionResult result)
         {
             var report = result.RawReport;
-            var keptMeshes = ReadStringList(_api.ReportKeptMeshes.GetValue(report))
-                .Select(CleanReportPath)
-                .ToArray();
-            var trimLog = ReadStringList(_api.ReportTrimLog.GetValue(report));
-            var protectedPaths = ReadStringList(_api.ReportProtectedPaths.GetValue(report))
-                .Select(CleanReportPath)
-                .Where(path => string.IsNullOrWhiteSpace(path) is false)
-                .ToArray();
-            var deletedRoots = ReadStringList(_api.ReportDeletedRoots.GetValue(report))
-                .Select(CleanReportPath)
-                .Where(path => string.IsNullOrWhiteSpace(path) is false)
-                .ToArray();
-            var generatedMeshes = ReadStringList(_api.ReportGeneratedMeshes.GetValue(report));
-            var notes = ReadStringList(_api.ReportNotes.GetValue(report))
-                .Where(IsProductReportNote)
-                .ToArray();
-
-            var sb = new StringBuilder();
-            sb.AppendLine("TexTransTool Prefab抽出・アトラス化 実行レポート");
-            sb.AppendLine("========================================================================");
-            sb.AppendLine("日時          : " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-            sb.AppendLine("入力Prefab     : " + result.SourceName);
-            sb.AppendLine("生成物         : " + (result.Result != null ? result.Result.name : "-"));
-            sb.AppendLine("出力フォルダ   : " + result.OutputFolder);
-            if (string.IsNullOrEmpty(result.PrefabPath) is false)
-                sb.AppendLine("生成Prefab     : " + result.PrefabPath);
-
-            sb.AppendLine();
-            sb.AppendLine("抽出したRenderer (" + keptMeshes.Length + " 件)");
-            foreach (var item in keptMeshes)
-                sb.AppendLine("  ・" + item);
-
-            sb.AppendLine();
-            sb.AppendLine("処理結果");
-            sb.AppendLine("  削除したGameObject          : "
-                + ReadInt(_api.ReportDeletedObjects, report) + " 個");
-            sb.AppendLine("  削除したRenderer            : "
-                + ReadInt(_api.ReportDeletedRenderers, report) + " 件");
-            sb.AppendLine("  Renderer Componentのみ削除  : "
-                + ReadInt(_api.ReportStrippedRenderers, report) + " 件");
-            sb.AppendLine("  除外したComponent           : "
-                + ReadInt(_api.ReportDroppedComponents, report) + " 個");
-            sb.AppendLine("  出力内GameObject            : "
-                + ReadInt(_api.ReportKeptBones, report) + " 個");
-
-            if (trimLog.Count > 0)
+            return new MatsukawaReportSummary
             {
-                sb.AppendLine();
-                sb.AppendLine("ボーン配列の切り詰め");
-                foreach (var item in trimLog)
-                    sb.AppendLine("  ・" + item);
-            }
-
-            if (protectedPaths.Length > 0)
-            {
-                sb.AppendLine();
-                sb.AppendLine("保護して残したGameObject (" + protectedPaths.Length + " 件)");
-                foreach (var item in protectedPaths)
-                    sb.AppendLine("  ・" + item);
-            }
-
-            if (deletedRoots.Length > 0)
-            {
-                sb.AppendLine();
-                sb.AppendLine("削除したHierarchy Root (" + deletedRoots.Length + " 件)");
-                foreach (var item in deletedRoots)
-                    sb.AppendLine("  ・" + item);
-            }
-
-            if (generatedMeshes.Count > 0)
-            {
-                sb.AppendLine();
-                sb.AppendLine("生成したMesh");
-                foreach (var item in generatedMeshes)
-                    sb.AppendLine("  ・" + item);
-            }
-
-            if (notes.Length > 0)
-            {
-                sb.AppendLine();
-                sb.AppendLine("補足");
-                foreach (var note in notes)
-                    sb.AppendLine("  ・" + note);
-            }
-
-            return sb.ToString();
+                SourceName = result.SourceName,
+                ResultName =
+                    result.Result != null ? result.Result.name : "-",
+                OutputFolder = result.OutputFolder,
+                PrefabPath = result.PrefabPath,
+                KeptRendererPaths = ReadStringList(
+                        _api.ReportKeptMeshes.GetValue(report))
+                    .Select(CleanReportPath)
+                    .ToArray(),
+                DeletedObjectCount =
+                    ReadInt(_api.ReportDeletedObjects, report),
+                DeletedRendererCount =
+                    ReadInt(_api.ReportDeletedRenderers, report),
+                StrippedRendererCount =
+                    ReadInt(_api.ReportStrippedRenderers, report),
+                DroppedComponentCount =
+                    ReadInt(_api.ReportDroppedComponents, report),
+                OutputGameObjectCount =
+                    ReadInt(_api.ReportKeptBones, report),
+                TrimLog = ReadStringList(
+                        _api.ReportTrimLog.GetValue(report))
+                    .ToArray(),
+                ProtectedPaths = ReadStringList(
+                        _api.ReportProtectedPaths.GetValue(report))
+                    .Select(CleanReportPath)
+                    .Where(path =>
+                        !string.IsNullOrWhiteSpace(path))
+                    .ToArray(),
+                DeletedRoots = ReadStringList(
+                        _api.ReportDeletedRoots.GetValue(report))
+                    .Select(CleanReportPath)
+                    .Where(path =>
+                        !string.IsNullOrWhiteSpace(path))
+                    .ToArray(),
+                GeneratedMeshes = ReadStringList(
+                        _api.ReportGeneratedMeshes.GetValue(report))
+                    .ToArray(),
+                Notes = ReadStringList(
+                        _api.ReportNotes.GetValue(report))
+                    .Where(IsProductReportNote)
+                    .ToArray(),
+            };
         }
 
         private static bool IsProductReportNote(string note)
