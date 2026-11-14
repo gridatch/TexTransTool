@@ -1096,41 +1096,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 {
                     using (new InspectorIndentScope(contentWidth))
                     {
-                        EditorGUILayout.PropertyField(
+                        AutoAtlasTextureSettingsEditorGUI.DrawCoreSettings(
                             _atlasSettingsObject.FindProperty(
                                 nameof(PartAutoAtlasSettings.IslandPadding)),
-                            new GUIContent("Island Padding"));
-
-                        EditorGUILayout.PropertyField(
                             _atlasSettingsObject.FindProperty(
-                                nameof(PartAutoAtlasSettings.EnableAdditionalAtlasMerging)),
-                            new GUIContent(
-                                "テクスチャ統合",
-                                "独立したAutoAtlasグループを、利益がある場合だけ追加で統合します。"));
-
-                        var optimizeConstant = _atlasSettingsObject.FindProperty(
-                            nameof(PartAutoAtlasSettings.OptimizeConstantTextures));
-                        EditorGUILayout.PropertyField(
-                            optimizeConstant,
-                            new GUIContent("単色テクスチャを最適化"));
-
-                        if (optimizeConstant.boolValue)
-                        {
-                            using (new EditorGUI.IndentLevelScope())
-                            {
-                                EditorGUILayout.PropertyField(
-                                    _atlasSettingsObject.FindProperty(
-                                        nameof(PartAutoAtlasSettings.ConstantTextureColorTolerance)),
-                                    new GUIContent("許容誤差"));
-                            }
-                        }
-
-                        EditorGUILayout.PropertyField(
+                                nameof(PartAutoAtlasSettings.OptimizeConstantTextures)),
+                            _atlasSettingsObject.FindProperty(
+                                nameof(PartAutoAtlasSettings.ConstantTextureColorTolerance)),
                             _atlasSettingsObject.FindProperty(
                                 nameof(PartAutoAtlasSettings.DisableVisuallyUnusedShaderFeatures)),
-                            new GUIContent(
-                                "未使用Shader機能を無効化",
-                                "見た目に寄与していないことを証明できたShader機能だけを無効化します。"));
+                            _atlasSettingsObject.FindProperty(
+                                nameof(PartAutoAtlasSettings.EnableAdditionalAtlasMerging)));
                     }
                 }
 
@@ -1476,7 +1452,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                        _entries.All(entry => entry.Keep is false)))
             {
                 var executeLabel = autoAtlasRequested
-                    ? "抽出 → 自動Atlas → Prefab保存"
+                    ? "抽出 → 自動アトラス化 → Prefab保存"
                     : "抽出 → Prefab保存";
                 if (GUILayout.Button(executeLabel, GUILayout.Height(32f)))
                     Execute();
