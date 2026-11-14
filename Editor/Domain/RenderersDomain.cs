@@ -26,6 +26,12 @@ namespace net.rs64.TexTransTool
 
         protected readonly RenderTextureDescriptorManager _renderTextureDescriptorManager;
 
+        internal IReadOnlyDictionary<Texture2D, TexTransToolTextureDescriptor>
+            DownloadedTextureDescriptors =>
+                _renderTextureDescriptorManager.DownloadedDescriptors;
+
+        protected virtual bool CompressDownloadedTexturesOnDispose => true;
+
         public RenderersDomain(List<Renderer> previewRenderers, IAssetSaver assetSaver)
         {
             _renderers = previewRenderers;
@@ -128,7 +134,12 @@ namespace net.rs64.TexTransTool
             MergeStack();
             ReadBackToTexture2D();
 
-            Texture2DCompressor.CompressDeferred(this, _renderTextureDescriptorManager.DownloadedDescriptors);
+            if (CompressDownloadedTexturesOnDispose)
+            {
+                Texture2DCompressor.CompressDeferred(
+                    this,
+                    _renderTextureDescriptorManager.DownloadedDescriptors);
+            }
 
             if (_diskUtil is IDisposable dd) dd.Dispose();
             if (_ttce4U is IDisposable t4uD) t4uD.Dispose();

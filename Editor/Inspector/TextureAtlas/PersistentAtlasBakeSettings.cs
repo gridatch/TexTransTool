@@ -8,9 +8,9 @@ using UnityEngine;
 namespace net.rs64.TexTransTool.TextureAtlas.Editor
 {
     /// <summary>
-    /// Component-independent settings consumed by the persistent Atlas bake core.
-    /// The normal AtlasTexture component and standalone Prefab workflow both snapshot
-    /// their own state into this DTO before invoking the shared baker.
+    /// Component-independent settings consumed by the manual persistent Atlas
+    /// bake core. AtlasTexture snapshots its component state into this DTO before
+    /// invoking the shared baker.
     /// </summary>
     internal sealed class PersistentAtlasBakeSettings
     {
@@ -34,35 +34,36 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     }
 
     /// <summary>
-    /// Serialized backing model owned by PartAtlasPrefabWindow.
-    /// It deliberately is not an AtlasTexture component and never participates in NDMF.
+    /// Standalone AutoAtlas settings owned by PartAtlasPrefabWindow.
+    /// These are intentionally component-independent and never participate in NDMF.
     /// </summary>
-    internal sealed class PartAtlasPrefabSettings : ScriptableObject
+    internal sealed class PartAutoAtlasSettings : ScriptableObject
     {
-        public List<Material?> AtlasTargetMaterials = new();
+        public bool Enabled = true;
 
-        // The standalone Prefab workflow intentionally supports only the hierarchy-independent
-        // SetFromMaterial variant. The list being empty has the same meaning as the regular
-        // AtlasTexture component having no IslandSizePriorityTuner entries.
-        [SerializeReference]
-        public List<SetFromMaterial?> MaterialSizePriorityTuners = new();
+        [Range(0f, 0.05f)]
+        public float IslandPadding = 0.01f;
 
-        public List<AtlasTexture.MaterialMergeGroup> MergeMaterialGroups = new();
-        public Material? AllMaterialMergeReference;
-        public AtlasSetting AtlasSetting = new AtlasSetting();
+        public bool EnableAdditionalAtlasMerging = true;
+        public bool OptimizeConstantTextures = true;
 
-        internal PersistentAtlasBakeSettings ToBakeSettings()
+        [Range(0, 4)]
+        public int ConstantTextureColorTolerance = 2;
+
+        public bool DisableVisuallyUnusedShaderFeatures = true;
+
+        internal AutoAtlasTextureExecutionSettings ToExecutionSettings()
         {
-            return new PersistentAtlasBakeSettings
+            return new AutoAtlasTextureExecutionSettings
             {
-                AtlasSetting = AtlasSetting,
-                IslandSizePriorityTuner = MaterialSizePriorityTuners
-                    .Where(tuner => tuner != null)
-                    .Cast<IIslandSizePriorityTuner?>()
-                    .ToList(),
-                MergeMaterialGroups = MergeMaterialGroups,
-                AllMaterialMergeReference = AllMaterialMergeReference,
-                ExperimentalOptions = null,
+                IslandPadding = IslandPadding,
+                IncludeDisabledRenderer = true,
+                EnableAdditionalAtlasMerging = EnableAdditionalAtlasMerging,
+                ExcludeVisibilityAnimatedItemsFromTextureMerging = false,
+                OptimizeConstantTextures = OptimizeConstantTextures,
+                ConstantTextureColorTolerance = ConstantTextureColorTolerance,
+                DisableVisuallyUnusedShaderFeatures =
+                    DisableVisuallyUnusedShaderFeatures,
             };
         }
     }

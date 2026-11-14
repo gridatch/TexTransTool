@@ -5,6 +5,7 @@ using System.Linq;
 using Anatawa12.AvatarOptimizer.API;
 using nadena.dev.ndmf;
 using net.rs64.TexTransTool.TextureAtlas;
+using net.rs64.TexTransTool.TextureAtlas.Editor;
 using net.rs64.TexTransTool.TextureAtlas.AAOCode;
 using net.rs64.TexTransTool.Utils;
 using net.rs64.TexTransTool.UVIsland;

@@ -449,62 +449,81 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             foreach (var pair in rendererMeshMap)
             {
-                var renderer = pair.Key;
-                var atlasMesh = pair.Value;
-                var sourceMesh = domain.GetMesh(renderer);
+                var sourceMesh = domain.GetMesh(pair.Key);
                 if (sourceMesh == null) { continue; }
 
-                if (sourceMesh.blendShapeCount != atlasMesh.blendShapeCount)
+                if (!ValidateReplacementMeshCompatibility(
+                        pair.Key,
+                        sourceMesh,
+                        pair.Value))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        internal static bool ValidateReplacementMeshCompatibility(
+            Renderer renderer,
+            Mesh sourceMesh,
+            Mesh replacementMesh)
+        {
+            if (sourceMesh.blendShapeCount != replacementMesh.blendShapeCount)
+            {
+                Debug.LogError(
+                    $"TexTransTool: Atlas bake aborted because blend shape count changed on {renderer.name}."
+                );
+                return false;
+            }
+
+            for (var shapeIndex = 0; shapeIndex < sourceMesh.blendShapeCount; shapeIndex += 1)
+            {
+                if (sourceMesh.GetBlendShapeName(shapeIndex)
+                    != replacementMesh.GetBlendShapeName(shapeIndex))
                 {
                     Debug.LogError(
-                        $"TexTransTool: Atlas bake aborted because blend shape count changed on {renderer.name}."
+                        $"TexTransTool: Atlas bake aborted because blend shape order/name changed on {renderer.name}."
                     );
                     return false;
                 }
 
-                for (var shapeIndex = 0; shapeIndex < sourceMesh.blendShapeCount; shapeIndex += 1)
-                {
-                    if (sourceMesh.GetBlendShapeName(shapeIndex) != atlasMesh.GetBlendShapeName(shapeIndex))
-                    {
-                        Debug.LogError(
-                            $"TexTransTool: Atlas bake aborted because blend shape order/name changed on {renderer.name}."
-                        );
-                        return false;
-                    }
-
-                    var sourceFrameCount = sourceMesh.GetBlendShapeFrameCount(shapeIndex);
-                    var atlasFrameCount = atlasMesh.GetBlendShapeFrameCount(shapeIndex);
-                    if (sourceFrameCount != atlasFrameCount)
-                    {
-                        Debug.LogError(
-                            $"TexTransTool: Atlas bake aborted because blend shape frame count changed on {renderer.name}."
-                        );
-                        return false;
-                    }
-
-                    for (var frameIndex = 0; frameIndex < sourceFrameCount; frameIndex += 1)
-                    {
-                        if (Mathf.Approximately(
-                                sourceMesh.GetBlendShapeFrameWeight(shapeIndex, frameIndex),
-                                atlasMesh.GetBlendShapeFrameWeight(shapeIndex, frameIndex)
-                            ) is false)
-                        {
-                            Debug.LogError(
-                                $"TexTransTool: Atlas bake aborted because blend shape frame weights changed on {renderer.name}."
-                            );
-                            return false;
-                        }
-                    }
-                }
-
-                if (renderer is SkinnedMeshRenderer
-                    && sourceMesh.bindposes.Length != atlasMesh.bindposes.Length)
+                var sourceFrameCount =
+                    sourceMesh.GetBlendShapeFrameCount(shapeIndex);
+                var replacementFrameCount =
+                    replacementMesh.GetBlendShapeFrameCount(shapeIndex);
+                if (sourceFrameCount != replacementFrameCount)
                 {
                     Debug.LogError(
-                        $"TexTransTool: Atlas bake aborted because bindpose count changed on {renderer.name}."
+                        $"TexTransTool: Atlas bake aborted because blend shape frame count changed on {renderer.name}."
                     );
                     return false;
                 }
+
+                for (var frameIndex = 0; frameIndex < sourceFrameCount; frameIndex += 1)
+                {
+                    if (Mathf.Approximately(
+                            sourceMesh.GetBlendShapeFrameWeight(
+                                shapeIndex, frameIndex),
+                            replacementMesh.GetBlendShapeFrameWeight(
+                                shapeIndex, frameIndex))
+                        is false)
+                    {
+                        Debug.LogError(
+                            $"TexTransTool: Atlas bake aborted because blend shape frame weights changed on {renderer.name}."
+                        );
+                        return false;
+                    }
+                }
+            }
+
+            if (renderer is SkinnedMeshRenderer
+                && sourceMesh.bindposes.Length != replacementMesh.bindposes.Length)
+            {
+                Debug.LogError(
+                    $"TexTransTool: Atlas bake aborted because bindpose count changed on {renderer.name}."
+                );
+                return false;
             }
 
             return true;
@@ -529,6 +548,63 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 .ToHashSet();
         }
 
+        internal sealed class AnimationObjectReferenceHit
+        {
+            internal AnimationClip Clip = null!;
+            internal EditorCurveBinding Binding;
+            internal UnityEngine.Object ReferencedAsset = null!;
+            internal Renderer[] TargetRenderers = Array.Empty<Renderer>();
+        }
+
+        internal static AnimationObjectReferenceHit[] CollectAnimationObjectReferences(
+            GameObject domainRoot,
+            IEnumerable<Renderer> targetRenderers)
+        {
+            var renderers = targetRenderers
+                .Where(renderer => renderer != null)
+                .Distinct()
+                .ToArray();
+            var hits = new List<AnimationObjectReferenceHit>();
+            var dependencies = EditorUtility.CollectDependencies(
+                new UnityEngine.Object[] { domainRoot });
+
+            foreach (var clip in dependencies.OfType<AnimationClip>().Distinct())
+            {
+                foreach (var binding in
+                         AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    var bindingTargets = ResolveBindingTargetRenderers(
+                        domainRoot,
+                        binding,
+                        renderers);
+                    if (bindingTargets.Length == 0)
+                        continue;
+
+                    foreach (var frame in
+                             AnimationUtility.GetObjectReferenceCurve(
+                                 clip, binding))
+                    {
+                        if (frame.value is not Material
+                            && frame.value is not Mesh
+                            && frame.value is not Texture)
+                        {
+                            continue;
+                        }
+
+                        hits.Add(new AnimationObjectReferenceHit
+                        {
+                            Clip = clip,
+                            Binding = binding,
+                            ReferencedAsset = frame.value,
+                            TargetRenderers = bindingTargets,
+                        });
+                    }
+                }
+            }
+
+            return hits.ToArray();
+        }
+
         internal static bool ValidateAnimationObjectReferences(
             GameObject domainRoot,
             Renderer[] targetRenderers,
@@ -537,43 +613,60 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             HashSet<Texture>? targetTextures = null,
             bool displayDialog = true)
         {
-            var hits = new List<string>();
-            var dependencies = EditorUtility.CollectDependencies(new UnityEngine.Object[] { domainRoot });
+            var hits = CollectAnimationObjectReferences(
+                    domainRoot,
+                    targetRenderers)
+                .Where(hit =>
+                    hit.ReferencedAsset is Material material
+                        && targetMaterials.Contains(material)
+                    || hit.ReferencedAsset is Mesh mesh
+                        && targetMeshes.Contains(mesh)
+                    || hit.ReferencedAsset is Texture texture
+                        && targetTextures != null
+                        && targetTextures.Contains(texture))
+                .GroupBy(hit => (
+                    hit.Clip,
+                    hit.Binding.path,
+                    hit.Binding.propertyName,
+                    hit.Binding.type))
+                .Select(group => group.First())
+                .ToArray();
 
-            foreach (var clip in dependencies.OfType<AnimationClip>().Distinct())
-            {
-                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
-                {
-                    if (BindingTargetsRenderer(domainRoot, binding, targetRenderers) is false)
-                    {
-                        continue;
-                    }
+            return ValidateAnimationObjectReferenceHits(
+                hits,
+                displayDialog);
+        }
 
-                    var keyframes = AnimationUtility.GetObjectReferenceCurve(clip, binding);
-                    var referencedSourceAsset = keyframes
-                        .Select(frame => frame.value)
-                        .FirstOrDefault(value =>
-                            value is Material material && targetMaterials.Contains(material)
-                            || value is Mesh mesh && targetMeshes.Contains(mesh)
-                            || value is Texture texture
-                                && targetTextures != null
-                                && targetTextures.Contains(texture)
-                        );
+        internal static bool ValidateAnimationObjectReferenceHits(
+            IEnumerable<AnimationObjectReferenceHit> hits,
+            bool displayDialog = true)
+        {
+            var uniqueHits = hits
+                .Where(hit =>
+                    hit != null
+                    && hit.Clip != null
+                    && hit.ReferencedAsset != null)
+                .GroupBy(hit => (
+                    hit.Clip,
+                    hit.Binding.path,
+                    hit.Binding.propertyName,
+                    hit.Binding.type,
+                    hit.ReferencedAsset))
+                .Select(group => group.First())
+                .ToArray();
 
-                    if (referencedSourceAsset != null)
-                    {
-                        hits.Add(
-                            $"{clip.name}: {binding.path} / {binding.propertyName} -> " +
-                            $"{referencedSourceAsset.GetType().Name} {referencedSourceAsset.name}"
-                        );
-                    }
-                }
-            }
+            if (uniqueHits.Length == 0) { return true; }
 
-            if (hits.Count == 0) { return true; }
-
-            var detail = string.Join("\n", hits.Take(20));
-            if (hits.Count > 20) detail += $"\n... and {hits.Count - 20} more";
+            var messages = uniqueHits
+                .Select(hit =>
+                    $"{hit.Clip.name}: {hit.Binding.path} / " +
+                    $"{hit.Binding.propertyName} -> " +
+                    $"{hit.ReferencedAsset.GetType().Name} " +
+                    $"{hit.ReferencedAsset.name}")
+                .ToArray();
+            var detail = string.Join("\n", messages.Take(20));
+            if (messages.Length > 20)
+                detail += $"\n... and {messages.Length - 20} more";
 
             Debug.LogError(
                 "TexTransTool: Atlas bake was aborted because AnimationClip object-reference curves " +
@@ -595,7 +688,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return false;
         }
 
-        private static bool BindingTargetsRenderer(
+        private static Renderer[] ResolveBindingTargetRenderers(
             GameObject domainRoot,
             EditorCurveBinding binding,
             Renderer[] targetRenderers)
@@ -605,39 +698,41 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return string.Equals(
                     AnimationUtility.CalculateTransformPath(
                         renderer.transform,
-                        domainRoot.transform
-                    ),
+                        domainRoot.transform),
                     binding.path,
-                    StringComparison.Ordinal
-                );
+                    StringComparison.Ordinal);
             }
 
             if (binding.type == typeof(MeshFilter))
             {
                 return targetRenderers
                     .OfType<MeshRenderer>()
-                    .Any(PathMatches);
+                    .Where(PathMatches)
+                    .Cast<Renderer>()
+                    .ToArray();
             }
 
-            if (typeof(Renderer).IsAssignableFrom(binding.type) is false)
+            if (binding.type == null
+                || typeof(Renderer).IsAssignableFrom(binding.type) is false)
             {
-                return false;
+                return Array.Empty<Renderer>();
             }
 
-            return targetRenderers.Any(renderer =>
-                PathMatches(renderer)
-                && binding.type.IsAssignableFrom(renderer.GetType())
-            );
+            return targetRenderers
+                .Where(renderer =>
+                    PathMatches(renderer)
+                    && binding.type.IsAssignableFrom(renderer.GetType()))
+                .ToArray();
         }
 
-        private sealed class RendererBakeState
+        internal sealed class RendererBakeState
         {
             internal Renderer Renderer = null!;
             internal Mesh? Mesh;
             internal Material[] Materials = Array.Empty<Material>();
         }
 
-        private static RendererBakeState[] CaptureRendererState(
+        internal static RendererBakeState[] CaptureRendererState(
             IEnumerable<Renderer> renderers)
         {
             return renderers
@@ -970,25 +1065,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     previousRoleAssets
                 );
 
-                var pngBytes = ImageConversion.EncodeToPNG(downloaded);
-                File.WriteAllBytes(AssetPathToFullPath(assetPath), pngBytes);
-                AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
-
-                var importAsNormalMap = ShouldImportAsNormalMap(
-                    descriptor,
-                    sourceMaterials,
-                    propertyNames
-                );
-                ConfigureTextureImporter(
-                    assetPath,
+                var persistentTexture = SaveTextureAsset(
                     downloaded,
                     descriptor,
-                    importAsNormalMap
-                );
-
-                var persistentTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-                if (persistentTexture == null)
-                    throw new InvalidOperationException("Failed to import exported atlas texture: " + assetPath);
+                    sourceMaterials,
+                    propertyNames,
+                    assetPath);
 
                 renderTextureToPersistentTexture[renderTexture] = persistentTexture;
                 currentEntries.Add(new AtlasTextureBakeManifest.Entry
@@ -1002,6 +1084,40 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 kv => kv.Key,
                 kv => renderTextureToPersistentTexture[kv.Value]
             );
+        }
+
+        internal static Texture2D SaveTextureAsset(
+            Texture2D texture,
+            TexTransToolTextureDescriptor descriptor,
+            IReadOnlyCollection<Material> sourceMaterials,
+            IReadOnlyCollection<string> propertyNames,
+            string assetPath)
+        {
+            var pngBytes = ImageConversion.EncodeToPNG(texture);
+            File.WriteAllBytes(AssetPathToFullPath(assetPath), pngBytes);
+            AssetDatabase.ImportAsset(
+                assetPath,
+                ImportAssetOptions.ForceSynchronousImport);
+
+            var importAsNormalMap = ShouldImportAsNormalMap(
+                descriptor,
+                sourceMaterials,
+                propertyNames);
+            ConfigureTextureImporter(
+                assetPath,
+                texture,
+                descriptor,
+                importAsNormalMap);
+
+            var persistentTexture =
+                AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+            if (persistentTexture == null)
+            {
+                throw new InvalidOperationException(
+                    "Failed to import exported atlas texture: " + assetPath);
+            }
+
+            return persistentTexture;
         }
 
         private static bool ShouldImportAsNormalMap(
@@ -1527,7 +1643,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 ["MatCap2nd"] = 31,
             };
 
-        private static string BuildTextureDisplayRole(IReadOnlyCollection<string> propertyNames)
+        internal static string BuildTextureDisplayRole(IReadOnlyCollection<string> propertyNames)
         {
             var roles = propertyNames
                 .Where(name => string.IsNullOrWhiteSpace(name) is false)
@@ -1650,13 +1766,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return true;
         }
 
-        private static string AssetPathToFullPath(string assetPath)
+        internal static string AssetPathToFullPath(string assetPath)
         {
             var projectRoot = Directory.GetParent(Application.dataPath)!.FullName;
             return Path.GetFullPath(Path.Combine(projectRoot, assetPath));
         }
 
-        private static string SanitizeFileName(string name)
+        internal static string SanitizeFileName(string name)
         {
             var invalid = Path.GetInvalidFileNameChars();
             var chars = name.Select(c => invalid.Contains(c) || c == '/' || c == '\\' ? '_' : c).ToArray();

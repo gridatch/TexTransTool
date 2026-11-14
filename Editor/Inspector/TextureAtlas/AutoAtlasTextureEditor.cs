@@ -45,25 +45,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             using (new EditorGUI.IndentLevelScope())
             {
-                EditorGUILayout.PropertyField(
-                    _islandPadding, "AtlasTexture:prop:Padding".GlcV());
-                EditorGUILayout.PropertyField(
+                AutoAtlasTextureSettingsEditorGUI.DrawCoreSettings(
+                    _islandPadding,
                     _optimizeConstantTextures,
-                    "AtlasTexture:prop:OptimizeConstantTextures".GlcV());
-                using (new EditorGUI.DisabledScope(
-                           !_optimizeConstantTextures.boolValue))
-                using (new EditorGUI.IndentLevelScope())
-                {
-                    EditorGUILayout.PropertyField(
-                        _constantTextureColorTolerance,
-                        "AtlasTexture:prop:ConstantTextureColorTolerance".GlcV());
-                }
-                EditorGUILayout.PropertyField(
+                    _constantTextureColorTolerance,
                     _disableVisuallyUnusedShaderFeatures,
-                    "AtlasTexture:prop:DisableVisuallyUnusedShaderFeatures".GlcV());
-                EditorGUILayout.PropertyField(
-                    _enableAdditionalAtlasMerging,
-                    "AutoAtlasTexture:prop:EnableAdditionalAtlasMerging".GlcV());
+                    _enableAdditionalAtlasMerging);
 
                 if (_enableAdditionalAtlasMerging.boolValue)
                 {
