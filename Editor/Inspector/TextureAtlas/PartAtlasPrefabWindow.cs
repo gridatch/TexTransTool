@@ -1332,7 +1332,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var protectedObjects = _analysis.ProtectedObjects
                 .Where(gameObject => gameObject != null)
                 .OrderBy(gameObject =>
-                    RelativePath(
+                    HierarchyIdentityUtility.GetRelativeNamePath(
                         _loadedPrefabRoot.transform,
                         gameObject.transform
                     ),
@@ -1357,7 +1357,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             foreach (var gameObject in protectedObjects)
             {
-                var path = RelativePath(
+                var path = HierarchyIdentityUtility.GetRelativeNamePath(
                     _loadedPrefabRoot.transform,
                     gameObject.transform
                 );
@@ -1652,7 +1652,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             foreach (var transform in _loadedPrefabRoot.GetComponentsInChildren<Transform>(true))
             {
                 if (validTargets.Contains(transform))
-                    _validTargetPaths.Add(RelativePath(root, transform));
+                    _validTargetPaths.Add(HierarchyIdentityUtility.GetRelativeNamePath(root, transform));
             }
 
             _hierarchyView?.SetTargetCandidates(validTargets);
@@ -1666,7 +1666,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _extractionTargetPaths.Clear();
             foreach (var transform in targets)
             {
-                var path = RelativePath(_loadedPrefabRoot.transform, transform);
+                var path = HierarchyIdentityUtility.GetRelativeNamePath(_loadedPrefabRoot.transform, transform);
                 if (_validTargetPaths.Contains(path))
                     _extractionTargetPaths.Add(path);
             }
@@ -1832,20 +1832,5 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             Repaint();
         }
 
-        private static string RelativePath(Transform root, Transform target)
-        {
-            if (target == root) return "";
-
-            var parts = new List<string>();
-            var current = target;
-            while (current != null && current != root)
-            {
-                parts.Add(current.name);
-                current = current.parent;
-            }
-
-            parts.Reverse();
-            return string.Join("/", parts);
-        }
     }
 }

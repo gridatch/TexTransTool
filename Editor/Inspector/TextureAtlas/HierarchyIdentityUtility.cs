@@ -61,6 +61,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 + componentIndex;
         }
 
+        // HCE extraction targets and hierarchy UI use name-based paths.
+        // Renderer identity instead uses sibling indices (GetRendererKey).
+        internal static string GetRelativeNamePath(Transform root, Transform target)
+        {
+            return UnityEditor.AnimationUtility.CalculateTransformPath(target, root);
+        }
+
         internal static bool TryResolveUniqueNamePath(
             Transform root,
             string path,

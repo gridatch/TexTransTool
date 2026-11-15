@@ -84,7 +84,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 .Select(id => _items.TryGetValue(id, out var item) ? item.Transform : null)
                 .Where(transform => transform != null)
                 .Cast<Transform>()
-                .OrderBy(transform => RelativePath(_prefabRoot!.transform, transform), StringComparer.Ordinal)
+                .OrderBy(transform => HierarchyIdentityUtility.GetRelativeNamePath(_prefabRoot!.transform, transform), StringComparer.Ordinal)
                 .ToArray();
 
         internal bool HasActiveFlash =>
@@ -348,7 +348,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private TransformItem BuildItem(Transform transform, int depth, Transform root)
         {
-            var path = RelativePath(root, transform);
+            var path = HierarchyIdentityUtility.GetRelativeNamePath(root, transform);
             var item = new TransformItem(
                 transform.GetInstanceID(),
                 depth,
@@ -630,7 +630,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     && (transform == root || transform.IsChildOf(root)))
                 .Distinct()
                 .OrderBy(transform => DepthFrom(root, transform))
-                .ThenBy(transform => RelativePath(root, transform), StringComparer.Ordinal)
+                .ThenBy(transform => HierarchyIdentityUtility.GetRelativeNamePath(root, transform), StringComparer.Ordinal)
                 .ToList();
 
             var result = new List<Transform>();
@@ -686,21 +686,5 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return depth;
         }
 
-        private static string RelativePath(Transform root, Transform target)
-        {
-            if (target == root) return "";
-
-            var parts = new List<string>();
-            var current = target;
-
-            while (current != null && current != root)
-            {
-                parts.Add(current.name);
-                current = current.parent;
-            }
-
-            parts.Reverse();
-            return string.Join("/", parts);
-        }
     }
 }

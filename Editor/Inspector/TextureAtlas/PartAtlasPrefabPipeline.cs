@@ -48,7 +48,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 .Select(target => new TargetState
                 {
                     Target = target,
-                    SourcePath = RelativePath(root.transform, target),
+                    SourcePath = HierarchyIdentityUtility.GetRelativeNamePath(root.transform, target),
                     OriginalParent = target.parent,
                     OriginalSiblingIndex = target.GetSiblingIndex(),
                 })
@@ -71,7 +71,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 var wrapper = new GameObject("__WDT_Target_" + i.ToString("D4"));
                 wrapper.transform.SetParent(_container.transform, false);
                 state.Target.SetParent(wrapper.transform, true);
-                state.StagedPath = RelativePath(root.transform, state.Target);
+                state.StagedPath = HierarchyIdentityUtility.GetRelativeNamePath(root.transform, state.Target);
             }
         }
 
@@ -199,7 +199,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     && target.IsChildOf(root))
                 .Distinct()
                 .OrderBy(target => DepthFrom(root, target))
-                .ThenBy(target => RelativePath(root, target), StringComparer.Ordinal)
+                .ThenBy(target => HierarchyIdentityUtility.GetRelativeNamePath(root, target), StringComparer.Ordinal)
                 .ToList();
 
             var result = new List<Transform>();
@@ -236,21 +236,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return depth;
         }
 
-        private static string RelativePath(Transform root, Transform target)
-        {
-            if (target == root) return "";
-
-            var parts = new List<string>();
-            var current = target;
-            while (current != null && current != root)
-            {
-                parts.Add(current.name);
-                current = current.parent;
-            }
-
-            parts.Reverse();
-            return string.Join("/", parts);
-        }
     }
 
     internal sealed class PartAtlasPrefabResult
@@ -421,7 +406,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     .ToDictionary(
                         renderer => renderer,
                         renderer => (
-                            Path: RelativePath(instantiatedRoot.transform, renderer.transform),
+                            Path: HierarchyIdentityUtility.GetRelativeNamePath(instantiatedRoot.transform, renderer.transform),
                             Length: renderer.bones?.Length ?? 0));
 
                 UnpackPrefabInstancesForStaging(instantiatedRoot);
@@ -461,7 +446,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         return Fail(
                             result,
                             "抽出対象配下に抽出可能なMeshがありません: "
-                            + RelativePath(instantiatedRoot.transform, target)
+                            + HierarchyIdentityUtility.GetRelativeNamePath(instantiatedRoot.transform, target)
                         );
                     }
                 }
@@ -472,7 +457,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     .Select(target => new ExtractionTargetState
                     {
                         Target = target,
-                        SourcePath = RelativePath(instantiatedRoot.transform, target),
+                        SourcePath = HierarchyIdentityUtility.GetRelativeNamePath(instantiatedRoot.transform, target),
                         Attachment = target == instantiatedRoot.transform || target.parent == null
                             ? null
                             : FindHumanoidParentAttachment(
@@ -937,8 +922,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     return new ParentAttachmentInfo
                     {
                         BoneReference = boneReference,
-                        SubPath = RelativePath(current, originalParent),
-                        ParentPath = RelativePath(avatarRoot.transform, originalParent),
+                        SubPath = HierarchyIdentityUtility.GetRelativeNamePath(current, originalParent),
+                        ParentPath = HierarchyIdentityUtility.GetRelativeNamePath(avatarRoot.transform, originalParent),
                     };
                 }
 
@@ -973,7 +958,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             var armatureRoot = hips.parent;
             return analysis.KeepTransforms.Contains(armatureRoot)
-                ? RelativePath(root.transform, armatureRoot)
+                ? HierarchyIdentityUtility.GetRelativeNamePath(root.transform, armatureRoot)
                 : "";
         }
 
@@ -1269,7 +1254,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 catch (Exception e)
                 {
                     issues.Add(
-                        RelativePath(root.transform, component.transform)
+                        HierarchyIdentityUtility.GetRelativeNamePath(root.transform, component.transform)
                         + " :: "
                         + component.GetType().Name
                         + " のObject参照を検査できませんでした ("
@@ -1289,7 +1274,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     if (++guard > SerializedPropertyScanLimit)
                     {
                         issues.Add(
-                            RelativePath(root.transform, component.transform)
+                            HierarchyIdentityUtility.GetRelativeNamePath(root.transform, component.transform)
                             + " :: "
                             + component.GetType().Name
                             + " のSerializedProperty数が検査上限 "
@@ -1333,16 +1318,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     }
 
                     var target = referencesRemovedComponent
-                        ? RelativePath(
+                        ? HierarchyIdentityUtility.GetRelativeNamePath(
                             root.transform,
                             referencedComponent!.transform
                         )
                           + " :: "
                           + referencedComponent.GetType().Name
-                        : RelativePath(root.transform, referencedTransform!);
+                        : HierarchyIdentityUtility.GetRelativeNamePath(root.transform, referencedTransform!);
 
                     issues.Add(
-                        RelativePath(root.transform, component.transform)
+                        HierarchyIdentityUtility.GetRelativeNamePath(root.transform, component.transform)
                         + " :: "
                         + component.GetType().Name
                         + "."
@@ -1462,7 +1447,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 catch (Exception e)
                 {
                     issues.Add(
-                        RelativePath(root.transform, component.transform)
+                        HierarchyIdentityUtility.GetRelativeNamePath(root.transform, component.transform)
                         + " :: "
                         + component.GetType().Name
                         + " のObject参照を検査できませんでした ("
@@ -1481,7 +1466,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     if (++guard > SerializedPropertyScanLimit)
                     {
                         issues.Add(
-                            RelativePath(root.transform, component.transform)
+                            HierarchyIdentityUtility.GetRelativeNamePath(root.transform, component.transform)
                             + " :: "
                             + component.GetType().Name
                             + " のSerializedProperty数が検査上限 "
@@ -1506,7 +1491,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     }
 
                     issues.Add(
-                        RelativePath(root.transform, component.transform)
+                        HierarchyIdentityUtility.GetRelativeNamePath(root.transform, component.transform)
                         + " :: "
                         + component.GetType().Name
                         + "."
@@ -1572,21 +1557,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             };
         }
 
-        private static string RelativePath(Transform root, Transform target)
-        {
-            if (target == root) return "";
-
-            var segments = new List<string>();
-            var current = target;
-            while (current != null && current != root)
-            {
-                segments.Add(current.name);
-                current = current.parent;
-            }
-
-            segments.Reverse();
-            return string.Join("/", segments);
-        }
 
         private static PartAtlasPrefabResult Fail(PartAtlasPrefabResult result, string message)
         {
