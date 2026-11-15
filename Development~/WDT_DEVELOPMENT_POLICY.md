@@ -76,6 +76,42 @@ When behavior changes:
 - confirm both transformation logs and visible output for relevant real projects;
 - treat newly discovered optimization opportunities separately from regressions.
 
+
+## Repository branches and VPM channels
+
+- `master` is for upstream TexTransTool integration, not WDT feature development. `wdt` is the reviewed WDT integration branch. Implement WDT features/fixes on focused `feat/**` or `fix/**` branches based on current `wdt`, normally with a Draft PR. Documentation-only work can use `docs/**`.
+- `.github/workflows/BuildWorkPackage.yml` (`Publish Debug Package`) runs on pushes to `feat/**` and `fix/**`. It packages that commit and **replaces the single rolling debug VPM entry**, incrementing `lastDebugSerial`. Its ZIP and metadata are published on `vpm`; it does not create a formal stable release. Another feature-branch push may replace the current debug candidate, so verify the active version/commit before testing in Unity.
+- The live debug state is `validation-state.json` on the `vpm` branch (`currentDebugBranch`, `currentDebugCommit`, `currentDebugVersion`, `currentDebugZip`); the package index is `vpm.json` on that branch. The VCC repository URL is `https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json`. Choose the intended package version **per Unity project** through VCC; avoid a global Local registration that substitutes for the official package.
+- WDT VPM package ID is `net.gridatch.tex-trans-tool`, distinct from upstream `net.rs64.tex-trans-tool`. Current formal versions use `X.Y.Z+wdt.ttt.A.B.C` (upstream `package.json.version` must equal `A.B.C`). Current debug versions append `.debug.<serial>.<change>.<sha>` to that formal base's metadata. Do not reuse a version for different contents.
+- `.github/workflows/PublishVPM.yml` publishes stable packages from `release/X.Y.Z+wdt.ttt.A.B.C` **only when that branch points to current `wdt` HEAD**, or by manual dispatch on `wdt`. It creates/reuses the matching GitHub Release, updates the VPM index and clears the rolling debug registration. Stable VPM versions are immutable. It shares `wdt-vpm-publish` concurrency with the debug workflow.
+- Check the workflows themselves before using them; these descriptions are a map of the current process, **not** permission to publish. Only perform a formal release after an explicit request.
+
+## Development, validation and integration workflow
+
+1. **Establish the baseline:** read `AGENTS.md`, this policy, live code, current `wdt` HEAD, related branches/PRs and applicable vendor APIs. Reconcile stale plans with the source. A request to continue investigation or design is not unconditional authorization to implement.
+2. **Implement in a focused work branch:** keep requested changes within their actual responsibility. Avoid unrelated cleanup and product instrumentation. Create/update its PR and explain accepted decisions and scope; code and durable context documentation should evolve together.
+3. **Offer a debug candidate for Unity validation when appropriate:** pushing a `feat/**` or `fix/**` branch automatically updates the rolling VPM package. Record its exact branch, commit and debug version from the resulting workflow/`vpm` state, not from the intended version alone. Let the user validate the installed version in the real project; an Actions ZIP is not a Unity test.
+4. **Record evidence and resolve findings:** distinguish source inspection, package creation, Unity compilation, EditMode tests, real-project smoke tests and visual/NDMF checks. If a surprising failure contradicts the design assumptions, investigate and present findings rather than adding speculative fallback logic. Do not claim a test ran when it did not.
+5. **Review before integration:** after the requested validation, inspect the full branch diff **and its commits**. Organize provisional changes into coherent feature/responsibility units, combining related follow-up fixes with their feature and separating independent work. If history is curated, verify the final tree still matches the validated tree; do not rewrite already merged `wdt` history. Merge into `wdt` only with the appropriate approval; merging does not itself authorize a release.
+6. **Release separately on request:** use the defined `release/**` or manual `wdt` workflow, check VPM/Release results and package identity, and report what Unity verification was actually performed. Do not publish stable packages automatically on ordinary feature completion.
+
+## Maintainer-context upkeep
+
+This policy preserves **accepted, durable cross-session intent**, not a session transcript. Update it proactively when work establishes or changes a non-obvious behavior or boundary that a future maintainer could misread by inspecting code alone. At minimum, check at these points: when a design choice is accepted, when an implementation changes a documented invariant, before handoff/PR integration, and after a release-policy change.
+
+- Record the **reason and behavioral contract**, where it lives in the current code, relevant dependencies/version assumptions, known regressions, and any important rejected or superseded alternative. Keep the entry concise and accurate; do not turn a feature-specific workaround into a universal prohibition.
+- Update the existing relevant section rather than appending redundant instructions or making new competing policy documents. For extensive feature-specific details, link the canonical design/PR; the policy should state only the durable conclusion needed to interpret future changes.
+- Do not elevate a proposal, unmerged PR, old diagnostic, or unverified hypothesis into an accepted rule. If evidence conflicts, investigate it and mark unresolved status in the work PR/handoff until resolved.
+- Temporary investigations, exact debug versions, per-branch TODOs and verification logs belong in PR descriptions or handoffs. They must identify the code revision and separate verified from unverified. A new agent must recheck current Git and VPM state rather than assuming those notes are still current.
+- Before concluding work, inspect whether this policy remains consistent with the new implementation. Include any necessary documentation adjustment in the same work branch. If no persistent design or process knowledge changed, no documentation update is necessary.
+
+## Current architectural responsibility boundaries
+
+- Normal AtlasTexture provides the shared atlas implementation; AutoAtlasTexture adds automatic selection and lossless optimization **using shared Atlas semantics**. AutoAtlas-only rejection/fallback conditions need a concrete automation-specific reason, as described above.
+- Part Atlas Prefab extraction orchestrates a disposable working copy, the external HairCostumeExtractor API adapter, Modular Avatar attachment, the shared AutoAtlas/persistent asset path and saved Prefab/report. Unpacking only a disposable copy is not itself a violation of non-destructive editing; the input Prefab connection and references must remain intact.
+- Persistent Atlas Bake updates a stable named output and manages existing references/GUIDs; Part Atlas instead creates distinct timestamped standalone output generations. Do not infer one feature's overwrite/rollback contract from the other.
+- Relevant entry points include `Editor/Inspector/TextureAtlas/` (inspector, Part Atlas, AutoAtlas and persistence), `Runtime/TextureAtlas/` (shared atlas core), and `Development~/DiagnosticTemplates/` (archived diagnostic reconstruction, not always-on production behavior). Re-read live paths and contracts for the task.
+
 ## Handoff requirement
 
 For future WDT development or audit work, read this file together with the current code before deciding that a new safety restriction is required.
