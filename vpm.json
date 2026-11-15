@@ -531,17 +531,17 @@
           },
           "zipSHA256": "6c65aa48b7ff9ebed9596c3c1b29511c7c58c9536c8dc1cce37d1cfecddf3622"
         },
-        "0.1.24+wdt.ttt.1.0.2.debug.1403.hce-1-4-10-compat.7431df3": {
+        "0.1.24+wdt.ttt.1.0.2.debug.1404.hce-1-4-10-compat.678ad0d": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.24+wdt.ttt.1.0.2.debug.1403.hce-1-4-10-compat.7431df3",
+          "version": "0.1.24+wdt.ttt.1.0.2.debug.1404.hce-1-4-10-compat.678ad0d",
           "unity": "2022.3",
-          "description": "Debug build 1403 for hce-1-4-10-compat from feat/hce-1-4-10-compat at 7431df3. Based on WDT 0.1.24+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 1404 for hce-1-4-10-compat from feat/hce-1-4-10-compat at 678ad0d. Based on WDT 0.1.24+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1403.hce-1-4-10-compat.7431df3.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1404.hce-1-4-10-compat.678ad0d.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -554,7 +554,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "f4b90705c3b9157e546b1035c8fbb7e9eb4f9bcca40f365292d8267f63bc6ebf"
+          "zipSHA256": "861874e64dfae72bee182fbfc6fbb324e3002ccf7e690491a3bec3090a772812"
         }
       }
     }
