@@ -531,17 +531,17 @@
           },
           "zipSHA256": "6c65aa48b7ff9ebed9596c3c1b29511c7c58c9536c8dc1cce37d1cfecddf3622"
         },
-        "0.1.24+wdt.ttt.1.0.2.debug.1406.part-atlas-usability.37cfdb2": {
+        "0.1.24+wdt.ttt.1.0.2.debug.1407.part-atlas-usability.8efbc76": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.24+wdt.ttt.1.0.2.debug.1406.part-atlas-usability.37cfdb2",
+          "version": "0.1.24+wdt.ttt.1.0.2.debug.1407.part-atlas-usability.8efbc76",
           "unity": "2022.3",
-          "description": "Debug build 1406 for part-atlas-usability from feat/part-atlas-usability at 37cfdb2. Based on WDT 0.1.24+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 1407 for part-atlas-usability from feat/part-atlas-usability at 8efbc76. Based on WDT 0.1.24+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1406.part-atlas-usability.37cfdb2.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1407.part-atlas-usability.8efbc76.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -554,7 +554,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "92fbf8f06fc6b00ca1c4c5664cd509fbf76a99e466dd2badf638aeb3582811f5"
+          "zipSHA256": "ea2b959e7292f9a86d30dda2b1cf354ee9339d11a3e2d37cd654df2ddad8cb85"
         }
       }
     }
