@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.24+wdt.ttt.1.0.2",
-  "lastDebugSerial": 1402,
-  "currentDebugVersion": "0.1.24+wdt.ttt.1.0.2.debug.1402.hce-1-4-10-compat.0d1197c",
+  "lastDebugSerial": 1403,
+  "currentDebugVersion": "0.1.24+wdt.ttt.1.0.2.debug.1403.hce-1-4-10-compat.7431df3",
   "currentDebugChange": "hce-1-4-10-compat",
   "currentDebugBranch": "feat/hce-1-4-10-compat",
-  "currentDebugCommit": "0d1197ce5333bc78d8cc25755f51f20f34831e6e",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1402.hce-1-4-10-compat.0d1197c.zip"
+  "currentDebugCommit": "7431df3012c15d2ecef85ebb7bf1692d9deec6ae",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1403.hce-1-4-10-compat.7431df3.zip"
 }
