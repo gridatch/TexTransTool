@@ -20,6 +20,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal MatsukawaOptions ExtractionOptions = new();
         internal PartAutoAtlasSettings AutoAtlasSettings = null!;
         internal string OutputName = "";
+        internal Action<string>? ProgressChanged;
     }
 
     internal sealed class PartAtlasExtractionStaging : IDisposable
@@ -400,6 +401,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             try
             {
+                request.ProgressChanged?.Invoke("Prefabを作業Sceneに展開しています...");
                 temporaryScene = EditorSceneManager.NewScene(
                     NewSceneSetup.EmptyScene,
                     NewSceneMode.Additive
@@ -538,6 +540,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     staging
                 );
 
+                request.ProgressChanged?.Invoke("抽出対象を解析しています...");
                 var analysis = matsukawa.Analyze(
                     instantiatedRoot,
                     entries,
@@ -611,6 +614,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 // attempt to restore the source hierarchy during disposal.
                 staging.DisableAutoRestore();
 
+                request.ProgressChanged?.Invoke("Prefabを抽出しています...");
                 extraction = matsukawa.Execute(
                     instantiatedRoot,
                     entries,
@@ -731,6 +735,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 PartAutoAtlasExecutionResult? autoAtlasResult = null;
                 if (autoAtlasRequested)
                 {
+                    request.ProgressChanged?.Invoke("自動アトラス化しています...");
                     autoAtlasResult = PartAutoAtlasSession.Execute(
                         extractionRoot,
                         request.AutoAtlasSettings,
@@ -765,6 +770,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     .OrderBy(change => change.RendererPath, StringComparer.Ordinal)
                     .ToArray();
 
+                request.ProgressChanged?.Invoke("Prefabを保存しています...");
                 var prefabPath = matsukawa.SavePrefab(extraction);
                 if (prefabPath == null || prefabPath.Length == 0)
                     return Fail(result, "Prefabを保存できませんでした。");

@@ -1491,7 +1491,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                        _entries.All(entry => entry.Keep is false)))
             {
                 if (GUILayout.Button("Prefab抽出", GUILayout.Height(32f)))
-                    Execute();
+                {
+                    EditorApplication.delayCall += Execute;
+                    GUIUtility.ExitGUI();
+                }
             }
         }
 
@@ -1519,6 +1522,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 ExtractionOptions = _options,
                 AutoAtlasSettings = _atlasSettings,
                 OutputName = sanitizedOutputName,
+                ProgressChanged = status =>
+                    EditorUtility.DisplayProgressBar("Prefab抽出中", status, 0f),
             };
 
             foreach (var path in _extractionTargetPaths
@@ -1538,7 +1543,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             foreach (var key in keptKeys)
                 request.KeepRendererKeys.Add(key);
 
-            var pipelineResult = PartAtlasPrefabPipeline.Execute(request);
+            PartAtlasPrefabResult pipelineResult;
+            try
+            {
+                EditorUtility.DisplayProgressBar("Prefab抽出中", "処理を開始しています...", 0f);
+                pipelineResult = PartAtlasPrefabPipeline.Execute(request);
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+            }
+
             if (!pipelineResult.Success)
             {
                 EditorUtility.DisplayDialog(
