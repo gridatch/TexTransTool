@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.24+wdt.ttt.1.0.2",
-  "lastDebugSerial": 1404,
-  "currentDebugVersion": "0.1.24+wdt.ttt.1.0.2.debug.1404.hce-1-4-10-compat.678ad0d",
-  "currentDebugChange": "hce-1-4-10-compat",
-  "currentDebugBranch": "feat/hce-1-4-10-compat",
-  "currentDebugCommit": "678ad0d5f0ee6a0557777d706bda1f30e8966f88",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1404.hce-1-4-10-compat.678ad0d.zip"
+  "lastDebugSerial": 1405,
+  "currentDebugVersion": "0.1.24+wdt.ttt.1.0.2.debug.1405.part-atlas-usability.1b830d9",
+  "currentDebugChange": "part-atlas-usability",
+  "currentDebugBranch": "feat/part-atlas-usability",
+  "currentDebugCommit": "1b830d99154f0b67a4ccac57dda6b94e06081542",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1405.part-atlas-usability.1b830d9.zip"
 }
