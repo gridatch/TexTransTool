@@ -397,7 +397,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (_matsukawa == null)
             {
                 EditorGUILayout.HelpBox(
-                    "松川怒りの髪衣装抽出ツール Ver1.1.0 が必要です。\n" + _adapterError,
+                    "松川怒りの髪衣装抽出ツール（HCE）1.4.7以降が必要です。\n" + _adapterError,
                     MessageType.Error
                 );
                 if (GUILayout.Button("再検出")) InitializeAdapter();
@@ -1056,7 +1056,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             return category switch
             {
                 "Hair" => "髪",
+                "HeadPart" => "角・耳",
                 "Costume" => "衣装",
+                "BodyPart" => "しっぽ・翼",
                 "Accessory" => "装飾",
                 "Body" => "素体",
                 _ => "不明",
@@ -1067,8 +1069,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             return category switch
             {
-                "Hair" => new Color(0.55f, 0.80f, 1.00f),
-                "Costume" => new Color(0.60f, 1.00f, 0.65f),
+                "Hair" or "HeadPart" => new Color(0.55f, 0.80f, 1.00f),
+                "Costume" or "BodyPart" => new Color(0.60f, 1.00f, 0.65f),
                 "Accessory" => new Color(1.00f, 0.85f, 0.50f),
                 "Body" => new Color(1.00f, 0.60f, 0.60f),
                 _ => Color.white,
@@ -1248,8 +1250,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
             var analysisOptions = PartAtlasPrefabPipeline.CreateStagedOptions(
                 _options,
-                staging,
-                IsAvatarSource()
+                staging
             );
 
             // Preview must use the same complete HCE renderer set as execution.
@@ -1766,16 +1767,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _rendererLinkHighlightObject = transform.gameObject;
             _rendererLinkHighlightUntil = EditorApplication.timeSinceStartup + 0.75d;
             Repaint();
-        }
-
-        private bool IsAvatarSource()
-        {
-            if (_loadedPrefabRoot == null) return false;
-
-            return _loadedPrefabRoot
-                .GetComponents<Component>()
-                .Where(component => component != null)
-                .Any(component => component.GetType().Name == "VRCAvatarDescriptor");
         }
 
         private static string RelativePath(Transform root, Transform target)

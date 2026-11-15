@@ -109,6 +109,16 @@ This policy preserves **accepted, durable cross-session intent**, not a session 
 
 - Normal AtlasTexture provides the shared atlas implementation; AutoAtlasTexture adds automatic selection and lossless optimization **using shared Atlas semantics**. AutoAtlas-only rejection/fallback conditions need a concrete automation-specific reason, as described above.
 - Part Atlas Prefab extraction orchestrates a disposable working copy, the external HairCostumeExtractor API adapter, Modular Avatar attachment, the shared AutoAtlas/persistent asset path and saved Prefab/report. Unpacking only a disposable copy is not itself a violation of non-destructive editing; the input Prefab connection and references must remain intact.
+### Part Atlas / HairCostumeExtractor compatibility
+
+The Part Atlas workflow targets HairCostumeExtractor (HCE) 1.4.7 and later public APIs; **1.4.7 and 1.4.10 are the specifically inspected contracts**, not a guarantee for untested future versions. The HCE version change accepted in PR #40 uses these boundaries:
+
+- Use Reflection against the required HCE public API without a compile-time HCE dependency. `stripAvatarComponents` is no longer an option; `keepAvatar` is optional because it is absent in 1.4.7, and must be `false` when present. Root AvatarDescriptor/Pipeline components **and the root Animator** are removed by HCE parts extraction even for sources without an AvatarDescriptor. The source-is-avatar check remains independently necessary for Humanoid/Modular Avatar attachment.
+- Set HCE `copyMaterials=false` and `makeComparisonImage=false`: retain source references for unchanged Material/Texture/Mesh while continuing to persist HCE-generated Trim Mesh and WDT AutoAtlas output. The generated folder is not promised to be independently portable to another Unity project.
+- Preserve source-hierarchy animation ObjectReference capture and WDT reference validation, HCE Trim result validation, temporary Scene/Prefab Unpack **only on disposable working copies**, Modular Avatar attachment, and owned-output cleanup. Use HCE's unique Trim Mesh file paths rather than duplicating its name collision workaround; still remove superseded unreferenced generated Trim Mesh.
+- The optional HCE `diagnosis` describes the **extraction stage**, not the eventual AutoAtlas Prefab. Record it only in the detailed text report, distinguishing unavailable diagnostics and skipped unreadable comparisons from a full clean comparison. Do not add a new diagnostic-based stop condition or result-window UI.
+- `HeadPart` and `BodyPart` are presentation categories, displayed as `角・耳` and `しっぽ・翼` with existing Hair/Costume colors. Renderer eligibility and initial selection do not change. Do not bundle unrelated result-window style changes into the HCE compatibility change.
+
 - Persistent Atlas Bake updates a stable named output and manages existing references/GUIDs; Part Atlas instead creates distinct timestamped standalone output generations. Do not infer one feature's overwrite/rollback contract from the other.
 - Relevant entry points include `Editor/Inspector/TextureAtlas/` (inspector, Part Atlas, AutoAtlas and persistence), `Runtime/TextureAtlas/` (shared atlas core), and `Development~/DiagnosticTemplates/` (archived diagnostic reconstruction, not always-on production behavior). Re-read live paths and contracts for the task.
 

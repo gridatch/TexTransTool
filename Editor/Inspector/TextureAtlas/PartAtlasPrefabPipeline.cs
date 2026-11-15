@@ -337,7 +337,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return Fail(result, "Part Atlas Prefab request is null.");
 
             if (!MatsukawaAdapter.TryCreate(out var matsukawa, out var adapterError) || matsukawa == null)
-                return Fail(result, "松川ツール Ver1.1.0 の公開APIを利用できません。\n" + adapterError);
+                return Fail(result, "松川ツール（HCE）1.4.7以降の公開APIを利用できません。\n" + adapterError);
 
             if (request.SourcePrefabAsset == null
                 || EditorUtility.IsPersistent(request.SourcePrefabAsset) is false
@@ -390,7 +390,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             GameObject? instantiatedRoot = null;
             GameObject? extractionRoot = null;
             MatsukawaExecutionResult? extraction = null;
-            var transientInputMeshes = new List<Mesh>();
             var targetStates = new List<ExtractionTargetState>();
             var sourceIsAvatar = false;
             var avatarArmaturePath = "";
@@ -536,8 +535,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 var executionOptions = CreateStagedOptions(
                     request.ExtractionOptions,
-                    staging,
-                    sourceIsAvatar
+                    staging
                 );
 
                 var analysis = matsukawa.Analyze(
@@ -553,8 +551,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 var referenceError = SanitizeAndValidateReferencesAgainstAnalysis(
                     instantiatedRoot,
-                    analysis,
-                    executionOptions.StripAvatarComponents
+                    analysis
                 );
                 if (!string.IsNullOrEmpty(referenceError))
                     return Fail(result, referenceError);
@@ -608,12 +605,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
                 }
 
-                DisambiguateTrimMeshNames(
-                    matsukawa,
-                    analysis.TrimTargets,
-                    transientInputMeshes
-                );
-
                 ownsOutputFolder = true;
 
                 // From this point HCE may delete original parents, so the staging helper must not
@@ -640,14 +631,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 );
                 if (string.IsNullOrEmpty(trimValidationError) is false)
                     return Fail(result, trimValidationError);
-
-                if (TransientMeshStillReferenced(extractionRoot, transientInputMeshes))
-                {
-                    return Fail(
-                        result,
-                        "Meshのボーン切り詰め結果を正常に確定できなかったため、処理を中断しました。"
-                    );
-                }
 
                 matsukawa.SetWorkedOnCopy(extraction, true);
                 matsukawa.SetSourceName(extraction, request.SourcePrefabAsset.name);
@@ -712,11 +695,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
                 if (sourceIsAvatar)
                 {
-                    matsukawa.AddReportNote(
-                        extraction,
-                        "Avatar用Component（Animator / AvatarDescriptor / Pipeline系）を出力から除外しました。"
-                    );
-
                     if (string.IsNullOrEmpty(avatarArmaturePath) is false)
                     {
                         if (modularAvatarAdapter == null)
@@ -840,12 +818,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 else if (instantiatedRoot != null)
                 {
                     UnityEngine.Object.DestroyImmediate(instantiatedRoot);
-                }
-
-                foreach (var mesh in transientInputMeshes)
-                {
-                    if (mesh != null && AssetDatabase.Contains(mesh) is false)
-                        UnityEngine.Object.DestroyImmediate(mesh);
                 }
 
                 if (!committed
@@ -1079,12 +1051,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         internal static MatsukawaOptions CreateStagedOptions(
             MatsukawaOptions source,
-            PartAtlasExtractionStaging staging,
-            bool forceStripAvatarComponents)
+            PartAtlasExtractionStaging staging)
         {
             var copy = CloneOptions(source);
             copy.WorkOnCopy = false;
-            copy.StripAvatarComponents = forceStripAvatarComponents;
 
             if (copy.ForceDeletePaths.Count > 0)
             {
@@ -1110,7 +1080,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 KeepReferencedObjects = source.KeepReferencedObjects,
                 KeepHumanoidBones = source.KeepHumanoidBones,
                 ProtectOtherComponents = source.ProtectOtherComponents,
-                StripAvatarComponents = source.StripAvatarComponents,
             };
             copy.ForceDeletePaths.AddRange(source.ForceDeletePaths);
             return copy;
@@ -1183,77 +1152,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             }
 
             return "";
-        }
-
-        private static bool TransientMeshStillReferenced(
-            GameObject root,
-            IReadOnlyCollection<Mesh> transientMeshes)
-        {
-            if (transientMeshes.Count == 0) return false;
-            var transient = transientMeshes.ToHashSet();
-
-            foreach (var renderer in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-            {
-                if (renderer.sharedMesh != null && transient.Contains(renderer.sharedMesh))
-                    return true;
-            }
-
-            foreach (var filter in root.GetComponentsInChildren<MeshFilter>(true))
-            {
-                if (filter.sharedMesh != null && transient.Contains(filter.sharedMesh))
-                    return true;
-            }
-
-            return false;
-        }
-
-        private static void DisambiguateTrimMeshNames(
-            MatsukawaAdapter matsukawa,
-            IReadOnlyList<SkinnedMeshRenderer> trimTargets,
-            List<Mesh> transientMeshes)
-        {
-            var candidates = trimTargets
-                .Where(renderer => renderer != null && renderer.sharedMesh != null)
-                .ToArray();
-
-            if (candidates.Length < 2) return;
-
-            // HceMeshTrimmer uses Sanitize(mesh.name) as the .asset filename. Detect
-            // collisions on that exact key rather than on the raw Unity object name.
-            var usedFileKeys = candidates
-                .Select(renderer => matsukawa.SanitizeName(renderer.sharedMesh.name))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var group in candidates
-                         .GroupBy(
-                             renderer => matsukawa.SanitizeName(renderer.sharedMesh.name),
-                             StringComparer.OrdinalIgnoreCase
-                         )
-                         .Where(group => group.Count() > 1))
-            {
-                var index = 0;
-                foreach (var renderer in group)
-                {
-                    // Keep the first renderer on the original source mesh. Only later colliding
-                    // renderers need transient clones because HceMeshTrimmer saves by mesh name.
-                    if (index++ == 0) continue;
-
-                    var source = renderer.sharedMesh;
-                    var suffix = index;
-                    string uniqueName;
-                    string fileKey;
-                    do
-                    {
-                        uniqueName = source.name + "__TTT_" + suffix++;
-                        fileKey = matsukawa.SanitizeName(uniqueName);
-                    } while (usedFileKeys.Add(fileKey) is false);
-
-                    var clone = UnityEngine.Object.Instantiate(source);
-                    clone.name = uniqueName;
-                    renderer.sharedMesh = clone;
-                    transientMeshes.Add(clone);
-                }
-            }
         }
 
         private static void RemoveSupersededTrimMeshes(
@@ -1340,15 +1238,13 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private static string SanitizeAndValidateReferencesAgainstAnalysis(
             GameObject root,
-            MatsukawaAnalysis analysis,
-            bool stripAvatarComponents)
+            MatsukawaAnalysis analysis)
         {
             var issues = new List<string>();
             var deletedTransforms = analysis.DeleteTransforms;
             var removedComponents = GetComponentsRemovedByExtraction(
                 root,
-                analysis,
-                stripAvatarComponents
+                analysis
             );
 
             foreach (var component in root.GetComponentsInChildren<Component>(true))
@@ -1485,8 +1381,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
 
         private static HashSet<Component> GetComponentsRemovedByExtraction(
             GameObject root,
-            MatsukawaAnalysis analysis,
-            bool stripAvatarComponents)
+            MatsukawaAnalysis analysis)
         {
             var removed = analysis.DroppedComponents
                 .Where(component => component != null)
@@ -1505,18 +1400,16 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     removed.Add(meshFilter);
             }
 
-            if (stripAvatarComponents)
+            // HCE parts extraction removes these root components even without an Avatar Descriptor.
+            foreach (var component in root.GetComponents<Component>())
             {
-                foreach (var component in root.GetComponents<Component>())
+                if (component != null
+                    && IsAvatarRootComponentRemovedByExtraction(
+                        component,
+                        root
+                    ))
                 {
-                    if (component != null
-                        && IsAvatarRootComponentRemovedByExtraction(
-                            component,
-                            root
-                        ))
-                    {
-                        removed.Add(component);
-                    }
+                    removed.Add(component);
                 }
             }
 
