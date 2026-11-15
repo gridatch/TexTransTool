@@ -1,4 +1,6 @@
 #nullable enable
+using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
@@ -93,19 +95,17 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 for (var i = 0; i < visibleCount; i++)
                 {
                     var change = summary.BoneArrayChanges[i];
-                    EditorGUILayout.LabelField(
+                    DrawIndentedText(
                         "・" + change.RendererPath + ": "
-                        + change.Before + " → " + change.After + " 本",
-                        EditorStyles.wordWrappedLabel);
+                        + change.Before + " → " + change.After + " 本");
                 }
 
                 var remaining = summary.BoneArrayChanges.Count - visibleCount;
                 if (remaining > 0)
                 {
-                    EditorGUILayout.LabelField(
+                    DrawIndentedText(
                         "ほか " + remaining
-                        + " 件（詳細は抽出レポート.txtに記録）",
-                        EditorStyles.wordWrappedLabel);
+                        + " 件（詳細は抽出レポート.txtに記録）");
                 }
             }
 
@@ -114,13 +114,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 EditorGUILayout.Space(10f);
                 DrawSectionTitle("自動アトラス化");
 
-                foreach (var message in autoAtlas.ReportMessages)
-                {
-                    EditorGUILayout.Space(4f);
-                    EditorGUILayout.LabelField(
-                        message.FormatLocalized(),
-                        EditorStyles.wordWrappedLabel);
-                }
+                DrawAutoAtlasMessages(autoAtlas);
 
                 if (autoAtlas.HasChanges)
                 {
@@ -131,6 +125,109 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         + " 件 / Material " + autoAtlas.MaterialCount
                         + " 件 / Mesh " + autoAtlas.MeshCount + " 件");
                 }
+            }
+        }
+
+        private static void DrawAutoAtlasMessages(
+            PartAutoAtlasExecutionResult autoAtlas)
+        {
+            foreach (var message in autoAtlas.ReportMessages)
+            {
+                EditorGUILayout.Space(4f);
+                switch (message.LocalizationKey)
+                {
+                    case "AutoAtlasTexture:info:RelocateResult":
+                        if (message.Arguments.Length > 0
+                            && message.Arguments[0] is string groups)
+                        {
+                            DrawAutoAtlasGroups(groups);
+                        }
+                        else
+                        {
+                            DrawValue("詳細", message.FormatLocalized());
+                        }
+                        break;
+
+                    case "AutoAtlasTexture:info:TargetNotFound":
+                        DrawValue("結果", "アトラス化対象が存在しません。");
+                        break;
+
+                    case "AutoAtlasTexture:info:TwoDimensionalFallback":
+                        DrawValue("補足", message.FormatLocalized());
+                        break;
+
+                    default:
+                        DrawValue("詳細", message.FormatLocalized());
+                        break;
+                }
+            }
+
+            DrawValue(
+                "自動アトラス総処理時間",
+                autoAtlas.ProcessingMilliseconds + "ms");
+        }
+
+        private static void DrawAutoAtlasGroups(string report)
+        {
+            var blocks = report.Replace("\r\n", "\n")
+                .Replace('\r', '\n')
+                .Split(new[] { "\n\n" }, StringSplitOptions.RemoveEmptyEntries);
+
+            for (var blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
+            {
+                if (blockIndex > 0)
+                    EditorGUILayout.Space(8f);
+
+                var textureRoutes = new List<string>();
+                foreach (var rawLine in blocks[blockIndex].Split('\n'))
+                {
+                    var line = rawLine.Trim();
+                    if (line.Length == 0)
+                        continue;
+
+                    if (line.Contains("×") && line.Contains("→"))
+                    {
+                        textureRoutes.Add(line);
+                        continue;
+                    }
+
+                    DrawTextureRoutes(textureRoutes);
+
+                    var colon = line.IndexOf(':');
+                    if (colon > 0)
+                    {
+                        DrawValue(
+                            line.Substring(0, colon).Trim(),
+                            line.Substring(colon + 1).Trim());
+                    }
+                    else
+                    {
+                        DrawIndentedText(line);
+                    }
+                }
+
+                DrawTextureRoutes(textureRoutes);
+            }
+        }
+
+        private static void DrawTextureRoutes(List<string> routes)
+        {
+            if (routes.Count == 0)
+                return;
+
+            DrawValue("テクスチャサイズ", string.Join("\n", routes));
+            routes.Clear();
+        }
+
+        private static void DrawIndentedText(string text)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Space(16f);
+                EditorGUILayout.LabelField(
+                    text,
+                    EditorStyles.wordWrappedLabel,
+                    GUILayout.ExpandWidth(true));
             }
         }
 
@@ -147,6 +244,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             using (new EditorGUILayout.HorizontalScope())
             {
+                GUILayout.Space(16f);
                 EditorGUILayout.LabelField(
                     label,
                     GUILayout.Width(190f));
