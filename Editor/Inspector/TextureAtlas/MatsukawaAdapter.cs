@@ -45,9 +45,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal int TotalTransforms;
         internal int DeleteTransformCount;
         internal int DeleteRendererCount;
-        internal int KeepCount;
-        internal int DeleteRootCount;
-        internal int ProtectedObjectCount;
         internal int TrimTargetCount;
         internal int WarningCount;
         internal IReadOnlyList<string> Warnings = Array.Empty<string>();
@@ -59,7 +56,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal readonly List<SkinnedMeshRenderer> TrimTargets = new();
         internal readonly Dictionary<SkinnedMeshRenderer, int> ExpectedTrimBoneCounts = new();
 
-        internal object Raw = null!;
     }
 
     internal sealed class MatsukawaExecutionResult
@@ -69,9 +65,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal string SourceName = "";
         internal string OutputFolder = "";
         internal string PrefabPath = "";
-        internal string ReportText = "";
         internal IReadOnlyList<string> GeneratedMeshes = Array.Empty<string>();
-        internal IReadOnlyList<string> Notes = Array.Empty<string>();
 
         internal object RawReport = null!;
     }
@@ -350,13 +344,11 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var notes = _api.ReportNotes.GetValue(result.RawReport) as IList
                 ?? throw new InvalidOperationException("HceReport.notes is not IList.");
             notes.Add(note);
-            result.Notes = ReadStringList(notes);
         }
 
         internal void SetReportText(MatsukawaExecutionResult result, string reportText)
         {
             _api.ReportReportText.SetValue(result.RawReport, reportText);
-            result.ReportText = reportText;
         }
 
         internal void SetWorkedOnCopy(MatsukawaExecutionResult result, bool workedOnCopy)
@@ -430,13 +422,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         {
             var result = new MatsukawaAnalysis
             {
-                Raw = raw,
                 TotalTransforms = ReadInt(_api.AnalysisTotalTransforms, raw),
                 DeleteTransformCount = ReadInt(_api.AnalysisDeleteTransformCount, raw),
                 DeleteRendererCount = ReadInt(_api.AnalysisDeleteRendererCount, raw),
-                KeepCount = Count(_api.AnalysisKeep.GetValue(raw)),
-                DeleteRootCount = Count(_api.AnalysisDeleteRoots.GetValue(raw)),
-                ProtectedObjectCount = Count(_api.AnalysisProtected.GetValue(raw)),
                 TrimTargetCount = Count(_api.AnalysisTrimTargets.GetValue(raw)),
                 WarningCount = Count(_api.AnalysisWarnings.GetValue(raw)),
                 Warnings = ReadStringList(_api.AnalysisWarnings.GetValue(raw)),
@@ -510,9 +498,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 SourceName = (string?)_api.ReportSourceName.GetValue(rawReport) ?? "",
                 OutputFolder = (string?)_api.ReportOutputFolder.GetValue(rawReport) ?? "",
                 PrefabPath = (string?)_api.ReportPrefabPath.GetValue(rawReport) ?? "",
-                ReportText = (string?)_api.ReportReportText.GetValue(rawReport) ?? "",
                 GeneratedMeshes = ReadStringList(_api.ReportGeneratedMeshes.GetValue(rawReport)),
-                Notes = ReadStringList(_api.ReportNotes.GetValue(rawReport)),
             };
         }
 

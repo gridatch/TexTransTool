@@ -257,10 +257,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     {
         internal bool Success;
         internal string Error = "";
-        internal string OutputFolder = "";
         internal string AtlasOutputFolder = "";
         internal string PrefabPath = "";
-        internal string ReportText = "";
         internal PartAtlasPrefabExecutionSummary? Summary;
     }
 
@@ -384,7 +382,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return Fail(result, generatedNameError);
 
             var outputFolder = matsukawa.GetOutputFolder(outputName);
-            result.OutputFolder = outputFolder;
             result.AtlasOutputFolder = outputFolder + "/Atlas";
 
             Scene temporaryScene = default;
@@ -793,7 +790,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 RewriteReport(extraction.OutputFolder, reportText);
 
                 result.PrefabPath = prefabPath;
-                result.ReportText = reportText;
                 result.Summary = summary;
                 result.Success = true;
 

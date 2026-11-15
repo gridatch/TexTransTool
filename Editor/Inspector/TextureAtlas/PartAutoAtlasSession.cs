@@ -14,7 +14,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     {
         internal bool Executed;
         internal bool HasChanges;
-        internal int AppliedGroupCount;
         internal long ProcessingMilliseconds;
         internal IReadOnlyList<AutoAtlasTextureReportMessage> ReportMessages =
             Array.Empty<AutoAtlasTextureReportMessage>();
@@ -74,7 +73,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 domain.Dispose();
 
                 result.HasChanges = execution.HasChanges;
-                result.AppliedGroupCount = execution.AppliedGroupCount;
                 result.ProcessingMilliseconds =
                     execution.ProcessingMilliseconds;
                 result.ReportMessages = execution.ReportMessages;
