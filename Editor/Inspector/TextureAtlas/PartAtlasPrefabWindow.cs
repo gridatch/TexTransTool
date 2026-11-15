@@ -1564,16 +1564,20 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(pipelineResult.PrefabPath);
-            if (prefab != null)
-            {
-                Selection.activeObject = prefab;
-                EditorGUIUtility.PingObject(prefab);
-            }
-
             if (pipelineResult.Summary != null)
+            {
                 PartAtlasPrefabResultWindow.ShowResult(
                     pipelineResult.Summary);
+            }
+            else
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(pipelineResult.PrefabPath);
+                if (prefab != null)
+                {
+                    Selection.activeObject = prefab;
+                    EditorGUIUtility.PingObject(prefab);
+                }
+            }
         }
 
         private void SetSourcePrefab(GameObject? source)

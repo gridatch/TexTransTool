@@ -11,6 +11,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     {
         private PartAtlasPrefabExecutionSummary? _summary;
         private Vector2 _scroll;
+        private string _generatedPrefabPath = "";
+        private bool _selectPrefabOnClose;
 
         internal static void ShowResult(
             PartAtlasPrefabExecutionSummary summary)
@@ -18,10 +20,39 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var window =
                 CreateInstance<PartAtlasPrefabResultWindow>();
             window._summary = summary;
+            window._generatedPrefabPath = summary.Extraction.PrefabPath;
+            window._selectPrefabOnClose = !string.IsNullOrEmpty(window._generatedPrefabPath);
             window.titleContent =
                 new GUIContent("Prefab抽出結果");
             window.minSize = new Vector2(560f, 440f);
-            window.ShowUtility();
+            AssemblyReloadEvents.beforeAssemblyReload += window.SuppressPrefabSelection;
+            EditorApplication.quitting += window.SuppressPrefabSelection;
+            window.ShowModalUtility();
+        }
+
+        private void SuppressPrefabSelection()
+        {
+            _selectPrefabOnClose = false;
+        }
+
+        private void OnDestroy()
+        {
+            AssemblyReloadEvents.beforeAssemblyReload -= SuppressPrefabSelection;
+            EditorApplication.quitting -= SuppressPrefabSelection;
+
+            if (!_selectPrefabOnClose)
+                return;
+
+            var prefabPath = _generatedPrefabPath;
+            EditorApplication.delayCall += () =>
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                if (prefab == null)
+                    return;
+
+                Selection.activeObject = prefab;
+                EditorGUIUtility.PingObject(prefab);
+            };
         }
 
         private void OnGUI()
@@ -75,38 +106,29 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 summary.InputRendererCount + " → "
                 + summary.OutputRendererCount + " 件");
 
-            if (summary.BoneArrayChanges.Count == 1)
+            if (summary.BoneArrayChanges.Count > 0)
             {
-                var change = summary.BoneArrayChanges[0];
-                DrawValue(
-                    "ボーン配列",
-                    change.Before + " → " + change.After
-                    + " 本（" + change.RendererPath + "）");
-            }
-            else if (summary.BoneArrayChanges.Count > 1)
-            {
-                DrawValue(
-                    "ボーン配列を切り詰めたRenderer",
-                    summary.BoneArrayChanges.Count + " 件");
-
                 const int maxVisibleChanges = 4;
                 var visibleCount = Mathf.Min(
                     maxVisibleChanges, summary.BoneArrayChanges.Count);
+                var lines = new List<string>(visibleCount + 1);
                 for (var i = 0; i < visibleCount; i++)
                 {
                     var change = summary.BoneArrayChanges[i];
-                    DrawIndentedText(
-                        "・" + change.RendererPath + ": "
+                    lines.Add(
+                        change.RendererPath + "："
                         + change.Before + " → " + change.After + " 本");
                 }
 
                 var remaining = summary.BoneArrayChanges.Count - visibleCount;
                 if (remaining > 0)
                 {
-                    DrawIndentedText(
+                    lines.Add(
                         "ほか " + remaining
                         + " 件（詳細は抽出レポート.txtに記録）");
                 }
+
+                DrawValue("ボーン配列", string.Join("\n", lines));
             }
 
             if (summary.AutoAtlas is { Executed: true } autoAtlas)
