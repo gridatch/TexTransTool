@@ -30,6 +30,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         private string _adapterError = "";
 
         private GameObject? _sourcePrefab;
+        private static string PrefabPreferenceKey =>
+            "net.gridatch.TexTransTool.PartAtlasPrefab.SourceGuid."
+            + Hash128.Compute(Application.dataPath);
         private GameObject? _loadedPrefabRoot;
         private readonly HashSet<string> _extractionTargetPaths = new(StringComparer.Ordinal);
         private readonly HashSet<string> _validTargetPaths = new(StringComparer.Ordinal);
@@ -102,10 +105,46 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 _hierarchyView?.SetRoot(_loadedPrefabRoot);
                 Refresh3DPreview();
             }
+            else
+            {
+                RestoreSourcePrefab();
+            }
+        }
+
+        private void RestoreSourcePrefab()
+        {
+            if (this == null || _loadedPrefabRoot != null)
+                return;
+
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+            {
+                EditorApplication.delayCall += RestoreSourcePrefab;
+                return;
+            }
+
+            var guid = EditorPrefs.GetString(PrefabPreferenceKey, "");
+            if (!string.IsNullOrEmpty(guid))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (prefab != null && PrefabUtility.IsPartOfPrefabAsset(prefab))
+                {
+                    SetSourcePrefab(prefab);
+                    return;
+                }
+
+                EditorPrefs.DeleteKey(PrefabPreferenceKey);
+                _sourcePrefab = null;
+            }
+            else if (_sourcePrefab != null)
+            {
+                SetSourcePrefab(_sourcePrefab);
+            }
         }
 
         private void OnDisable()
         {
+            EditorApplication.delayCall -= RestoreSourcePrefab;
             UnloadSourcePrefab();
             _preview?.Dispose();
             _preview = null;
@@ -682,7 +721,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             using var content = new InspectorIndentScope(contentWidth);
 
             var next = EditorGUILayout.ObjectField(
-                new GUIContent("Prefab Asset"),
+                new GUIContent("Prefab"),
                 _sourcePrefab,
                 typeof(GameObject),
                 false
@@ -697,8 +736,10 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (_loadedPrefabRoot == null)
             {
                 EditorGUILayout.HelpBox(
-                    "Project上のPrefab Assetを指定してください。",
-                    MessageType.None
+                    _sourcePrefab == null
+                        ? "Project上のPrefabを指定してください。"
+                        : "選択中のPrefabの読み込みが完了していません。",
+                    _sourcePrefab == null ? MessageType.None : MessageType.Info
                 );
                 return false;
             }
@@ -731,7 +772,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 using (new InspectorIndentScope(content.ContentWidth))
                 {
                     EditorGUILayout.HelpBox(
-                        "左のPrefab Hierarchy右端のチェックで、抽出したいGameObjectを1件以上選択してください。複数選択できます。",
+                        "左のPrefab Hierarchyのチェックボックスで、抽出したいGameObjectを1件以上選択してください。複数選択できます。",
                         MessageType.Info
                     );
                 }
@@ -1525,11 +1566,12 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             UnloadSourcePrefab();
             _sourcePrefab = source;
 
-            if (source == null) return;
-            if (EditorUtility.IsPersistent(source) is false
+            if (source == null
+                || EditorUtility.IsPersistent(source) is false
                 || PrefabUtility.IsPartOfPrefabAsset(source) is false)
             {
                 _sourcePrefab = null;
+                EditorPrefs.DeleteKey(PrefabPreferenceKey);
                 return;
             }
 
@@ -1537,6 +1579,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             if (string.IsNullOrEmpty(assetPath))
             {
                 _sourcePrefab = null;
+                EditorPrefs.DeleteKey(PrefabPreferenceKey);
                 return;
             }
 
@@ -1547,6 +1590,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 return;
             }
 
+            EditorPrefs.SetString(PrefabPreferenceKey, AssetDatabase.AssetPathToGUID(assetPath));
             PartAtlasPrefabPipeline.UnpackPrefabInstancesForStaging(_loadedPrefabRoot);
             // Load the native Inspector's disposable copy after the source
             // staging hierarchy has been established.

@@ -210,7 +210,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             var titleRect = new Rect(rect.x + 6f, rect.y + 4f, rect.width - 12f, 18f);
             GUI.Label(
                 titleRect,
-                "Prefab Hierarchy（右端のチェック = 抽出対象）",
+                "Prefab Hierarchy（抽出対象選択）",
                 EditorStyles.boldLabel
             );
 
@@ -246,7 +246,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             {
                 GUI.Label(
                     treeRect,
-                    "Prefab Assetを指定するとHierarchyを表示します。",
+                    "Prefabを指定するとHierarchyを表示します。",
                     EditorStyles.centeredGreyMiniLabel
                 );
             }
