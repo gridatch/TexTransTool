@@ -531,17 +531,17 @@
           },
           "zipSHA256": "6c65aa48b7ff9ebed9596c3c1b29511c7c58c9536c8dc1cce37d1cfecddf3622"
         },
-        "0.1.24+wdt.ttt.1.0.2.debug.1408.part-atlas-usability.55e8ceb": {
+        "0.1.24+wdt.ttt.1.0.2.debug.1409.part-atlas-cleanup.fc4c6a8": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.24+wdt.ttt.1.0.2.debug.1408.part-atlas-usability.55e8ceb",
+          "version": "0.1.24+wdt.ttt.1.0.2.debug.1409.part-atlas-cleanup.fc4c6a8",
           "unity": "2022.3",
-          "description": "Debug build 1408 for part-atlas-usability from feat/part-atlas-usability at 55e8ceb. Based on WDT 0.1.24+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Debug build 1409 for part-atlas-cleanup from feat/part-atlas-cleanup at fc4c6a8. Based on WDT 0.1.24+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1408.part-atlas-usability.55e8ceb.zip",
+          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1409.part-atlas-cleanup.fc4c6a8.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -554,7 +554,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "e0d777cc4ae3c1a65477213bcb305079bf93c4564958aaad765946e6f7ad82e6"
+          "zipSHA256": "0d30cd15f6d5b369728c5ec32295620e78df0b2e1f70c8f78e74e16ed46ab551"
         }
       }
     }

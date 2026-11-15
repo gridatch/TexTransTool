@@ -1,10 +1,10 @@
 {
   "packageId": "net.gridatch.tex-trans-tool",
   "baseVersion": "0.1.24+wdt.ttt.1.0.2",
-  "lastDebugSerial": 1408,
-  "currentDebugVersion": "0.1.24+wdt.ttt.1.0.2.debug.1408.part-atlas-usability.55e8ceb",
-  "currentDebugChange": "part-atlas-usability",
-  "currentDebugBranch": "feat/part-atlas-usability",
-  "currentDebugCommit": "55e8cebc1309bf5576d92dc61ad5e0f5cb5f80ad",
-  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1408.part-atlas-usability.55e8ceb.zip"
+  "lastDebugSerial": 1409,
+  "currentDebugVersion": "0.1.24+wdt.ttt.1.0.2.debug.1409.part-atlas-cleanup.fc4c6a8",
+  "currentDebugChange": "part-atlas-cleanup",
+  "currentDebugBranch": "feat/part-atlas-cleanup",
+  "currentDebugCommit": "fc4c6a88082c96bef15f27120214feb3f48a3e9a",
+  "currentDebugZip": "net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1409.part-atlas-cleanup.fc4c6a8.zip"
 }
