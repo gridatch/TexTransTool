@@ -23,7 +23,6 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal bool KeepReferencedObjects = true;
         internal bool KeepHumanoidBones = false;
         internal bool ProtectOtherComponents = true;
-        internal bool StripAvatarComponents = false;
         internal readonly List<string> ForceDeletePaths = new();
     }
 
@@ -78,7 +77,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
     }
 
     /// <summary>
-    /// Reflection-only adapter for HairCostumeExtractor Ver1.1.0's public API.
+    /// Reflection-only adapter for HairCostumeExtractor 1.4.7+ public APIs.
     /// TexTransTool intentionally has no compile-time reference to the separately
     /// distributed Matsukawa tool.
     /// </summary>
@@ -234,7 +233,38 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                         _api.ReportNotes.GetValue(report))
                     .Where(IsProductReportNote)
                     .ToArray(),
+                Diagnosis = ReadDiagnosis(_api.ReportDiagnosis.GetValue(report)),
             };
+        }
+
+        private MatsukawaDiagnosisSummary? ReadDiagnosis(object? diagnosis)
+        {
+            if (diagnosis == null) return null;
+
+            return new MatsukawaDiagnosisSummary
+            {
+                ProblemCount = (int)_api.DiagnosisProblemCount.GetValue(diagnosis)!,
+                Passed = (bool)_api.DiagnosisPassed.GetValue(diagnosis)!,
+                MaxDeviation = (float)_api.DiagnosisMaxDeviation.GetValue(diagnosis)!,
+                ComparedRenderers = ReadInt(_api.DiagnosisComparedRenderers, diagnosis),
+                SkippedUnreadable = ReadInt(_api.DiagnosisSkippedUnreadable, diagnosis),
+                DeviationOver = ReadDiagnosisPaths(_api.DiagnosisDeviationOver, diagnosis),
+                VertexCountChanged = ReadDiagnosisPaths(_api.DiagnosisVertexCountChanged, diagnosis),
+                MissingRenderers = ReadDiagnosisPaths(_api.DiagnosisMissingRenderers, diagnosis),
+                NullBones = ReadDiagnosisPaths(_api.DiagnosisNullBones, diagnosis),
+                LostRootBone = ReadDiagnosisPaths(_api.DiagnosisLostRootBone, diagnosis),
+                NullMaterials = ReadDiagnosisPaths(_api.DiagnosisNullMaterials, diagnosis),
+                BlendShapeLost = ReadDiagnosisPaths(_api.DiagnosisBlendShapeLost, diagnosis),
+                BrokenPhysBones = ReadDiagnosisPaths(_api.DiagnosisBrokenPhysBones, diagnosis),
+                RemainingPhysBones = ReadDiagnosisPaths(_api.DiagnosisRemainingPhysBones, diagnosis),
+            };
+        }
+
+        private static IReadOnlyList<string> ReadDiagnosisPaths(FieldInfo field, object diagnosis)
+        {
+            return ReadStringList(field.GetValue(diagnosis))
+                .Select(CleanReportPath)
+                .ToArray();
         }
 
         private static bool IsProductReportNote(string note)
@@ -383,7 +413,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             _api.OptKeepReferencedObjects.SetValue(raw, options.KeepReferencedObjects);
             _api.OptKeepHumanoidBones.SetValue(raw, options.KeepHumanoidBones);
             _api.OptProtectOtherComponents.SetValue(raw, options.ProtectOtherComponents);
-            _api.OptStripAvatarComponents.SetValue(raw, options.StripAvatarComponents);
+            _api.OptCopyMaterials.SetValue(raw, false);
+            _api.OptMakeComparisonImage.SetValue(raw, false);
+            _api.OptKeepAvatar?.SetValue(raw, false);
 
             if (_api.OptForceDeletePaths.GetValue(raw) is IList forceDelete)
             {
@@ -536,6 +568,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             internal Type Executor = null!;
             internal Type MeshTrimmer = null!;
             internal Type Report = null!;
+            internal Type Diagnosis = null!;
 
             internal MethodInfo CollectRenderers = null!;
             internal MethodInfo Analyze = null!;
@@ -561,7 +594,9 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             internal FieldInfo OptKeepReferencedObjects = null!;
             internal FieldInfo OptKeepHumanoidBones = null!;
             internal FieldInfo OptProtectOtherComponents = null!;
-            internal FieldInfo OptStripAvatarComponents = null!;
+            internal FieldInfo OptCopyMaterials = null!;
+            internal FieldInfo OptMakeComparisonImage = null!;
+            internal FieldInfo? OptKeepAvatar;
             internal FieldInfo OptForceDeletePaths = null!;
 
             internal FieldInfo AnalysisKeep = null!;
@@ -594,6 +629,22 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
             internal FieldInfo ReportPrefabPath = null!;
             internal FieldInfo ReportSucceeded = null!;
             internal FieldInfo ReportReportText = null!;
+            internal FieldInfo ReportDiagnosis = null!;
+
+            internal PropertyInfo DiagnosisProblemCount = null!;
+            internal PropertyInfo DiagnosisPassed = null!;
+            internal FieldInfo DiagnosisMaxDeviation = null!;
+            internal FieldInfo DiagnosisComparedRenderers = null!;
+            internal FieldInfo DiagnosisSkippedUnreadable = null!;
+            internal FieldInfo DiagnosisDeviationOver = null!;
+            internal FieldInfo DiagnosisVertexCountChanged = null!;
+            internal FieldInfo DiagnosisMissingRenderers = null!;
+            internal FieldInfo DiagnosisNullBones = null!;
+            internal FieldInfo DiagnosisLostRootBone = null!;
+            internal FieldInfo DiagnosisNullMaterials = null!;
+            internal FieldInfo DiagnosisBlendShapeLost = null!;
+            internal FieldInfo DiagnosisBrokenPhysBones = null!;
+            internal FieldInfo DiagnosisRemainingPhysBones = null!;
 
             internal static Api Resolve()
             {
@@ -607,6 +658,7 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     Executor = TypeOf("HairCostumeExtractor.HceExecutor"),
                     MeshTrimmer = TypeOf("HairCostumeExtractor.HceMeshTrimmer"),
                     Report = TypeOf("HairCostumeExtractor.HceReport"),
+                    Diagnosis = TypeOf("HairCostumeExtractor.HceDiagnosis"),
                 };
 
                 RequireEnumValue(api.BoneMode, "WeightedOnly");
@@ -664,7 +716,14 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 api.OptKeepReferencedObjects = Field(api.Options, "keepReferencedObjects", typeof(bool));
                 api.OptKeepHumanoidBones = Field(api.Options, "keepHumanoidBones", typeof(bool));
                 api.OptProtectOtherComponents = Field(api.Options, "protectOtherComponents", typeof(bool));
-                api.OptStripAvatarComponents = Field(api.Options, "stripAvatarComponents", typeof(bool));
+                api.OptCopyMaterials = Field(api.Options, "copyMaterials", typeof(bool));
+                api.OptMakeComparisonImage = Field(api.Options, "makeComparisonImage", typeof(bool));
+                // keepAvatar was added after 1.4.7; all other required Options remain mandatory.
+                api.OptKeepAvatar = api.Options.GetField("keepAvatar", BindingFlags.Public | BindingFlags.Instance);
+                if (api.OptKeepAvatar != null && api.OptKeepAvatar.FieldType != typeof(bool))
+                    throw new InvalidOperationException(
+                        $"{api.Options.FullName}.keepAvatar type mismatch: {api.OptKeepAvatar.FieldType.FullName}"
+                    );
                 api.OptForceDeletePaths = Field(api.Options, "forceDeletePaths", null);
 
                 api.AnalysisKeep = Field(api.Analysis, "keep", null);
@@ -705,6 +764,22 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 api.ReportPrefabPath = Field(api.Report, "prefabPath", typeof(string));
                 api.ReportSucceeded = Field(api.Report, "succeeded", typeof(bool));
                 api.ReportReportText = Field(api.Report, "ReportText", typeof(string));
+                api.ReportDiagnosis = Field(api.Report, "diagnosis", api.Diagnosis);
+
+                api.DiagnosisProblemCount = Property(api.Diagnosis, "ProblemCount", typeof(int));
+                api.DiagnosisPassed = Property(api.Diagnosis, "Passed", typeof(bool));
+                api.DiagnosisMaxDeviation = Field(api.Diagnosis, "maxDeviation", typeof(float));
+                api.DiagnosisComparedRenderers = Field(api.Diagnosis, "comparedRenderers", typeof(int));
+                api.DiagnosisSkippedUnreadable = Field(api.Diagnosis, "skippedUnreadable", typeof(int));
+                api.DiagnosisDeviationOver = Field(api.Diagnosis, "deviationOver", typeof(List<string>));
+                api.DiagnosisVertexCountChanged = Field(api.Diagnosis, "vertexCountChanged", typeof(List<string>));
+                api.DiagnosisMissingRenderers = Field(api.Diagnosis, "missingRenderers", typeof(List<string>));
+                api.DiagnosisNullBones = Field(api.Diagnosis, "nullBones", typeof(List<string>));
+                api.DiagnosisLostRootBone = Field(api.Diagnosis, "lostRootBone", typeof(List<string>));
+                api.DiagnosisNullMaterials = Field(api.Diagnosis, "nullMaterials", typeof(List<string>));
+                api.DiagnosisBlendShapeLost = Field(api.Diagnosis, "blendShapeLost", typeof(List<string>));
+                api.DiagnosisBrokenPhysBones = Field(api.Diagnosis, "brokenPhysBones", typeof(List<string>));
+                api.DiagnosisRemainingPhysBones = Field(api.Diagnosis, "remainingPhysBones", typeof(List<string>));
 
                 return api;
             }
@@ -743,6 +818,23 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                     );
 
                 return field;
+            }
+
+            private static PropertyInfo Property(Type type, string name, Type expectedType)
+            {
+                var property = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance)
+                    ?? throw new MissingMemberException(type.FullName, name);
+
+                if (property.PropertyType != expectedType
+                    || property.GetIndexParameters().Length != 0
+                    || property.GetGetMethod() == null)
+                {
+                    throw new InvalidOperationException(
+                        $"{type.FullName}.{name} is not a readable {expectedType.Name} property."
+                    );
+                }
+
+                return property;
             }
 
             private static void RequireEnumValue(Type type, string name)

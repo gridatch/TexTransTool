@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -26,6 +27,25 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
         internal IReadOnlyList<string> DeletedRoots = Array.Empty<string>();
         internal IReadOnlyList<string> GeneratedMeshes = Array.Empty<string>();
         internal IReadOnlyList<string> Notes = Array.Empty<string>();
+        internal MatsukawaDiagnosisSummary? Diagnosis;
+    }
+
+    internal sealed class MatsukawaDiagnosisSummary
+    {
+        internal int ProblemCount;
+        internal bool Passed;
+        internal float MaxDeviation;
+        internal int ComparedRenderers;
+        internal int SkippedUnreadable;
+        internal IReadOnlyList<string> DeviationOver = Array.Empty<string>();
+        internal IReadOnlyList<string> VertexCountChanged = Array.Empty<string>();
+        internal IReadOnlyList<string> MissingRenderers = Array.Empty<string>();
+        internal IReadOnlyList<string> NullBones = Array.Empty<string>();
+        internal IReadOnlyList<string> LostRootBone = Array.Empty<string>();
+        internal IReadOnlyList<string> NullMaterials = Array.Empty<string>();
+        internal IReadOnlyList<string> BlendShapeLost = Array.Empty<string>();
+        internal IReadOnlyList<string> BrokenPhysBones = Array.Empty<string>();
+        internal IReadOnlyList<string> RemainingPhysBones = Array.Empty<string>();
     }
 
     internal readonly struct PartAtlasBoneArrayChange
@@ -108,6 +128,8 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 + extraction.OutputGameObjectCount
                 + " 個");
 
+            AppendDiagnosisSection(sb, extraction.Diagnosis);
+
             AppendAutoAtlasSection(
                 sb,
                 summary.AutoAtlas,
@@ -143,6 +165,39 @@ namespace net.rs64.TexTransTool.TextureAtlas.Editor
                 extraction.Notes);
 
             return sb.ToString();
+        }
+
+        private static void AppendDiagnosisSection(
+            StringBuilder sb,
+            MatsukawaDiagnosisSummary? diagnosis)
+        {
+            sb.AppendLine();
+            sb.AppendLine("HCE抽出段階の自己診断");
+            sb.AppendLine("  HCE抽出時点の結果です。後続の自動アトラス化後のPrefabを診断した結果ではありません。");
+            if (diagnosis == null)
+            {
+                sb.AppendLine("  診断結果 : 未取得");
+                return;
+            }
+
+            sb.AppendLine("  診断結果 : " + (diagnosis.Passed ? "問題検出なし" : "問題あり"));
+            sb.AppendLine("  指摘件数 : " + diagnosis.ProblemCount + " 件");
+            sb.AppendLine("  頂点比較したRenderer : " + diagnosis.ComparedRenderers + " 件");
+            sb.AppendLine("  頂点データ未取得で比較を省略したRenderer : " + diagnosis.SkippedUnreadable + " 件");
+            sb.AppendLine("  最大頂点差 : " + (diagnosis.ComparedRenderers > 0
+                ? diagnosis.MaxDeviation.ToString("G9", CultureInfo.InvariantCulture) + " m"
+                : "比較なし"));
+            sb.AppendLine("  残存PhysBone : " + diagnosis.RemainingPhysBones.Count + " 件");
+
+            AppendListSection(sb, "頂点差超過", diagnosis.DeviationOver);
+            AppendListSection(sb, "頂点数変化", diagnosis.VertexCountChanged);
+            AppendListSection(sb, "Renderer欠落", diagnosis.MissingRenderers);
+            AppendListSection(sb, "Bone参照欠落", diagnosis.NullBones);
+            AppendListSection(sb, "rootBone欠落", diagnosis.LostRootBone);
+            AppendListSection(sb, "Material参照欠落", diagnosis.NullMaterials);
+            AppendListSection(sb, "BlendShape数変化", diagnosis.BlendShapeLost);
+            AppendListSection(sb, "PhysBone参照切れ", diagnosis.BrokenPhysBones);
+            AppendListSection(sb, "残存PhysBoneのパス", diagnosis.RemainingPhysBones);
         }
 
         private static void AppendAutoAtlasSection(
