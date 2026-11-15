@@ -531,17 +531,17 @@
           },
           "zipSHA256": "6c65aa48b7ff9ebed9596c3c1b29511c7c58c9536c8dc1cce37d1cfecddf3622"
         },
-        "0.1.24+wdt.ttt.1.0.2.debug.1410.part-atlas-cleanup.7f0b836": {
+        "0.1.25+wdt.ttt.1.0.2": {
           "name": "net.gridatch.tex-trans-tool",
           "displayName": "TexTransTool (WDT)",
-          "version": "0.1.24+wdt.ttt.1.0.2.debug.1410.part-atlas-cleanup.7f0b836",
+          "version": "0.1.25+wdt.ttt.1.0.2",
           "unity": "2022.3",
-          "description": "Debug build 1410 for part-atlas-cleanup from feat/part-atlas-cleanup at 7f0b836. Based on WDT 0.1.24+wdt.ttt.1.0.2 / upstream TexTransTool 1.0.2.",
+          "description": "Non-destructive modification to Texture!",
           "author": {
             "name": "ReinaSakiria",
             "url": "https://rs64.net/"
           },
-          "url": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/debug/net.gridatch.tex-trans-tool-0.1.24+wdt.ttt.1.0.2.debug.1410.part-atlas-cleanup.7f0b836.zip",
+          "url": "https://github.com/gridatch/TexTransTool/releases/download/wdt-v0.1.25+wdt.ttt.1.0.2/net.gridatch.tex-trans-tool-0.1.25+wdt.ttt.1.0.2.zip",
           "repo": "https://raw.githubusercontent.com/gridatch/TexTransTool/vpm/vpm.json",
           "legacyFolders": {
             "Packages\\rs64.tex-trans-tool": ""
@@ -554,7 +554,7 @@
           "vpmDependencies": {
             "net.rs64.tex-trans-core": "^0.2.0"
           },
-          "zipSHA256": "d2fa79231be7705e840f51be260d39ea4aa7bde57c7d2491473aa72a1b78ad69"
+          "zipSHA256": "26300daa7c8b39902e4417882c3b88e51b9c8d2d26a99b7f7a568c00288c101a"
         }
       }
     }
